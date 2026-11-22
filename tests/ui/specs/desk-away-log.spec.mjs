@@ -11,7 +11,7 @@ test("past Away stretches in their own tab, newest first, each one line opening 
   await cue.open("desk");
   await openDesk(page);
   const tabs = page.locator(".dk-right .dk-ptabs .dk-tab");
-  await expect(tabs).toHaveText([/./, "Decisions", "Dispatcher Actions", "Away"].map((t, k) => (k === 1 ? /^Decisions/ : t)));
+  await expect(tabs).toHaveText([/./, "Decisions", "Activity", "Away"].map((t, k) => (k === 1 ? /^Decisions/ : t)));
   await page.locator('.dk-right .dk-tab[data-desk-tab="away"]').click();
   await expect(page.locator(".dk-away-log .dk-empty")).toContainText("Nothing yet. Each time Away goes off");
 

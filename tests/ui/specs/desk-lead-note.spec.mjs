@@ -14,15 +14,22 @@ test("a NOTE is a small card: who it went to and which item, the message under i
     d.decisions.push({ id: "n1", project: "cue", item_id: "d2", by: "web-lead", sid: "lead", text: words, why: "note to cue-387", at: Math.floor(Date.now() / 1000), undo: "none", act: "" });
   }, { words });
   await push(page, `Sent a note.\n\n- **NOTE:** #d2 | ${words}`);
-  // The message family's card (#501): who → to, NOTE, the item, then the note.
-  const chat = page.locator(".dk-chat"), card = chat.locator('[data-mg="note"]');
-  await expect(card).toHaveCount(1);
-  await expect(card.locator(".mg-to")).toHaveText("→ cue-387");
-  await expect(card.locator(".mg-tag")).toHaveText("NOTE");
-  await expect(card.locator(".mg-id")).toHaveText("Feature #d2");
-  await expect(card.locator(".mg-t")).toHaveText("The phrases go left of Send; keep | as it is in commands.");
+  // The Desk's own (#688): out of the chat, a count line saying it; in Activity the message family's card (#501):
+  // who → to, Note, the item, then the note.
+  const chat = page.locator(".dk-chat");
+  await expect(chat.locator('[data-mg="note"]')).toHaveCount(0);
+  await expect(chat.locator(".dk-cnt").last()).toHaveText(/^1 Desk update · a note on #d2 · Activity ›$/);
   await expect(chat).not.toContainText("NOTE:");
   await expect(chat).not.toContainText("**");
+  await page.evaluate(() => deskOpenActivity());
+  const card = page.locator('.dk-moves [data-mg="note"]');
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".mg-to")).toHaveText("→ cue-387");
+  await expect(card.locator(".mg-tag")).toHaveText("Note");
+  await expect(card.locator(".mg-id")).toHaveText("Feature #d2");
+  await expect(card.locator(".mg-t")).toHaveText("The phrases go left of Send; keep | as it is in commands.");
+  await expect(card).not.toContainText("NOTE:");
+  await expect(card).not.toContainText("**");
   await expect(card.locator("[title]")).toHaveCount(0);
   if (process.env.SHOT_DIR) await card.screenshot({ path: `${process.env.SHOT_DIR}/note-card.png` });
   // Its item number opens the item.
@@ -34,9 +41,13 @@ test("a NOTE Cue has no record of yet names the item's holder; one the hub would
   await cue.open("desk");
   await openDesk(page);
   await push(page, "NOTE: #d2 | Check the small window too.");
-  const card = page.locator('.dk-chat [data-mg="note"]');
+  await expect(page.locator(".dk-chat .dk-cnt").last()).toHaveText(/^1 Desk update · a note on #d2 · Activity ›$/);
+  await page.evaluate(() => deskOpenActivity());
+  const card = page.locator('.dk-moves [data-mg="note"]');
   await expect(card.locator(".mg-to")).toHaveText(/^→ \S+$/);
   await expect(card.locator(".mg-id")).toHaveText(/^(Bug|Feature|Task) #d2$/);
+  // Back to the chat: a NOTE the hub wouldn't read is the lead's words, as written.
+  await page.evaluate(() => { deskTab = "lead"; renderMain(); });
   await push(page, "NOTE: no item here");
   await expect(page.locator(".dk-chat .cv-agent").last()).toContainText("NOTE: no item here");
 });

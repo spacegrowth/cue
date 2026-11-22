@@ -49,7 +49,7 @@
 .dk-v2 .dk2-step.done .dk2-sn, .dk-v2 .dk2-step.cur .dk2-sn { color: var(--ink); }
 .dk-v2 .dk2-stt { min-height: 1.3em; color: var(--muted); font: var(--type-tag) var(--mono); }
 .dk-v2 .dk2-who { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-card); background: var(--panel-2); }
-.dk-v2 .dk2-who-h { color: var(--muted); font: 700 var(--type-tag) var(--sans); letter-spacing: .04em; text-transform: uppercase; }
+.dk-v2 .dk2-who-h { color: var(--muted); font: 700 var(--type-tag) var(--sans); }
 .dk-v2 .dk2-who-r, .dk-v2 .dk2-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .dk-v2 .dk2-k { flex: none; width: 64px; color: var(--muted); font-size: var(--type-small); }
 .dk-v2 .dk2-v { flex: 1; min-width: 0; font-size: var(--type-body); }

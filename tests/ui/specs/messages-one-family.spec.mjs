@@ -73,28 +73,39 @@ for (const scheme of ["light", "dark"]) {
       // after those, or a card found before a redraw is gone by the time it's read (#609).
       await page.waitForFunction(() => stepFeeds.has("host") && !stepsBusy && older.get("host") && !older.get("host").busy);
       const chat = page.locator('.dk-right [data-desk-chat="host"]');
-      await isCard(chat.locator(".mg.cue-msg"));
-      await readsOn(chat.locator(".mg.cue-msg .mg-t"));
       const you = chat.locator(".mg-you", { hasText: "make the header blue" });
       await expect(you.locator(".mg-text")).toHaveCSS("font-size", BODY);
       await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("font-size", BODY);
       await expect(chat.locator(".mg-agent").last().locator(".mg-h")).toHaveCSS("font-size", META);
       await isCard(chat.locator(".mg.ask"));
       await expect(chat.locator(".mg.ask pre.mg-code")).toHaveCount(1);
+      // Cue's card is the Desk's own (#688): a count line in the chat, the card in Activity.
+      await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
+      await expect(chat.locator(".dk-cnt")).toHaveCount(1);
+      await page.evaluate(() => deskOpenActivity());
+      await isCard(page.locator(".dk-moves .mg.cue-msg"));
+      await readsOn(page.locator(".dk-moves .mg.cue-msg .mg-t"));
       await noHover(page);
     });
 
-    test("an item's page: its holder's chat about it uses the same card", async ({ page, cue }) => {
+    test("an item's page: its holder's chat about it draws Cue's note as its own chat does", async ({ page, cue }) => {
       await cue.open("desk");
       await openDesk(page);
       const sid = await page.evaluate(() => state.desk.projects.flatMap((d) => d.items).find((i) => i.id === "d2")?.holder?.sid);
-      expect(sid).toBeTruthy();
       await push(page, sid, [{ role: "you", text: "Note from the Desk lead on Desk item #d2 (Phrases, finishing): Check the dark theme too." }]);
       await page.evaluate(() => deskShow({ kind: "item", id: "d2" }));
-      const card = page.locator(".dk-right .mg.cue-msg").last();
-      await isCard(card);
-      await expect(card.locator(".mg-tag")).toHaveCount(1);
-      await readsOn(card.locator(".mg-t"));
+      // Cue's card is the Desk's own (#688): a count line in the item's chat, the card in Activity.
+      await expect(page.locator(".dk-right .dk-ichat .dk-cnt")).toHaveCount(1);
+      await expect(page.locator(".dk-right .mg.cue-msg")).toHaveCount(0);
+      await expect(page.locator(".dk-right .dk-cue")).toHaveCount(0);
+      // The holder is the lead: its chat draws Cue's notes as short lines (#616), so Activity shows that line, not a card.
+      await page.evaluate(() => deskOpenActivity());
+      const line = page.locator(".dk-moves .dk-cue").filter({ hasText: "Check the dark theme too" });
+      await expect(line).toHaveCount(1);
+      await expect(page.locator(".dk-moves .mg.cue-msg").filter({ hasText: "Check the dark theme too" })).toHaveCount(0);
+      expect(await sizes(line.locator(".mg-line"))).toEqual([META]);
+      expect(await sizes(line.locator(".dk-cue-w"))).toEqual([BODY]);
+      await readsOn(line.locator(".dk-cue-w"));
       await noHover(page);
     });
 
@@ -111,8 +122,9 @@ for (const scheme of ["light", "dark"]) {
       ]);
       await page.evaluate(() => { const l = sessionOf("lead"); l.compacted_ms = Date.now() - 30_000; l.state = "idle"; renderMain(); });
       const chat = page.locator(".dk-chat");
-      await expect(chat.locator(".mg-line")).toContainText([/Gave/, /waits on/, /Added/]);
-      await expect(chat.locator('[data-mg="note"]')).toHaveCount(1);
+      // The item lines and the NOTE are the Desk's own (#688): a count line here, each in Activity (below).
+      await expect(chat.locator(".dk-cnt")).toHaveCount(1);
+      await expect(chat.locator('[data-mg="note"]')).toHaveCount(0);
       await expect(chat.locator('[data-mg="check"]')).toHaveCount(1);
       await expect(chat.locator(".mg.ask .mg-st")).toContainText("Left");
       await expect(chat.locator(".mg-status", { hasText: "Compacted" })).toHaveCount(1);
@@ -123,8 +135,15 @@ for (const scheme of ["light", "dark"]) {
       // Everything around it: one smaller size (heads, "who · when", feet, Listen/Read, the status line).
       const meta = chat.locator(":is(.mg-h, .mg > .mg-f, .mg-status, .mg-btn)");
       expect(new Set(await sizes(meta))).toEqual(new Set([META]));
-      await isCard(chat.locator('.mg[data-mg="note"], .mg[data-mg="check"]'));
-      await readsOn(chat.locator('[data-mg="note"] .mg-t'));
+      await isCard(chat.locator('.mg[data-mg="check"]'));
+      await page.evaluate(() => deskOpenActivity());
+      const act = page.locator(".dk-moves");
+      await expect(act.locator(".mg-line")).toContainText([/Gave/, /waits on/, /Added/]);
+      await expect(act.locator('[data-mg="note"]')).toHaveCount(1);
+      expect(new Set(await sizes(act.locator(":is(.mg-t, .mg-line)")))).toEqual(new Set([BODY]));
+      expect(new Set(await sizes(act.locator(":is(.mg-h, .mg > .mg-f)")))).toEqual(new Set([META]));
+      await isCard(act.locator('.mg[data-mg="note"]'));
+      await readsOn(act.locator('[data-mg="note"] .mg-t'));
       await noHover(page);
     });
 

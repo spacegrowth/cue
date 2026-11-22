@@ -40,8 +40,9 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(h1.locator("svg.dk-kic")).toHaveCount(1);
   await expect(page.locator(".dk-right .dk-lbl")).toHaveCount(0);
   await expect(page.locator(".dk-chat")).toContainText("host-lead is on it");
-  // The lead's box, in its chat card (the sessions list takes that place once open, #666).
-  await expect(page.locator(".dk2b-chat .dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
+  // The lead's box, in its chat card (the sessions list takes that place once open, #666). The lead is at work in this
+  // scenario: its box says what a message does now, as a session's box on the Board does (#688).
+  await expect(page.locator(".dk2b-chat .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Message web-lead… Cue keeps it and sends it when this turn ends");
   // The Sessions head (All N sessions, on the right in the list's place, #666): the Desk's name, ✎ only on hover; no
   // "Change" anywhere.
   await openSessions(page);
@@ -187,7 +188,7 @@ test("the lead at work shows it in its chat: the working line, live, but not its
   await expect(live.locator(".cv-what")).toHaveText("Waiting on you for your reply");
 });
 
-test("a send from an item that doesn't go keeps the item open, red on its Thread with why, Retry and Edit (#422)", async ({ page, cue }) => {
+test("a send from an item that doesn't go keeps the item open, red on its Thread with why, and the board's Send again (#422, #688)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
@@ -196,16 +197,16 @@ test("a send from an item that doesn't go keeps the item open, red on its Thread
   await page.locator(".dk-right .dk-box textarea").press("Enter");
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Task #d6 · Tidy the Settings copy");
   const mine = page.locator(".dk-thread .dk-tm", { hasText: "The More menu is cut off" });
-  await expect(mine.locator(".cv-you.msg-failed .msg-line")).toHaveText("! Couldn't send · offline · Retry · Edit");
+  await expect(mine.locator(".cv-you.msg-failed .msg-line")).toHaveText("! Couldn't send · offline · Send again");
   await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("");
-  // Retry: the same send again, by the same path.
+  // Send again: the same send again, by the same path.
   await cue.override("desk_send", () => ({ sid: "lead" }));
   await mine.locator('[data-desk-act="msg_retry"]').click();
   await cue.called("desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): The More menu is cut off" });
   await expect(page.locator(".dk-thread .msg-failed")).toHaveCount(0);
 });
 
-test("Edit on an item's message that didn't go puts it back in the box; the lead's chat shows it red with Retry (#422)", async ({ page, cue }) => {
+test("an item's message that didn't go has no Edit, only Send again; the lead's chat shows it red with Send again (#422, #688)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
@@ -213,26 +214,27 @@ test("Edit on an item's message that didn't go puts it back in the box; the lead
   await page.locator(".dk-right .dk-box textarea").fill("The More menu is cut off");
   await page.locator(".dk-right .dk-box textarea").press("Enter");
   const mine = page.locator(".dk-thread .dk-tm", { hasText: "The More menu is cut off" });
-  await mine.locator('[data-desk-act="msg_edit"]').click();
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("The More menu is cut off");
-  await expect(page.locator(".dk-thread .msg-failed")).toHaveCount(0);
-  // To the lead on its own: red in its chat, and Retry sends it again.
+  await expect(mine.locator(".msg-line")).toHaveText("! Couldn't send · offline · Send again");
+  await expect(mine.locator('[data-desk-act="msg_edit"]')).toHaveCount(0);
+  // To the lead on its own: red in its chat, and Send again sends it again.
   await page.evaluate(() => { deskOpen = null; deskTab = "lead"; renderMain(); });
-  await page.locator(".dk-right .dk-box textarea").fill("Footer too");
-  await page.locator(".dk-right .dk-box textarea").press("Enter");
+  await page.locator('.dk-right textarea[data-text^="desk:"]').fill("Footer too");
+  await page.locator('.dk-right textarea[data-text^="desk:"]').press("Enter");
   const bad = page.locator(".dk-chat .cv-you.msg-failed", { hasText: "Footer too" });
-  await expect(bad.locator(".msg-line")).toHaveText("! Couldn't send · offline · Retry · Edit");
+  await expect(bad.locator(".msg-line")).toHaveText("! Couldn't send · offline · Send again");
   await cue.override("desk_send", () => ({ sid: "lead" }));
   await bad.locator('[data-desk-act="lead_retry"]').click();
   await cue.called("desk_send", { project: "cue", text: "Footer too" });
-  await expect(page.locator(".dk-chat .msg-failed")).toHaveCount(0);
+  // Gone red; the item's message, never sent again, still offers Send again.
+  await expect(page.locator(".dk-chat .msg-failed", { hasText: "Footer too" })).toHaveCount(0);
+  await expect(page.locator(".dk-chat .msg-failed", { hasText: "The More menu is cut off" })).toHaveCount(1);
 });
 
 test("the lead's own ASK stands in the box's place: its choices, Type answer…; answered, the box is back", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   // Typed to the lead before it asked: kept, and shown held under its card.
-  await page.locator(".dk-right .dk-box textarea").fill("And the footer too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("And the footer too");
   await cue.change((st) => {
     st.sessions.find((s) => s.session_id === "lead").state = "deciding";
     st.items.push({ ...st.items[0], id: "n-lead-ask", agent_id: "", agent_name: "", desk: true, hosted: false,
@@ -240,7 +242,7 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   });
   const ask = page.locator(".dk-right .dk-ask");
   await expect(ask).toContainText("Add a rename right on the Desk's line?");
-  await expect(page.locator(".dk-right .dk-box")).toHaveCount(0);
+  await expect(page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer)")).toHaveCount(0);
   await expect(ask.locator(".foot.held textarea")).toHaveValue("And the footer too");
   // Your own words: Type answer… opens a box for them.
   await ask.locator('[data-act="redirect"]').click();
@@ -252,8 +254,9 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   expect(call.args.id).toBe("n-lead-ask");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").state = "working"; });
   await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", "Tell web-lead: a bug, a feature, or a question…");
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("And the footer too");
+  // The lead at work: its box says what a message does now, as a session's box on the Board does (#688).
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Message web-lead… Cue keeps it and sends it when this turn ends");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("And the footer too");
 });
 
 test("the lead's question is the option C card: who asks and when, a line per choice, its suggestion picked, Decline and one Send, no summary box (#450)", async ({ page, cue }) => {
@@ -920,7 +923,7 @@ test("rows open from the keyboard: Enter or Space, and the focus stays on the ro
   if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-crew-mark.png`, clip: undefined });
 });
 
-test("Send back opens the item's own \"Why send it back?\" box: when it doesn't go it's red on the Thread and Edit opens the box with it again; it closes when it goes", async ({ page, cue }) => {
+test("Send back opens the item's own \"Why send it back?\" box: when it doesn't go it's red on the Thread with Send again; it closes when it goes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d2"]').click();
@@ -938,18 +941,23 @@ test("Send back opens the item's own \"Why send it back?\" box: when it doesn't 
   await box.fill("Still loses focus");
   await cue.override("desk_item_act", () => { throw "offline"; });
   await why.locator('[data-desk-act="back_go"]').click();
-  // Didn't go: red on its Thread with why, Retry and Edit (#422); Edit opens the box with it again.
+  // Didn't go: red on its Thread with why and the board's Send again (#422, #688), which sends the same words again.
   const bad = page.locator(".dk-right .dk-ipane .cv-you.msg-failed", { hasText: "Still loses focus" });
-  await expect(bad.locator(".msg-line")).toHaveText("! Couldn't send · offline · Retry · Edit · sent back");
-  await bad.locator('[data-desk-act="msg_edit"]').click();
-  await expect(box).toHaveValue("Still loses focus");
+  await expect(bad.locator(".msg-line")).toHaveText("! Couldn't send · offline · Send again · sent back");
+  await expect(bad.locator('[data-desk-act="msg_edit"]')).toHaveCount(0);
   await cue.override("desk_item_act", () => null);
+  await bad.locator('[data-desk-act="msg_retry"]').click();
+  await expect(bad).toHaveCount(0);
+  // Gone, its box closes; opened again, a picture goes with the words.
+  await expect(why).toHaveCount(0);
+  await page.locator('.dk-panel[data-side-for] [data-desk-act="send_back"]').click();
+  await box.fill("Still loses focus");
   // A picture goes with the words.
   await page.evaluate(() => { draft("back:d2").images.push({ name: "shot.png", mime: "image/png", data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" }); renderMain(); });
   await expect(why.locator(".chips")).toHaveCount(1);
   await box.press("Enter");
   await expect.poll(async () => (await cue.calls("desk_item_act")).filter((c) => c.args.act === "send_back").map((c) => [c.args.text, c.args.images.map((i) => i.name)]))
-    .toEqual([["Still loses focus", []], ["Still loses focus", ["shot.png"]]]);
+    .toEqual([["Still loses focus", []], ["Still loses focus", []], ["Still loses focus", ["shot.png"]]]);   // went, Send again, with the picture
   await expect(page.locator(".dk-right .dk-sb")).toHaveCount(0);
   await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("for the chat");
   expect(await cue.calls("desk_send")).toEqual([]);
@@ -966,13 +974,13 @@ test("no lead yet, one session: 'Let <name> run it', or start a new lead; picked
   await expect(card.locator(".btn.primary")).toHaveText("Let site-lead run it");
   await expect(card.locator(".dk-fresh")).toHaveText("Start a new lead");
   // No box to anyone, nothing runs it, till someone does.
-  await expect(page.locator(".dk-box")).toHaveCount(0);
+  await expect(page.locator(":is(.dk-box, .dk-board .foot .composer)")).toHaveCount(0);
   await expect(page.locator(".dk-strip .dk-lcard")).toHaveCount(0);
   await card.locator(".btn.primary").click();
   await cue.called("desk_set_lead", { project: "website", sid: "site" });
   await expect(page.locator(".dk-tab.on")).toHaveText("site-lead");
   // Its chat, with its box, in the chat card; then its card in the sessions list, which takes that place (#666).
-  await expect(page.locator(".dk2b-chat .dk-box textarea")).toHaveAttribute("placeholder", "Tell site-lead: a bug, a feature, or a question…");
+  await expect(page.locator(".dk2b-chat .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Tell site-lead: a bug, a feature, or a question…");
   await openSessions(page);
   await expect(page.locator(".dk-strip .dk-lcard")).toContainText("site-lead");
   expect(await page.locator(".dk-board [title]").count()).toBe(0);

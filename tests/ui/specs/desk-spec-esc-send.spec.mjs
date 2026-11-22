@@ -20,7 +20,7 @@ test("the lead's chat: Enter sends; kept while it works; Esc brings back just yo
   await cue.open("desk");
   await openDesk(page);
   await leadKeeps(cue);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("use the new pool");
   await box.press("Enter");
   await cue.called("desk_send", { project: "cue", text: "use the new pool" });
@@ -43,7 +43,7 @@ test("the lead's chat: Edit on a kept message puts your words back in the lead's
   await cue.open("desk");
   await openDesk(page);
   await leadKeeps(cue);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("rename the header");
   await box.press("Enter");
   const kept = page.locator(".dk-chat .cv-you", { hasText: "rename the header" });
@@ -88,7 +88,7 @@ test("an item's page: Esc takes back the note kept for its busy holder, your wor
   await box.press("Enter");
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "try the other port" });
   await expect(box).toHaveValue("");
-  await expect(page.locator(".dk-right .dk-ichat .cv-you", { hasText: "try the other port" }).locator(".msg-line")).toContainText(/Waiting: .+ your note goes in next/);
+  await expect(page.locator(".dk-right .dk-ichat .cv-you", { hasText: "try the other port" }).locator(".msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends");
   await box.fill("and 8080");
   await page.keyboard.press("Escape");
   await cue.called("unhold_message", { sessionId: "host" });

@@ -218,8 +218,8 @@ function reviewFolds(ex, team) {
  *  `folds(ex)`: turns the page folds to a line of its own (an item's page, the holder's turns about other items):
  *  { skip: the messages not drawn, by index; rows: its fold lines, placed by time; hides(at): their steps }.
  *  `acts({ st, sid, held })`: a held or queued message's controls as the page has them (heldRow, queuedRow).
- *  `wait(e)`: { words, line } your held or queued note as the page tells it (an item's page, #419: your words alone,
- *  "Waiting: cue-12 is finishing something, your note goes in next"). */
+ *  `pending`: what you sent from the page's own box that the thread doesn't show yet (the Desk's, #688), each drawn
+ *  as the chat's own outbox is (outboxRow): { text, images, at, key, m: its msgLine state, head, picsHtml }. */
 function chatHtml(it, s, harness, paged = false, page = null) {
   const original = conversation(it, s);
   const ex = original.map(deskSaidE);
@@ -247,10 +247,11 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, counts };
   const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
-  // Conversation only (#685, desk/runs.js): each run of the Desk's own rows folded to one that opens in place.
-  const rows = page?.talk ? dkFoldRows(drawn) : drawn;
-  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
-  if (s?.send_at) rows.push(sendAtRow(s));
+  // A Desk chat (#688, desk/runs.js): each run of the Desk's own rows between your turns is one count line; Activity has them.
+  const rows = page?.lines && typeof dkFoldRows === "function" ? dkFoldRows(drawn) : drawn;
+  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`), page));
+  for (const o of page?.pending || []) rows.push(outboxRow(o, s, K(o.key || `p:${o.at}`), page));
+  if (s?.send_at) rows.push(sendAtRow(s, page));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** Message `e`, the `n`th of chatHtml's thread, as drawn there: an ask, a decision, a card of a page's or Cue's own, a
@@ -266,29 +267,45 @@ function chatRowHtml(c, e, n) {
   // Another Desk's lead, through Cue (TELL DESK, TELL DESKS, a HOLD, #540): the same band (desk/lead.js).
   const told = e.role === "you" && typeof deskToldBand === "function" && deskToldBand(sid, e);
   if (told) return told;
+  // Your send-back of an item ("Not done", #688): your bubble with the item's head, as your other words about it.
+  if (e.role === "you" && youBack(e)) return chatYouHtml(c, e, n);
+  const cueRow = e.role === "you" && chatCueRow(page, s, sid, e, n, reviewAt);
+  if (cueRow) return cueRow;
+  if (reviews.has(n)) return "";
+  const fwd = e.role === "you" && FORWARDED.exec(e.text);
+  if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
+  if (e.role === "you") return chatYouHtml(c, e, n);
+  return chatAgentHtml(c, e, n);
+}
+/** Your-side message `e` (the `n`th) when it's Cue's or a page's own, not your words: what Cue sent the lead for its
+ *  crew, a page's own card, the Desk's hand-off, Cue's message to the session; "" for any other. Also how Activity
+ *  draws them (desk/runs.js dkActivityRows), so the same message reads the same there. */
+function chatCueRow(page, s, sid, e, n, reviewAt) {
   // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
-  // Each of these is the Desk's own (data-dk, desk/runs.js): Conversation only folds it into a run.
-  const dk = (h) => (page?.lines && typeof dkMark === "function" ? dkMark(h, "cue") : h);
+  // Each of these is the Desk's own (data-dk, desk/runs.js): it leaves the chat for Activity, unless it's meant for you.
+  // Your pick (#667, "… picked option B2 on #d5 …") and your words Cue passed on (on its question, #651) are yours,
+  // not the Desk's: they stay.
+  const mine = () => (/\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
+  const dk = (h) => (page?.lines && typeof dkMark === "function" ? dkMark(h, mine()) : h);
   const own = e.role === "you" && page?.you?.(e, n);
   if (own) return dk(own);
   // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk/lead.js).
   const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
   if (hand) return dk(hand);
   const cue = e.role === "you" && cueSaid(e.text);
-  if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n));
-  if (reviews.has(n)) return "";
+  if (cue) return dk(cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n)));
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
   // folded under it (desk/cue_said.js).
   const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
-  if (cm) return dk(cm);
-  const fwd = e.role === "you" && FORWARDED.exec(e.text);
-  if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
-  if (e.role === "you") return chatYouHtml(c, e, n);
-  return chatAgentHtml(c, e, n);
+  return cm ? dk(cm) : "";
 }
 /** A page's own head on your words `e` (the Desk: what item they're about) and the words without it. Anywhere else (a
  *  session's own chat) your words from an item's page show the same way, Cue's words around them left out (#605). */
 const youHeadOf = (page, e) => (page?.youHead ? page.youHead(e) : typeof deskAboutHead === "function" ? deskAboutHead(e) : null);
+/** Message `e` is your send-back of a Desk item (desk/cue_said.js cueBackOf): drawn as yours, never as Cue's card. */
+const youBack = (e) => typeof cueBackOf === "function" && !!cueBackOf(e?.text);
+/** Send again on a message of yours that didn't go (`attrs`: what sends it, the board's resend or a page's own). */
+const sendAgainBtn = (attrs) => `<button class="q-now" ${attrs}>Send again</button>`;
 /** Your message `e` (the `n`th) in chatHtml's thread: your bubble, with how it went. */
 function chatYouHtml(c, e, n) {
   const { it, s, page, original, sid } = c;
@@ -298,7 +315,7 @@ function chatYouHtml(c, e, n) {
   // Typed into its terminal, but it never became a message: say so where you'll see it. Typed, and Cue hasn't yet
   // seen it take it: Queued while it's mid-turn (#531), else Sending until it does (past half a minute, that Cue
   // hasn't seen it yet).
-  const resend = sid ? `<button class="q-now" data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}">Send again</button>` : "";
+  const resend = sid ? sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}"`) : "";
   const m = e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
     : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
     : { st: queued ? "queued" : "delivered", at: msgTaken(e) };
@@ -322,9 +339,9 @@ function chatAgentHtml(c, e, n) {
   // The steps that led to it (replyCounts): at its last words, or with its buttons while it's folded to its first lines.
   const cnt = counts?.get(n) || "";
   const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
-  // Conversation only (#685): its Desk lines folded in place; a reply of nothing but those joins the runs around it.
+  // A Desk chat (#688): its Desk lines taken out for the count line around it; a reply of nothing but those leaves whole.
   const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, run });
-  const talk = page?.talk && page?.lines ? dkReplyRuns(draw, key) : null;
+  const talk = page?.lines && typeof dkReplyTake === "function" ? dkReplyTake(draw) : null;
   const body = talk ? talk.html : draw(null);
   return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${talk?.all && !split?.after && !said.after && !e.images?.length ? " data-dkr" : ""} data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
@@ -347,16 +364,20 @@ function chatWaitRows(s, page, K) {
   return out;
 }
 /** A message you sent that its thread doesn't show yet: sending, sent and how, kept in Cue till its turn ends, or not
- *  sent and why. `key`: its row's key in the chat. */
-function outboxRow(o, s, key) {
-  const pics = o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : "";
-  const inner = `<div class="cv-you-text mg-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${pics}`, attrs = ` data-key="${esc(key)}"`;
+ *  sent and why. `key`: its row's key in the chat. A page's own (`page.pending`, the Desk's box) brings its state as
+ *  `o.m`, and may bring its head (`o.head`) and its pictures' line (`o.picsHtml`); else its head is the page's
+ *  (youHeadOf), as the thread's copy of it will have. */
+function outboxRow(o, s, key, page = null) {
+  const pics = o.images?.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : o.picsHtml || "";
+  const hd = o.head ? { html: o.head, text: o.text } : youHeadOf(page, o);
+  const words = hd ? hd.text : o.text;
+  const inner = `${words || hd ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(words || "").replace(/\n/g, "<br>")}</div>` : ""}${pics}`, attrs = ` data-key="${esc(key)}"`;
   // A "/model" line: Cue set the model, nothing went to the agent.
-  if (/^not sent: Model set to /.test(o.via || "")) return `<div class="cv-you mg-you"${attrs}>${inner}<div class="mg-f"><span class="mg-st">${esc(o.via.slice(10))}</span></div></div>`;
-  const m = !o.via ? { st: "sending", note: esc(sendingMeta(o.sid)) } : /^kept in Cue/.test(o.via) ? { st: "held" }
+  if (!o.m && /^not sent: Model set to /.test(o.via || "")) return `<div class="cv-you mg-you"${attrs}>${inner}<div class="mg-f"><span class="mg-st">${esc(o.via.slice(10))}</span></div></div>`;
+  const m = o.m ? o.m : !o.via ? { st: "sending", note: esc(sendingMeta(o.sid)) } : /^kept in Cue/.test(o.via) ? { st: "held" }
     : /^not sent: /.test(o.via) ? { st: "failed", why: esc(o.via.slice(10)), extra: runHereBtn(o.via, s) }
     : /^queued/.test(o.via) ? { st: "queued" } : { st: "delivered", at: o.at, extra: ` · via ${esc(o.via)}` };
-  return msgRow({ ...m, to: msgTo(s), sid: o.sid }, inner, "", attrs);
+  return msgRow({ to: msgTo(s), sid: o.sid, ...m }, inner, "", attrs);
 }
 /** Who a message to session `s` is for, by its name. */
 const msgTo = (s) => (s ? nameOf(s.session_id, s.project) : "");
@@ -375,14 +396,15 @@ function laterOwn(e, page, key, meta) {
 function queuedRow(s, page, key = "queued") {
   const sid = esc(s.session_id), now = `<button class="q-now" data-act="send-now" data-sid="${sid}">Send now</button>`;
   const m = { st: "queued", to: msgTo(s), acts: page?.acts?.({ st: "queued", sid: s.session_id }) ?? now };
-  const w = page?.wait?.(s.queued);
-  if (w) return msgRow({ ...m, say: esc(w.line) }, yourBubble({ ...s.queued, text: w.words }, `${s.session_id}:queued`, "", true) + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);
-  const own = laterOwn(s.queued, page, key, msgLine(m));
-  if (own) return own;
-  const cue = cueSaid(s.queued.text);
-  if (cue) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:queued`, s.queued.text, m), key);
-  const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.queued, s, `${s.session_id}:queued:cue`, m);
-  if (cm) return keyed(cm, key);
+  // Your send-back of an item (#688): yours, drawn below as any of your words.
+  if (!youBack(s.queued)) {
+    const own = laterOwn(s.queued, page, key, msgLine(m));
+    if (own) return own;
+    const cue = cueSaid(s.queued.text);
+    if (cue) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:queued`, s.queued.text, m), key);
+    const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.queued, s, `${s.session_id}:queued:cue`, m);
+    if (cm) return keyed(cm, key);
+  }
   const hd = youHeadOf(page, s.queued);
   return msgRow(m, yourBubble(hd ? { ...s.queued, text: hd.text } : s.queued, `${s.session_id}:queued`, "", true, hd?.html || "") + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);
 }
@@ -395,28 +417,31 @@ function heldRow(s, page, key = "held") {
   const m = heldWhy ? { st: "failed", why: esc(heldWhy.slice(15)), acts, to: msgTo(s) } : { st: "held", acts, to: msgTo(s) };
   const mine = page?.acts?.({ st: m.st, held: true, sid: s.session_id });
   if (mine != null) m.acts = mine;
-  const w = !heldWhy && page?.wait?.(s.held);
-  if (w) return msgRow({ ...m, say: esc(w.line) }, yourBubble({ ...s.held, text: w.words }, `${s.session_id}:held`, "", true) + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`);
-  const own = !heldWhy && laterOwn(s.held, page, key, msgLine(m));
-  if (own) return own;
-  const cue = cueSaid(s.held.text);
-  if (cue && !heldWhy) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, m), key);
-  const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.held, s, `${s.session_id}:held:cue`, m);
-  if (cm) return keyed(cm, key);
+  // Your send-back of an item (#688): yours, drawn below as any of your words.
+  if (!youBack(s.held)) {
+    const own = !heldWhy && laterOwn(s.held, page, key, msgLine(m));
+    if (own) return own;
+    const cue = cueSaid(s.held.text);
+    if (cue && !heldWhy) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, m), key);
+    const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.held, s, `${s.session_id}:held:cue`, m);
+    if (cm) return keyed(cm, key);
+  }
   const hd = youHeadOf(page, s.held);
-  // Busy a long time: ask it by the way instead (#535). Not where a page has its own controls for it (the Desk).
-  const offer = !heldWhy && mine == null ? btwOffer(s, s.held) : "";
+  // Busy a long time: ask it by the way instead (#535), on the Desk's chats too (#688).
+  const offer = !heldWhy ? btwOffer(s, s.held) : "";
   return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`, offer);
 }
-/** A message Cue sends by itself later: at your time, or (Cue's carry-on) when the usage limit it stopped on resets. */
-function sendAtRow(s) {
+/** A message Cue sends by itself later: at your time, or (Cue's carry-on) when the usage limit it stopped on resets.
+ *  Its words under the page's head when they're about an item (youHeadOf), as your other words. */
+function sendAtRow(s, page = null) {
   const l = s.send_at, sid = esc(s.session_id);
   const at = new Date(l.at_ms), hm = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const day = at.toDateString() === new Date().toDateString() ? "today" : "tomorrow";
   const resets = s.limit?.resets_ms ? ` (${new Date(s.limit.resets_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "";
   const when = l.failed ? `Couldn't send it: ${esc(l.failed)}` : l.at_ms ? `Not sent yet · Cue sends it ${day} at ${hm}` : `Not sent yet · Cue sends it when your usage limit resets${resets}`;
   const acts = `${l.at_ms ? `<button class="q-now" data-act="send-at-edit" data-sid="${sid}">Edit</button> · ` : ""}<button class="q-now" data-act="send-at-x" data-sid="${sid}">Cancel</button> · <button class="q-now" data-act="send-at-now" data-sid="${sid}">Send now</button>`;
-  return `<div class="cv-you mg-you queued held" data-key="send-at">${yourBubble({ role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, `${s.session_id}:send-at`, "", true)}<div class="mg-f"><span class="mg-st${l.failed ? " failed" : ""}">${when}</span><span class="mg-acts">${acts}</span></div></div>`;
+  const e = { role: "you", text: l.text, at_ms: l.at_ms || Date.now() }, hd = youHeadOf(page, e);
+  return `<div class="cv-you mg-you queued held" data-key="send-at">${yourBubble(hd ? { ...e, text: hd.text } : e, `${s.session_id}:send-at`, "", true, hd?.html || "")}<div class="mg-f"><span class="mg-st${l.failed ? " failed" : ""}">${when}</span><span class="mg-acts">${acts}</span></div></div>`;
 }
 /** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
  *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said

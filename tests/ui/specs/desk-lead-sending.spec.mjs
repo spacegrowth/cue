@@ -15,8 +15,8 @@ test("while your message to an idle lead is on its way, nothing says the lead wa
   // The send doesn't come back until the test lets it.
   await page.evaluate(() => { window.letGo = null; });
   await cue.override("desk_send", () => new Promise((r) => { window.letGo = () => r({ sid: "lead" }); }));
-  await page.locator(".dk-box textarea").fill("Is the footer done?");
-  await page.locator(".dk-box textarea").press("Enter");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Is the footer done?");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").press("Enter");
   await cue.called("desk_send", { project: "cue", text: "Is the footer done?" });
   const mine = page.locator(".dk-chat .cv-you.msg-sending", { hasText: "Is the footer done?" });
   await expect(mine).toHaveCount(1);

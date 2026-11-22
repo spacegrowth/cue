@@ -379,8 +379,8 @@ test("the dispatcher composer stays below the conversation and hides on Decision
   await openDesk(page);
   const dispatcher = page.locator('[data-desk-page="dispatcher"]');
   const chat = dispatcher.locator(".dk-chat");
-  const box = dispatcher.locator(".dk-box");
-  await expect(chat.locator("xpath=following-sibling::*[1]")).toHaveClass(/dk-box/);
+  const box = dispatcher.locator(".foot:not(.held) .composer");
+  await expect(chat.locator("xpath=following-sibling::*[1]")).toHaveClass(/\bfoot\b/);
   await box.locator("textarea").fill("Keep this draft");
   await dispatcher.locator('[data-desk-tab="decisions"]').click();
   await expect(box).toHaveCount(0);
@@ -395,7 +395,7 @@ test("the dispatcher composer stays below the conversation and hides on Decision
 test("the lead's box takes pictures and has the mic, as a session's chat box does", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const box = page.locator(".dk-box");
+  const box = page.locator(".dk-right .foot:not(.held) .field");
   const key = await box.locator("textarea").getAttribute("data-text");
   await expect(box).toHaveAttribute("data-drop", key);
   await expect(box.locator("[data-mic]")).toHaveAttribute("data-mic", key);
@@ -407,7 +407,7 @@ test("the lead's box takes pictures and has the mic, as a session's chat box doe
   await box.locator("textarea").fill("This is cut off");
   await box.locator("textarea").press("Enter");
   await cue.called("desk_send", { project: "cue", text: "This is cut off", images: [{ name: "pasted image", mime: "image/png", data: png }] });
-  await expect(page.locator(".dk-box .chips .chip")).toHaveCount(0);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .chips .chip")).toHaveCount(0);
 });
 
 test("working sessions show first in a Working group; a session moves when its state changes, never on a click", async ({ page, cue }) => {

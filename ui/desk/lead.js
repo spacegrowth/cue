@@ -102,7 +102,7 @@ function deskBand({ d, label, to = false, who = "", id = "", title = "", at = nu
 function deskMg({ kind, cls = "", attrs = "", cue = false, chip = "", who = "", to = "", tag = "", id = "", age = null, body = "", foot = "" }) {
   const mark = cue && typeof CUE_MARK_SM === "string" ? CUE_MARK_SM.replace("<svg ", '<svg class="mg-mk" ') : "";
   const head = `${mark}${chip}${who ? `<span class="mg-who">${who}</span>` : ""}${to ? `<span class="mg-to">→ ${to}</span>` : ""}`
-    + `${tag ? `<span class="mg-tag">${esc(tag)}</span>` : ""}${id}${age != null ? `<span class="mg-age">${ago(age)}</span>` : ""}`;
+    + `${tag ? `<span class="mg-tag">${esc(tag[0] + tag.slice(1).toLowerCase())}</span>` : ""}${id}${age != null ? `<span class="mg-age">${ago(age)}</span>` : ""}`;
   return `<div class="mg${cls ? ` ${cls}` : ""}" data-mg="${kind}"${attrs}><div class="mg-h">${head}</div>${body}${foot ? `<div class="mg-f">${foot}</div>` : ""}</div>`;
 }
 /** An item's chip in a message (messages.css .mg-id): its kind's icon and number ("Bug #12"), a button that opens it. */
@@ -385,7 +385,7 @@ function deskLineHtml(line, inline) {
     "DECIDED (minor)": deskLineMinor };
   const run = DESK_ACTS[m[1]] ? deskLineAct : kinds[m[1]] || deskLineContext;
   const html = run(k);
-  // Marked as the Desk's own (desk/runs.js): Conversation only folds it, a run's row counts it.
+  // Marked as the Desk's own (desk/runs.js): it leaves the chat for Activity (a count line says it), unless it's for you.
   return html && html !== MD_DROP ? dkMark(html, deskSignOf(m[1])) : html;
 }
 /** A session's own Desk lines (#685: CHECK, IF PICKED, TO LEAD…), drawn as the lead's are, each with its sign. */
@@ -636,7 +636,7 @@ function deskStopNote(e) {
   const last = stop?.[6]?.trim();
   const num = deskNum(it || { id });
   const folded = files.length ? `<details class="dk-mfiles mg-st"><summary>${files.length} file${files.length > 1 ? "s" : ""} not committed</summary><div class="dk-mfl">${files.map(esc).join("<br>")}</div></details>` : "";
-  return deskMg({ kind: "stop", cue: true, who: "Cue", tag, id: deskMgId(id, it?.kind || "", num), age: e.at_ms,
+  return deskMg({ kind: "stop", attrs: ' data-dk="stopped"', cue: true, who: "Cue", tag, id: deskMgId(id, it?.kind || "", num), age: e.at_ms,
     body: `<div class="mg-t whole">${esc(it?.title || said)}</div><div class="mg-t whole dk-mq">${plain}</div>`
       + (last ? deskCut(`last:${id}:${e.at_ms}`, "mg-full", `Its last line: ${esc(last)}`, `Its last line: ${last}`) : ""),
     foot: `${folded}<span class="mg-acts"><button class="mg-btn" data-desk-chk-item="${esc(id)}">Open #${esc(id)}</button></span>` });

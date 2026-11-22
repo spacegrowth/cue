@@ -1,6 +1,12 @@
 // The Desk: the quick-add line, the lead's own lines and Cue's notes as its chat draws them, an item's pane,
 // paused and parked items, and items back to check.
 import { test, expect, pick, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
+// The Desk's own lines left its chats for Activity (#688, option D): the chat's newest count line opens it, newest
+// first, each line as it was drawn in the chat.
+const deskActivityOpen = async (page) => {
+  await page.locator(".dk-chat .dk-cnt-b").last().click();
+  return page.locator(".dk-moves");
+};
 import { listOrder, groupOf, statusOf } from "./desk.mjs";
 
 // ---------- the quick-add line ----------
@@ -192,30 +198,37 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
     ].join("\n") });
     renderMain();
   });
-  const said = page.locator(".dk-chat .cv-agent").last();
+  const reply = page.locator(".dk-chat .cv-agent").last();
+  // The Desk's lines leave the chat for Activity (#688, option D): the reply keeps its words and its code block.
+  await expect(reply.locator(".dk-ln")).toHaveCount(0);
+  await expect(reply.locator(".cv-text")).toContainText("Here's the plan.");
+  await expect(reply.locator("pre")).toContainText("ITEM: task | an example");
+  await expect(reply).not.toContainText("ROUTE:");
+  const said = await deskActivityOpen(page);
   // Each line one short quiet line at the left (#157): no rules, no box, no chip.
   const ln = said.locator(".own-lines .dk-ln");
   await expect(ln).toHaveCount(4);
   await expect(ln.nth(0)).toHaveText("Added a bug: Box loses focus");
   await expect(ln.nth(0).locator("svg.dk-kic")).toHaveCount(0);
-  await expect(said.locator(".own-lines")).toHaveCSS("border-top-width", "0px");
+  await expect(ln.first().locator("..")).toHaveCSS("border-top-width", "0px");
   expect(await said.locator(".own-lines .dk-cl").count()).toBe(0);
   // A hand-off that waits: "#d7k2 waits on #a1", a plain sentence at the left, one line, its why shut; no arrow, no chevron.
   const route = ln.nth(1);
   await expect(route.locator(".mg-lh")).toHaveText("#d7k2 waits on #a1");
-  await expect(said.locator(".own-lines")).not.toContainText("→");
-  await expect(said.locator(".own-lines")).not.toContainText("⌄");
-  // Its kind's sign at the chat's left edge (#685, option A of #676), its words right after it.
-  const lay = await route.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector(".mg-lh").getBoundingClientRect(), g = el.querySelector(".dk-sg").getBoundingClientRect(), m = el.closest(".cv-text").getBoundingClientRect(); return { sign: g.left - m.left, left: t.left - g.right, h: r.height }; });
+  await expect(ln.nth(1)).not.toContainText("→");
+  await expect(ln.nth(1)).not.toContainText("⌄");
+  // Its kind's sign at its line's left edge (in Activity, #688) (#685, option A of #676), its words right after it.
+  const lay = await route.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector(".mg-lh").getBoundingClientRect(), g = el.querySelector(".dk-sg").getBoundingClientRect(), m = el.closest(".dk-mv-line").getBoundingClientRect(); return { sign: g.left - m.left, left: t.left - g.right, h: r.height }; });
   expect(lay.sign).toBeLessThan(4);
   expect(lay.left).toBeLessThan(12);
   expect(lay.h).toBeLessThan(26); // one line at the chat's size and 1px above and below
   await expect(route.locator(".mg-full")).toHaveCount(0);
   await expect(route.locator(".mg-line")).toHaveAttribute("aria-expanded", "false");
-  // A click opens its why under it, the family's .mg-full (a soft fill, no border, #501); it stays open through a redraw, and a click shuts it.
+  // A click opens its why under it, the family's .mg-full (no border, #501; no fill, #688: only your messages have a
+  // background); it stays open through a redraw, and a click shuts it.
   await route.locator(".mg-line").dispatchEvent("click");
   await expect(route.locator(".mg-full")).toHaveText("Then to web-lead · it knows the box");
-  await expect(route.locator(".mg-full")).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(route.locator(".mg-full")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(route.locator(".mg-full")).toHaveCSS("border-top-width", "0px");
   await page.evaluate(() => renderMain());
   await expect(said.locator(".dk-ln").nth(1).locator(".mg-full")).toHaveCount(1);
@@ -229,9 +242,6 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await ln.nth(2).locator(".mg-line").dispatchEvent("click");
   await expect(ln.nth(2).locator(".dk-ln-it")).toHaveCount(1);
   await expect(ln.nth(3).locator(".mg-lh")).toHaveText("Kept host-lead's context");
-  await expect(said.locator(".cv-text")).toContainText("Here's the plan.");
-  await expect(said.locator("pre")).toContainText("ITEM: task | an example");
-  await expect(said).not.toContainText("ROUTE:");
   await expect(page.locator(".dk-chat .cv-fwd")).toHaveCount(0);
   // The number is a link: it opens its item, not the line's why; Enter on the line opens the why.
   await page.evaluate(() => deskLnOpen.clear());
@@ -241,7 +251,7 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await expect(said.locator(".dk-ln").nth(1).locator(".mg-full")).toHaveCount(1);
   await said.locator(".dk-ln").nth(2).locator("button.mg-id").click();
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d3"]);
-  await expect(page.locator(".dk-chat .dk-ln").nth(2).locator(".mg-full")).toHaveCount(0);
+  await expect(said.locator(".dk-ln").nth(2).locator(".mg-full")).toHaveCount(0);
 });
 
 test("the dispatcher chat keeps the plain answer above its routing update", async ({ page, cue }) => {
@@ -250,7 +260,9 @@ test("the dispatcher chat keeps the plain answer above its routing update", asyn
   await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "Yes. All approvals should appear under Waiting on you.\n\nROUTE: #d2 -> web-lead | why: warm" }); renderMain(); });
   const reply = page.locator(".dk-chat .cv-agent").last();
   await expect(reply.locator(".cv-text > p:first-child")).toHaveText("Yes. All approvals should appear under Waiting on you.");
-  const l = reply.locator(".dk-ln");
+  // Its routing line is in Activity (#688, option D), newest first.
+  await expect(reply.locator(".dk-ln")).toHaveCount(0);
+  const l = (await deskActivityOpen(page)).locator(".dk-ln").first();
   await expect(l.locator(".mg-lh")).toHaveText(/^Gave \w+ #d2 to web-lead$/);
   await expect(l.locator(".mg-who")).toHaveText("web-lead");
 });
@@ -259,8 +271,11 @@ test("a hand-off to a new session names that session once Cue has started it, an
   await cue.open("desk");
   await openDesk(page);
   const say = (text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
-  const last = page.locator(".dk-chat .cv-agent").last();
+  // Its lines are in Activity (#688, option D), one reply's lines in their own order.
+  const last = page.locator(".dk-moves");
+  const open = () => page.evaluate(() => deskOpenActivity());
   await say(["ITEM: bug | \"Looks right\" is too loud | done when: it's quiet", "ROUTE: #new -> new | why: no one has the header"].join("\n"));
+  await open();
   await expect(last.locator(".dk-ln").nth(1).locator(".mg-lh")).toHaveText("Gave the new item to a new session");
   // Cue makes the item and starts a session for it: the card says both.
   await page.evaluate(() => {
@@ -272,27 +287,34 @@ test("a hand-off to a new session names that session once Cue has started it, an
   await expect(last.locator(".dk-ln").nth(0).locator(".mg-lh")).toHaveText("Added Bug #q9: \"Looks right\" is too loud");
   // A named session stays as the lead named it.
   await say("ROUTE: #q9 -> web-lead | why: warm");
-  await expect(last.locator(".dk-ln .mg-who")).toHaveText("web-lead");
+  await expect(last.locator(".dk-ln").first().locator(".mg-who")).toHaveText("web-lead");
 });
 
 test("a reply of only routing lines is short lines at the left: TITLE and ROUTE, its title and why on a click (#157)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "TITLE: #d2 | A longer title the lead gave it, long enough that it would wrap on a narrow chat\nROUTE: #d2 -> web-lead | kind: feature | after: #d3 | why: free and warm, and it knows the header code from the last change" }); renderMain(); });
-  const last = page.locator(".dk-chat .cv-agent").last(), ln = last.locator(".dk-ln");
+  // The reply leaves the chat whole for Activity (#688, option D), its two lines in their own order.
+  await expect(page.locator(".dk-chat")).not.toContainText("TITLE:");
+  await expect(page.locator(".dk-chat .dk-ln")).toHaveCount(0);
+  const last = await deskActivityOpen(page), ln = last.locator(".dk-mv-ln .dk-ln");
   await expect(ln).toHaveCount(2);
   await expect(ln.nth(0).locator(".mg-lh")).toHaveText(/^Renamed \w+ #d2$/);
   await expect(ln.nth(1).locator(".mg-lh")).toHaveText(/^\w+ #d2 waits on #d3$/);
-  // Stacked tight: the second starts right under the first.
+  // Each its own Activity row, one right after the other (#688; tight in a chat's block until then, #157).
+  await expect(last.locator(".dk-mv-ln").nth(0).locator(".dk-ln")).toHaveCount(1);
+  await expect(last.locator(".dk-mv-ln").nth(1).locator(".dk-ln")).toHaveCount(1);
   const [a, b] = [await ln.nth(0).boundingBox(), await ln.nth(1).boundingBox()];
-  expect(b.y - (a.y + a.height)).toBeLessThan(2);
+  // Their rows' spacing (desk-page.css .dk-mv: 7px padding above and below, a 1px rule between): 15px from one line's
+  // foot to the next line's top.
+  expect(Math.abs(b.y - (a.y + a.height) - 15)).toBeLessThanOrEqual(2);
   // One body line at the chat's size and the row's 1px above and below.
   expect(a.height).toBeLessThan(26);
   // In the words, only the item numbers carry an icon, their kind's (#292); each line's sign sits before them (#685).
   await expect(last.locator(".dk-ln .mg-line svg")).toHaveCount(2);
   await expect(last.locator(".dk-ln > .dk-sg")).toHaveCount(2);
   await expect(last.locator(".dk-ln button.mg-id > svg.dk-kic")).toHaveCount(2);
-  await expect(last.locator(".cv-text")).not.toContainText("TITLE:");
+  await expect(last).not.toContainText("TITLE:");
   for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
   await ln.nth(1).locator(".mg-line").dispatchEvent("click");
   await expect(ln.nth(1).locator(".mg-full")).toContainText("free and warm");
@@ -315,11 +337,16 @@ test("a reply with little to read has no Listen or Read: a lone ROUTE line, a sh
   const say = (text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
   const last = page.locator(".dk-chat .cv-agent").last();
   await say("ROUTE: #d2 -> web-lead | why: it's free and warm, and the owner wants mocks first. Make 2-3 quick mocks on the Desk picks canvas of how Looks right could show less: a quiet tick that turns into Looks right on hover, one \"Check 3\" button, and so on. Post the link here.");
-  await expect(last.locator(".dk-ln")).toHaveCount(1);
+  // The lone line leaves the chat for Activity (#688, option D): only its count line stays, with no Listen or Read.
+  await expect(page.locator(".dk-chat .dk-cnt").last()).toHaveText(/^1 Desk update · gave #d2 · Activity ›$/);
+  await expect(page.locator(".dk-chat .dk-cnt").last().locator("[data-listen], [data-read]")).toHaveCount(0);
+  const moves = await deskActivityOpen(page), row = moves.locator(".dk-mv-ln").first();
+  await expect(row.locator(".dk-ln")).toHaveCount(1);
   // No box around it; its why shut until you click.
-  await expect(last.locator(".own-lines")).toHaveCSS("border-top-width", "0px");
-  await expect(last.locator(".mg-full")).toHaveCount(0);
-  await expect(last.locator("[data-listen], [data-read]")).toHaveCount(0);
+  await expect(row.locator(".own-lines")).toHaveCSS("border-top-width", "0px");
+  await expect(row.locator(".mg-full")).toHaveCount(0);
+  await expect(row.locator("[data-listen], [data-read]")).toHaveCount(0);
+  await page.evaluate(() => { deskTab = "lead"; renderMain(); });
   await say("Sent it to web-lead.");
   await expect(last.locator("[data-listen]")).toHaveCount(0);
   await say("Sent it to web-lead, who has the header code warm from the last change; it can start right away and should be done within the hour, then you check it.");
@@ -338,9 +365,12 @@ test("Cue's New item note shows as a small card an item, without its words for t
     ].join("\n") });
     renderMain();
   });
-  // One card for them (#501): NEW ITEMS and its age in the head, a line an item.
-  const news = page.locator('.dk-chat [data-mg="new"]').last();
-  await expect(news.locator(".mg-tag")).toHaveText("NEW ITEMS");
+  // Cue's words for the lead never show; the card itself is in Activity (#688, option D).
+  await expect(page.locator(".dk-chat")).not.toContainText("Route each now");
+  await expect(page.locator('.dk-chat [data-mg="new"]')).toHaveCount(0);
+  // One card for them (#501): New items and its age in the head, a line an item.
+  const news = (await deskActivityOpen(page)).locator('[data-mg="new"]').first();
+  await expect(news.locator(".mg-tag")).toHaveText("New items");
   await expect(news.locator(".mg-h .mg-age")).toHaveText(/^\d+s$/);
   const cards = news.locator(".dk-ni");
   await expect(cards).toHaveCount(2);
@@ -356,8 +386,8 @@ test("Cue's New item note shows as a small card an item, without its words for t
   await expect(cards.nth(1).locator(".mg-id")).toHaveText("Bug #d9");
   // No "New item" line, and nothing under a title with no more to say.
   await expect(cards.nth(1).locator(".dk-ni-s")).toHaveCount(0);
-  await expect(news).not.toContainText("New item");
-  await expect(page.locator(".dk-chat")).not.toContainText("Route each now");
+  for (const c of await cards.all()) await expect(c).not.toContainText("New item");
+  await expect(news).not.toContainText("Route each now");
   await cards.nth(0).click();
   await expect(page.locator('.dk-panel[data-side-for="d2"]')).toHaveCount(1);
 });
@@ -377,7 +407,7 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
   const cards = page.locator('.dk-chat [data-mg="stop"]');
   await expect(cards).toHaveCount(3);
   await expect(cards.nth(0).locator(".mg-who")).toHaveText(["Cue", "desk-ui"]);
-  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("STOPPED, NOT COMMITTED");
+  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("Stopped, not committed");
   await expect(cards.nth(0).locator(".mg-h .mg-id")).toHaveText("Feature #d2");
   await expect(cards.nth(0).locator(".mg-t").first()).toHaveText("Quick phrases at the right of Send");
   await expect(cards.nth(0).locator(".dk-mq")).toHaveText("desk-ui ended its turn with no DONE, and its work isn't in your app yet.");
@@ -389,10 +419,10 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
   await expect(fold.locator(".dk-mfl")).toBeHidden();
   await fold.locator("summary").click();
   await expect(fold.locator(".dk-mfl")).toHaveText("ui/desk.jsui/styles/desk.css");
-  await expect(cards.nth(1).locator(".mg-tag")).toHaveText("STOPPED");
+  await expect(cards.nth(1).locator(".mg-tag")).toHaveText("Stopped");
   await expect(cards.nth(1).locator(".dk-mq")).toHaveText("web-lead ended its turn with no DONE and no question for you.");
   await expect(cards.nth(1).locator(".dk-mfiles")).toHaveCount(0);
-  await expect(cards.nth(2).locator(".mg-tag")).toHaveText("COULDN'T START");
+  await expect(cards.nth(2).locator(".mg-tag")).toHaveText("Couldn't start");
   await expect(cards.nth(2).locator(".dk-mq")).toHaveText("Cue couldn't start a session for it: no folder for cue.");
   // Not from You, and none of Cue's words for the lead.
   const chat = page.locator(".dk-chat");
@@ -414,19 +444,23 @@ test("a session's TO LEAD: words are a card from that session about its item; Cu
     lead.thread.push({ at_ms: t, role: "you", text: "From web-lead:\nI'm free for more work.\nIt holds no item here, so a NOTE can't reach it." });
     renderMain();
   });
-  const cards = page.locator('.dk-chat [data-mg="from"]');
+  // Cue's NOTE hints never show; the cards themselves are in Activity (#688, option D), in the order they came.
+  const chat = page.locator(".dk-chat");
+  await expect(chat).not.toContainText("Answer it with NOTE");
+  await expect(chat).not.toContainText("a NOTE can't reach it");
+  await expect(chat.locator('[data-mg="from"]')).toHaveCount(0);
+  const moves = await deskActivityOpen(page), cards = moves.locator('[data-mg="from"]');
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0).locator(".mg-who")).toHaveText("desk-ui");
-  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("TO LEAD");
+  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("To lead");
   await expect(cards.nth(0).locator(".mg-id")).toHaveText("Feature #d2");
   await expect(cards.nth(0).locator(".mg-t")).toHaveText(["Quick phrases at the right of Send", "Should the row wrap on narrow windows?"]);
   await expect(cards.nth(1).locator(".mg-who")).toHaveText("web-lead");
   await expect(cards.nth(1).locator(".mg-id")).toHaveCount(0);
-  const chat = page.locator(".dk-chat");
-  await expect(chat).not.toContainText("Answer it with NOTE");
-  await expect(chat).not.toContainText("a NOTE can't reach it");
-  await expect(chat.locator('[data-mg="from"] [title]')).toHaveCount(0);
-  if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-to-lead-card.png` });
+  await expect(moves).not.toContainText("Answer it with NOTE");
+  await expect(moves).not.toContainText("a NOTE can't reach it");
+  await expect(moves.locator('[data-mg="from"] [title]')).toHaveCount(0);
+  if (process.env.SHOT_DIR) await moves.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-to-lead-card.png` });
   await cards.nth(0).locator("[data-desk-chk-item]").click();
   await expect(page.locator('.dk-panel[data-side-for="d2"]')).toHaveCount(1);
 });
@@ -445,7 +479,12 @@ test("a new item with a picture, no kind, and Cue's SPLIT words before its Route
     ].join("\n") });
     renderMain();
   }, pic);
-  const news = page.locator('.dk-chat [data-mg="new"]'), card = news.locator(".dk-ni");
+  // Cue's words for the lead never show; the card is in Activity (#688, option D).
+  const chat = page.locator(".dk-chat");
+  for (const t of [pic, "pictures:", "SPLIT", "Route it now", "Say what one without a kind", "1 picture"]) await expect(chat).not.toContainText(t);
+  await expect(chat.locator('[data-mg="new"]')).toHaveCount(0);
+  const moves = await deskActivityOpen(page);
+  const news = moves.locator('[data-mg="new"]'), card = news.locator(".dk-ni");
   await expect(card).toHaveCount(1);
   // No kind yet: no kind icon (as on its row), just its number.
   await expect(card.locator("svg.dk-kic")).toHaveCount(0);
@@ -454,11 +493,10 @@ test("a new item with a picture, no kind, and Cue's SPLIT words before its Route
   // No "New item" line (#203): just what you'll see, quiet, under the title.
   await expect(card.locator(".dk-ni-s")).toHaveText("you'll see it sits centred");
   await expect(card).not.toContainText("New item");
-  // At the right, where your messages are, as wide as what it says, not floating mid-chat (#167).
-  const cb = await news.boundingBox(), you = await page.locator(".dk-chat .cv-you-text").first().boundingBox();
-  expect(Math.abs((cb.x + cb.width) - (you.x + you.width))).toBeLessThan(2);
+  // As wide as what it says (#167); it sits in its Activity line now, not at the chat's right (#688).
+  const cb = await news.boundingBox();
   expect(cb.width).toBeLessThan(360);
-  if (process.env.SHOT_DIR) await page.locator(".dk-chat").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-new-card.png` });
+  if (process.env.SHOT_DIR) await moves.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-new-card.png` });
   // Its picture as a small thumbnail under the text (#203), rounded, with a line round it; loaded, not a path.
   const img = card.locator(".thumb img");
   await expect(img).toHaveCount(1);
@@ -470,8 +508,7 @@ test("a new item with a picture, no kind, and Cue's SPLIT words before its Route
   await expect(card.locator(".thumb")).toHaveCSS("border-top-width", "1px");
   await expect(card.locator(".thumb")).toHaveCSS("border-top-left-radius", "6px");
   // Nothing of the raw message: no path, no words for the lead, no "picture" count.
-  const chat = page.locator(".dk-chat");
-  for (const t of [pic, "pictures:", "SPLIT", "Route it now", "Say what one without a kind", "1 picture"]) await expect(chat).not.toContainText(t);
+  for (const t of [pic, "pictures:", "SPLIT", "Route it now", "Say what one without a kind", "1 picture"]) await expect(news).not.toContainText(t);
   await page.screenshot({ path: `${process.env.SHOT_DIR || process.env.TMPDIR || "/tmp"}/cue-desk-new-item-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: `${process.env.SHOT_DIR || process.env.TMPDIR || "/tmp"}/cue-desk-new-item-dark.png` });
@@ -502,7 +539,9 @@ test("a new item the lead gave a short title: its number on one line, the short 
     ].join("\n") });
     renderMain();
   }, words);
-  const card = page.locator('.dk-chat .dk-ni[data-desk-chk-item="t9"]');
+  // The card is in Activity (#688, option D).
+  await expect(page.locator('.dk-chat .dk-ni[data-desk-chk-item="t9"]')).toHaveCount(0);
+  const moves = await deskActivityOpen(page), card = moves.locator('.dk-ni[data-desk-chk-item="t9"]');
   await expect(card.locator(".mg-line .mg-id")).toHaveText("Feature #t9");
   await expect(card.locator(".mg-line svg.dk-kic")).toHaveCount(1);
   await expect(card.locator(".dk-ni-t")).toHaveText("A tidy new-item card");
@@ -517,7 +556,7 @@ test("a new item the lead gave a short title: its number on one line, the short 
   expect(await col(card.locator(".dk-ni-w"))).not.toBe(await col(card.locator(".dk-ni-t")));
   for (const c of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: c });
-    if (process.env.SHOT_DIR) await page.locator(".dk-chat").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-new-card-203-${c}.png` });
+    if (process.env.SHOT_DIR) await moves.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-new-card-203-${c}.png` });
   }
 });
 
@@ -536,20 +575,28 @@ test("Cue's new-item note waiting to go to the lead: the same card as once it's 
     renderMain();
   }, [note("h1", "One Away switch"), note("h2", "Another switch")]);
   const chat = page.locator(".dk-chat");
-  const sent = chat.locator('.dk-ni[data-desk-chk-item="h1"]'), held = chat.locator('.cv-later .dk-ni[data-desk-chk-item="h2"]');
+  // Once sent, it's in Activity (#688, option D); waiting, it's at the chat's foot.
+  const sent = page.locator('.dk-moves .dk-ni[data-desk-chk-item="h1"]'), held = chat.locator('.cv-later .dk-ni[data-desk-chk-item="h2"]');
+  await expect(chat.locator('.dk-ni[data-desk-chk-item="h1"]')).toHaveCount(0);
   await expect(held).toHaveCount(1);
   await expect(chat.locator(".cv-you.held")).toHaveCount(0);
   await expect(chat.locator('.cv-later > .mg-f')).toContainText("Not sent yet · Cue sends it when its turn ends");
   await expect(chat).not.toContainText("Route it now");
-  const look = (l) => l.evaluate((el) => { const c = getComputedStyle(el); return [el.className, c.backgroundColor, c.borderTopColor, c.boxShadow, Math.round(el.getBoundingClientRect().right)]; });
-  expect(await look(held), "waiting looks like sent").toEqual(await look(sent));
+  // The same look; where it sits differs, the sent one in its Activity line (#688), so no right edge to match.
+  const look = (l) => l.evaluate((el) => { const c = getComputedStyle(el); return [el.className, c.backgroundColor, c.borderTopColor, c.boxShadow]; });
+  const toLead = () => page.evaluate(() => { deskTab = "lead"; renderMain(); });
+  const heldLook = await look(held);
+  await deskActivityOpen(page);
+  const sentLook = await look(sent);
+  expect(heldLook, "waiting looks like sent").toEqual(sentLook);
+  await toLead();
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-held-note.png`, animations: "disabled" });
   // Queued in the agent: the same.
   await page.evaluate((c) => { const lead = sessionOf("lead"); delete lead.held; lead.queued = { role: "you", text: c, at_ms: Date.now(), images: [] }; renderMain(); }, note("h3", "A third switch"));
   const queued = chat.locator('.cv-later .dk-ni[data-desk-chk-item="h3"]');
   await expect(queued).toHaveCount(1);
   await expect(chat.locator('.cv-later > .mg-f')).toContainText("Queued");
-  expect(await look(queued)).toEqual(await look(sent));
+  expect(await look(queued)).toEqual(sentLook);
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-queued-note.png`, animations: "disabled" });
 });
 
@@ -570,7 +617,7 @@ test("Desk handoff shows only the routing note in Desk and session chat", async 
   await expect(chat.locator(".cv-you-text").last()).toHaveText(note);
   await expect(chat).toContainText("Earlier handoff");
   await expect(chat).not.toContainText(/<desk|#193|abcdef|142k/);
-  const deskComposer = page.locator(".dk-right .dk-box textarea");
+  const deskComposer = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await deskComposer.press("ArrowUp");
   await expect(deskComposer).toHaveValue(note);
   await deskComposer.evaluate((el) => el.setSelectionRange(0, 0));
@@ -599,12 +646,15 @@ test("Cue's note on a lead's DONE it couldn't act on shows as one card from Cue,
     ].join("\n") });
     renderMain();
   });
-  const notes = page.locator('.dk-chat [data-mg="done"]').last();
-  await expect(notes.locator(".mg-h")).toHaveText(/^Cue\s*NOT CLOSED\s*\d+s$/);
+  // Cue's words for the lead never show; the card is in Activity (#688, option D).
+  await expect(page.locator(".dk-chat")).not.toContainText("Don't say DONE");
+  await expect(page.locator('.dk-chat [data-mg="done"]')).toHaveCount(0);
+  const notes = (await deskActivityOpen(page)).locator('[data-mg="done"]').first();
+  await expect(notes.locator(".mg-h")).toHaveText(/^Cue\s*Not closed\s*\d+s$/);
   await expect(notes.locator(".mg-line")).toHaveCount(2);
   await expect(notes.locator(".mg-line").nth(0)).toHaveText("Feature #d2 Quick phrases at the right of Send · it waits on your check");
   await expect(notes.locator(".mg-line").nth(1)).toHaveText("#zz9 · this Desk has no item #zz9");
-  await expect(page.locator(".dk-chat")).not.toContainText("Don't say DONE");
+  await expect(notes).not.toContainText("Don't say DONE");
   await notes.locator('[data-desk-chk-item="d2"]').click();
   await expect(page.locator('.dk-panel[data-side-for="d2"]')).toHaveCount(1);
 });
@@ -851,12 +901,12 @@ test("written about an item ready to check, it's sent back with your words: off 
   // Off Waiting on you: back in the Items list, it's In progress (#418: the list is behind ‹ Items while it's open).
   await page.locator(".dk-right .dk-back").click();
   await expect.poll(() => listOrder(page)).toEqual(["# WAITS ON YOU", "d1", "# WORKING", "d3", "d2", "d5", "# UP NEXT", "d4", "d6", "# DONE TODAY"]);
-  // One that doesn't go: still waiting on you, red in its chat with why, Retry and Edit (#422).
+  // One that doesn't go: still waiting on you, red in its chat with why and the board's Send again (#422, #688).
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
   await cue.override("desk_item_act", () => { throw "its session has ended"; });
   await page.locator(".dk-right .dk-box textarea").fill("Still loses focus");
   await page.locator(".dk-right .dk-box textarea").press("Enter");
-  await expect(page.locator(".dk-right .dk-ipane .cv-you.msg-failed .msg-line")).toContainText("Couldn't send · its session has ended · Retry · Edit");
+  await expect(page.locator(".dk-right .dk-ipane .cv-you.msg-failed .msg-line")).toContainText("Couldn't send · its session has ended · Send again");
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });

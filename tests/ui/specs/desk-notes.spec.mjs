@@ -35,7 +35,7 @@ test("what you type stays in the box when the item changes state under it, and g
   await cue.called("desk_item_act", { id: "d5", act: "send_back", text: "One more thing" });
 });
 
-test("a note the hub didn't take is red on its Thread with why, and Retry and Edit", async ({ cue, page }) => {
+test("a note the hub didn't take is red on its Thread with why, and the board's Send again (#688)", async ({ cue, page }) => {
   await cue.open("desk");
   await set(cue, "d5", { state: "working" });
   await cue.override("desk_item_act", () => { throw "the hub is busy"; });
@@ -46,12 +46,14 @@ test("a note the hub didn't take is red on its Thread with why, and Retry and Ed
   const line = page.locator(".dk-right .dk-ichat .msg-line.ml-failed");
   await expect(line).toContainText("Couldn't send");
   await expect(line).toContainText("the hub is busy");
-  await line.locator('[data-desk-act="msg_edit"]').click();
-  await expect(box).toHaveValue("Check the narrow window too");
+  await expect(line.locator('[data-desk-act="msg_edit"]')).toHaveCount(0);
+  await cue.override("desk_item_act", () => null);
+  await line.getByText("Send again").click();
+  await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
   await expect(line).toHaveCount(0);
 });
 
-test("a note that didn't reach its holder says so and Retry sends it again", async ({ cue, page }) => {
+test("a note of yours that didn't reach its holder says so and Send again sends it again (#688)", async ({ cue, page }) => {
   await cue.open("desk");
   await cue.change((st) => {
     const d = st.desk.projects.find((x) => x.project === "cue"), it = d.items.find((i) => i.id === "d5");
@@ -62,7 +64,9 @@ test("a note that didn't reach its holder says so and Retry sends it again", asy
   const fail = page.locator(".dk-right .dk-ichat .msg-line.ml-failed");
   await expect(fail).toContainText("Couldn't send");
   await expect(fail).toContainText("Cue stopped before it went");
-  await fail.locator("[data-desk-retry]").click();
+  // Yours: the board's Send again, not the Retry kept for messages that aren't yours.
+  await expect(fail.locator("[data-desk-retry]")).toHaveCount(0);
+  await fail.getByText("Send again").click();
   await cue.called("desk_item_act", { id: "d5", act: "retry", text: "lost1" });
   await expect(fail).toHaveCount(0);
 });

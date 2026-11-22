@@ -371,14 +371,22 @@ async function deskDoneFetch(project) {
   deskDonePages.set(project, pg);
   if (pg.end || pg.loading) return;
   pg.loading = true;
-  const last = pg.items.at(-1);
+  const last = pg.items.at(-1), was = deskDoneSeenNow(project);
   try {
     const got = await invoke("desk_done", { project, beforeMs: last ? deskMs(last.updated) : null, beforeId: last?.id ?? null, take: DESK_DONE_STEP * 2 });
     pg.items.push(...got);
     pg.end = got.length < DESK_DONE_STEP * 2;
   } catch (e) { console.error(e); pg.end = true; }
   pg.loading = false;
-  if (deskSelection() === project && view === "desk") renderMain();
+  // Fetched ahead of what shows: nothing to draw till its end comes into view (each draw of a long Done list is slow).
+  if (deskSelection() === project && view === "desk" && deskDoneSeenNow(project) !== was) renderMain();
+}
+/** What a project's Done shows: how many rows, and whether its end ("Loading older…") is there. */
+function deskDoneSeenNow(project) {
+  const d = deskOf(project), pg = deskDonePages.get(project);
+  if (!d) return "";
+  const all = deskDoneList(d).length, n = deskDoneShown.get(project) || DESK_DONE_STEP;
+  return `${Math.min(all, n)}|${all > n || !pg?.end}`;
 }
 /** The list's end came into view: 10 more finished items, and the next ones fetched ahead. */
 function deskDoneMore(project) {
@@ -723,6 +731,7 @@ function deskListsSettle(kept) {
     document.body.append(spare);
     deskKeepAttrs(el, fresh);
     deskKeepPatch(el, fresh, pool, spare);
+    fresh.replaceChildren();
     moveBack(fresh.parentNode, el, fresh);
     fresh.remove();
     spare.remove();

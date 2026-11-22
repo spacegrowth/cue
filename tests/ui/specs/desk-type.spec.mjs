@@ -32,7 +32,7 @@ test("clicking the lead's text box and an item's puts the cursor there and typin
   await cue.open("desk");
   await openDesk(page);
   await churn(page);
-  const box = page.locator(".dk-right .dk-box textarea[data-text]").first();
+  const box = page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) textarea[data-text]").first();
   await expect(box).toHaveAttribute("data-text", 'desk:["cue",""]');
   await clickAndType(page, box);
   // An item's page: its own box.

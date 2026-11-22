@@ -6,7 +6,7 @@ import { test, expect, openDesk } from "./cue.mjs";
 test("asked how the page looks, the window says which box has the keyboard, what's under the pointer and what covers it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const box = page.locator(".dk-right .dk-box textarea[data-text]").first();
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea[data-text]").first();
   await box.click();
   const b = await box.boundingBox();
   await page.mouse.move(b.x + 10, b.y + 10);

@@ -52,7 +52,7 @@ test("the Desk lead's chat: a message to it while it works shows once, and goes 
   const lead = await page.evaluate(() => deskOf("cue").lead.sid);
   await keepThenWait(cue, "desk_send", () => deskOf("cue").lead.sid, (a) => `<desk project="cue">\n4 items.\n</desk>\n\n${a.text}`);
   await page.evaluate(() => { deskOpen = null; deskTab = "lead"; renderMain(); });
-  const box = page.locator(".dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("And the footer too");
   await box.press("Enter");
   await once(page, cue, page.locator(".dk-chat"), "And the footer too", lead);

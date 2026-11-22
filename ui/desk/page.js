@@ -98,22 +98,27 @@ function deskYourWords(text) {
   const crew = t !== String(text || "") || !close.exec(rest.slice(title.length))?.[0].startsWith("): ");
   return { id: it?.id ?? m[1], it, title, ask, crew: !ask && crew, words: words.replace(DESK_CUE_TAIL, "").trim() };
 }
-/** Your words about an item (deskYourWords): a head over them with its kind's icon, its kind and number and its title
- *  (a click opens it), and your words under it. null for any other words. */
+/** Your words about an item (deskYourWords), or your send-back of it (cue_said.js cueBackOf, #688): a head over them
+ *  with its kind's icon, its kind and number and its title (a click opens it, deskAboutBtn), and your words under it.
+ *  null for any other words. */
 function deskAboutHead(e) {
-  const y = deskYourWords(e?.text);
+  const y = deskYourWords(e?.text) || (typeof cueBackOf === "function" && cueBackOf(e?.text));
   if (!y) return null;
-  const html = `<button class="dk-about" data-desk-chk-item="${esc(y.id)}">${deskKindIcon(y.it)}<b>${esc(y.it ? deskNum(y.it) : `#${y.id}`)}</b> · ${esc(y.title)}</button>`;
-  return { html, text: y.words };
+  return { html: deskAboutBtn(y.id, y.it, y.title), text: y.words };
 }
+/** The head over your words about item `id` (`it` when it's still on the Desk; `title` as they named it). */
+const deskAboutBtn = (id, it, title) => `<button class="dk-about" data-desk-chk-item="${esc(id)}">${deskKindIcon(it)}<b>${esc(it ? deskNum(it) : `#${id}`)}</b> · ${esc(title)}</button>`;
 /** A chat the Desk shows: its earlier messages from Cue's log too (its thread keeps only the last few, all a restart
  *  starts with), loaded as it first shows, and Earlier messages above them, as in a session's chat (chat/thread.js). */
 function deskChatRows(s, page) {
   const sid = s.session_id;
   if (!older.has(sid)) queueMicrotask(() => loadOlder(sid));
   const any = (s.thread || []).length || older.get(sid)?.msgs.length;
-  // Everything, always: no Conversation only switch on the Desk's chats (#666; the Board's chat keeps it).
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: deskCueNote, youHead: deskAboutHead, noActs: true, talk: false, ...page }) : "";
+  // Nothing in its thread yet: only what you sent from the Desk's box (`page.pending`), drawn as the chat draws it.
+  if (!any) return (page?.pending || []).map((o) => outboxRow(o, s, o.key || `p:${o.at}`, page)).join("");
+  // Its Desk lines out, a count line for each run of them (desk/runs.js, #688). A lead's chat draws Cue's notes as its
+  // short lines (#616) wherever it shows, an item's page too, so one message is drawn one way.
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid) ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -170,18 +175,22 @@ function deskChat(d) {
   const pending = (deskSent.get(d.project) || []).filter((p) => p.failed || !(p.sent && now() - p.sent > 600000)
     && !thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && has(e, p)) && !has(s?.held, p) && !has(s?.queued, p));
   deskSent.set(d.project, pending);
+  // What you sent that it doesn't show yet: among its chat's own rows, drawn as the chat's outbox is (#688). One that
+  // couldn't go: red, why, and Send again, as in a session's chat.
+  const to = deskLeadName(d);
+  const again = (p) => sendAgainBtn(`data-desk-act="lead_retry" data-id="${esc(d.project)}" data-at="${p.at}"`);
+  const mine = pending.map((p) => ({ text: p.text, images: p.images, at: p.at, key: `p:${p.at}`, m: p.failed ? { st: "failed", why: esc(p.failed), acts: again(p), to } : { st: "sending", to } }));
   // The lead's own Desk lines drawn as lines, not raw text.
-  const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true, you: deskLeadNote }) : "";
-  // One that couldn't go: red, why, Retry and Edit (#422), till you pick one.
-  const failed = (p) => ({ st: "failed", why: esc(p.failed), acts: ["lead_retry", "lead_edit"].map((a, n) => `<button class="q-now" data-desk-act="${a}" data-id="${esc(d.project)}" data-at="${p.at}">${n ? "Edit" : "Retry"}</button>`).join(" · ") });
-  const mine = pending.map((p) => { const hd = deskAboutHead(p); return keyed(msgRow(p.failed ? { ...failed(p), to: deskLeadName(d) } : { st: "sending", to: deskLeadName(d) }, `${p.text ? `<div class="cv-you-text mg-text">${hd?.html || ""}${esc(hd ? hd.text : p.text).replace(/\n/g, "<br>")}</div>` : ""}${p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}`), `p:${p.at}`); }).join("");
+  const rows = s ? deskChatRows(s, { extra: deskCheckRows(d).concat(deskActRows(d)), noSteps: true, you: deskLeadNote, pending: mine })
+    : mine.map((o) => outboxRow(o, null, o.key)).join("");
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat. Not while
   // a message of yours is on its way: "Waiting on you for your reply" under it would be wrong (#587).
   const sending = pending.some((p) => !p.failed);
   const where = s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
   // Each part keyed: the chat is kept in place across draws, brought up to date by key (chat/patch.js drawAround).
-  const empty = !rows && !mine && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
-  return `<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${mine}${where ? keyed(where, "where") : ""}</div>`;
+  const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
+  // Ask it now, by the way (under a message Cue keeps for it): its panel over the chat, as in a session's chat.
+  return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
 }
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its
  *  routing and housekeeping calls, already in its chat as its own DECIDED lines), newest first. */
@@ -208,7 +217,7 @@ const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) =
  *  chat's drafted loop shows; "" without the add-on. Drawn as the Desk's own, not the lead's chat's: Start gives the
  *  loop a session of its own in that project's folder, never the lead, which only dispatches. */
 const deskLoopCard = (d, x) => (x.act === "loop" && x.draft ? addOn.reply(`desk:${d.project}`, `\`\`\`cue-loop\n${JSON.stringify(x.draft)}\n\`\`\``).after : "");
-/** "Dispatcher Actions" (#374, named #390): every move the lead made on its own, kept until you clear it. Today's come with the
+/** Activity (#374; "Dispatcher Actions" from #390 to #688): every move the lead made on its own, kept until you clear it. Today's come with the
  *  Desk's state; older ones load from Cue (desk_moves) as you scroll: { items, end, loading } a Desk each. */
 const deskMovePages = new Map(), deskMovesShown = new Map();
 const DESK_MOVES_STEP = 30;
@@ -260,16 +269,55 @@ async function deskMovesClear(project) {
   deskMovesShown.delete(project);
   renderMain();
 }
-/** The Dispatcher Actions tab: what the lead did on its own, newest first: when, its words with the item's number, and why. */
+/** Desk `d`'s Activity, newest first: the lead's own moves (deskMovesList, { x }) and every Desk line out of its chats
+ *  (desk/runs.js dkActivityOf, { line }): the lead's, and each of its sessions', worked out from their messages. The
+ *  lead's moves are in its chat as lines too (deskActRows): listed once, as moves; a routing call it said in its reply
+ *  as a DECIDED line (#420) is listed once, as that line. Nothing from before you last cleared it. */
+function deskActivity(d) {
+  const lead = deskLead(d)?.sid, from = d.moves_cleared || 0;
+  const sids = [...new Set([lead, ...(state.sessions || []).map((s) => s.session_id).filter((sid) => sid !== lead && deskHasSession(d, sid))])].filter(Boolean);
+  const lines = sids.flatMap((sid) => dkActivityOf(sid).filter((r) => !/^act:/.test(r.key) && r.at > from).map((r) => ({ at: r.at, line: r })));
+  // The calls its replies said (their DECIDED lines' words), so a call isn't listed again as a move.
+  const said = new Set(lines.filter((r) => r.line.sid === lead).flatMap((r) => r.line.calls.map(deskCallWords)));
+  const moves = deskMovesList(d).filter((x) => !(x.act === "call" && said.has(deskCallWords(esc(x.text)))));
+  return moves.map((x) => ({ at: x.at * 1000, x })).concat(lines).sort((a, b) => b.at - a.at);
+}
+/** A call's words as its DECIDED line and its move both say them, to tell one from the other. */
+const deskCallWords = (t) => String(t).replace(/\s+/g, " ").trim().replace(/[.;:]$/, "");
+/** One Activity row in the panel (`n`: its index, for its key): what it was, on one line, and when. */
+function deskActPanelRow(r, d) {
+  const what = r.x ? deskActLine(r.x, d, true) : dkRowLine(r.line.html);
+  const why = r.x?.why ? esc(r.x.why) : r.line && r.line.sid !== deskLead(d)?.sid ? `in ${esc(deskHolderName(r.line.sid))}'s chat` : "";
+  return `<div class="dk-prow dk-pdid"><span class="dk-pdt">${what}</span><span class="dk-prs">${[why, r.at ? ago(r.at) : ""].filter(Boolean).join(" · ")}</span></div>`;
+}
+/** The panel's Activity (#688, in Just did's place, at its foot): the last 3 rows of `rows` (deskActivity's, or one
+ *  chat's), then "N more in Activity ›" opening the tab. "" with none. */
+function deskPanelActivity(rows, d) {
+  if (!rows.length) return "";
+  const more = rows.length > 3 ? `<button class="dk-pall" data-act="desk-activity">${rows.length - 3} more in Activity ›</button>` : `<button class="dk-pall" data-act="desk-activity">Activity ›</button>`;
+  return deskPsec("Activity", `<div class="dk-prows">${rows.slice(0, 3).map((r) => deskActPanelRow(r, d)).join("")}${more}</div>`, "dk-pact");
+}
+/** The open page's own chat's Activity rows (an item's holder, a session's, a crew's lead), for its panel. */
+function deskPageActivity() {
+  const d = deskOpen && deskOf(deskOpen.project);
+  if (!d) return "";
+  const sid = deskOpen.kind === "item" ? deskHolderSid(deskItem(d.project, deskOpen.id)) : deskOpen.kind === "crew" ? deskOpen.lead : deskOpen.sid;
+  return sid ? deskPanelActivity(dkActivityOf(sid).map((r) => ({ at: r.at, line: r })), d) : "";
+}
+/** The Activity tab (Dispatcher Actions until #688): what the lead did on its own and every Desk line taken out of the
+ *  chats, newest first: when, the line, and why. */
 function deskMoves(d) {
   if (!deskMovePages.has(d.project)) deskMovesFetch(d.project);
-  const all = deskMovesList(d), n = deskMovesShown.get(d.project) || DESK_MOVES_STEP, pg = deskMovePages.get(d.project);
+  const l = deskLead(d);
+  const all = deskActivity(d), n = deskMovesShown.get(d.project) || DESK_MOVES_STEP, pg = deskMovePages.get(d.project);
   const asking = deskMovesClearing === d.project;
   const clear = all.length ? (asking ? `<span class="dk-mv-ask">Clear the whole list?</span><button class="btn small" data-desk-moves-keep>Keep</button><button class="btn small primary" data-desk-moves-clear="${esc(d.project)}">Clear</button>` : `<button class="btn small" data-desk-moves-clear="${esc(d.project)}">Clear</button>`) : "";
-  const head = `<div class="dk-mv-h"><span class="dk-mv-t">Dispatcher Actions</span><span class="grow"></span>${clear}</div>`;
-  const rows = all.slice(0, n).map((x) => `<div class="dk-mv" data-key="mv:${esc(x.id)}"><span class="dk-mv-at">${esc(deskMoveWhen(x.at * 1000))}</span><span class="dk-mv-line">${deskActLine(x, d)}</span></div>`).join("");
+  const head = `<div class="dk-mv-h"><span class="dk-mv-t">Activity</span><span class="grow"></span>${clear}</div>`;
+  const where = (r) => (r.line.sid !== l?.sid ? `<span class="dk-act-why">in ${esc(deskHolderName(r.line.sid))}'s chat</span>` : "");
+  const rows = all.slice(0, n).map((r) => (r.x ? `<div class="dk-mv" data-key="mv:${esc(r.x.id)}"><span class="dk-mv-at">${esc(deskMoveWhen(r.at))}</span><span class="dk-mv-line">${deskActLine(r.x, d)}</span></div>`
+    : `<div class="dk-mv dk-mv-ln" data-key="ln:${esc(r.line.sid)}:${esc(r.line.key)}"><span class="dk-mv-at">${r.at ? esc(deskMoveWhen(r.at)) : ""}</span><span class="dk-mv-line">${r.line.html}${where(r)}</span></div>`)).join("");
   const more = all.length > n || (pg && !pg.end) ? `<div class="dk-mv-more" data-desk-moves-more="${esc(d.project)}">${pg?.loading ? "Loading older actions…" : ""}</div>` : "";
-  const empty = !all.length && !pg?.loading ? `<div class="dk-empty">Nothing yet. When ${esc(deskLeadName(d) || "the lead")} closes, starts, sends back or moves up an item on its own, takes back a copy or answers a session, it's listed here and stays until you clear it.</div>` : "";
+  const empty = !all.length && !pg?.loading ? `<div class="dk-empty">Nothing yet. What ${esc(deskLeadName(d) || "the lead")} and Cue do on the Desk shows here: items given, added, closed, sent back or moved up, copies made, notes to sessions. It stays until you clear it.</div>` : "";
   return `<div class="dk-pane dk-moves" data-scroll-key="moves:${esc(d.project)}">${head}${empty}${rows}${more}</div>`;
 }
 /** When a move was: the time today, else the day and time. */
@@ -343,8 +391,10 @@ const deskChatLink = (sid, name, d) => (sessionOf(sid) ? `<button class="dk-pwa"
 /** One page: `page` the kind of page (what Hide panel remembers), `kind` its icon and mark (DESK_MARKS), `mark` the
  *  quiet words before its name ("Bug #197 · "), `title` its name's html, `meta` its quiet line, `now` and `panel` the
  *  panel's sections, `main` its own column and `foot` the box under it. */
-function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", aside = "" }) {
-  // `aside`: more attributes on its panel (an item's names the item, deskItemSide).
+function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", aside = "", activity = null }) {
+  // `aside`: more attributes on its panel (an item's names the item, deskItemSide). `activity`: the panel's Activity at
+  // its foot (#688); left out, the open page's own chat's (deskPageActivity).
+  panel += activity ?? deskPageActivity();
   const hid = deskPanelHidden(page);
   const tog = `<button class="btn small dk-ptog" data-desk-panel="${deskPanelKey(page)}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
   return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph"><div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>`

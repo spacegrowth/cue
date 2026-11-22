@@ -96,7 +96,7 @@ export const deskShowStrip = async (page) => {
   await page.locator('.dk2b-chat [data-desk-panel="dispatcher-hidden"]').click();
   await page.locator(".dk2b-chat .dk2b-strip").waitFor();
 };
-/** The lead's full panel (Now, Waits on you, Working) shown: B2 opens with it shown (#666), and
+/** The lead's full panel (Now, Waits on you, Working, Activity) shown: B2 opens with it shown (#666), and
  *  a chat card too narrow for it (the 1280 default) has no Show panel, so the window is made as wide as the Board's
  *  design size (1800) first when it's narrower. */
 export const deskShowPanel = async (page) => {

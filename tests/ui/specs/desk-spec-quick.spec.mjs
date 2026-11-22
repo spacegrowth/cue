@@ -4,8 +4,8 @@
 // item stays to check). The scenario's phrases: Commit, Go ahead, Think hard.
 import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 
-const box = (page) => page.locator(".dk-right .dk-box textarea");
-const phrase = (page, p) => page.locator(`.dk-right .dk-box .quick .qp[data-phrase="${p}"]`);
+const box = (page) => page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) textarea");
+const phrase = (page, p) => page.locator(`.dk-right :is(.dk-box, .foot:not(.held) .composer) .quick .qp[data-phrase="${p}"]`);
 
 // #128: the same phrases a session's chat shows (the shared quick row), over the lead's box.
 test("the lead's chat shows a session chat's quick phrases, over its box", async ({ page, cue }) => {
@@ -13,8 +13,8 @@ test("the lead's chat shows a session chat's quick phrases, over its box", async
   await openDesk(page);
   const chat = await page.evaluate(() => { const el = document.createElement("div"); el.innerHTML = quickRow(""); return [...el.querySelectorAll(".qp")].map((b) => b.textContent.trim()); });
   expect(chat.length).toBeGreaterThan(0);
-  await expect(page.locator(".dk-right .dk-box .quick .qp")).toHaveText(chat);
-  const over = await page.evaluate(() => { const q = document.querySelector(".dk-right .dk-box .quick"), row = document.querySelector(".dk-right .dk-box-row"); return row.getBoundingClientRect().top + 1 - q.getBoundingClientRect().bottom; });
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .quick .qp")).toHaveText(chat);
+  const over = await page.evaluate(() => { const q = document.querySelector(".dk-right .foot:not(.held) .composer .quick"), row = document.querySelector(".dk-right .foot:not(.held) .composer .field-row"); return row.getBoundingClientRect().top + 1 - q.getBoundingClientRect().bottom; });
   expect(over).toBeGreaterThanOrEqual(0);
 });
 
@@ -55,7 +55,7 @@ test("an item its holder is working on: a phrase is a note to the holder, shown 
   await box(page).fill("the port is");
   await phrase(page, "Think hard").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Think hard" });
-  await expect(page.locator(".dk-right .dk-ichat .cv-you", { hasText: "Think hard" }).locator(".msg-line")).toContainText(/Waiting: .+ your note goes in next/);
+  await expect(page.locator(".dk-right .dk-ichat .cv-you", { hasText: "Think hard" }).locator(".msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends");
   await expect(box(page)).toHaveValue("the port is");
   expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "send_back")).toEqual([]);
 });

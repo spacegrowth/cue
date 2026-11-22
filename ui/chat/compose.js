@@ -183,7 +183,7 @@ function cmdList(sid, fresh) {
     cmdLists.set(sid, null);
     const missed = () => { cmdLists.delete(sid); cmdMissed.set(sid, Date.now()); };
     const ask = (n) => invoke("session_commands", { sessionId: sid, fresh: !!fresh && n === 0 }).then(({ list, reading }) => {
-      if (list && JSON.stringify(list) !== JSON.stringify(cmdLists.get(sid))) { cmdLists.set(sid, list); cmdMissed.delete(sid); refreshCmd(`s:${sid}`); }
+      if (list && JSON.stringify(list) !== JSON.stringify(cmdLists.get(sid))) { cmdLists.set(sid, list); cmdMissed.delete(sid); refreshCmdOf(sid); }
       if (list && !reading) return;
       if (n < 40) setTimeout(() => ask(n + 1), 600); else if (!list) missed();
     }).catch(missed);
@@ -194,7 +194,13 @@ function cmdList(sid, fresh) {
   // A hosted lead's /team (team_send.js).
   return sessionOf(sid)?.harness === "claude" ? [BTW_CMD, ...teamCmds(sid, list), ...list.filter((c) => c.name !== "btw")] : list;
 }
-const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
+/** The session box `key` writes to: a session's own box ("s:<sid>"), or a box of the window's own drawn as one (BOX_OWNERS
+ *  sid: the Desk lead's, desk/view.js), so its "/" menu, Send at and suggestion are that session's. "" for none. */
+const sidOfKey = (key) => {
+  if (key.startsWith("s:")) return key.slice(2);
+  for (const o of BOX_OWNERS) { const sid = o.sid?.(key); if (sid) return sid; }
+  return "";
+};
 // ---------- ↑ / ↓ in a session's box: the last messages you sent it, like a shell's history ----------
 // ↑ on the box's first line puts the message before into the box (older with each press, the last ten);
 // ↓ on the last line comes forward again and ends on what you were typing. Typing, or sending, starts over.
@@ -222,8 +228,8 @@ function onEdgeRow(ta, up) {
 function recallSent(e) {
   const ta = e.target, key = ta.dataset.text;
   // A box of the window's own (box/send.js BOX_OWNERS: a Desk's): what you sent to the session it goes to, as its chat shows it.
-  const desk = !sidOfKey(key) ? boxOwner(key)?.recall?.(key) || null : null;
-  const sid = sidOfKey(key) || desk?.s?.session_id;
+  const desk = !key.startsWith("s:") ? boxOwner(key)?.recall?.(key) || null : null;
+  const sid = key.startsWith("s:") ? sidOfKey(key) : desk?.s?.session_id;
   if (!sid) return false;
   const up = e.key === "ArrowUp";
   const v = ta.value;
@@ -325,6 +331,8 @@ function slashHint(key) {
   if (c.kind === "unavailable") return `<div class="slash-hint bad"><b>/${esc(c.name)}</b> is one of ${esc(agent)}'s own commands, which a hosted session doesn't have. Move to terminal to use it.</div>`;
   return `<div class="slash-hint">${c.desc ? `<b>/${esc(c.name)}${c.hint ? ` ${esc(c.hint)}` : ""}</b>: ${esc(c.desc)}` : `Starts with “/”, so the agent runs it as a command. ${asText}`}</div>`;
 }
+/** Redraw the menu and hint of every box drawn that writes to session `sid` (its own, and the Desk lead's box for a lead). */
+const refreshCmdOf = (sid) => { const keys = new Set([...document.querySelectorAll("textarea[data-text]")].map((el) => el.dataset.text)); keys.forEach((k) => sidOfKey(k) === sid && refreshCmd(k)); };
 /** Redraw just a box's menu and hint (typing never rebuilds the box, so the caret stays put). */
 function refreshCmd(key) {
   const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
@@ -488,7 +496,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   // row, so the box spans the full width (as the terminal dock does).
   return boxHtml({
     key, look: "composer", rows: 2, placeholder, drop: !!images,
-    sug: images ? suggestionFor(sid) : "",
+    sug: images ? suggestionFor(sid) : "", sugSid: key.startsWith("s:") ? "" : sid,
     bang: bangTyped(d.text),
     cmd: sid ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : "",
     top: images && quick ? quickRow(`data-quick="${esc(key)}"`, sid) : "",

@@ -34,7 +34,7 @@
    has no room for both whole (#610: never squeezed to a letter). */
 .dk-s1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: var(--type-body); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-tag) var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.dk-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-tag) var(--mono); white-space: nowrap; }
 .dk-pill.loose { color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); text-transform: none; letter-spacing: 0; }
 .dk-srow.past { opacity: .6; }
 .dk-sfold { display: block; margin: 0; padding: 4px 20px 8px 44px; border: 0; background: none; color: var(--muted); font: 600 var(--type-small) var(--sans); cursor: pointer; }
@@ -88,7 +88,7 @@
 .dk-empty { padding: 28px 24px; color: var(--muted); font-size: var(--type-body); line-height: 1.5; }
 
 /* Group labels: Waiting on you, In progress, Queued, Done; all grey, whatever their count. */
-.dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 var(--type-pill) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: none; border: 0; text-align: left; }
+.dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 var(--type-pill) var(--sans); color: var(--muted); background: none; border: 0; text-align: left; }
 /* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
 .dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: var(--type-small); }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
@@ -162,7 +162,7 @@
 /* A tag's words (only a stuck one has any) lead its title. */
 .dk-i1 > .dk-tag { display: inline-block; margin-right: 7px; vertical-align: 1px; }
 .dk-i1 > .dk-tag:empty { display: none; }
-.dk-tag { min-width: 46px; margin-top: 1px; padding: 2px 6px; white-space: nowrap; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); font: 600 var(--type-tag) var(--mono); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+.dk-tag { min-width: 46px; margin-top: 1px; padding: 2px 6px; white-space: nowrap; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); font: 600 var(--type-tag) var(--mono); text-align: center; }
 .dk-tag.ask { background: var(--deny); color: var(--on-accent); }
 .dk-it.on, .dk-it.on .dk-t { color: var(--on-sel); }
 .dk-tag.now { color: var(--ink); }

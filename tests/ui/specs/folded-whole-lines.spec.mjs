@@ -6,9 +6,9 @@ import { test, expect, openDesk } from "./cue.mjs";
 const LONG = "The phrases go left of Send and the box keeps its size when the window narrows; check the small window too, and the notch, and the rail, where the words wrap sooner and the fold must still land on a whole line every time.";
 const push = (page, role, text) => page.evaluate(([r, t]) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: r, text: t }); renderMain(); }, [role, text]);
 
-/** Each folded box in the Desk's chat: whether its words run on past the fold, and the lines its clip edge cuts through
+/** Each folded box in the Desk's chat (or under `root`: Activity, where the NOTE is since #688): whether its words run on past the fold, and the lines its clip edge cuts through
  *  (a line partly above it and partly below). The clip edge is the inside of the bottom border, where overflow stops. */
-const folds = (page) => page.evaluate(() => [...document.querySelectorAll(".dk-chat :is(.cv-agent.folded .cv-text, .req-cut:not(.open) .req-t, .peer-msg .mg-full)")].map((el) => {
+const folds = (page, root = ".dk-chat") => page.evaluate((root) => [...document.querySelectorAll(`${root} :is(.cv-agent.folded .cv-text, .req-cut:not(.open) .req-t, .peer-msg .mg-full)`)].map((el) => {
   const cs = getComputedStyle(el), r = el.getBoundingClientRect(), edge = r.bottom - parseFloat(cs.borderBottomWidth);
   const rects = [];
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -18,7 +18,7 @@ const folds = (page) => page.evaluate(() => [...document.querySelectorAll(".dk-c
   }
   const cut = rects.filter((q) => q.width && q.height && q.top < edge - 1 && q.bottom > edge + 1);
   return { cls: el.className, clamp: cs.webkitLineClamp, maxHeight: cs.maxHeight, more: el.scrollHeight > el.clientHeight + 1, cut: cut.length };
-}));
+}), root);
 
 for (const scheme of ["light", "dark"]) {
   test(`folded notes, replies and forwards cut at whole lines (${scheme}) (#609)`, async ({ page, cue }) => {
@@ -30,7 +30,11 @@ for (const scheme of ["light", "dark"]) {
     // Five long replies: the older ones fold (the newest three stay open).
     for (let i = 0; i < 5; i++) await push(page, "agent", `Reply ${i}. ${LONG}\n\n- one point that runs long enough to wrap onto a second line in the chat\n- two\n\nA closing paragraph. ${LONG}`);
     await expect(page.locator(".dk-chat .cv-agent.folded")).not.toHaveCount(0);
+    // The NOTE is the Desk's own (#688): its fold is in Activity.
     const got = await folds(page);
+    await page.evaluate(() => deskOpenActivity());
+    await expect(page.locator(".dk-moves .req-t")).not.toHaveCount(0);
+    got.push(...(await folds(page, ".dk-moves")));
     const kinds = (re) => got.filter((f) => re.test(f.cls));
     for (const re of [/cv-text/, /req-t/, /mg-full/]) {
       expect(kinds(re).length, `a ${re.source} fold`).toBeGreaterThan(0);

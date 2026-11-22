@@ -111,13 +111,13 @@ test("a session's ⋯ menu adds it to its project's Desk, or takes it off", asyn
 test("after a restart the lead's chat has its past (Cue's log beyond its last few) and what you half typed", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator(".dk-right .dk-box textarea").fill("half a thought about the");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("half a thought about the");
   // Drafts are saved a moment after typing (window.js saveDrafts): wait for that save, not a fixed time.
   await expect.poll(async () => (await cue.calls("set_draft")).some((c) => c.args?.text === "half a thought about the")).toBe(true);
   // Quit and reopen: a new window, Cue's state from scratch; drafts from cue.db.
   await cue.open("desk");
   await openDesk(page);
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("half a thought about the");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("half a thought about the");
   const chat = page.locator(".dk-chat");
   await expect(chat).toContainText("Earlier message 75");
   await expect(chat.locator(".cv-older button[data-act='load-older']")).toHaveText("Earlier messages");
@@ -134,7 +134,7 @@ test("↑ in the lead's box brings back what you sent it (without the Desk's sum
     s.thread = [...(s.thread || []), { role: "you", text: '<desk project="cue">\nItems: none\n</desk>\n\nfirst ask', at_ms: t - 2000, images: [] },
       { role: "agent", text: "ok", at_ms: t - 1500, images: [] }, { role: "you", text: "second ask", at_ms: t - 1000, images: [] }];
   });
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("draft");
   await box.press("ArrowUp");
   await expect(box).toHaveValue("second ask");
@@ -152,7 +152,7 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   const line = page.locator('.dk-chat [data-mg="check"]');
   await expect(line).toHaveCount(1);
   await expect(page.locator(".dk-chat .dk-chk")).toHaveCount(0);
-  await expect(line.locator(".mg-tag")).toHaveText("READY TO CHECK");
+  await expect(line.locator(".mg-tag")).toHaveText("Ready to check");
   await expect(line.locator(".mg-h .mg-id")).toHaveText("Feature #d2");
   await expect(line.locator(".mg-h .mg-id svg.dk-kic")).toHaveCount(1);
   await expect(line.locator(".mg-h .mg-age")).toHaveText(/^\d+[smhd]$/);
@@ -167,12 +167,12 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
 
   // Not installed yet: nothing to try, so it's waiting for install, on its line, row and page (#130).
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
-  await expect(line.locator(".mg-tag")).toHaveText("WAITING FOR INSTALL");
+  await expect(line.locator(".mg-tag")).toHaveText("Waiting for install");
   const row = page.locator('.dk-it[data-desk-item="d2"]');
   await expect(statusOf(page, "d2")).toHaveText("Waiting for install");
   await expect(row.locator(".dk2b-chk")).toHaveCount(0);
   // Its page while it waits: says so under what to test, and no Looks right among its buttons (Send back stays).
-  const lead = page.locator(".dk-right .dk-box textarea");
+  const lead = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await lead.fill("a word for the lead");
   await line.locator(".mg-lk").click();
   // What to try, Looks right and Send back: the item's panel (#418).
@@ -187,7 +187,7 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   // Installed before the DONE but after its work last changed (you install, then say DONE): it's in, too (#115).
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].edited = 1793984280000 - 120000; });
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
-  await expect(line.locator(".mg-tag")).toHaveText("READY TO CHECK");
+  await expect(line.locator(".mg-tag")).toHaveText("Ready to check");
 
   // Check it › opens the item's page: what to test as a checklist, then quiet under it who did it, when and how many
   // files, and that the installed Cue has it; Looks right and Send back.
@@ -340,7 +340,7 @@ test("your words about an item show its kind's icon, kind and number over them i
 test("a chat opened on the Desk takes the cursor in its box: the lead's, an item's page; not from the keys on the list (#154)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const box = page.locator(".dk-right .dk-box textarea[data-text]");
+  const box = page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) textarea[data-text]");
   await expect(box).toBeFocused();
   await page.locator('[data-desk-item="d2"]').click();
   await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
@@ -457,7 +457,7 @@ for (const z of [0.9, 1, 1.15, 1.3]) test(`Read on a Desk reply opens the reader
   await read.click();
   await expect(page.locator(".dk-right .rd-head")).toBeVisible();
   await expect(page.locator(".dk-right .rd .msg")).toContainText("Here is what I found.");
-  await expect(page.locator(".dk-right .dk-box")).toHaveCount(0);
+  await expect(page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer)")).toHaveCount(0);
   const card = await page.locator(".dk-right").boundingBox();
   for (const b of ["[data-reader-back]", ".rd-listen [data-listen]", "[data-reader-copy]", "[data-reader-reply]"]) {
     const r = await page.locator(`.dk-right ${b}`).boundingBox();
@@ -468,11 +468,11 @@ for (const z of [0.9, 1, 1.15, 1.3]) test(`Read on a Desk reply opens the reader
   await expect(page.locator(".dk-right .rd-of")).not.toHaveText(of);
   await page.keyboard.press("Escape");
   await expect(page.locator(".dk-right .rd-head")).toHaveCount(0);
-  await expect(page.locator(".dk-right .dk-box")).toHaveCount(1);
+  await expect(page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer)")).toHaveCount(1);
   // Reply: back to the chat, the cursor in the Desk's box.
   await read.click();
   await page.locator("[data-reader-reply]").click();
-  await expect(page.locator(".dk-right .dk-box textarea")).toBeFocused();
+  await expect(page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) textarea")).toBeFocused();
 });
 
 test("Desk approvals send Allow and No for the pending request, from the opened item", async ({ page, cue }) => {
@@ -659,7 +659,7 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
     s.suggestion = "take the next item";
   });
   await openDesk(page);
-  const box = page.locator(".dk-box"), ta = box.locator("textarea"), ghost = box.locator(".sug-line");
+  const box = page.locator(".dk-right .foot:not(.held) .composer"), ta = box.locator("textarea"), ghost = box.locator(".sug-line");
   // Over the text, as in a session's chat box: the phrases; in the empty box, the suggestion.
   await expect(box.locator(".quick .qp")).toHaveText(["go ahead", "show me"]);
   await expect(ghost).toBeVisible();
@@ -688,7 +688,7 @@ test("a reply that asks for set words (Reply \"…\") offers them as the suggest
     s.thread = [...(s.thread || []), { role: "agent", text: 'It\'s built and its tests pass.\n\nReply "commit and install" and I\'ll finish it.', at_ms: Date.now(), images: [] }];
   });
   await openDesk(page);
-  const ta = page.locator(".dk-right .dk-box textarea"), ghost = page.locator(".dk-right .dk-box .sug-line");
+  const ta = page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) textarea"), ghost = page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) .sug-line");
   await expect(ghost).toHaveText("Suggestedcommit and installTab");
   await ta.focus();
   await page.keyboard.press("Tab");
@@ -1263,9 +1263,13 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
     sessionOf("host").thread.push({ at_ms: Date.now() - 60_000, role: "you", text: words });
     deskShow({ kind: "chat", sid: "host" });
   });
-  const card = page.locator('.dk-right [data-desk-chat="host"] .mg-hand');
+  // The hand-off is one of the Desk's lines (#688, option D): the chat has its count line, the card is in Activity.
+  const chat = page.locator('.dk-right [data-desk-chat="host"]');
+  await expect(chat.locator(".mg-hand")).toHaveCount(0);
+  await chat.locator(".dk-cnt-b").last().click();
+  const card = page.locator(".dk-moves .dk-mv-ln .mg-hand");
   await expect(card).toHaveCount(1);
-  await expect(card.locator(".mg-h")).toHaveText(/^web-lead\s*HAND-OFF\s*Bug #d5/);
+  await expect(card.locator(".mg-h")).toHaveText(/^web-lead\s*Hand-off\s*Bug #d5/);
   await expect(card.locator(".dk-hand-t")).toHaveText("Hosted sessions can't open the canvas");
   await expect(card.locator(".dk-dwl li")).toHaveText(["the canvas opens from a hosted session", "it says why when it can't", "light and dark", "Installed and committed"]);
   await expect(card.locator(".dk-hand-w")).toHaveText("you know the host side");

@@ -143,7 +143,7 @@ let escArmed = 0;           // when Esc was last pressed on a working session (t
 let focusedTarget = null;   // the Active target whose text box last got the cursor
 let overWas = false;        // something covered the chat at the last draw (a sheet, the live list, an image…)
 /** Where a view's open chat keeps its box: the Board's Active pane, the Desk's right side, the Inbox's open row. */
-const BOX_HOMES = { board: ".active-pane", desk: ".dk-right .dk-box", inbox: ".inbox-page .ib-box" };
+const BOX_HOMES = { board: ".active-pane", desk: ".dk-right :is(.dk-box, .foot:not(.held) .composer)", inbox: ".inbox-page .ib-box" };
 /** Every box takes the cursor through here (opening something, Esc Esc, Send back opening, the Inbox moving on):
  *  `key`'s box (a box's draft key; a session's "s:…" is the Active pane's), else the box of view `home`'s open chat
  *  (BOX_HOMES). The cursor goes to the end of what's in it, unless `end` is false (left where the browser puts it);
@@ -254,7 +254,7 @@ async function attach(key, files) {
 // by key (patchKids): only what's new or changed is touched.
 /** The chats kept in place: where one sits and what names it (its dataset key). */
 // The Desk's reader (desk/page.js deskReader) is kept as a chat is: drawn afresh, its bar and buttons went and came back
-// on every redraw while it was open. So is the lead's Decisions, Dispatcher Actions or Away tab (desk/view.js): drawn
+// on every redraw while it was open. So is the lead's Decisions, Activity or Away tab (desk/view.js): drawn
 // afresh, a redraw for something elsewhere (its steps landing late) replaced the card's tab row too.
 const KEPT_IN_PLACE = [[".dk-ipane [data-thread-for]", "threadFor"], [".dk-chat[data-desk-chat]", "deskChat"], [".dk-rd[data-scroll-key]", "scrollKey"], [".dk-ptabs + .dk-pane[data-scroll-key]", "scrollKey"]];
 /** The chats kept by the last draw: their pulsing dots carry on as they are (app/render.js replayMotion). */

@@ -188,7 +188,8 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
       for (const r of runs) {
         if (r.kind === "own") {
           const h = `<div class="own-lines">${r.lines.join("")}</div>`;
-          out.push(run ? run(h) : h);
+          // `run` gets its lines too, one by one (desk/runs.js takes the Desk's out without parsing the block).
+          out.push(run ? run(h, r.lines) : h);
         } else if (r.kind === "decided") {
           // With `lines` (a page's own), its decisions are its own lines too (`run`: a page's way to fold them).
           const h = decidedHtml(r.lines, inline, !!lines);

@@ -1,5 +1,6 @@
 // The Desk lead's lines that act on an item in its chat (#622): never raw "START: #612 | why: …". Each is a short plain
-// line ("Started Bug #612"), its why under it once opened; the whole Desk's PAUSE/RESUME too.
+// line ("Started Bug #612"), its why under it once opened; the whole Desk's PAUSE/RESUME too. Since #688 they're out of
+// the chat (its count line says how many) and in the Activity tab, which a click on that line opens.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const push = (page, text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
@@ -20,14 +21,18 @@ test("START, CLOSE, PARK, UNPARK and a whole-Desk PAUSE show as short lines, no 
   const chat = page.locator(".dk-chat");
   await expect(chat).toContainText("Moving things along.");
   for (const raw of ["START:", "CLOSE:", "PARK:", "UNPARK:", "TAKE COPY:", "PAUSE:", "**"]) await expect(chat).not.toContainText(raw);
-  const lines = chat.locator(".dk-ln .mg-lh");
+  await expect(chat.locator(".dk-ln")).toHaveCount(0);
+  await chat.locator(".dk-cnt-b").last().click();
+  const act = page.locator(".dk-moves");
+  for (const raw of ["START:", "CLOSE:", "PARK:", "UNPARK:", "TAKE COPY:", "PAUSE:", "**"]) await expect(act).not.toContainText(raw);
+  const lines = act.locator(".dk-ln .mg-lh");
   await expect(lines).toHaveText([/^Started (Bug|Feature|Task) #d2$/, /^Closed (Bug|Feature|Task) #d2$/, /^Parked (Bug|Feature|Task) #d2$/,
     /^Unparked (Bug|Feature|Task) #d2$/, /^Took back the copy of (Bug|Feature|Task) #d2$/, "Paused this Desk"]);
   // A click on the line opens its why under it; its item's chip opens the item.
-  await chat.locator(".dk-ln .mg-line").first().click({ position: { x: 4, y: 4 } });
-  await expect(chat.locator(".dk-ln.open .mg-full")).toContainText("the owner sent it back and is waiting; it's a Desk reliability bug");
-  await expect(chat.locator("[title]")).toHaveCount(0);
-  await chat.locator('.dk-ln [data-desk-chk-item="d2"]').first().click();
+  await act.locator(".dk-ln .mg-line").first().click({ position: { x: 4, y: 4 } });
+  await expect(act.locator(".dk-ln.open .mg-full")).toContainText("the owner sent it back and is waiting; it's a Desk reliability bug");
+  await expect(page.locator(".dk-board [title]")).toHaveCount(0);
+  await act.locator('.dk-ln [data-desk-chk-item="d2"]').first().click();
   await expect(page.locator('.dk-right .dk-pg[data-desk-page="item"]')).toBeVisible();
 });
 
@@ -43,8 +48,12 @@ test("a START Cue already acted on isn't drawn twice: its own line says it", asy
   const chat = page.locator(".dk-chat");
   await expect(chat).toContainText("Starting it.");
   await expect(chat).not.toContainText("START:");
-  await expect(chat.locator(".dk-act .mg-lh", { hasText: "Started" })).toHaveText("Started #d2 now");
-  await expect(chat.locator(".dk-ln:not(.dk-act) .mg-lh", { hasText: "Started" })).toHaveCount(0);
+  await expect(chat.locator(".dk-ln")).toHaveCount(0);
+  // In Activity, once: Cue's own record of the move, no second line from the reply.
+  await chat.locator(".dk-cnt-b").last().click();
+  const act = page.locator(".dk-moves");
+  await expect(act.locator(".dk-mv:not(.dk-mv-ln)", { hasText: "Started" })).toContainText("Started #d2 now");
+  await expect(act.locator(".dk-mv", { hasText: "Started" })).toHaveCount(1);
 });
 
 test("a START Cue wouldn't act on (no item number) stays as written", async ({ page, cue }) => {

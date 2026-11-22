@@ -71,7 +71,7 @@ test("the forward note: composing Enter never sends, ⇧↵ a new line, ↵ send
 test("the Desk lead's box: composing Enter never sends, ⇧↵ a new line, ↵ sends to the lead", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await enterKeys(page, cue, box, "desk_send", { project: "cue", text: "keep the old one" });
 });
 

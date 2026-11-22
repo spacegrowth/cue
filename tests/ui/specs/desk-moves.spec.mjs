@@ -1,4 +1,4 @@
-// What the lead moved (#374): the Dispatcher's "Dispatcher Actions" tab (named so in #390) lists every move the lead made on its own, newest first, each
+// What the lead moved (#374): the Dispatcher's "Activity" tab (named so in #688; "Dispatcher Actions" since #390) lists every move the lead made on its own, newest first, each
 // with its item, why and time; older ones load from Cue as you scroll; Clear asks once, then empties it.
 import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
@@ -11,7 +11,7 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
   await page.setViewportSize({ width: 1728, height: 900 });
   await cue.open("desk");
   await openDesk(page);
-  await deskShowPanel(page);   // the panel (Just did's More), behind Show panel
+  await deskShowPanel(page);   // the panel (its Activity's "N more in Activity ›"), behind Show panel
   // Today's in the Desk's state; 70 older ones only in Cue's database.
   const today = [
     act("t1", "d3", "send_back", "Sent #d3 to web again", "the header still jumps", NOW - 60 * 1000),
@@ -23,15 +23,15 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
     d.decisions.push(...today);
     d.moves = older;
   }, { today, older });
-  // Its tab and the list's title say "Dispatcher Actions" (#390), never "Moves". The panel has no Just did now (B2,
-  // #666), so no More link under it: the tab opens the list.
-  await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveText("Dispatcher Actions");
-  await expect(page.locator('.dk-right .dk-pall[data-desk-tab="moves"]')).toHaveCount(0);
-  await page.locator('.dk-right .dk-tab[data-desk-tab="moves"]').click();
+  // Its tab and the list's title say "Activity" (#688), the link under the panel's Activity "N more in Activity ›", never "Moves".
+  await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveText("Activity");
+  const all = page.locator('.dk-right .dk-pact .dk-pall[data-act="desk-activity"]');
+  await expect(all).toHaveText(/^(\d+ more in )?Activity ›$/);
+  await all.click();
   const list = page.locator(".dk-moves");
-  await expect(list.locator(".dk-mv-t")).toHaveText("Dispatcher Actions");
+  await expect(list.locator(".dk-mv-t")).toHaveText("Activity");
   expect(await page.locator(".dk-right").innerText()).not.toMatch(/\bmoves\b/i);
-  const rows = list.locator(".dk-mv");
+  const rows = list.locator(".dk-mv:not(.dk-mv-ln)");   // the lead's moves (Activity also holds the lines out of its chats)
   await expect(rows.first()).toContainText("Sent #d3 to web again · the header still jumps");
   await expect(rows.nth(1)).toContainText("Started #d4 now");
   await expect(rows.nth(2)).toContainText("Closed #d8: its work is on main (old 0) · it landed by hand");

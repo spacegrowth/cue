@@ -1,27 +1,12 @@
-// Cue UI — a Desk chat's two ways to read (#685, option C of #676): Conversation only folds each run of the Desk's own
-// lines (what the lead gave, added, closed; Cue's messages; a session's CHECK…) into one row that opens in place;
-// Everything shows every line, each with its small sign (desk/lead.js deskSign). The switch sits in the chat's head.
+// Cue UI — the Desk's own lines out of its chats (#688, option D of the chat audit): what the lead gave, added, closed,
+// noted; Cue's messages to the lead and its sessions; hand-offs, small calls… Each run of them between your turns is one
+// plain count line in the chat ("4 Desk updates · gave #15, #9 done · Activity ›"), a click opening the Activity tab,
+// where every one of them is. Lines meant for you stay in the chat as they are (DK_FOR_YOU).
 
-/** Each chat's way, by its session: "talk" (Conversation only); Everything when it isn't here. Kept on this Mac. */
-const chatModes = (() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem("cue.chatModes") || "{}"))); } catch { return new Map(); } })();
-/** Whether session `sid`'s chat shows the conversation only. */
-const chatTalkOnly = (sid) => !!sid && chatModes.get(sid) === "talk";
-function setChatMode(sid, mode) {
-  if (!sid) return;
-  if (mode === "talk") chatModes.set(sid, "talk"); else chatModes.delete(sid);
-  try { localStorage.setItem("cue.chatModes", JSON.stringify(Object.fromEntries(chatModes))); } catch {}
-  renderMain();
-}
-/** How many of the Desk's lines a chat's html has (each marked data-dk, a run of decisions one each). */
-const dkCount = (html) => (String(html).match(/data-dk="(?!decided")/g) || []).length + (String(html).match(/<li data-dk-li>/g) || []).length;
-/** The switch for session `sid`'s chat (as #665's): Conversation only | Everything, Everything with how many Desk
- *  lines the chat has (`html`, the chat drawn). */
-function chatModeSwitch(sid, html = "") {
-  if (!sid) return "";
-  const talk = chatTalkOnly(sid), n = dkCount(html);
-  const b = (mode, label, on, extra = "") => `<button class="seg2-b${on ? " on" : ""}" data-act="chat-mode" data-sid="${esc(sid)}" data-mode="${mode}" aria-pressed="${on}">${label}${extra}</button>`;
-  return `<span class="seg2" role="group" aria-label="What the chat shows" data-chat-mode="${talk ? "talk" : "all"}">${b("talk", "Conversation only", talk)}${b("all", "Everything", !talk, n ? ` <em>${n}</em>` : "")}</span>`;
-}
+/** The Desk's lines that stay in a chat: How to check, If you pick, For you to try, Not done, Ready to check, Stopped;
+ *  the band between Desks (TELL DESK, TELL DESKS), your picks ("You picked B2 on #d5") and your words Cue passed on
+ *  (chat/render.js) aren't the Desk's own either; nor a loop the lead drafted for you to start (its card's Start loop). */
+const DK_FOR_YOU = new Set(["check", "if-picked", "user-verify", "not-done", "ready", "stopped", "tell-desk", "tell-desks", "picked", "yours", "loop"]);
 /** `html` with the Desk's mark on its first element: `kind` (route, cue, act…) and the item it's about. Kept as it is
  *  when it has one already. */
 function dkMark(html, kind, id = "") {
@@ -29,17 +14,20 @@ function dkMark(html, kind, id = "") {
   if (!s || /^\s*<[a-z0-9]+\b[^>]*\bdata-dk="/i.test(s)) return s;
   return s.replace(/^(\s*)<([a-z0-9]+)/i, `$1<$2 data-dk="${esc(kind)}"${id ? ` data-dk-id="${esc(id)}"` : ""}`);
 }
-/** Whether a chat's row is wholly the Desk's (its first element marked; a reply of nothing but its lines, data-dkr). */
-const dkRow = (html) => /^\s*<[a-z0-9]+\b[^>]*\bdata-dk(?:="|r\b)/i.test(String(html || ""));
+/** Whether a chat's row is wholly the Desk's and leaves the chat: its first element marked with a kind not meant for
+ *  you, or a reply of nothing but such lines (data-dkr). */
+function dkRow(html) {
+  const m = /^\s*<[a-z0-9]+\b[^>]*?\bdata-dk(?:="([^"]*)"|r\b)/i.exec(String(html || ""));
+  return !!m && !DK_FOR_YOU.has(m[1]);
+}
+/** A row of yours (your bubble), which ends a run. */
+const dkYours = (html) => /^\s*<[a-z0-9]+\b[^>]*\bclass="[^"]*\bmg-you\b/i.test(String(html || ""));
 /** The lead's moves (its START, CLOSE… lines, desk/lead.js DESK_ACTS, and Cue's own lines of them, desk/page.js
- *  deskActRows) as a run's summary says them: "started #12". */
+ *  deskActRows) as a count line's gist says them: "started #12". */
 const DK_MOVES = { start: "started", close: "closed", park: "parked", hold: "held", unpark: "unparked", drop: "dropped",
   "take-copy": "took back the copy of", copy: "took back the copy of", "land-first": "put first", "copy-first": "put first",
-  reopen: "reopened", check: "how to check", send_back: "sent back", answer: "answered", loop: "drafted a loop for", title: "renamed", merge: "folded", see: "said what you'll see for" };
-/** Runs open in place, by their key, until closed again. */
-const dkOpenRuns = new Set();
-/** What a run says in its folded row: "4 Desk updates · gave #15 and #12, a note on #9, #9 done, decided 1" (all of
- *  Cue's: "3 from Cue"). */
+  reopen: "reopened", send_back: "sent back", answer: "answered", loop: "drafted a loop for", title: "renamed", merge: "folded", see: "said what you'll see for" };
+/** What a run of the Desk's lines (`html`) says: { n, label: "4 Desk updates", said: "gave #15 and #12, #9 done" }. */
 function dkRunSays(html) {
   const s = String(html), marks = [];
   const re = /data-dk="([^"]+)"(?: data-dk-id="([^"]*)")?/g;
@@ -62,67 +50,162 @@ function dkRunSays(html) {
   const notes = ids("note"); if (notes.length) parts.push(notes.length > 1 ? `notes on ${and(notes)}` : `a note on ${notes[0]}`);
   const done = ids("done"); if (done.length) parts.push(`${and(done)} done`);
   for (const [k, v] of Object.entries(DK_MOVES)) { const xs = ids(k); if (xs.length) parts.push(`${v} ${and(xs)}`); }
-  const known = new Set(["route", "item", "note", "done", "decided", "minor", "ready", "cue", ...Object.keys(DK_MOVES)]);
+  const known = new Set(["route", "item", "note", "done", "decided", "minor", "cue", "to-lead", ...Object.keys(DK_MOVES)]);
   const rest = marks.filter((x) => !known.has(x.kind) || (DK_MOVES[x.kind] && !x.id)).length;
   if (decided) parts.push(`decided ${decided}`);
   if (of("minor")) parts.push(of("minor") > 1 ? `${of("minor")} small calls` : "a small call");
-  if (of("ready")) parts.push(of("ready") > 1 ? `${of("ready")} to check` : "one to check");
+  if (of("to-lead")) parts.push(of("to-lead") > 1 ? `${of("to-lead")} to the lead` : "one to the lead");
   const cue = of("cue");
-  const label = n && cue === n ? `${n} from Cue` : `${n || 1} Desk update${n === 1 ? "" : "s"}`;
-  if (cue && cue !== n) parts.push(`${cue} from Cue`);
+  if (cue) parts.push(`${cue} from Cue`);
   if (rest) parts.push(`${rest} more`);
-  const said = parts.slice(0, 4).join(", ") + (parts.length > 4 ? ", …" : "");
-  return { label, said };
+  const said = parts.slice(0, 3).join(", ") + (parts.length > 3 ? ", …" : "");
+  const c = n || 1;
+  return { n: c, label: `${c} Desk update${c === 1 ? "" : "s"}`, said };
 }
-/** A run of the Desk's lines folded to one row (`key` keeps it open across draws); a click opens it in place, the
- *  lines under it as Everything draws them. */
-function dkRunHtml(key, html) {
-  const open = dkOpenRuns.has(key), { label, said } = dkRunSays(html);
-  return `<div class="dk-run${open ? " open" : ""}" data-dk-run="${esc(key)}"><button class="dk-run-b" data-act="desk-run" data-key="${esc(key)}" aria-expanded="${open}">`
-    + `<span class="dk-run-pm" aria-hidden="true">${open ? "−" : "+"}</span><b>${esc(label)}</b>${said ? `<span class="dk-run-s"> · ${esc(said)}</span>` : ""}</button>`
-    + `${open ? `<div class="dk-run-in">${html}</div>` : ""}</div>`;
+/** A run's count line: how many, what they were, and Activity ›; a click opens the Activity tab. The newest has a dot. */
+function dkCountHtml(key, html, newest) {
+  const { label, said } = dkRunSays(html);
+  return `<div class="dk-cnt${newest ? " new" : ""}" data-dk-cnt="${esc(key)}"><button class="dk-cnt-b" data-act="desk-activity">`
+    + `${newest ? '<i class="dk-cnt-dot" aria-hidden="true"></i>' : ""}<b>${esc(label)}</b>${said ? `<span class="dk-cnt-s"> · ${esc(said)}</span>` : ""}`
+    + `<span class="dk-cnt-a"> · Activity ›</span></button></div>`;
 }
-/** A chat's rows (chatHtml's) with each run of the Desk's own rows folded to one (dkRunHtml), keyed by its first. Rows
- *  drawn as nothing don't break a run. */
+/** The Desk's lines a reply's body gave up (dkReplyTake), kept in its row for dkFoldRows. */
+const DK_TAKEN = /<template class="dk-taken">([\s\S]*?)<\/template>/g;
+/** A Desk chat's rows (chatHtml's): each run of the Desk's own rows between your turns taken out, and one count line
+ *  (dkCountHtml) where the run began. A reply's own Desk lines (dkReplyTake) count in the run around it. Drawing a chat
+ *  changes nothing else: Activity works its rows out from the session's messages (dkActivityOf). */
 function dkFoldRows(rows) {
   const out = [];
-  let run = [];
+  let run = null;
   const flush = () => {
-    if (!run.length) return;
-    const key = `run:${/data-key="([^"]+)"/.exec(run[0])?.[1] || out.length}`;
-    out.push(keyed(dkRunHtml(key, run.join("")), key));
-    run = [];
+    if (run?.html.length) out[run.slot] = keyed(dkCountHtml(run.key, run.html.join(""), false), run.key);
+    else if (run) out[run.slot] = "";
+    run = null;
   };
-  for (const r of rows) {
-    if (!r) continue;
-    if (dkRow(r)) run.push(r); else { flush(); out.push(r); }
+  const add = (html, key) => {
+    if (!run) { run = { slot: out.length, key: `cnt:${key}`, html: [] }; out.push(""); }
+    run.html.push(html);
+  };
+  for (const r0 of rows) {
+    if (!r0) continue;
+    const key = /data-key="([^"]+)"/.exec(r0)?.[1] || String(out.length);
+    // A reply's own Desk lines (dkReplyTake) count one by one; a reply of nothing else leaves with them.
+    let r = r0, k = 0;
+    const lines = r0.includes('<template class="dk-taken">');
+    if (dkRow(r0) && !lines) { add(r0, key); continue; }
+    if (dkYours(r0)) flush();
+    // Its lines counted after it, where they came.
+    const own = [];
+    if (lines) r = r.replace(DK_TAKEN, (_, h) => { own.push(h); return ""; });
+    if (!dkRow(r0)) out.push(r);
+    for (const h of own) add(h, `${key}:${k++}`);
   }
-  flush();
+  // The newest run: its line has the dot, and grows as lines come in.
+  if (run?.html.length) out[run.slot] = keyed(dkCountHtml(run.key, run.html.join(""), true), run.key);
+  else if (run) out[run.slot] = "";
+  return out.filter(Boolean);
+}
+/** The kind a line's mark gives it (dkMark's), "" for an unmarked one. */
+const dkKindOf = (html) => /^\s*<[a-z0-9]+\b[^>]*?\bdata-dk="([^"]*)"/i.exec(String(html || ""))?.[1] || "";
+/** A block md drew with `lines` (`h`; an own-lines block brings its lines, `own`): what stays in the reply, and the Desk's
+ *  lines taken out of it, each its own Activity row. Lines meant for you (or unmarked) stay, in place. */
+function dkTake(h, own) {
+  if (!own) return { keep: "", taken: [h] };
+  const kept = [], taken = [];
+  for (const l of own) {
+    const k = dkKindOf(l);
+    if (!k || DK_FOR_YOU.has(k)) kept.push(l);
+    else taken.push(`<div class="own-lines">${l}</div>`);
+  }
+  return { keep: kept.length ? `<div class="own-lines">${kept.join("")}</div>` : "", taken };
+}
+/** An agent's reply with md's blocks of the Desk's lines (own-lines, decided) taken out as they're drawn (md `run`,
+ *  dkTake): those meant for you stay. Each taken line rides along in its own <template> (dkFoldRows reads them); `all`
+ *  when the reply was nothing but such lines (its row then leaves whole). */
+function dkReplyTake(draw) {
+  const taken = [];
+  const html = draw((h, own) => {
+    const t = dkTake(h, own);
+    taken.push(...t.taken);
+    return t.keep;
+  });
+  if (!taken.length) return { html, all: false };
+  const all = !html.replace(/<[^>]*>/g, "").trim() && !/<(?:img|svg|button|pre|table)\b/i.test(html);
+  const tpl = taken.map((x) => `<template class="dk-taken">${x}</template>`).join("");
+  return all ? { html: tpl, all: true } : { html: html + tpl, all: false };
+}
+/** Session `s`'s Desk lines, drawn now (`page`: its Desk chat's way, the lead's with its short lines, deskLeadNote):
+ *  Cue's card or message for your-side message `e`, or each Desk line taken out of reply `e`, in order. */
+function dkLinesOf(s, e, n, page) {
+  const sid = s.session_id;
+  if (e.role === "you") {
+    const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && !youBack(e) && chatCueRow(page, s, sid, e, n, new Map());
+    return h && dkRow(h) ? [h] : [];
+  }
+  if (e.role !== "agent") return [];
+  const out = [];
+  md(addOn.reply(sid, e.text).text, { runIn: sid, lines: deskLineHtml, run: (h, own) => { const t = dkTake(h, own); out.push(...t.taken); return t.keep; } });
   return out;
 }
-/** An agent's reply in Conversation only: md's blocks of the Desk's lines (own-lines, decided) taken out as they're
- *  drawn (md `run`), each run of them folded in place (`key`: the reply's). `{ html, all }`: `all` when the reply is
- *  nothing but such lines (the row then joins the runs around it). */
-function dkReplyRuns(draw, key) {
-  const runs = [];
-  const html = draw((h) => { runs.push(h); return `\u0001${runs.length - 1}\u0001`; });
-  if (!runs.length) return { html, all: false };
-  const all = !html.replace(/\u0001\d+\u0001/g, "").replace(/<[^>]*>/g, "").trim();
-  if (all) return { html: html.replace(/\u0001(\d+)\u0001/g, (_, n) => runs[n]), all: true };
-  let k = 0;
-  const folded = html.replace(/(?:\u0001\d+\u0001\s*)+/g, (seq) => dkRunHtml(`${key}:r${k++}`, [...seq.matchAll(/\u0001(\d+)\u0001/g)].map((m) => runs[m[1]]).join("")));
-  return { html: folded, all: false };
+/** Which of session `s`'s messages give Activity rows, worked out from its messages, never from a drawing of its chat
+ *  (a page folded to one item's turns can't change them): [{ at: its message's time, key, e, n, k: its line in it,
+ *  calls: a DECIDED block's words }], oldest first. Each row's html is drawn as it's read, so it's never stale. */
+function dkActivityRows(s) {
+  const ex = conversation(null, s).map(deskSaidE), out = [];
+  const { asks, answers, decided } = chatAsks(ex);
+  const page = dkActivityPage(s.session_id);
+  ex.forEach((e, n) => {
+    if (answers.has(n) || decided.has(n) || asks.has(n)) return;
+    dkLinesOf(s, e, n, page).forEach((h, k) => out.push({ at: e.at_ms, key: `${e.role[0]}:${e.at_ms}:${k}`, e, n, k,
+      calls: [...h.matchAll(/<span class="dec-what">([\s\S]*?)<\/span>/g)].map((m) => m[1].replace(/<[^>]*>/g, "")) }));
+  });
+  return out;
 }
-/** A run's row clicked (`el`, its button): opened or folded, the row staying where it was on screen (the chat would
- *  otherwise keep its end in place and move the row up as the lines open under it). */
-function dkRunFlip(el) {
-  const k = el.dataset.key, y = el.getBoundingClientRect().top;
-  if (dkOpenRuns.has(k)) dkOpenRuns.delete(k); else dkOpenRuns.add(k);
-  // The Desk's chat keeps its end in view after a draw (desk/view.js deskSettle): not this time, the row stays.
-  if (el.closest(".dk-chat") && typeof deskChatEnd !== "undefined") deskChatEnd = false;
+/** How session `sid`'s Desk chat draws Cue's messages: the lead's with its short lines (deskChat, deskSessChat). */
+const dkActivityPage = (sid) => ({ lines: deskLineHtml, you: (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid) ? deskLeadNote : deskCueNote });
+/** dkActivityRows by session, kept till its messages change: { sig, rows }. */
+const dkActivity = new Map();
+/** A message's lines as last drawn this turn (dkLinesOf), so its rows draw it once. */
+const dkDrawn = new Map();
+/** Activity for session `sid`, newest first, one reply's lines in their own order: [{ at, key, sid, calls, html }]. */
+function dkActivityOf(sid) {
+  const s = typeof sessionOf === "function" && sessionOf(sid);
+  if (!s) return [];
+  const msgs = conversation(null, s), last = msgs.at(-1), page = dkActivityPage(sid);
+  const sig = `${msgs.length}:${last?.at_ms ?? 0}:${String(last?.text ?? "").length}:${page.you === deskLeadNote}`;
+  let hit = dkActivity.get(sid);
+  if (!hit || hit.sig !== sig) {
+    const rows = dkActivityRows(s).map((x) => ({ ...x, sid, get html() {
+      if (!dkDrawn.size) queueMicrotask(() => dkDrawn.clear());
+      const id = `${sid}:${x.n}:${x.e.at_ms}`;
+      if (!dkDrawn.has(id)) dkDrawn.set(id, dkLinesOf(s, x.e, x.n, dkActivityPage(sid)));
+      return dkDrawn.get(id)[x.k] || "";
+    } })).sort((x, y) => y.at - x.at);
+    hit = { sig, rows };
+    dkActivity.set(sid, hit);
+  }
+  return hit.rows;
+}
+/** A row taken from a chat (dkActivity's) as one line for a panel: its head's words (a line's .mg-lh, a card's who, tag
+ *  and item), its item links kept. */
+function dkRowLine(html) {
+  if (typeof document === "undefined") return esc(String(html).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  const el = t.content.firstElementChild;
+  if (!el) return "";
+  el.querySelectorAll(".mg-age, .mg-mk, .dk-sg, .mg-f, svg:not(.dk-ki svg)").forEach((x) => x.remove());
+  const lh = el.querySelector(".mg-lh");
+  if (lh) return lh.innerHTML;
+  const h = el.querySelector(".mg-h");
+  const body = (el.querySelector(".mg-t, .mg-line, .mg-full, .dec-what, .mg-text") || el).textContent.replace(/\s+/g, " ").trim();
+  const cut = body.length > 90 ? `${body.slice(0, 89)}…` : body;
+  return `${h ? `${h.innerHTML} · ` : ""}${esc(cut)}`;
+}
+/** Opens the open Desk's Activity tab (a count line's click, the panel's "N more in Activity ›"). */
+function deskOpenActivity() {
+  // Whatever is open (an item, a session's chat) takes the lead's card's place (deskOpenCard): close it to show the tab.
+  deskOpen = null;
+  deskTab = "moves";
   renderMain();
-  const now = [...document.querySelectorAll("[data-dk-run]")].find((x) => x.dataset.dkRun === k)?.querySelector(".dk-run-b");
-  let box = now?.parentElement;
-  while (box && box !== document.body && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
-  if (now && box && box !== document.body) box.scrollTop += now.getBoundingClientRect().top - y;
 }

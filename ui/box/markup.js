@@ -7,7 +7,7 @@
  *  - look: "desk" (.dk-box, the default) or "composer" (a session's chat box: .composer > .field).
  *  - placeholder, label (aria-label when no suggestion), rows (1 for "desk", 2 for "composer").
  *  - sug: Claude's suggested reply laid over the empty box ("" for none); sugSid: the session it's from (the Desk's
- *    data-sug-sid; left out for none). wrap: the textarea in a .ta-wrap with the suggestion's line (always for "composer").
+ *    data-sug-sid, and a "composer" box's whose key isn't its session's "s:…"; left out for none). wrap: the textarea in a .ta-wrap with the suggestion's line (always for "composer").
  *  - top: what goes above the pictures (quick phrases, the "To …" line). chips: the box's pictures (true by default).
  *  - drop: pictures can be dropped on it (data-drop). mic, attach: its buttons (both by default; "composer" without
  *    `drop` has no attach button).
@@ -33,7 +33,7 @@ function boxHtml(o) {
   const sug = o.sug || "";
   const send = o.send || {};
   if (o.look === "composer") {
-    const ta = `<textarea rows="${o.rows || 2}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${k}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : o.placeholder || "")}">${esc(text)}</textarea>`;
+    const ta = `<textarea rows="${o.rows || 2}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${k}"${sug ? ` class="sug"${o.sugSid ? ` data-sug-sid="${esc(o.sugSid)}"` : ""} aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : o.placeholder || "")}">${esc(text)}</textarea>`;
     const mic = o.mic === false ? "" : `<button class="icon-btn mic ${on ? "on" : ""}" data-mic="${k}" aria-label="Dictate">${MIC_ICON}</button>`;
     const attach = o.drop && o.attach !== false ? `<button class="icon-btn" data-attach="${k}" aria-label="Add image">${IMAGE_ICON}</button>` : "";
     return `<div class="composer"><div class="field ${o.drop ? "drop" : ""} ${o.bang ? "bang" : ""}" data-drop="${o.drop ? k : ""}">${o.cmd || ""}${o.top || ""}${o.drop ? chips : ""}<div class="field-row">

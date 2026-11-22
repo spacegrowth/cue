@@ -9,9 +9,9 @@ function deskMsgState(step, item, to, fallback = "delivered") {
   const session = sid && (sessionOf(sid) || parkedOf(sid));
   const start = step.delivery?.at_ms || deskMs(step.at);
   const none = { st: fallback, at: fallback === "delivered" ? start : 0, sid };
-  // The hub's own word that it didn't go (#437): red, why, and Retry from its step.
+  // The hub's own word that it didn't go (#437): red, why, and sent again from its step (`yours`: words you wrote).
   const went = step.delivery?.went || "";
-  if (went.startsWith("failed")) return { st: "failed", why: esc(went.replace(/^failed:?\s*/, "") || "it didn't go"), sid, step: step.id };
+  if (went.startsWith("failed")) return { st: "failed", why: esc(went.replace(/^failed:?\s*/, "") || "it didn't go"), sid, step: step.id, yours: step.by === "You" };
   // Sent back with every working folder in use (#419): it goes when one is free, not "Sending…" or "Delivered".
   const copy = deskCopyWait(item);
   if (!session) return copy || none;
@@ -52,14 +52,16 @@ function deskToSid(item, name) {
 }
 /** The line's controls for a message on an item's page (#422): Send now while it's queued in that session; Edit (back
  *  into this page's box, desk/act.js deskHeldEdit) and Send now while Cue keeps it there, as the session's own chat
- *  has them, and Cancel (deskHeldCancel); Retry and Edit on one from here that couldn't go (`retry`: its time, deskMsgRetry, deskMsgEdit). */
+ *  has them, and Cancel (deskHeldCancel); on one of yours that couldn't go, the chat's Send again (#688: `retry`, its
+ *  time, deskMsgRetry; `step`, the hub's step, deskRetry). Retry on a step that isn't yours (the lead's note). */
 function deskMsgActs(m) {
   const btn = (act, label, more = "") => `<button class="q-now" ${act}${more}>${label}</button>`;
   const sid = ` data-sid="${esc(m.sid || "")}"`, at = ` data-id="${esc(m.item || "")}" data-at="${esc(String(m.retry || ""))}"`;
   if (m.st === "queued" && !m.typed) return btn('data-act="send-now"', "Send now", sid);
   if (m.st === "held" || (m.st === "failed" && m.held)) return `${m.item ? `${btn('data-desk-act="held_edit"', "Edit", `${sid} data-id="${esc(m.item)}"`)} · ` : ""}${btn('data-act="held-now"', "Send now", sid)} · ${btn('data-desk-act="held_cancel"', "Cancel", `${sid} data-id="${esc(m.item || "")}"`)}`;
+  if (m.st === "failed" && m.step && m.yours) return sendAgainBtn(`data-desk-act="msg_retry" data-id="${esc(m.item || "")}" data-step="${esc(m.step)}"`);
   if (m.st === "failed" && m.step) return btn(`data-desk-retry="${esc(m.step)}"`, "Retry", ` data-item="${esc(m.item || "")}"`);
-  if (m.st === "failed" && m.retry) return `${btn('data-desk-act="msg_retry"', "Retry", at)} · ${btn('data-desk-act="msg_edit"', "Edit", at)}`;
+  if (m.st === "failed" && m.retry) return sendAgainBtn(`data-desk-act="msg_retry"${at}`);
   return "";
 }
 /** Retry on step `step` of item `id`: its message sent again, as it was. */

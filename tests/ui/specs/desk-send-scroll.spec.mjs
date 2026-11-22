@@ -18,8 +18,8 @@ test("send in the lead's chat: at its end at once, and it follows the reply", as
   await expect.poll(() => atEnd(chat)).toBe(true);
   // Scrolled up to read, then you send.
   await chat.evaluate((el) => { el.scrollTop = 200; el.dispatchEvent(new Event("scroll")); });
-  await page.locator(".dk-right .dk-box textarea").fill("Is the footer done?");
-  await page.locator(".dk-right .dk-box textarea").press("Enter");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Is the footer done?");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").press("Enter");
   await cue.called("desk_send", { project: "cue", text: "Is the footer done?" });
   await expect(chat.locator(".cv-you", { hasText: "Is the footer done?" })).toBeInViewport();
   await expect.poll(() => atEnd(chat)).toBe(true);

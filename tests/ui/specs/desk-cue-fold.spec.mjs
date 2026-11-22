@@ -24,30 +24,26 @@ for (const scheme of ["light", "dark"]) {
     }, { msgs: [{ role: "you", text: SENT_BACK, at_ms: NOW - 60000 }, { role: "you", text: NOTE, at_ms: NOW - 30000 }] });
     await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
     const chat = page.locator('.dk-right [data-desk-chat="host"]');
-    const cards = chat.locator(".mg.cue-msg");
-    await expect(cards).toHaveCount(2);
-    const back = cards.nth(0);
-    // The tag in its own case, a quiet chip: no capitals.
-    await expect(back.locator(".mg-tag")).toHaveText("Not done");
-    await expect(back.locator(".mg-tag")).toHaveCSS("text-transform", "none");
-    await back.locator(".mg-lk", { hasText: "More" }).click();
-    const open = back.locator(".mg-full.cue-fold");
-    await expect(open).toBeVisible();
-    await expect(open.locator(".cue-fold-k")).toHaveText(["You said", "Item", "Next"]);
-    await expect(open.locator(".cue-fold-v")).toHaveText([
-      "“looks good but no underline”",
-      "#d5 · Hosted sessions can't open the canvas",
-      "Waits for a free copy, then host-lead fixes it and says it's done",
-    ]);
+    // Your send-back is your own bubble now (#688), as the board draws it: the item's head and your words, none of
+    // the session's rules. The lead's note is the Desk's own: a count line, its card in Activity.
+    await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
+    await expect(chat.locator(".dk-cnt")).toHaveText([/^1 Desk update · .*Activity ›$/]);
+    const back = chat.locator(".cv-you.mg-you", { hasText: "looks good but no underline" });
+    await expect(back.locator(".dk-about")).toContainText("#d5");
+    await expect(back.locator(".cv-you-text")).toHaveText(/looks good but no underline$/);
     for (const r of RULES) await expect(back).not.toContainText(r);
-    // The lead's note: its words, the item, what's next.
-    await cards.nth(1).locator(".mg-lk", { hasText: "More" }).click();
-    await expect(cards.nth(1).locator(".cue-fold-k")).toHaveText(["The lead said", "Item", "Next"]);
-    await expect(cards.nth(1).locator(".cue-fold-v").first()).toHaveText("“Check the dark theme too”");
-    await expect(cards.nth(1).locator(".cue-fold-v").last()).toHaveText("host-lead reads it and carries on");
+    // The lead's note, in Activity: its words, the item, what's next.
+    await page.evaluate(() => deskOpenActivity());
+    const cards = page.locator(".dk-moves .mg.cue-msg");
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first().locator(".mg-tag")).toHaveCSS("text-transform", "none");
+    await cards.first().locator(".mg-lk", { hasText: "More" }).click();
+    await expect(cards.first().locator(".cue-fold-k")).toHaveText(["The lead said", "Item", "Next"]);
+    await expect(cards.first().locator(".cue-fold-v").first()).toHaveText("“Check the dark theme too”");
+    await expect(cards.first().locator(".cue-fold-v").last()).toHaveText("host-lead reads it and carries on");
     // Its rows' names are muted, the words in ink: the theme's own colours.
     const [k, v, muted, ink] = await page.evaluate(() => {
-      const f = document.querySelector('.dk-right [data-desk-chat="host"] .cue-fold'), d = document.createElement("i"), e = document.createElement("i");
+      const f = document.querySelector(".dk-moves .cue-fold"), d = document.createElement("i"), e = document.createElement("i");
       d.style.color = "var(--muted)"; e.style.color = "var(--ink)"; document.body.append(d, e);
       const r = [getComputedStyle(f.querySelector(".cue-fold-k")).color, getComputedStyle(f.querySelector(".cue-fold-v")).color, getComputedStyle(d).color, getComputedStyle(e).color];
       d.remove(); e.remove(); return r;

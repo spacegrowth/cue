@@ -25,13 +25,15 @@ for (const kind of ["task", "bug", "feature"]) {
       renderMain();
     }, kind);
     const word = kind[0].toUpperCase() + kind.slice(1);
-    // The lead's line about it: "[icon] Task #d3 is done".
-    const say = page.locator(".dk-chat .own-lines button.mg-id").first();
+    // The lead's line about it, and the hand-off card in the session's chat: the Desk's own (#688), in Activity.
+    await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
+    await expect(page.locator('.dk-right [data-desk-chat="host"] .dk-cnt')).toHaveCount(1);
+    await page.evaluate(() => deskOpenActivity());
+    // "[icon] Task #d3 is done".
+    const say = page.locator(".dk-moves .own-lines button.mg-id").first();
     await expect(say).toHaveText(`${word} #d3`);
     expect(await kindOf(say.locator("svg.dk-kic"))).toBe(kind);
-    // The hand-off card in the session's chat.
-    await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
-    const hand = page.locator('.dk-right [data-desk-chat="host"] .mg-id[data-desk-hand]');
+    const hand = page.locator(".dk-moves .mg-id[data-desk-hand]");
     await expect(hand).toHaveText(`${word} #d5`);
     expect(await kindOf(hand.locator("svg.dk-kic"))).toBe(kind);
     // Desk home's line under the Desk's name.

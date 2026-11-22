@@ -12,7 +12,7 @@ test("⌘↵ in the lead's chat box sends now, as in a session's chat; ↵ and �
     Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "working", doing: "Reading footer.js…", doing_ms: Date.now(), since_ms: Date.now() });
   });
   await openDesk(page);
-  const box = page.locator(".dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.click();
   await page.keyboard.type("Stop, the footer is fine");
   await page.keyboard.press("Meta+Enter");

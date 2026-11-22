@@ -173,6 +173,21 @@ function cueFoldHtml(c, t, who = "", title = "") {
   return `<div class="mg-full cue-fold">${said ? row(by, esc(`“${said}”`), " said") : ""}`
     + `${c.id ? row("Item", `#${esc(c.id)}${title2 ? ` · ${esc(title2)}` : ""}`) : ""}${next ? row("Next", esc(next)) : ""}</div>`;
 }
+/** Your send-back of an item (desk/hub/turn/act.rs back_to_same: "[For your teammate X: ]Desk item #ID (title) isn't
+ *  done[ (you said…)]: <words>\nIts fixes stay in…"), yours to see as your own bubble (#688): { id, it, title, words,
+ *  mate }, `words` as you wrote them (cueSentBack). null for any other text, and for a check's own send-back (with
+ *  "The end of its log:").
+ *  SHORTCUT: a landing check's send-back without a log (landing/install.rs) reads as yours: its text alone can't tell
+ *  them apart. Upgrade: the hub marks whose send-back it is. */
+function cueBackOf(text) {
+  const raw = deskSaid(String(text ?? "")).trim();
+  if (!raw.includes(" isn't done")) return null;
+  const [mate, t] = cueMate(raw);
+  const m = /^Desk item #([\w.-]+) \((.*)\) isn't done(?: \(you said it looks right, and now it's reopened\))?: /.exec(t);
+  if (!m || /\nThe end of its log:/.test(t)) return null;
+  const it = (state.desk?.projects || []).flatMap((d) => d.items || []).find((i) => deskIdIs(i, m[1]));
+  return { id: m[1], it, title: m[2], words: cueSentBack(t), mate };
+}
 /** A teammate's message ("For your teammate X: …"): the teammate, and the text without it. */
 const cueMate = (text) => { const m = /^For your teammate (.+?): /.exec(text); return m ? [m[1], text.slice(m[0].length)] : ["", text]; };
 

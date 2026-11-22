@@ -93,7 +93,10 @@ test("each kind of message Cue sends reads as one short line; your own words and
 // In the lead's chat, two already have their own drawing (desk/lead.js deskCueNote): a start failure, and your answer
 // to its ASK (shown with the ASK).
 const IN_LEAD = TO_LEAD.filter(([t]) => !/^(Cue couldn't start|Your ASK)/.test(t));
-const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) "));
+// Your own send-back (no log: you sent it, not Cue's landing check) is your bubble with the item's head, as the board
+// draws it (#688), not one of Cue's lines.
+const YOURS = TO_SESSION[0][0];
+const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) ") && t !== YOURS);
 
 for (const scheme of ["light", "dark"]) {
   test(`Cue's messages show as short lines in the session's and the lead's chats, the full text folded under each (${scheme}) (#478)`, async ({ page, cue }) => {
@@ -109,69 +112,87 @@ for (const scheme of ["light", "dark"]) {
     }, { s: TO_SESSION, l: TO_LEAD, at: NOW - 3 * 60 * 1000 });
     await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
     const chat = page.locator('.dk-right [data-desk-chat="host"]');
-    const lines = chat.locator(".mg.cue-msg");
+    // Your own words keep their bubble, your send-back too: its item's head and your words, no rules (#688).
+    await expect(chat).toContainText("Can you make the header blue?");
+    const yours = chat.locator(".cv-you.mg-you", { hasText: "Are we done here completely?" });
+    await expect(yours).toHaveCount(1);
+    await expect(yours.locator(".dk-about")).toContainText("#d5");
+    await expect(yours).not.toContainText("Its fixes stay");
+    // Cue's messages are the Desk's own (#688): out of the chat, one count line for the run; Activity lists each,
+    // newest first.
+    await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
+    await expect(chat.locator(".dk-cnt")).toHaveText([new RegExp(`^${IN_CHAT.length} Desk updates · .*Activity ›$`)]);
+    // All of them at once (the tab shows 30 till you scroll; the lead's lines are in it too).
+    await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+    const act = page.locator(".dk-moves"), R = [...IN_CHAT].reverse();
+    const lines = act.locator(".mg.cue-msg");
     await expect(lines).toHaveCount(IN_CHAT.length);
-    await expect(lines.locator(".mg-t")).toHaveText(words(IN_CHAT));
-    await heads(lines, IN_CHAT);
-    await expect(lines.first().locator(".mg-tag")).toHaveText("Not done");
-    await expect(lines.first().locator(".mg-tag")).toHaveCSS("text-transform", "none");
-    await expect(chat.locator(".mg-hand")).toHaveCount(0);
+    await expect(lines.locator(".mg-t")).toHaveText(words(R));
+    await heads(lines, R);
+    await expect(lines.last().locator(".mg-tag")).toHaveText("Not done");
+    await expect(lines.last().locator(".mg-tag")).toHaveCSS("text-transform", "none");
+    await expect(act.locator(".mg-hand")).toHaveCount(0);
     // Each has the one line every message has (#422): delivered, to whom.
     await expect(lines.locator(".msg-line.ml-delivered")).toHaveCount(IN_CHAT.length);
-    await expect(lines.nth(1).locator(".cue-more")).toHaveText("· its log");
-    await expect(lines.nth(14).locator(".cue-more")).toHaveText("· 1 more item");
-    // Your own words keep their bubble.
-    await expect(chat).toContainText("Can you make the header blue?");
+    await expect(lines.last().locator(".cue-more")).toHaveText("· its log");
+    await expect(lines.nth(IN_CHAT.length - 14).locator(".cue-more")).toHaveText("· 1 more item");
     // Folded: the standing words aren't in the line; a click opens Cue's full text under it, again closes it.
-    const first = lines.first();
+    const first = lines.last();
     await expect(first).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-full")).toHaveCount(0);
     await first.locator(".mg-lk", { hasText: "More" }).click();
     // Opened, it shows what matters, not the session's rules (#625, desk-cue-fold.spec): your words, the item, what's next.
-    await expect(first.locator(".mg-full .cue-fold-v.said")).toHaveText("“Are we done here completely?”");
-    await expect(first.locator(".mg-full")).toContainText("host-lead fixes it and says it's done");
+    await expect(first.locator(".mg-full .cue-fold-v.said")).toHaveText("“The build failed”");
+    await expect(first.locator(".mg-full")).toContainText("ui-tests fixes it and says it's done");
     await expect(first.locator(".mg-full")).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
-    // Left-aligned, no left stripe, no hover text.
+    // Where they show (#688): each in its own Activity row, after the row's time, at the left of the row's line
+    // column, with the chat it came from under it.
+    const where = await page.evaluate(() => [...document.querySelectorAll(".dk-moves .mg.cue-msg")].map((l) => {
+      const row = l.closest(".dk-mv-ln"), col = row?.querySelector(".dk-mv-line"), at = row?.querySelector(".dk-mv-at");
+      return [row?.querySelectorAll(".mg.cue-msg").length, Math.round(l.getBoundingClientRect().x - col.getBoundingClientRect().x),
+        l.getBoundingClientRect().x > at.getBoundingClientRect().right, row.querySelector(".dk-act-why")?.textContent || ""];
+    }));
+    expect(where).toEqual(R.map(() => [1, 0, true, "in host-lead's chat"]));
+    // No left stripe, no hover text.
     // Found and measured in one go: a redraw replaces the chat, and a locator finds it in one call and measures it in the
     // next, which a redraw can land between (then it measures the old line, gone: no box, no style).
-    const [border, dx] = await page.evaluate(() => {
-      const chat = document.querySelector('.dk-right [data-desk-chat="host"]'), line = chat.querySelector(".mg.cue-msg");
-      return [getComputedStyle(line).borderLeftWidth, line.getBoundingClientRect().x - chat.getBoundingClientRect().x];
-    });
+    const border = await page.evaluate(() => getComputedStyle(document.querySelector(".dk-moves .mg.cue-msg")).borderLeftWidth);
     expect(border).toBe("0px");
-    expect(dx).toBeLessThan(40);
     await expect(page.locator("[title]")).toHaveCount(0);
-    if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
+    if (process.env.SHOT_DIR) await act.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
     await first.locator(".mg-lk", { hasText: "Less" }).click();
     await expect(first.locator(".mg-full")).toHaveCount(0);
     // Its item's number opens the item.
-    await lines.nth(0).locator("button.mg-id").click();
+    await lines.last().locator("button.mg-id").click();
     await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
 
-    // The lead's chat: each one quiet line (#616), "+ Cue · its tag", its item's chip and age, its words under them;
-    // a click opens Cue's full text.
+    // Cue's messages to the lead: out of its chat too (#688); in Activity each one quiet line (#616), "+ Cue · its
+    // tag", its item's chip and age, its words under them; a click opens Cue's full text.
     await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
     const lchat = page.locator(".dk2b-chat .dk-chat");   // the lead's chat is the left card (#666)
-    const llines = lchat.locator(".dk-cue");
-    await expect(lchat.locator(".mg.cue-msg")).toHaveCount(0);
-    await expect(llines).toHaveCount(IN_LEAD.length);
-    await expect(llines.locator(".dk-cue-w")).toHaveText(words(IN_LEAD));
-    await expect(llines.locator(".dk-cue-t .mg-who")).toHaveText(IN_LEAD.map(() => "Cue"));
-    for (const [n, { id }] of card(IN_LEAD).entries()) {
-      if (id) await expect(llines.nth(n).locator(".mg-id")).toContainText(id);
-      else await expect(llines.nth(n).locator(".mg-id")).toHaveCount(0);
-    }
-    await expect(llines.nth(0).locator(".dk-cue-w .mg-v")).toHaveText("· 2 choices");
-    await expect(llines.nth(IN_LEAD.length - 2).locator(".dk-cue-w .mg-v")).toHaveText("· 1 more line");
-    await llines.nth(0).locator(".dk-cue-w").click();
-    await expect(llines.nth(0).locator(".mg-full .cue-fold-v.said")).toHaveText("“There are leftover edits in main. Commit them?\n1. Yes: commit\n2. No”");
-    await expect(llines.nth(0).locator(".mg-full")).toContainText("The lead answers it");
-    await expect(llines.nth(0).locator(".mg-full")).not.toContainText("ANSWER: #d5");
+    await expect(lchat.locator(".dk-cue, .mg.cue-msg")).toHaveCount(0);
     // Its start failure keeps its own note, and your answer to its ASK stays with the ASK's card.
     await expect(lchat).toContainText("no agent");
     await expect(lchat).not.toContainText("The answer: Blue");
-    await expect(page.locator("[title]")).toHaveCount(0);
     if (process.env.SHOT_DIR) await lchat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-lead-${scheme}.png` });
+    await page.evaluate(() => deskOpenActivity());
+    const RL = [...IN_LEAD].reverse(), llines = act.locator(".dk-cue");
+    await expect(llines).toHaveCount(IN_LEAD.length);
+    await expect(llines.locator(".dk-cue-w")).toHaveText(words(RL));
+    await expect(llines.locator(".dk-cue-t .mg-who")).toHaveText(RL.map(() => "Cue"));
+    for (const [n, { id }] of card(RL).entries()) {
+      if (id) await expect(llines.nth(n).locator(".mg-id")).toContainText(id);
+      else await expect(llines.nth(n).locator(".mg-id")).toHaveCount(0);
+    }
+    const top = llines.last();
+    await expect(top.locator(".dk-cue-w .mg-v")).toHaveText("· 2 choices");
+    await expect(llines.nth(1).locator(".dk-cue-w .mg-v")).toHaveText("· 1 more line");
+    await top.locator(".dk-cue-w").click();
+    await expect(top.locator(".mg-full .cue-fold-v.said")).toHaveText("“There are leftover edits in main. Commit them?\n1. Yes: commit\n2. No”");
+    await expect(top.locator(".mg-full")).toContainText("The lead answers it");
+    await expect(top.locator(".mg-full")).not.toContainText("ANSWER: #d5");
+    await expect(act).not.toContainText("The answer: Blue");
+    await expect(page.locator("[title]")).toHaveCount(0);
   });
 }

@@ -10,6 +10,8 @@
  *  - owns(key, el): box `key` (its textarea `el`, when there is one) is this entry's.
  *  - send(key): what its Send does (Enter, and a quick phrase clicked under it). enter(e, key): Enter's own, if not send.
  *  - recall(key): for ↑ ↓ (chat/compose.js recallSent), the session the box goes to as { s }; null for none.
+ *  - sid(key): the session box `key` writes to itself, when it's drawn as a session's box (chat/compose.js box: its
+ *    "/" menu, Send at, Queue); null for none. Asked of every entry, as suggestion is (desk/view.js's lead box).
  *  - suggestion(sugSid): the suggested reply for a box's `sugSid` that's its own ("item:…"); null when it isn't.
  *  - view: the view whose chat the entry keeps, for chatEnd(atEnd) (whether that chat sits at its end at the next draw:
  *    the reader closing, or Reply from it) and keptBox(sid) (the box there a message Cue kept for `sid` comes back to). */

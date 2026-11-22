@@ -43,6 +43,12 @@ async function deskSendBox(key, sendNow = false) {
     else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid)(`About ${to.mate}: ${typed}`, images), true);
     return;
   }
+  // A "/" command or a "!" line in the lead's own box (the Board's composer, #688): sent as a session's box sends it,
+  // so it runs as one. desk_send would put the Desk's summary before it, and it would reach the lead as plain words.
+  if (deskLeadBoxTo(to) && /^[/!]/.test(text)) {
+    const sid = deskLead(deskOf(to.project))?.sid;
+    if (sid) return sendTo(sid, sendNow, key);
+  }
   return deskSendLead(to, key, text, sendNow);
 }
 /** What you wrote about item `to.item` from box `key` (#437). Held by a live session: to it, at any stage, as a note
@@ -168,10 +174,6 @@ async function deskToHolder(p, k = p.key) {
 const deskFailedOf = (id, at) => (deskPending.get(id) || []).find((x) => String(x.at) === String(at) && x.failed != null);
 /** The item Thread's copy of message `m` to the lead: [item id, its pending entry], or null. */
 const deskPendOf = (m) => { for (const [id, list] of deskPending) { const p = list.find((x) => x.lead === m); if (p) return [id, p]; } return null; };
-/** A message to the lead taken out of its chat's list. */
-function deskSentOff(m) {
-  for (const [project, list] of deskSent) if (list.includes(m)) deskSent.set(project, list.filter((x) => x !== m));
-}
 /** Retry on item `id`'s message that couldn't go: sent again from its own words, by the way it first went (#422).
  *  Red till it goes; the box isn't touched. */
 async function deskMsgRetry(id, at) {
@@ -217,27 +219,11 @@ async function deskLeadRetry(m) {
     failed: (e) => { m.failed = e; if (pend) pend[1].failed = e; renderMain(); return true; },
   });
 }
-/** Edit on item `id`'s message that couldn't go: back into the box it went from (the item's box as drawn now when
- *  that one isn't), off its Thread and the lead's chat (#422). */
-function deskMsgEdit(id, at) {
-  const p = deskFailedOf(id, at);
-  if (!p) return;
-  deskUnpend(id, p);
-  if (p.lead) deskSentOff(p.lead);
-  if (p.why === "back") deskBackFor = id;
-  const key = p.why === "back" ? `back:${id}` : document.querySelector(`textarea[data-text="${CSS.escape(p.key)}"]`) ? p.key : deskItemBox(id) || p.key;
-  boxPutBack(key, p.text, p.images || [], { focus: true });
-}
-/** Retry and Edit on a message to the lead that couldn't go (its chat's, at `at`, in Desk `project`) (#422). Edit puts
- *  it in the lead's box as it was sent (from an item's page, with its "About #…"). */
-function deskLeadFailed(project, at, edit) {
+/** Send again on a message to the lead that couldn't go (its chat's, at `at`, in Desk `project`) (#422, #688: as a
+ *  session's chat has it, no Edit). */
+function deskLeadFailed(project, at) {
   const m = (deskSent.get(project) || []).find((x) => String(x.at) === String(at) && x.failed);
-  if (!m) return;
-  if (!edit) return deskLeadRetry(m);
-  deskSentOff(m);
-  const pend = deskPendOf(m);
-  if (pend) deskUnpend(pend[0], pend[1]);
-  boxPutBack(deskBoxKey({ project }), m.text, m.images || [], { focus: true });
+  if (m) return deskLeadRetry(m);
 }
 /** The box on item `id`'s page, as drawn now ("" for none). */
 const deskItemBox = (id) => [...deskBoxes].filter(([, to]) => to.item === id).map(([k]) => k).find((k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`)) || "";
@@ -269,11 +255,10 @@ async function deskAct(id, act, el = null) {
   if (act === "looks_right") return deskLooksRight(id);
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
-  if (act === "msg_retry") return deskMsgRetry(id, el?.dataset.at);
-  if (act === "msg_edit") return deskMsgEdit(id, el?.dataset.at);
+  if (act === "msg_retry") return el?.dataset.step ? deskRetry(id, el.dataset.step) : deskMsgRetry(id, el?.dataset.at);
   if (act === "held_edit") return deskHeldEdit(id, el?.dataset.sid);
   if (act === "held_cancel") return deskHeldCancel(el?.dataset.sid);
-  if (act === "lead_retry" || act === "lead_edit") return deskLeadFailed(id, el?.dataset.at, act === "lead_edit");
+  if (act === "lead_retry") return deskLeadFailed(id, el?.dataset.at);
   if (act === "log_all") { if (!deskFinLogOpen.delete(id)) deskFinLogOpen.add(id); return renderMain(); }
   // Drop, and Remove on a kept copy, take two clicks: the first arms it.
   if ((act === "drop" || act === "remove_kept") && deskDropArm !== id) { deskDropArm = id; return renderMain(); }

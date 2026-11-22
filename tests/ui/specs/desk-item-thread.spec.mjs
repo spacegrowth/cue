@@ -23,14 +23,18 @@ test("an item's replies show whole, a Done is the Desk's line, and Open host-lea
   const r = reply(page, "Here is what I found.");
   await expect(r).toContainText("The last line.");
   await expect(r).not.toHaveClass(/folded/);
-  await expect(r.locator(".own-lines")).toContainText("Bug #d5 is done");
   await expect(r).not.toContainText("DONE:");
+  // The Done is the Desk's own line (#688): out of the reply, a count line under it; Activity has the line.
+  await expect(r.locator(".own-lines")).toHaveCount(0);
+  await expect(page.locator(".dk-right .dk-ichat .dk-cnt")).toHaveText([/^1 Desk update · #d5 done · Activity ›$/]);
   // Its whole session opens here, as its name on the left does, with no pop-up (#306); ‹ goes back to the item.
   await page.locator(".dk-panel[data-side-for] .dk-sfoot").getByText("Open host-lead").click();
   await expect(page.locator(".convo-sheet")).toHaveCount(0);
   await expect(page.locator('.dk-right .dk-chat[data-desk-chat="host"]')).toBeVisible();
   await page.locator("[data-desk-chat-back]").click();
   await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
+  await page.evaluate(() => deskOpenActivity());
+  await expect(page.locator(".dk-moves .dk-mv-ln .own-lines")).toContainText("Bug #d5 is done");
 });
 
 test("what a stop hook made it write after its reply folds under the reply, as the chat folds it (#310)", async ({ page, cue }) => {

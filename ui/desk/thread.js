@@ -7,10 +7,9 @@ const deskChatAttrs = (sid, d) => (sid === deskLead(d)?.sid ? `data-desk-lead-ch
 const deskItemTabs = new Map();
 /** What you wrote on an item's page that hasn't come back as one of its Steps yet, by item: [{ text, why, at, key,
  *  images }], so Thread has it the moment it's sent (deskSendBox, deskSendBack). Dropped once the step is in; one that
- *  couldn't go stays, `failed` (why, "" when not known), with Retry and Edit (#422). `key`: the box it went from. */
+ *  couldn't go stays, `failed` (why, "" when not known), with Send again (#422, #688). `key`: the box it went from. */
 const deskPending = new Map();
 const deskPend = (id, text, why, pics = 0, more = {}) => { const p = { text, why, pics, at: now(), ...more }; deskPending.set(id, [...(deskPending.get(id) || []), p]); deskThreadToEnd = true; return p; };
-const deskUnpend = (id, p) => deskPending.set(id, (deskPending.get(id) || []).filter((x) => x !== p));
 /** Pending message `p`'s step on item `i` (Desk `d`), once the hub has it: yours, in the same words, from when it went
  *  on. null till then. */
 const deskPendStep = (i, d, p) => (p.text.trim() && deskItemLog(i, d).find((c) => !c.call && c.by === "You" && c.text.trim() === p.text.trim() && (c.delivery?.at_ms || deskMs(c.at) + 999) >= p.at)) || null;
@@ -85,7 +84,7 @@ function deskThreadPending(rows, i, d) {
   for (const p of deskPending.get(i.id) || []) {
     if (recorded(p)) continue;
     const name = p.why === "lead" ? deskLead(d)?.name : i.holder?.name;
-    // One that couldn't go: red, why, and Retry · Edit (#422).
+    // One that couldn't go: red, why, and Send again (#422, #688).
     const m = p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskMsgState({ text: p.text, at: p.at / 1000 }, i, p.why === "back" ? "" : deskToSid(i, name), "sending");
     rows.push({ key: `p:${p.at}`, at: p.at, by: "You", you: true, back: p.why === "back", msg: { ...m, to: name, item: i.id }, text: p.text, html: deskPendWords(p) });
   }
@@ -391,7 +390,6 @@ function deskItemChat(i, d, s) {
   // Its held and queued lines' controls as the item's own (#422): Edit back into this page's box, not the session's.
   const acts = (m) => deskMsgActs({ ...m, item: i.id });
   const pickAt = deskPickReplyAt(i, thread);
-  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d, s.session_id), say: deskSaidWords, reply: (e) => deskChatReply(i, e, pickAt), acts, wait: (e) => deskNoteWaits(i, e) });
   // Its stint began before the messages loaded here: load earlier ones until it's in (#575).
   deskLoadStint(i, s);
   // Not twice: what the chat's own outbox shows already (chat/send.js), its held or queued line, or its thread has.
@@ -405,24 +403,28 @@ function deskItemChat(i, d, s) {
   // sending (or kept no word of how it went) waits for its chat as before.
   const went = (p) => { const c = p.failed == null && deskPendStep(i, d, p); return !!c && (!c.delivery || !["", "sending"].includes(c.delivery.went || "")); };
   const sent = (p) => went(p) || (p.failed == null && lostOf(p)) || waits(p) || outbox.some((o) => o.sid === s.session_id && o.text === p.text) || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (p.text.trim() ? e.text.includes(p.text.trim()) : true));
-  // Sent from here and not in its chat yet: its one line (#422), Sending till it is, red with Retry and Edit if it
-  // couldn't go.
+  // Sent from here and not in its chat yet, among the chat's own rows as its outbox is (#422, #688): Sending till it
+  // is, red with Send again if it couldn't go; what the hub says didn't reach it likewise. Each under the item's head,
+  // as its thread's copy will be.
+  const head = deskAboutBtn(i.id, i, i.title);
   const mine = (deskPending.get(i.id) || []).filter((p) => !sent(p)).map((p) => {
     const m = { ...(p.failed != null ? { st: "failed", why: esc(p.failed), retry: p.at } : deskCopyWait(i) || { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id };
-    const pics = p.images?.length ? `<div class="thumbs">${p.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>`
-      : p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
-    return keyed(msgRow({ ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" }, `<div class="cv-you-text mg-text">${esc(p.text).replace(/\n/g, "<br>")}</div>${pics}`), `p:${p.at}`);
-  }).join("");
+    const picsHtml = !p.images?.length && p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
+    return { text: p.text, images: p.images, picsHtml, at: p.at, key: `p:${p.at}`, head, m: { ...m, acts: deskMsgActs(m), extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" } };
+  });
   const failed = lost.map((c) => {
     const m = { ...deskMsgState(c, i, s.session_id), to: c.why?.replace(/^(to |sent back to |note to )/, "") || i.holder?.name, item: i.id };
-    return keyed(msgRow({ ...m, acts: deskMsgActs(m) }, `<div class="cv-you-text mg-text">${esc(c.text).replace(/\n/g, "<br>")}</div>`), `lost:${c.id}`);
-  }).join("");
+    return { text: c.text, at: deskMs(c.at), key: `lost:${c.id}`, head: c.by === "You" ? head : "", m: { ...m, acts: deskMsgActs(m) } };
+  });
+  // Its held and queued lines are the chat's own (heldRow, queuedRow): the board's words, its head, and Ask it now, by
+  // the way (#688); only their controls are this page's, Edit back into its box (#422).
+  const rows = deskChatRows(s, { extra: checks, folds: deskChatFolds(i, d, s.session_id), say: deskSaidWords, reply: (e) => deskChatReply(i, e, pickAt), acts, pending: failed.concat(mine) });
   // Not started yet (#476): that, and its holder's own line only when it really waits on you (its question, a step).
   const notYet = deskNotStarted(i), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";
   // Moved on from it: where the session is now is its next item's, not this one's.
   const left = deskStintLeft(i, s.session_id);
   const where = sessionOf(s.session_id) && !left && (!notYet || asks) ? whereNow(null, s) : "";
-  return `<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${failed}${mine}${notYet ? keyed(notYet, "notyet") : ""}${where ? keyed(where, "where") : ""}</div>`;
+  return `${btwPanel(s.session_id)}<div class="dk-ichat" data-thread-for="${esc(`${i.project}|${i.id}`)}">${rows}${notYet ? keyed(notYet, "notyet") : ""}${where ? keyed(where, "where") : ""}</div>`;
 }
 /** Session `sid` has moved on from item `i` (#575): its last stint with it has ended. */
 const deskStintLeft = (i, sid) => { const t = (i.stints || []).filter((x) => x.sid === sid).at(-1); return !!t && t.until != null; };
@@ -462,18 +464,6 @@ function deskNotStarted(i) {
   }
   const go = `<button class="btn small primary" data-desk-act="start_now" data-id="${esc(i.id)}">${i.holder ? "Start now" : "Start now in a new session"}</button>`;
   return `<div class="dk-ns" role="status"><div class="dk-ns-h">${deskStateIcon(i)}<span>Not started yet</span></div><div class="dk-ns-t">${t}</div>${sub ? `<div class="dk-ns-s">${sub}</div>` : ""}<div class="dk-ns-n">${next}</div><div class="dk-ns-a">${go}</div></div>`;
-}
-/** Your note about item `i` waiting for its holder at work, kept in Cue or queued (#419): { words: yours alone, without
- *  the "About #id (title): " or send-back wrapping Cue sent it in; line: "Waiting: cue-12 is finishing something, your
- *  note goes in next" }. null for a note about something else. */
-function deskNoteWaits(i, e) {
-  const t = String(e?.text || ""), id = i.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // A plain note only, as before #605: a teammate's or a question keeps the chat's own Not sent yet line.
-  const y = deskYourWords(t), about = y && !y.ask && !y.crew && deskIdIs(i, y.id) ? { text: y.words } : null;
-  const back = new RegExp(`^(?:For your teammate [^:\\n]+: )?Desk item #${id} \\([^\\n]*?\\) isn't done: `).exec(t);
-  const words = about ? about.text : back ? t.slice(back[0].length).replace(/\n+Its fixes stay in #[\s\S]*$/, "") : null;
-  if (words == null) return null;
-  return { words: words.trim(), line: `Waiting: ${esc(i.holder?.name || "its session")} is finishing something, your note goes in next` };
 }
 /** Item `i`'s panel, beside its chat on its page (#418): This item (its state, what
  *  it waits on, its buttons; who has it and who added it), You'll see as ticks, What to try, its record, then Open its

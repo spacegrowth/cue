@@ -6,9 +6,11 @@
 .board.dk-board.dk-b2 { grid-template-columns: calc((100% - 28px) * 1.9 / 3.75) minmax(0, 1fr); }
 @media (max-width: 820px) { .board.dk-board.dk-b2 { grid-template-columns: minmax(0, 1fr); } }
 .dk-card.dk2b-chat { position: relative; container: dkcard / inline-size; }
-.dk2b-chat .rd-head { padding: 12px 16px 2px; }
-.dk2b-chat .rd-listen { flex: 0 1 auto; flex-wrap: wrap; row-gap: 8px; min-width: 0; }
-.dk2b-chat .rd { padding: 18px 20px 40px; }
+/* The lead's chat as the Board's session chat (#688): the same padding round its messages (.ap-chat), so Listen and Read
+   under a reply sit where the Board's do, and Read is the Board's reader as it is there (its bar and column). */
+.dk2b-chat .dk-chat, .dk2b-chat .dk-rd { padding: 14px 18px 10px; }
+/* Another Desk's band still runs edge to edge of that chat. */
+.dk2b-chat .dk-chat .dk-band { margin-inline: -18px; padding-inline: 18px; }
 
 /* ---------- the strip: Working pill, how many wait on you, their chips, Check ---------- */
 .dk2b-strip { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-radius: var(--radius-tray); background: var(--panel-2); font-size: var(--type-small); }
@@ -124,6 +126,5 @@
 .dk2b-mh { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; white-space: normal; }
 .dk2b-age { color: var(--muted); font-size: var(--type-small); }
 .dk2b-iacts { display: flex; flex-wrap: wrap; gap: 8px; }
-/* The same for the lead's tabs: no hidden sideways scroll that cuts the switch off at the card's edge. */
+/* The same for the lead's tabs: no hidden sideways scroll that cuts one off at the card's edge. */
 .dk2b-chat .dk-ptabs { flex-wrap: wrap; overflow-x: visible; }
-.dk2b-chat .dk-ptabs > .grow + .seg2 { margin-left: auto; align-self: center; margin-block: 4px; }

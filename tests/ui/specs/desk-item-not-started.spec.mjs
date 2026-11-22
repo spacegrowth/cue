@@ -98,7 +98,8 @@ for (const scheme of ["light", "dark"]) {
         t: fs(".dk-ns-t"), s: fs(".dk-ns-s"), n: fs(".dk-ns-n"), muted: getComputedStyle(e.querySelector(".dk-ns-n")).color, mutedTok: tok("--muted"),
         btn: getComputedStyle(e.querySelector("button")).backgroundColor, accent: tok("--accent"), bgImg: c.backgroundImage };
     });
-    expect(got.bg).toBe(got.panel2);
+    // No fill: only your messages have a background in a Desk chat (#688); the hairline border frames it.
+    expect(got.bg).toBe("rgba(0, 0, 0, 0)");
     expect(got.border).toBe(got.line);
     // No coloured left stripe: the left edge is the same hairline as the rest.
     expect([got.leftW, got.leftC]).toEqual([got.topW, got.border]);

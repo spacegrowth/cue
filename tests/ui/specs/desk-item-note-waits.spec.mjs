@@ -9,7 +9,9 @@ const openItem = async (page, id) => {
   await openDesk(page);
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
-const WAIT = "Waiting: host-lead is finishing something, your note goes in next";
+// The board's words for a message kept in Cue, and for one queued in a Pi agent (#688: the Desk no longer says its own).
+const WAIT = "Not sent yet · Cue sends it when its turn ends";
+const QUEUED = "Queued for host-lead · it reads this after its current step";
 
 test("a note kept for its busy session shows your words and that it goes in next, then the Working line once taken", async ({ page, cue }) => {
   await cue.open("desk");
@@ -19,7 +21,9 @@ test("a note kept for its busy session shows your words and that it goes in next
   });
   await openItem(page, "d5");
   const ichat = page.locator(".dk-right .dk-ichat"), held = ichat.locator(".cv-you.msg-held");
-  await expect(held.locator(".cv-you-text")).toHaveText("make the button bigger");
+  // Its words under the item's head, as the board's chat draws a message about an item (#688).
+  await expect(held.locator(".cv-you-text")).toHaveText(/make the button bigger$/);
+  await expect(held.locator(".dk-about")).toContainText("#d5");
   await expect(held.locator(".ml-words")).toHaveText(WAIT);
   await expect(held).toContainText("Edit");
   await expect(held).toContainText("Send now");
@@ -42,8 +46,10 @@ test("a send-back queued in its session shows your words alone, waiting", async 
   });
   await openItem(page, "d5");
   const q = page.locator(".dk-right .dk-ichat .cv-you.msg-queued");
-  await expect(q.locator(".cv-you-text")).toHaveText("the colour is off");
-  await expect(q.locator(".ml-words")).toHaveText(WAIT);
+  await expect(q.locator(".cv-you-text")).toHaveText(/the colour is off$/);
+  await expect(q.locator(".cv-you-text")).not.toContainText("isn't done");
+  await expect(q.locator(".dk-about")).toContainText("#d5");
+  await expect(q.locator(".ml-words")).toHaveText(QUEUED);
   await expect(q).toContainText("Send now");
 });
 

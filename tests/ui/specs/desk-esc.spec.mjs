@@ -9,7 +9,7 @@ test("the lead's chat: Esc brings back a kept message into its box, then Esc twi
   await cue.open("desk");
   await openDesk(page);
   await hold(cue, "lead", "use the new pool");
-  const box = page.locator(".dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await page.keyboard.press("Escape");
   await cue.called("unhold_message", { sessionId: "lead" });
   await expect(box).toHaveValue("use the new pool");
