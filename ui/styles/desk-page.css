@@ -584,6 +584,7 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-ichat { display: flex; flex-direction: column; gap: 14px; }
 /* Not started yet (#626): a status card, panel-2 on the pane, its head small caps, what it waits for at 13px. */
 .dk-ns { align-self: stretch; box-sizing: border-box; padding: var(--card-pad-y) var(--card-pad-x); border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel-2); color: var(--ink); font-size: var(--type-body); line-height: 1.45; }
+.dk-ns-t { font: var(--mg-body); }   /* what it waits for: a chat's words (#703) */
 .dk-inow > .dk-ns { margin-top: 12px; }
 .dk-ns-h { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-tag); font-weight: 650; }
 .dk-ns-h .dk-si { flex: none; }

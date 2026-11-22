@@ -33,7 +33,7 @@
 .msg p { margin: 0 0 9px; }
 .msg ul, .msg ol { margin: 0 0 9px; padding-left: 20px; }
 .msg li { margin: 2px 0; }
-.msg h4 { margin: 4px 0 6px; font-size: var(--type-body); }
+.msg h4 { margin: 4px 0 6px; font-size: inherit; }
 .msg blockquote { margin: 0 0 9px; padding: 0 0 0 10px; border-left: 3px solid var(--line); color: var(--muted); }
 .msg blockquote > :last-child { margin-bottom: 0; }
 .msg code { font: var(--type-body) var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: var(--radius-tag); }
@@ -108,7 +108,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-cnt { display: inline; margin-left: 4px; padding: 0; user-select: none; -webkit-user-select: none; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; }
 .stx-cnt:hover { color: var(--ink); }   /* darker under the pointer, never underlined (#604) */
 .stx-more { font-size: var(--type-pill); padding-left: 4px; }
-.stx-say { font-size: var(--type-body); line-height: 1.55; }
+.stx-say { font: var(--mg-body); }   /* the agent's words between its steps: a chat's size (#703) */
 .stx-steps { display: flex; flex-direction: column; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 8px; }
 .stx-line { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font-size: var(--type-body); color: var(--ink); padding: 3px 4px; border-radius: var(--radius-qp); min-width: 0; }
 .stx-line[data-step]:hover { background: var(--panel-2); }

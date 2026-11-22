@@ -308,14 +308,14 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   // Their rows' spacing (desk-page.css .dk-mv: 7px padding above and below, a 1px rule between): 15px from one line's
   // foot to the next line's top.
   expect(Math.abs(b.y - (a.y + a.height) - 15)).toBeLessThanOrEqual(2);
-  // One body line at the chat's size and the row's 1px above and below.
-  expect(a.height).toBeLessThan(26);
+  // One body line at the chat's size (a 22px line, #703) and the row's 1px above and below; two lines would be 46px.
+  expect(a.height).toBeLessThan(28);
   // In the words, only the item numbers carry an icon, their kind's (#292); each line's sign sits before them (#685).
   await expect(last.locator(".dk-ln .mg-line svg")).toHaveCount(2);
   await expect(last.locator(".dk-ln > .dk-sg")).toHaveCount(2);
   await expect(last.locator(".dk-ln button.mg-id > svg.dk-kic")).toHaveCount(2);
   await expect(last).not.toContainText("TITLE:");
-  for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
+  for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(28);
   await ln.nth(1).locator(".mg-line").dispatchEvent("click");
   await expect(ln.nth(1).locator(".mg-full")).toContainText("free and warm");
   await expect(ln.nth(1).locator(".mg-full .dk-ln-it")).toHaveCount(1);

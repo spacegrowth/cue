@@ -56,6 +56,8 @@
   --type-pill: 11px;     /* small heads, mono meta: an item's number, an age, a column head */
   --type-small: 12px;    /* buttons, secondary lines, the meta row of a message */
   --type-body: 13px;     /* everything people read: card text, names, messages */
+  --type-chat: 15px;     /* the words in a chat, Slack's size (#703): replies, your messages, Cue's messages; on a 22px line */
+  --type-chat-lh: 22px;
   --type-title: 15px;    /* a pane's or a card's title, and the glyphs on small square buttons */
   --type-page: 20px;     /* a page's heading */
   --type-figure: 32px;   /* big numbers (Insights) */
