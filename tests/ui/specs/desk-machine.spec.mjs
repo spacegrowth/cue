@@ -111,3 +111,32 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await expect(sec.locator(".ld-hint")).toContainText("asks you before");
   await expect(dlg.locator("[title]")).toHaveCount(0);
 });
+
+// The new Desk page's Desk settings drawer (#663): it had no "Where new sessions start", so a machine picked there
+// went nowhere. The same section, saved by the same Save, and still picked when the drawer opens again.
+test("the new Desk page's settings drawer has where new sessions start, and a machine picked there stays picked", async ({ page, cue }) => {
+  await cue.open("desk");
+  await page.evaluate(() => localStorage.setItem("cue.deskV2", "1"));
+  await page.reload();
+  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = { ...ms, machine: "" }; }, machines);
+  await openDesk(page);
+  await page.locator("[data-desk2-set]").click();
+  const dr = page.locator(".dk2-drawer");
+  const sec = dr.locator('[data-ld-sec="machine"]');
+  await expect(sec.locator(".ld-h")).toHaveText("Where new sessions start");
+  await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "true");
+  await sec.locator('[data-ld-mach="gpu-1"]').click();
+  await sec.locator("[data-ld-folder]").fill("/srv/cue");
+  await dr.locator('[data-ld="save"]').click();
+  await expect(dr).toHaveCount(0);
+  await page.locator("[data-desk2-set]").click();
+  await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator("[data-ld-folder]")).toHaveValue("/srv/cue");
+  // The model row too, as on today's dialog.
+  await expect(dr.locator("[data-ld-model]")).toHaveCount(1);
+  for (const c of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: c });
+    if (process.env.SHOT_DIR) await sec.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-v2-machine-${c}.png` });
+  }
+  await expect(dr.locator("[title]")).toHaveCount(0);
+});

@@ -653,3 +653,22 @@ fn an_item_moved_off_a_quiet_machine_starts_its_new_holder_here_from_its_last_pu
     let told = w.hosted.sent().into_iter().filter(|(s, t)| *s == holder && t.contains("moved here from box")).count();
     assert_eq!(told, 1, "its new holder is told where it starts");
 }
+
+#[test]
+fn the_machine_picked_in_desk_settings_is_saved_to_disk_and_comes_back() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put");
+    // As the window's Save sends it (ui/lands.js landsSave): the machine and its folder, on their own.
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": "/srv/app" })).unwrap();
+    let on_disk = |w: &World| -> serde_json::Value {
+        let _ = w;
+        serde_json::from_str(&std::fs::read_to_string(crate::server::cue_dir().join("config.json")).unwrap()).unwrap()
+    };
+    let c = on_disk(&w);
+    assert_eq!(c.pointer(&format!("/project/machine/{project}/machine")).and_then(|v| v.as_str()), Some("box"), "{c}");
+    let d = super::desk::desk(&w, &project);
+    assert_eq!(d["machines"]["machine"].as_str(), Some("box"), "{}", d["machines"]);
+    assert_eq!(item(&w, &project, "Footer jumps")["machine"].as_str(), Some("box"));
+}

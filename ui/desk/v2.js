@@ -113,7 +113,7 @@ function deskV2Drawer(project) {
   const tools = `<div class="dk2-stools"><button class="btn small" data-desk-close-idle="${esc(stale.join(" "))}"${stale.length ? "" : " disabled"}>Close idle${stale.length ? ` (${stale.length})` : ""}</button>
     <span class="dk-add-anchor"><button class="btn small" data-desk-add-session="${esc(project)}" aria-expanded="${picking}">+ Add session</button>${picking ? deskSessionsPicker(project, d, lead?.sid) : ""}</span></div>`;
   const rows = sessions.length ? sessions.map((s) => deskSessionsRow(x, s, false)).join("") : `<div class="dk-empty">No other sessions on this Desk.</div>`;
-  const body = (l ? landsAskBefore() + sec("lands", "How work lands", `${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}<div class="ld-rows">${parts}</div>`) : sec("ask", "Ask me before", deskSettingsLine(d) || `<div class="ld-hint">Set once a lead runs this Desk.</div>`))
+  const body = (l ? landsAskBefore() + sec("lands", "How work lands", `${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}<div class="ld-rows">${parts}${landsModel()}</div>`) + landsMach() : sec("ask", "Ask me before", deskSettingsLine(d) || `<div class="ld-hint">Set once a lead runs this Desk.</div>`))
     + sec("desk", "This Desk", desk)
     + sec("sessions", `Sessions on this Desk · ${sessions.length} · ${working} working`, `${tools}<div class="dk2-slist">${rows}</div>`)
     + (l ? sec("old", "Old working folders", `<div class="ld-rows">${landsOld()}</div>`) : "")
