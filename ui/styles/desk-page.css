@@ -591,6 +591,11 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-ns a { color: var(--ink); font-weight: 600; }
 .dk-ns-s, .dk-ns-n { margin-top: 2px; color: var(--muted); font-size: var(--type-small); }
 .dk-ns-a { display: flex; gap: 6px; margin-top: 10px; }
+.dk-ns-by summary { cursor: pointer; width: fit-content; user-select: none; -webkit-user-select: none; }
+.dk-ns-by summary:hover { color: var(--ink); }
+.dk-ns-by ul { margin: 4px 0 0; padding-left: 18px; }
+.dk-ns-by a { font-weight: 500; text-decoration: none; }
+.dk-ns-by a:hover { text-decoration: underline; }
 .dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn); background: var(--panel-2); color: var(--muted); font-size: var(--type-body); cursor: pointer; user-select: none; -webkit-user-select: none; }
 .dk-fold b { flex: none; color: var(--ink); font-weight: 650; }
 .dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }

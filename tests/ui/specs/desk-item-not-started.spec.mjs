@@ -26,7 +26,7 @@ test("a queued item after another shows a card naming that item, who is on it an
   await expect(card).not.toContainText("#d3");
   const go = card.locator('button[data-desk-act="start_now"]');
   await expect(go).toHaveText("Start now");
-  await expect(go).toHaveClass(/\bprimary\b/);
+  await expect(go).not.toHaveClass(/\bprimary\b/);
   // Said once: no chain of the same below it, no "Waiting on you", no holder's line.
   await expect(page.locator(".dk-right .dk-pane .dk-chain")).toHaveCount(0);
   await expect(ichat).not.toContainText("Waiting on you");
@@ -47,7 +47,7 @@ test("a queued item after another shows a card naming that item, who is on it an
   await expect(ichat.locator('[data-key="where"]')).toContainText("Reading rail.js");
 });
 
-test("a queued item waiting for a free working folder names the items using them by title", async ({ page, cue }) => {
+test("a queued item waiting for a free working folder says how many, with their titles folded away", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => {
     Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "waiting", thread: [], since_ms: Date.now() - 60000 }); st.items = st.items.filter((i) => !(i.session_id === "lead" && i.status === "pending"));
@@ -55,9 +55,11 @@ test("a queued item waiting for a free working folder names the items using them
   });
   await openItem(page, "d4");
   const ichat = page.locator(".dk-right .dk-ichat"), card = ichat.locator(".dk-ns");
-  await expect(card.locator(".dk-ns-t")).toHaveText("It waits for a free working folder.");
-  await expect(card.locator(".dk-ns-s")).toHaveText("In use by Search stays centred in the header and Hosted sessions can't open the canvas.");
-  await expect(card.locator(".dk-ns-s a")).toHaveCount(2);
+  await expect(card.locator(".dk-ns-t")).toHaveText("Waiting for one of 2 items to finish.");
+  // The titles stay folded away till you ask (#671).
+  await expect(card.locator(".dk-ns-s a").first()).toBeHidden();
+  await card.locator(".dk-ns-s summary").click();
+  await expect(card.locator(".dk-ns-s a")).toHaveText(["Search stays centred in the header", "Hosted sessions can't open the canvas"]);
   await expect(card.locator(".dk-ns-n")).toHaveText("It starts by itself when one is free.");
   await expect(card).not.toContainText("#d");
   await expect(card.locator('button[data-desk-act="start_now"]')).toHaveText("Start now");
@@ -110,7 +112,8 @@ for (const scheme of ["light", "dark"]) {
     expect(got.t).toBe(got.body);
     expect([got.s, got.n]).toEqual([got.small, got.small]);
     expect(got.muted).toBe(got.mutedTok);
-    expect(got.btn).toBe(got.accent);
+    // Start now is a quiet, ordinary button (#671), not the accent fill.
+    expect(got.btn).not.toBe(got.accent);
     await expect(page.locator(".dk-right [title]")).toHaveCount(0);
   });
 }
