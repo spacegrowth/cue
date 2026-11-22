@@ -142,9 +142,9 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   await expect(line.locator(".mg-h .mg-age")).toHaveText(/^\d+[smhd]$/);
   await expect(line.locator(".mg-t")).toHaveText("Quick phrases at the right of Send");
   await expect(line.locator(".mg-f .mg-lk")).toHaveText("Check it ›");
-  // No edge stripe, the chat's body size (Default, #594), no buttons of its own but the two that open the item.
+  // No edge stripe, the family's body size, no buttons of its own but the two that open the item.
   await expect(line).toHaveCSS("border-left-width", "0px");
-  await expect(line.locator(".mg-t")).toHaveCSS("font-size", "15px");
+  await expect(line.locator(".mg-t")).toHaveCSS("font-size", "13px");
   await expect(line.locator("[data-desk-act]")).toHaveCount(0);
   // Compact: its title on one line of the body size.
   expect(await line.locator(".mg-t").evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(23);

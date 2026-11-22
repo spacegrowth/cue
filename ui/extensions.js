@@ -56,7 +56,7 @@ function sessTabs(sid) {
   return `<div class="stabs"><button class="stab ${on || diffOn(sid) || bgTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${bgTabBtn(sid)}${diffTabBtn(sid)}${tabs.map((e) => {
     const b = extBadges.get(`${e.name}|${sid}`);
     return `<button class="stab ${on === e.name ? "on" : ""}" data-stab="${esc(e.name)}" data-sid="${esc(sid)}">${esc(e.tab)}${b ? `<span class="stab-n">${esc(b)}</span>` : ""}</button>`;
-  }).join("")}<span class="grow"></span>${ran ? `<span class="stab-ran">ran <code>${esc(ran)}</code></span>` : ""}${on || diffOn(sid) || bgTabOn.has(sid) ? "" : chatTextBtns()}</div>`;
+  }).join("")}<span class="grow"></span>${ran ? `<span class="stab-ran">ran <code>${esc(ran)}</code></span>` : ""}</div>`;
 }
 /** Where the tab's page goes, in place of the chat (the chat's element stays, hidden: see placeExt). */
 const extSlot = (sid) => (extOn(sid) ? `<div class="ext-slot" data-ext-slot></div>` : "");

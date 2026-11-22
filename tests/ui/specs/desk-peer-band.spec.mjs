@@ -14,7 +14,7 @@ async function isBand(page, b) {
   expect(css[0]).toBe("0px");
   expect(css[1]).not.toBe("rgba(0, 0, 0, 0)");
   expect(css[1]).not.toBe(css[2]);
-  expect(css[3]).toBe("15px"); // the chat's text size at Default (#594)
+  expect(css[3]).toBe(await page.locator(".dk-chat").evaluate((e) => getComputedStyle(e).getPropertyValue("--type-body").trim())); // the chat's text size
 }
 
 const docsSite = (st, at) => {

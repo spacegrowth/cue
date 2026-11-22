@@ -84,20 +84,6 @@ function stepZoom(dir) {
   toast(`Text size: ${name}${i === cur && dir ? (dir > 0 ? " (the largest)" : " (the smallest)") : ""}`);
   if (i !== cur) setSetting("appearance.zoom", z);
 }
-/** A chat's words (config.rs CHAT_TEXT_STEPS, #594): its messages and the words in its box, in px, on top of the
- *  window's zoom (styles/base.css --type-chat). A− / A+ on a chat's head step it; Cue keeps the one you pick. */
-const CHAT_TEXT = [13, 14, 15, 16, 18];
-const chatText = () => (CHAT_TEXT.includes(state.settings?.appearance?.chat_text) ? state.settings.appearance.chat_text : 15);
-function stepChatText(dir) {
-  const cur = CHAT_TEXT.indexOf(chatText()), i = Math.max(0, Math.min(CHAT_TEXT.length - 1, cur + dir));
-  if (i !== cur) setSetting("appearance.chat_text", CHAT_TEXT[i]);
-}
-/** A− / A+: the chat's words a step smaller or bigger; the end step's button is off. */
-function chatTextBtns() {
-  const i = CHAT_TEXT.indexOf(chatText());
-  const b = (dir, label, say, off) => `<button class="ctext-b" data-act="chat-text" data-dir="${dir}" aria-label="${say}"${off ? " disabled" : ""}>${label}</button>`;
-  return `<span class="ctext" role="group" aria-label="Chat text size">${b(-1, "A−", "Smaller chat text", i === 0)}${b(1, "A+", "Larger chat text", i === CHAT_TEXT.length - 1)}</span>`;
-}
 const SEARCH_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
 const INSIGHTS_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M7.5 16v-5"/><path d="M12 16V5"/><path d="M16.5 16V9"/></svg>`;
 const GEAR_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;

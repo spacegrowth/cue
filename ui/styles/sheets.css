@@ -82,9 +82,9 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
 .ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
 .ld-step .btn { min-width: 30px; padding: 4px 8px; }
 .ld-n { min-width: 14px; text-align: center; font-size: var(--type-body); }
-.ld-dialog .set-group { margin: 14px 0 6px; }
 .ld-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
 .ld-model-at { display: inline-flex; align-items: center; gap: 8px; font-size: var(--type-body); color: var(--muted); }
+.ld-dialog .set-group { margin: 14px 0 6px; }
 .ld-sub { margin: -2px 0 4px; }
 .ld-esc { cursor: pointer; }
 .ld-intro { margin: 0 0 2px; }

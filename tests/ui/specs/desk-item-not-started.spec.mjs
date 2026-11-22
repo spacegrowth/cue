@@ -94,7 +94,7 @@ for (const scheme of ["light", "dark"]) {
       const fs = (sel) => getComputedStyle(e.querySelector(sel)).fontSize;
       return { bg: c.backgroundColor, panel2: tok("--panel-2"), border: c.borderTopColor, line: tok("--line"), leftW: c.borderLeftWidth, topW: c.borderTopWidth, leftC: c.borderLeftColor,
         radius: c.borderTopLeftRadius, pad: `${c.paddingTop} ${c.paddingLeft}`, ink: c.color, inkTok: tok("--ink"),
-        body: c.getPropertyValue("--type-body").trim(), small: root.getPropertyValue("--type-small").trim(),
+        body: root.getPropertyValue("--type-body").trim(), small: root.getPropertyValue("--type-small").trim(),
         t: fs(".dk-ns-t"), s: fs(".dk-ns-s"), n: fs(".dk-ns-n"), muted: getComputedStyle(e.querySelector(".dk-ns-n")).color, mutedTok: tok("--muted"),
         btn: getComputedStyle(e.querySelector("button")).backgroundColor, accent: tok("--accent"), bgImg: c.backgroundImage };
     });
@@ -106,9 +106,7 @@ for (const scheme of ["light", "dark"]) {
     expect(got.radius).toBe("12px");
     expect(got.pad).toBe("10px 12px");
     expect(got.ink).toBe(got.inkTok);
-    // The body token where the card sits: it's in the item's chat, so the chat's text size (#594).
     expect(got.t).toBe(got.body);
-    expect(got.body).toBe("15px");
     expect([got.s, got.n]).toEqual([got.small, got.small]);
     expect(got.muted).toBe(got.mutedTok);
     expect(got.btn).toBe(got.accent);
