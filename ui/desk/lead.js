@@ -486,7 +486,7 @@ function deskLineNote(k) {
   const sent = (d?.decisions || []).find((x) => x.item_id === it.id && x.text === words && /^note to /.test(x.why || ""));
   const to = sent ? sent.why.slice(8) : it?.holder ? deskHolderName(it.holder.sid, it.holder.name) : "";
   // The family's card (#501): "cue-lead → cue-481 NOTE Feature #418", the words under it.
-  return deskMg({ kind: "note", who: esc(d ? deskLeadName(d) : "The lead"), to: to ? esc(to) : "", tag: "NOTE", id: ref(at, it),
+  return deskMg({ kind: "note", who: esc(d ? deskLeadName(d) : "The lead"), to: to ? esc(to) : "", tag: "Note", id: ref(at, it),
     body: deskCut(`note:${body}`, "mg-t whole", inline(words), words) });
 }
 /** A DESIGNS line (deskLineHtml): the mocks' link alone. */
@@ -549,7 +549,7 @@ function deskStopNote(e) {
   const [, id, said] = stop || fail;
   const it = (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id));
   const loose = !!stop?.[3], files = loose ? stop[5].split(", ").filter(Boolean) : [];
-  const tag = fail ? "COULDN'T START" : loose ? "STOPPED, NOT COMMITTED" : "STOPPED";
+  const tag = fail ? "Couldn't start" : loose ? "Stopped, not committed" : "Stopped";
   const plain = fail ? `Cue couldn't start a session for it: ${esc(fail[3])}.`
     : `<b class="mg-who">${esc(stop[4])}</b> ended its turn with no DONE${loose ? ", and its work isn't in your app yet." : " and no question for you."}`;
   const last = stop?.[6]?.trim();
@@ -570,12 +570,12 @@ function deskFromSession(e) {
   if (!m) return null;
   const [, who, id, said, words] = m;
   const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
-  return deskMg({ kind: "from", who: esc(who), tag: "TO LEAD", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
+  return deskMg({ kind: "from", who: esc(who), tag: "To lead", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
     body: `${id ? `<div class="mg-t whole">${esc(it?.title || said)}</div>` : ""}${deskCut(`from:${e.at_ms}`, "mg-t whole", esc(words.trim()).replace(/\n/g, "<br>"), words.trim())}` });
 }
 /** What Cue told the lead of a DONE it couldn't act on (desk/hub/core/desk.rs lead_done: "#69 not closed: it's done already",
  *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):
- *  one card from Cue (NOT CLOSED), a line an item: "[task] Task #69 title · why", its number opening it. null for any
+ *  one card from Cue (Not closed), a line an item: "[task] Task #69 title · why", its number opening it. null for any
  *  other message. */
 function deskDoneNotes(e) {
   const lines = String(e.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
@@ -583,7 +583,7 @@ function deskDoneNotes(e) {
   const notes = lines.slice(0, -1).map((l) => /^#([^\s:]+) not closed: (.*)$/.exec(l));
   if (notes.some((m) => !m)) return null;
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  return deskMg({ kind: "done", cue: true, who: "Cue", tag: "NOT CLOSED", age: e.at_ms, body: notes.map(([, id, why]) => {
+  return deskMg({ kind: "done", cue: true, who: "Cue", tag: "Not closed", age: e.at_ms, body: notes.map(([, id, why]) => {
     const it = known(id);
     const head = it ? `${deskMgId(it.id, it.kind, deskNum(it))} ${esc(it.title)}` : `<span class="mg-id">#${esc(id)}</span>`;
     return `<div class="mg-line"><span class="mg-lh">${head} <span class="mg-v">· ${esc(why)}</span></span></div>`;
@@ -608,7 +608,7 @@ function deskNewItems(e) {
   // Cue's own: New item lines first, then its words for the lead, which always ask for a ROUTE.
   if (n < 1 || !lines.slice(n).some((l) => /\bRoute (it|each) now:/.test(l)) || lines.slice(n).some((l) => NEW.test(l))) return null;
   const known = (x) => (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, x));
-  return deskMg({ kind: "new", who: "You", tag: "NEW ITEMS", age: e.at_ms, body: lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known)).join("") });
+  return deskMg({ kind: "new", who: "You", tag: "New items", age: e.at_ms, body: lines.slice(0, n).map((l) => deskNewCard(NEW.exec(l), known)).join("") });
 }
 /** One new item in the NEW ITEMS card (deskNewItems, #501): "[icon] Feature #72 title" as one line, then the words it was
  *  added with, plain and lighter (once the lead gave it a shorter title), a quiet
@@ -663,7 +663,7 @@ function deskHandHtml(e, meta) {
   const ref = d ? `<button class="mg-id" data-desk-hand="${esc(d.project)}" data-id="${esc(it?.id ?? id)}">${num}</button>` : `<span class="mg-id">${num}</span>`;
   const pics = (parts.P || "").split(",").map((x) => x.trim()).filter(Boolean).length;
   // The family's card (#501): "web-lead HAND-OFF Bug #d5 for x", the title, You'll see, Why, the pictures counted.
-  const card = deskMg({ kind: "hand", cue: !lead, who: esc(lead || "The Desk"), tag: "HAND-OFF", id: ref, to: mate ? esc(mate) : "",
+  const card = deskMg({ kind: "hand", cue: !lead, who: esc(lead || "The Desk"), tag: "Hand-off", id: ref, to: mate ? esc(mate) : "",
     body: `<div class="mg-t whole dk-hand-t"><b>${esc(title)}</b></div>`
       + (parts.S?.trim() ? `<div class="mg-f">You'll see</div>${deskDoneWhenHtml(parts.S.trim())}` : "")
       + (parts.W?.trim() ? `<div class="mg-f">Why</div><div class="mg-t whole dk-hand-w">${esc(parts.W.trim())}</div>` : ""),

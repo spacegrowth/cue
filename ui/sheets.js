@@ -147,7 +147,7 @@ function searchSections(q, sel, here = null) {
   // archive, before Cue: Resume opens it again), and what was said.
   const section = (title, note, keep) => {
     const rows = searchResults.map((r, i) => [r, i]).filter(([r]) => keep(r) && mine(r));
-    return rows.length ? `<div class="sr-sec">${title.toUpperCase()} <span>${rows.length}</span><em>${note}</em></div>${rows.map(([r, i]) => row(r, i)).join("")}` : "";
+    return rows.length ? `<div class="sr-sec">${title} <span>${rows.length}</span><em>${note}</em></div>${rows.map(([r, i]) => row(r, i)).join("")}` : "";
   };
   // History, grouped by session: its name once, then its matches (the 3 newest, until you ask for more).
   const SHOWN = 3;
@@ -161,7 +161,7 @@ function searchSections(q, sel, here = null) {
     });
     if (!groups.length) return "";
     const total = groups.reduce((n, g) => n + g.rows.length, 0);
-    return `<div class="sr-sec">HISTORY <span>${total}</span><em>messages and answers</em></div>` + groups.map((g) => {
+    return `<div class="sr-sec">History <span>${total}</span><em>messages and answers</em></div>` + groups.map((g) => {
       const all = searchMore.has(g.sid) || g.rows.length <= SHOWN + 1, name = esc(g.r.name || g.r.project || "session");
       const head = `<div class="sr-group">${badge(g.r.harness)}<span class="proj">${name}</span>${g.r.ended ? `<span class="sr-ended">ended</span>` : ""}<span class="dim">${g.rows.length} ${g.rows.length === 1 ? "match" : "matches"}</span></div>`;
       return head + (all ? g.rows : g.rows.slice(0, SHOWN)).map(([r, i]) => row(r, i, true)).join("")
@@ -260,7 +260,7 @@ function forwardPop() {
       ${badge(x.harness)}<span class="proj">${esc(x.name || x.project)}</span><span class="grow"></span><span class="fwd-st">${esc(label(x))}</span></button>`).join("");
   const to = sessionOf(f.to);
   return `<div class="fwd-catch" data-act="cancel-forward"></div><div class="fwd-pop" role="dialog" aria-label="Send to another session">
-    <div class="fwd-head">SEND THIS MESSAGE TO</div>
+    <div class="fwd-head">Send this message to</div>
     <div class="fwd-list">${opts || `<div class="dim" style="padding:6px 8px">No other sessions are open.</div>`}</div>
     ${boxHtml({ look: "forward", key: "fwd", placeholder: "Add a note (optional)" })}
     <div class="fwd-foot"><button class="btn" data-act="cancel-forward">Cancel</button><button class="btn primary" data-act="send-forward" ${to ? "" : "disabled"}>${to ? `Send to ${esc(to.project)}` : "Pick a session"}</button></div></div>`;

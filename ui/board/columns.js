@@ -71,7 +71,7 @@ function colLayout(wColl, sColl) {
  *  board's width (100%): the crew's page gives its chat the same (team_page.js). Folds and full screen don't count: with
  *  both folded the chat is nearly the whole board, which would leave the crew's list no room. */
 const boardChatWidth = () => colLayout(false, false).main;
-const colGrip = (g) => `<div class="col-grip ${colSizing?.name === g.name ? "on" : ""}" data-col-grip="${g.name}" style="left:${g.left}"><i></i>${colSizing?.name === g.name && colSizing.edge ? `<b>${g.name.toUpperCase()} · ${colSizing.edge.toUpperCase()}</b>` : ""}</div>`;
+const colGrip = (g) => `<div class="col-grip ${colSizing?.name === g.name ? "on" : ""}" data-col-grip="${g.name}" style="left:${g.left}"><i></i>${colSizing?.name === g.name && colSizing.edge ? `<b>${g.name[0].toUpperCase() + g.name.slice(1)} · ${colSizing.edge}</b>` : ""}</div>`;
 const colReset = (name) => colMoved(name) ? `<button class="col-reset" data-col-reset="${name}">Reset</button>` : "";
 /** Put a column back to its usual width. */
 function resetCol(name) {

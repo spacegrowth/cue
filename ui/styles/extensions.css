@@ -22,7 +22,7 @@
 .xt-state { font-size: var(--type-small); font-weight: 600; color: var(--muted); }
 .xt.on .xt-state { color: var(--ink); }
 .xt-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 6px 22px; margin-top: 10px; font-size: var(--type-body); }
-.xt-k { font-size: var(--type-pill); font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.xt-k { font-size: var(--type-pill); font-weight: 650; color: var(--muted); margin-bottom: 4px; }
 .xt ul { margin: 0; padding-left: 18px; }
 .xt li { margin: 2px 0; }
 .xt-more { grid-column: 1 / -1; background: var(--panel-2); border-radius: var(--radius-btn); padding: 8px 10px; }

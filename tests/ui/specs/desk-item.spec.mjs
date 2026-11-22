@@ -132,11 +132,11 @@ test("↑ in the lead's box brings back what you sent it (without the Desk's sum
 test("a DONE is one Ready to check card in the lead's chat: its item, its age, Check it › opens the item's page, where what to test, Looks right and Send back are; once checked a quiet line says what you said", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  // The message family's card from Cue (#501): READY TO CHECK, the item, its age; its title; Check it › in the foot.
+  // The message family's card from Cue (#501): Ready to check, the item, its age; its title; Check it › in the foot.
   const line = page.locator('.dk-chat [data-mg="check"]');
   await expect(line).toHaveCount(1);
   await expect(page.locator(".dk-chat .dk-chk")).toHaveCount(0);
-  await expect(line.locator(".mg-tag")).toHaveText("READY TO CHECK");
+  await expect(line.locator(".mg-tag")).toHaveText("Ready to check");
   await expect(line.locator(".mg-h .mg-id")).toHaveText("Feature #d2");
   await expect(line.locator(".mg-h .mg-id svg.dk-kic")).toHaveCount(1);
   await expect(line.locator(".mg-h .mg-age")).toHaveText(/^\d+[smhd]$/);
@@ -151,7 +151,7 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
 
   // Not installed yet: nothing to try, so it's waiting for install, on its line, row and page (#130).
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
-  await expect(line.locator(".mg-tag")).toHaveText("WAITING FOR INSTALL");
+  await expect(line.locator(".mg-tag")).toHaveText("Waiting for install");
   const row = page.locator('.dk-it[data-desk-item="d2"]');
   await expect(row.locator(".dk-who")).toContainText("waiting for install");
   await expect(row.locator(".dk-ok")).toHaveCount(0);
@@ -171,7 +171,7 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   // Installed before the DONE but after its work last changed (you install, then say DONE): it's in, too (#115).
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].edited = 1793984280000 - 120000; });
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
-  await expect(line.locator(".mg-tag")).toHaveText("READY TO CHECK");
+  await expect(line.locator(".mg-tag")).toHaveText("Ready to check");
 
   // Check it › opens the item's page: what to test as a checklist, then quiet under it who did it, when and how many
   // files, and that the installed Cue has it; Looks right and Send back.
@@ -1083,7 +1083,7 @@ test("Board Sessions: Desk sessions sit under their own fold line at the foot, o
   const deskSids = await col.evaluate((el) => [...el.querySelectorAll("[data-session]")].map((n) => n.dataset.session).filter((sid) => deskWorksFor(sid)));
   expect(deskSids.length).toBeGreaterThan(0);
   await expect(fold).toHaveCount(1);
-  await expect(fold).toContainText(`DESK SESSIONS · ${deskSids.length}`);
+  await expect(fold).toContainText(`Desk sessions · ${deskSids.length}`);
   await expect(fold).toHaveAttribute("aria-expanded", "true");
   await expect(fold.locator("svg.dk-kic")).toHaveCount(1);
   // Open: every Desk session's card comes after the fold line, none above it.
@@ -1111,7 +1111,7 @@ test("Board Waiting: a Desk session's your-turn row folds with Desk at the foot;
   const col = page.locator(".sec-waiting .sec-body");
   const fold = col.locator("[data-fold-desk]");
   await expect(fold).toHaveCount(1);
-  await expect(fold).toContainText("DESK SESSIONS · 1");
+  await expect(fold).toContainText("Desk sessions · 1");
   await expect(fold).toContainText("your turn");
   const order = await col.evaluate((el) => [...el.querySelectorAll("[data-fold-desk], .nrow")].map((n) => n.matches("[data-fold-desk]") ? "FOLD" : n.textContent.includes("site-lead") || n.querySelector("[data-session='site'], [data-id='n-site-turn']") ? "SITE" : "OTHER"));
   expect(order.indexOf("FOLD")).toBeLessThan(order.lastIndexOf("SITE"));
@@ -1197,7 +1197,7 @@ test("an item whose new session couldn't start says so, with why and Retry, not 
     state.desk.projects.find((x) => x.project === "cue").items.push({ id: "f1", project: "cue", kind: "bug", title: "The footer overlaps", state: "new", created: Date.now(), updated: Date.now(), holder: null, from: "you", start_failed: "the folder is gone" });
     renderMain();
   });
-  await expect(page.locator('[data-desk-item="f1"] .dk-tag')).toHaveText("couldn't start");
+  await expect(page.locator('[data-desk-item="f1"] .dk-tag')).toHaveText("Couldn't start");
   await page.locator('[data-desk-item="f1"]').click();
   const pane = page.locator(".dk-right .dk-pg");   // the item's page, its panel beside its chat (#418)
   await expect(pane).toContainText("Couldn't start");
@@ -1230,7 +1230,7 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
   });
   const card = page.locator('.dk-right [data-desk-chat="host"] .mg-hand');
   await expect(card).toHaveCount(1);
-  await expect(card.locator(".mg-h")).toHaveText(/^web-lead\s*HAND-OFF\s*Bug #d5/);
+  await expect(card.locator(".mg-h")).toHaveText(/^web-lead\s*Hand-off\s*Bug #d5/);
   await expect(card.locator(".dk-hand-t")).toHaveText("Hosted sessions can't open the canvas");
   await expect(card.locator(".dk-dwl li")).toHaveText(["the canvas opens from a hosted session", "it says why when it can't", "light and dark", "Installed and committed"]);
   await expect(card.locator(".dk-hand-w")).toHaveText("you know the host side");

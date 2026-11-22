@@ -376,7 +376,7 @@ test.describe("a hosted lead's crew on its own page", () => {
     // btw opens its panel in the pane, as on the board.
     await pane.locator(".ap-head [data-act=btw]").click();
     await expect(pane.locator(".btw-pop")).toBeVisible();
-    await expect(pane.locator(".btw-head"), "it says whom it asks").toContainText("BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT");
+    await expect(pane.locator(".btw-head"), "it says whom it asks").toContainText("By the way · asks the lead, not part of its chat");
     await expect(pane.locator(".btw-ask textarea")).toHaveAttribute("placeholder", "Ask the lead without interrupting it…  ↵");
     await page.locator("[data-act=btw-close]").click();
     await expect(page.locator(".btw-pop")).toHaveCount(0);

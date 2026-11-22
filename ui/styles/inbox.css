@@ -26,7 +26,7 @@
 .ib-tab.on { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); font-weight: 650; }
 .ib-tab span { font-variant-numeric: tabular-nums; }
 .ib-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
-.ib-sect { display: flex; align-items: center; gap: 5px; padding: 10px 16px 3px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ib-sect { display: flex; align-items: center; gap: 5px; padding: 10px 16px 3px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .ib-sect svg { width: 11px; height: 11px; }
 /* A Desk's heading over its sessions: the desk icon, its name, how many, how many need you. */
 .ib-sect.ib-dg { gap: 6px; padding-top: 12px; font-size: var(--type-body); font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--ink); }
@@ -134,7 +134,7 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
   .ib-aside { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-top: 0; border-left: 1px solid var(--line); }
   .ib-thread > *, .ib-foot > * { width: 100%; max-width: 720px; }
 }
-.ib-k { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ib-k { font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .ib-link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; text-align: left; }
 
 /* Its words before the question: its own markdown, the last paragraph or few. */
@@ -158,7 +158,7 @@ button.ib-sect.ib-strip { padding: 8px 16px 6px; gap: 5px; }
 .ib-card.wait { opacity: 0.6; }
 .ib-card[data-inbox-step] { cursor: pointer; }
 .ib-card[data-inbox-step]:hover { opacity: 1; }
-.ib-qn { font-size: var(--type-tag); font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.ib-qn { font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .ib-qt { font-size: var(--type-body); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .ib-card.done .ib-qt, .ib-card.wait .ib-qt { font-size: var(--type-body); font-weight: 600; }
 .ib-dim, .ib-why { color: var(--muted); font-weight: 400; font-size: var(--type-body); }

@@ -47,7 +47,7 @@ function historyView() {
   const day = (ms) => {
     const d = new Date(ms), today = new Date(now());
     const diff = Math.round((new Date(today.toDateString()) - new Date(d.toDateString())) / 86400000);
-    return diff === 0 ? "TODAY" : diff === 1 ? "YESTERDAY" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+    return diff === 0 ? "Today" : diff === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   };
   const at = (i) => i.resolved_ms || i.created_ms;
   const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

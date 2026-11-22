@@ -139,8 +139,8 @@ function readView() {
     ? readRecent.map((r) => `<div class="rdv-item ${d?.path === r.path && d.from !== "new" ? "on" : ""}"><button class="rdv-open" data-read-open="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readProject(r.path)} · ${ago(r.at)} ago`)}</span></button><button class="rdv-x" data-read-forget="${esc(r.path)}" aria-label="Take it off the list">×</button></div>`).join("")
     : `<div class="quiet-line">Files you open show here. Click a .md path in any reply.</div>`;
   // At the foot of the left: the newest docs in your sessions' repos, whether or not you opened them.
-  const fresh = readNew.length ? `<div class="rdv-new"><div class="col-head">NEW DOCS</div>${readNew.map((r) => `<div class="rdv-item ${readDoc?.path === r.path && readDoc.from === "new" ? "on" : ""}"><button class="rdv-open" data-read-new="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readProject(r.path, r.top)} · ${ago(r.created_ms)} ago`)}</span></button></div>`).join("")}</div>` : "";
-  if (!d) return `<div class="rdv"><div class="rdv-list"><div class="col-head">RECENT</div>${list}${fresh}</div><div class="rdv-doc rdv-none"><div class="quiet-line">${readRecent.length ? "Opening…" : "Nothing open yet."}</div></div></div>`;
+  const fresh = readNew.length ? `<div class="rdv-new"><div class="col-head">New docs</div>${readNew.map((r) => `<div class="rdv-item ${readDoc?.path === r.path && readDoc.from === "new" ? "on" : ""}"><button class="rdv-open" data-read-new="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readProject(r.path, r.top)} · ${ago(r.created_ms)} ago`)}</span></button></div>`).join("")}</div>` : "";
+  if (!d) return `<div class="rdv"><div class="rdv-list"><div class="col-head">Recent</div>${list}${fresh}</div><div class="rdv-doc rdv-none"><div class="quiet-line">${readRecent.length ? "Opening…" : "Nothing open yet."}</div></div></div>`;
   const html = md(d.text, { pathsOf: d.sid && sessionOf(d.sid) ? d.sid : null, doc: true });
   const heads = readHeadings(html).filter((h) => h.lv > 0);
   const back = readBackSid();
@@ -149,7 +149,7 @@ function readView() {
     ${listenPlainBox()}
     ${listening?.key === key ? "" : `<button class="btn ls-btn" data-listen="${esc(key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-open="${esc(d.path)}">Open</button></div>`;
   const body = `<div class="rdv-scroll"><div class="rd" data-key="rd:${esc(key)}:${readerSize}" data-rdkey="${esc(key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="msg">${html}</div></div></div>`;
-  const toc = heads.length > 1 ? `<div class="rdv-toc"><div class="col-head">CONTENTS</div>${heads.map((h) => `<button class="rdv-h l${Math.min(h.lv, 4)} ${h.n === readAt ? "on" : ""}" data-read-h="${h.n}">${h.text}</button>`).join("")}</div>` : "";
-  return `<div class="rdv ${toc ? "" : "no-toc"}"><div class="rdv-list"><div class="col-head">RECENT</div>${list}${fresh}</div><div class="rdv-doc">${head}${body}${listenPlayer(key)}</div>${toc}</div>`;
+  const toc = heads.length > 1 ? `<div class="rdv-toc"><div class="col-head">Contents</div>${heads.map((h) => `<button class="rdv-h l${Math.min(h.lv, 4)} ${h.n === readAt ? "on" : ""}" data-read-h="${h.n}">${h.text}</button>`).join("")}</div>` : "";
+  return `<div class="rdv ${toc ? "" : "no-toc"}"><div class="rdv-list"><div class="col-head">Recent</div>${list}${fresh}</div><div class="rdv-doc">${head}${body}${listenPlayer(key)}</div>${toc}</div>`;
 }
 

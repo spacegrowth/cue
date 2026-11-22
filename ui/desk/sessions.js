@@ -119,7 +119,7 @@ function deskSessName(sid, name, cls) {
 function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, attrs, crew, step = "", size = "", loose = false, past = false, cls = "dk-srow", pre = "", harness = "", tag = "", mach = "" }) {
   const what = item ? `<span class="dk-w">${deskKindIcon(item)}<span class="dk-id">${esc(deskNum(item))}</span> ${esc(item.title)}</span>` : line ? `<span class="dk-w">${esc(line)}</span>` : "";
   const arrow = on ? '<span class="dk-larrow" aria-hidden="true">›</span>' : "";   // only on the open row or card (#219)
-  const loosePill = loose ? `<span class="dk-pill loose">not committed</span>` : "";
+  const loosePill = loose ? `<span class="dk-pill loose">Not committed</span>` : "";
   const ic = DESK_MARKS[mark] ? `<span class="dk-ric" role="img" data-desk-type="${mark}" aria-label="${DESK_MARKS[mark]}">${deskKindIcon(mark)}</span>` : "";
   return `<div class="${cls} ${crew ? "crew" : ""} ${past ? "past" : ""} ${on ? "on" : ""}" role="button" tabindex="0" ${attrs}>
     <div class="dk-s1">${pre ? `<span class="dk-lk">${pre}</span>` : ""}${ic}${sid ? deskSessName(sid, name, "dk-nm") : `<span class="dk-nm">${esc(name)}</span>`}${harness ? agentBadge(harness) : ""}${machTag(mach)}${tag ? `<span class="dk-ltag">${esc(tag)}</span>` : ""}<span class="dk-st"><i class="${dot}"></i><b>${word}</b></span>${arrow}</div>

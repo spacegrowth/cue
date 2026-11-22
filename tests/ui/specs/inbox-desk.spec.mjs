@@ -29,7 +29,7 @@ test("a lead's Desk ask sits under its Desk's heading, tagged '<PROJECT> · Desk
   const lead = page.locator('.ib-row[data-inbox-open="cue-lead"]');
   await expect(lead.locator(".ib-name")).toHaveText("cue-lead");
   await expect(lead.locator(".ib-for")).toHaveText("cue · Desk");
-  await expect(lead.locator(".ib-pj")).toHaveCSS("text-transform", "uppercase");
+  await expect(lead.locator(".ib-pj")).toHaveCSS("text-transform", "none");
   await expect(page.locator(".ib-dmark")).toHaveCount(0);
   await expect(page.locator(".ib-counts")).toHaveText("3 need you");
   // Opened: the bar says what it's about, with Open in Desk; no Add to Desk (it's already the Desk's).
@@ -43,7 +43,7 @@ test("a session holding a Desk item: '<PROJECT> · for <title>' on its row; a pl
   await cue.open("desk-inbox");
   await openInbox(page);
   await expect(page.locator('.ib-row[data-inbox-open="web"] .ib-for')).toHaveText("cue · for Reply box loses focus after Send");
-  await expect(page.locator('.ib-row[data-inbox-open="web"] .ib-pj')).toHaveCSS("text-transform", "uppercase");
+  await expect(page.locator('.ib-row[data-inbox-open="web"] .ib-pj')).toHaveCSS("text-transform", "none");
   // notes held an item that's done: a plain session now.
   await expect(page.locator('.ib-row[data-inbox-open="notes"] .ib-for')).toHaveCount(0);
   await page.locator('.ib-row[data-inbox-open="web"]').click();

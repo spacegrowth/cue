@@ -142,7 +142,7 @@
 .up-head { font-weight: 700; font-size: var(--type-body); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
 .up-head .dim { font-weight: 500; font-size: var(--type-pill); }
 .up-group + .up-group { margin-top: 10px; }
-.up-title { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.up-title { font-size: var(--type-pill); font-weight: 650; color: var(--muted); margin-bottom: 3px; }
 .up-title span { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .up-row { display: grid; grid-template-columns: 72px 1fr 34px; align-items: center; column-gap: 10px; font-size: var(--type-body); padding: 3px 0; }
 .up-note { grid-column: 2 / -1; font-size: var(--type-pill); color: var(--muted); margin-top: -1px; }
@@ -198,7 +198,7 @@
 
 /* ---------- History: today at a glance ---------- */
 .hs-today { margin-top: 14px; padding: 0 2px 12px; border-bottom: 1px solid color-mix(in srgb, var(--on-bg) 14%, transparent); display: flex; align-items: center; gap: 18px; flex: none; min-width: 0; }
-.hs-head { color: var(--on-bg); font-size: var(--type-pill); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; flex: none; }
+.hs-head { color: var(--on-bg); font-size: var(--type-pill); font-weight: 650; flex: none; }
 .hs-fig { color: var(--on-bg-muted); font-size: var(--type-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .hs-fig b { color: var(--on-bg); font-size: var(--type-body); font-weight: 700; font-variant-numeric: tabular-nums; }
 .hs-chart { width: 220px; flex: none; display: flex; flex-direction: column; gap: 2px; }

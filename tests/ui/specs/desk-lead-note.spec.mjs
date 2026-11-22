@@ -18,7 +18,7 @@ test("a NOTE is a small card: who it went to and which item, the message under i
   const chat = page.locator(".dk-chat"), card = chat.locator('[data-mg="note"]');
   await expect(card).toHaveCount(1);
   await expect(card.locator(".mg-to")).toHaveText("→ cue-387");
-  await expect(card.locator(".mg-tag")).toHaveText("NOTE");
+  await expect(card.locator(".mg-tag")).toHaveText("Note");
   await expect(card.locator(".mg-id")).toHaveText("Feature #d2");
   await expect(card.locator(".mg-t")).toHaveText("The phrases go left of Send; keep | as it is in commands.");
   await expect(chat).not.toContainText("NOTE:");

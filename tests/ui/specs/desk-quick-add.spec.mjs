@@ -331,9 +331,9 @@ test("Cue's New item note shows as a small card an item, without its words for t
     ].join("\n") });
     renderMain();
   });
-  // One card for them (#501): NEW ITEMS and its age in the head, a line an item.
+  // One card for them (#501): New items and its age in the head, a line an item.
   const news = page.locator('.dk-chat [data-mg="new"]').last();
-  await expect(news.locator(".mg-tag")).toHaveText("NEW ITEMS");
+  await expect(news.locator(".mg-tag")).toHaveText("New items");
   await expect(news.locator(".mg-h .mg-age")).toHaveText(/^\d+s$/);
   const cards = news.locator(".dk-ni");
   await expect(cards).toHaveCount(2);
@@ -349,7 +349,8 @@ test("Cue's New item note shows as a small card an item, without its words for t
   await expect(cards.nth(1).locator(".mg-id")).toHaveText("Bug #d9");
   // No "New item" line, and nothing under a title with no more to say.
   await expect(cards.nth(1).locator(".dk-ni-s")).toHaveCount(0);
-  await expect(news).not.toContainText("New item");
+  await expect(news).not.toContainText("New item #");   // the raw line, not the card's own tag "New items"
+  for (const c of await cards.all()) await expect(c).not.toContainText("New item");
   await expect(page.locator(".dk-chat")).not.toContainText("Route each now");
   await cards.nth(0).click();
   await expect(page.locator('.dk-panel[data-side-for="d2"]')).toHaveCount(1);
@@ -370,7 +371,7 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
   const cards = page.locator('.dk-chat [data-mg="stop"]');
   await expect(cards).toHaveCount(3);
   await expect(cards.nth(0).locator(".mg-who")).toHaveText(["Cue", "desk-ui"]);
-  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("STOPPED, NOT COMMITTED");
+  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("Stopped, not committed");
   await expect(cards.nth(0).locator(".mg-h .mg-id")).toHaveText("Feature #d2");
   await expect(cards.nth(0).locator(".mg-t").first()).toHaveText("Quick phrases at the right of Send");
   await expect(cards.nth(0).locator(".dk-mq")).toHaveText("desk-ui ended its turn with no DONE, and its work isn't in your app yet.");
@@ -382,10 +383,10 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
   await expect(fold.locator(".dk-mfl")).toBeHidden();
   await fold.locator("summary").click();
   await expect(fold.locator(".dk-mfl")).toHaveText("ui/desk.jsui/styles/desk.css");
-  await expect(cards.nth(1).locator(".mg-tag")).toHaveText("STOPPED");
+  await expect(cards.nth(1).locator(".mg-tag")).toHaveText("Stopped");
   await expect(cards.nth(1).locator(".dk-mq")).toHaveText("web-lead ended its turn with no DONE and no question for you.");
   await expect(cards.nth(1).locator(".dk-mfiles")).toHaveCount(0);
-  await expect(cards.nth(2).locator(".mg-tag")).toHaveText("COULDN'T START");
+  await expect(cards.nth(2).locator(".mg-tag")).toHaveText("Couldn't start");
   await expect(cards.nth(2).locator(".dk-mq")).toHaveText("Cue couldn't start a session for it: no folder for cue.");
   // Not from You, and none of Cue's words for the lead.
   const chat = page.locator(".dk-chat");
@@ -410,7 +411,7 @@ test("a session's TO LEAD: words are a card from that session about its item; Cu
   const cards = page.locator('.dk-chat [data-mg="from"]');
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0).locator(".mg-who")).toHaveText("desk-ui");
-  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("TO LEAD");
+  await expect(cards.nth(0).locator(".mg-tag")).toHaveText("To lead");
   await expect(cards.nth(0).locator(".mg-id")).toHaveText("Feature #d2");
   await expect(cards.nth(0).locator(".mg-t")).toHaveText(["Quick phrases at the right of Send", "Should the row wrap on narrow windows?"]);
   await expect(cards.nth(1).locator(".mg-who")).toHaveText("web-lead");
@@ -593,7 +594,7 @@ test("Cue's note on a lead's DONE it couldn't act on shows as one card from Cue,
     renderMain();
   });
   const notes = page.locator('.dk-chat [data-mg="done"]').last();
-  await expect(notes.locator(".mg-h")).toHaveText(/^Cue\s*NOT CLOSED\s*\d+s$/);
+  await expect(notes.locator(".mg-h")).toHaveText(/^Cue\s*Not closed\s*\d+s$/);
   await expect(notes.locator(".mg-line")).toHaveCount(2);
   await expect(notes.locator(".mg-line").nth(0)).toHaveText("Feature #d2 Quick phrases at the right of Send · it waits on your check");
   await expect(notes.locator(".mg-line").nth(1)).toHaveText("#zz9 · this Desk has no item #zz9");
@@ -692,7 +693,7 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   await expect(rows.locator('[data-desk-group="held"]')).toHaveAttribute("aria-expanded", "false");
   await rows.locator('[data-desk-group="held"]').click();
   await expect(rows.locator(".dk-held [data-desk-item='h1']")).toBeVisible();
-  await expect(rows.locator(".dk-held [data-desk-item='h1'] .dk-tag")).toHaveText("parked");
+  await expect(rows.locator(".dk-held [data-desk-item='h1'] .dk-tag")).toHaveText("Parked");
   await expect(rows.locator(".dk-gh.you + .dk-gbody > .dk-gin > [data-desk-item='h1']")).toHaveCount(0);
   await expect(rows.locator("[data-desk-item='h1'] [data-desk-act='start_now']")).toHaveText("Start");
   // A queued row has its own Park, right in the list; a press parks it, without opening or dragging it.

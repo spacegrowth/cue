@@ -35,7 +35,7 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
 .nf-addm { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 .nf-addm .mc-add .nf-in { flex: 1; width: auto; min-width: 0; }
 .nf-hint.wrap { white-space: normal; overflow: visible; }
-.set-group { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 2px; }
+.set-group { font-size: var(--type-pill); font-weight: 650; color: var(--muted); margin: 18px 0 2px; }
 .set-row { display: flex; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .set-sw { flex: none; display: flex; flex-direction: column; gap: 9px; }
 /* Your own Color, under the ten: a rainbow until it's picked, then its color; pressed, the Mac's color picker. */
@@ -132,7 +132,7 @@ kbd { font: 600 var(--type-tag) var(--mono); padding: 2px 6px; border-radius: va
 .hist { margin-top: 14px; flex: 1; min-height: 0; overflow-y: auto; background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); box-shadow: var(--shadow); }
 .hhead, .hrow { display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(160px, 0.6fr) 132px; gap: 16px; align-items: center; padding: 10px 18px; }
 .hhead { font: var(--type-pill) var(--mono); color: var(--muted); background: var(--panel-2); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; border-radius: var(--radius-pane) var(--radius-pane) 0 0; }
-.hgroup { padding: 12px 18px 5px; font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.12em; color: var(--muted); }
+.hgroup { padding: 12px 18px 5px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .hrow { border-top: 1px solid var(--line); font-size: var(--type-body); cursor: pointer; }
 .hgroup + .hrow { border-top: 0; }
 .hrow:hover, .hrow.open { background: var(--panel-2); }

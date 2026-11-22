@@ -213,7 +213,7 @@ function btwPanel(sid) {
   const lead = typeof crewPageOn === "function" && crewPageOn(sid);
   const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div><div class="btw-a-acts">${requeueBtn(sid, i, e)}${forkBtn(sid, i)}</div>` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>${e.kept ? `<div class="btw-a-acts">${requeueBtn(sid, i, e)}</div>` : ""}` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
   return `<div class="btw-pop">
-    <div class="btw-head">${lead ? "BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT" : "BY THE WAY · NOT PART OF THE CHAT"}${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
+    <div class="btw-head">${lead ? "By the way · asks the lead, not part of its chat" : "By the way · not part of the chat"}${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
     ${boxHtml({ look: "btw", key: `btw:${sid}`, placeholder: lead ? "Ask the lead without interrupting it…  ↵" : "Ask without interrupting it…  ↵" })}
     <div class="btw-body">${rows || `<div class="dim btw-empty">${lead ? "A copy of the lead's conversation answers, so neither the lead nor its crew sees it." : "A copy of this conversation answers, so the session never sees it."} Each question costs about one turn.</div>`}</div></div>`;
 }

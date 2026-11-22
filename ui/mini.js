@@ -177,7 +177,7 @@
     if (deskOpenId(sid) !== null) return deskHeadHtml(deskOpenId(sid));
     const it = itemFor(sid), s = sessionOf(sid);
     if (!NOTCH) return `<div class="m-bar" data-bar><div class="m-tabs">${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
-    const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
+    const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "Asking" : "Your turn"}</span>` : s?.state === "working" ? `<span class="m-tag work">Working</span>` : "";
     return `<div class="m-tabs">${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`;
   }
   /** The open chat's panel: its head, and the pane drawPane fills (a Desk's: its list). */

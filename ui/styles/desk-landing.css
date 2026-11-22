@@ -2,11 +2,11 @@
 /* Desk home (desk/home.js): one table, a row a Desk (name and what it's about · project and people · tasks · bugs ·
    features · on it), + New Desk at its foot. */
 .dk-desks { width: 100%; max-width: 1340px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; padding-bottom: 8px; }
-.dk-hh { margin: 6px 4px 2px; font: 700 var(--type-small) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--on-bg); opacity: .8; }
+.dk-hh { margin: 6px 4px 2px; font: 650 var(--type-small) var(--sans); color: var(--on-bg); opacity: .8; }
 .dk-hh .dh-n { font-weight: 600; opacity: .8; }
 .dh-tbl { flex: none; background: var(--panel); color: var(--ink); border-radius: var(--radius-card); box-shadow: var(--shadow); overflow: hidden; }
 .dh-tr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(120px, 1.2fr) repeat(3, minmax(100px, 1fr)) minmax(0, 1.1fr) 84px; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--panel-2); }
-.dh-tr.dh-hd { border-top: 0; padding: 10px 18px; background: var(--panel-2); color: var(--muted); font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; }
+.dh-tr.dh-hd { border-top: 0; padding: 10px 18px; background: var(--panel-2); color: var(--muted); font: 650 var(--type-pill) var(--sans); }
 .dh-tr.dk-desk { cursor: pointer; }
 .dh-tr.dk-desk:hover, .dh-tr.dk-desk:focus-visible { background: var(--panel-2); outline: none; }
 .dh-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -165,7 +165,7 @@
 .dk-larrow { flex: none; font: 600 var(--type-page)/1 var(--sans); }
 .dk-lcard .badge { width: 16px; height: 16px; border-radius: var(--radius-tag); font-size: var(--type-tag); }
 .dk-lcard.on .badge:not(.h-pi) { background: var(--on-sel); color: var(--sel); }
-.dk-lcard .dk-lk { flex: none; font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.dk-lcard .dk-lk { flex: none; font: 650 var(--type-pill) var(--sans); color: var(--muted); }
 .dk-lcard:has(.dk-ric) > :is(.dk-s2, .dk-s3) { margin-left: 22px; }
 .dk-lcard:hover .dk-sren { opacity: 1; }
 .dk-ren { all: unset; flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-qp); color: var(--muted); cursor: pointer; opacity: 0; }

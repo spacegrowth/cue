@@ -26,7 +26,7 @@
 .bar i.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
 .working .bar i.i { background: color-mix(in srgb, var(--on-bg-muted) 35%, transparent); }
 .working.on-agent { opacity: 0.75; }
-.col-sub { font-size: var(--type-tag); line-height: 16px; font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg-muted); margin-top: 2px; }
+.col-sub { font-size: var(--type-pill); line-height: 16px; font-weight: 650; color: var(--on-bg-muted); margin-top: 2px; }
 .agent-note { margin-top: 6px; font-size: var(--type-small); font-style: italic; }
 
 /* ---------- full message (markdown-lite) ---------- */
@@ -147,10 +147,10 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-row .bg-tail { flex: 1; min-width: 0; text-align: right; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stx-steps .bg-row { margin-left: 25px; width: calc(100% - 25px); }
 /* Agents, any kind (agents.js): the row above the box's head, the Agents tab's groups, a row's buttons and ask. */
-.ag-head { display: flex; align-items: center; gap: 8px; padding: 2px 6px 3px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.ag-head { display: flex; align-items: center; gap: 8px; padding: 2px 6px 3px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .ag-more { border: 0; background: none; padding: 0; font: 600 var(--type-pill) var(--sans); letter-spacing: 0; color: var(--muted); cursor: pointer; }
 .ag-more:hover { color: var(--ink); }
-.ag-group { padding: 10px 6px 4px; font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.ag-group { padding: 10px 6px 4px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .ag-group:first-child { padding-top: 2px; }
 .ag-row { cursor: pointer; }
 .ag-acts { flex: none; display: inline-flex; gap: 6px; margin-left: 6px; }
@@ -189,7 +189,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-view-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--type-body); color: var(--muted); margin-top: -8px; }
 .bg-view-steps { margin-left: 0; }
 .bg-view-reply { background: var(--panel-2); border-radius: var(--radius-tray); padding: 9px 12px; user-select: text; -webkit-user-select: text; }
-.bg-view-k { display: block; font: 700 var(--type-tag) var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.bg-view-k { display: block; font: 650 var(--type-pill) var(--sans); color: var(--muted); margin-bottom: 4px; }
 .bg-view-foot { align-items: center; font-size: var(--type-body); }
 /* The reader (chat/reader.js readerPane): one reply in one column, larger type, in place of the chat. Its bar sits
    above the chat area like a background agent's Back row; the text size is a variable (three steps). */
@@ -293,7 +293,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .vp-play svg { width: 9px; height: 9px; }
 .vp-play:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .vp-list { position: fixed; z-index: 11; max-height: 324px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); padding: 6px; box-shadow: 0 18px 40px -22px color-mix(in srgb, var(--scrim-ink) 45%, transparent); }
-.vp-sec { font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 8px 4px; }
+.vp-sec { font: 650 var(--type-pill) var(--sans); color: var(--muted); padding: 8px 8px 4px; }
 .vp-line { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 6px; border-radius: var(--radius-btn); }
 .vp-line[data-voice-pick]:not(.on) { cursor: pointer; }
 .vp-line[data-voice-pick]:not(.on):hover { background: var(--panel-2); }
@@ -335,7 +335,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* The "send to another session" menu, right above its button. */
 .fwd-catch { position: fixed; inset: 0; z-index: 25; }
 .fwd-pop { position: fixed; z-index: 26; width: 320px; background: var(--panel); color: var(--ink); border-radius: var(--radius-card); padding: 10px; box-shadow: 0 18px 50px -12px color-mix(in srgb, var(--shade) 45%, transparent), 0 0 0 1px var(--line); }
-.fwd-head { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 2px 4px 8px; }
+.fwd-head { font-size: var(--type-pill); font-weight: 650; color: var(--muted); margin: 2px 4px 8px; }
 .fwd-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
 .fwd-opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: var(--radius-btn); font-size: var(--type-body); text-align: left; }
 .fwd-opt:hover { background: var(--panel-2); }
@@ -434,7 +434,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* Next: solid Moss, the one obvious thing to do after you act. */
 .next-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; padding: 9px 10px 9px 12px; border-radius: var(--radius-tray); background: var(--accent); color: var(--on-accent); font-size: var(--type-body); text-align: left; min-width: 0; cursor: pointer; }
 .next-bar:hover { filter: brightness(1.1); }
-.next-label { font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; flex: none; }
+.next-label { font-size: var(--type-pill); font-weight: 650; opacity: 0.75; flex: none; }
 .next-bar .badge { background: var(--on-accent); color: var(--accent); }
 .next-bar .next-proj { font-weight: 650; white-space: nowrap; flex: none; }
 .next-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
@@ -461,7 +461,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
    underneath never changes). Newest answer first, under its own ask box. */
 .btw-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 .btw-pop { position: absolute; right: 14px; z-index: 12; width: min(440px, calc(100% - 28px)); max-height: min(60%, 460px); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); box-shadow: 0 22px 50px -14px color-mix(in srgb, var(--shade) 45%, transparent), 0 0 0 1px var(--line); }
-.btw-head { display: flex; align-items: center; padding: 10px 12px 4px; font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.btw-head { display: flex; align-items: center; padding: 10px 12px 4px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); }
 .btw-clear { margin-left: auto; font-size: var(--type-pill); font-weight: 650; letter-spacing: 0; color: var(--muted); padding: 2px 6px; border-radius: var(--radius-qp); }
 .btw-clear:hover { color: var(--ink); background: var(--panel-2); }
 .btw-clear + .btw-x { margin-left: 4px; }
@@ -481,7 +481,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* An agent's judgment calls (DECIDED: what — why lines; core/md.js decidedHtml): one quiet block, each call a line with its
    reason under it in grey. */
 .msg .decided, .decided { margin: 8px 0; padding: 8px 12px 9px; border-radius: var(--radius-btn); background: color-mix(in srgb, var(--panel-2) 70%, var(--panel)); border: 1px solid var(--line); }
-.decided .dec-head { font-size: var(--type-tag); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.decided .dec-head { font-size: var(--type-pill); font-weight: 650; color: var(--muted); margin-bottom: 4px; }
 .decided ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .decided li { display: flex; flex-direction: column; gap: 1px; padding-left: 18px; position: relative; margin: 0; }
 .decided li::before { content: "✓"; position: absolute; left: 0; top: 0; font-size: var(--type-small); color: var(--muted); }
