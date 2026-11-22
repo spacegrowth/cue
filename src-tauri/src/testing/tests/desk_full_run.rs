@@ -287,6 +287,28 @@ fn a_failure_with_no_commit_found_reopens_nothing_and_tells_the_lead() {
 }
 
 #[test]
+fn an_items_commit_that_changed_only_documents_is_never_reopened() {
+    let w = World::new();
+    let (runner, dir, project, id, h, _) = in_cue_passed(&w);
+    let at = lands(&w, &dir, &project, "Header jumps", &id, &h, "plan.md");
+    let before = item(&w, &project, "Header jumps")["state"].clone();
+    let n = sent_to(&w, &h).len();
+    // A search that ended on it (a test that fails only sometimes, or a script on another machine that doesn't know).
+    runner.ends_with(failed(Some(Culprit { commit: at.clone(), subject: format!("Header jumps (#{id})") }), None));
+    looks(&w);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], before, "stays landed: {}", item(&w, &project, "Header jumps"));
+    assert!(!sent_to(&w, &h)[n..].iter().any(|t| t.contains("full run")), "{:?}", sent_to(&w, &h));
+    let line = told(&w, &project);
+    assert!(line.contains(&format!("Why: the search ended on commit {} (Header jumps (#{id})), which changed only documents, so what failed fails only sometimes. No item was reopened and the app still updates.", &at[..7])), "{line}");
+    // One that changed anything else is blamed as before.
+    let (b, bh, at_b) = one_more(&w, &dir, &project, "Footer", "b.txt");
+    runner.ends_with(failed(Some(Culprit { commit: at_b, subject: format!("Footer (#{b})") }), None));
+    looks(&w);
+    assert_eq!(item(&w, &project, "Footer")["state"], "working", "{}", item(&w, &project, "Footer"));
+    assert!(sent_to(&w, &bh).iter().any(|t| t.contains("is open again")), "{:?}", sent_to(&w, &bh));
+}
+
+#[test]
 fn a_commit_that_names_an_item_whose_landed_commit_it_isnt_blames_no_item() {
     let w = World::new();
     let (runner, dir, project, id, h, _) = in_cue_passed(&w);

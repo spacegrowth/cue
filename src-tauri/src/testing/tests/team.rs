@@ -198,7 +198,7 @@ pub(super) fn main_repo(w: &World) -> std::path::PathBuf {
     git(&dir, &["config", "user.name", "T"]);
     std::fs::write(dir.join("README"), "hi\n").unwrap();
     // The World's own files stay out of what a teammate's commit could pick up.
-    std::fs::write(dir.join(".gitignore"), "*\n!README\n!.gitignore\n!a.txt\n!b.txt\n!shared.txt\n!by_builder.txt\n").unwrap();
+    std::fs::write(dir.join(".gitignore"), "*\n!README\n!.gitignore\n!a.txt\n!b.txt\n!shared.txt\n!by_builder.txt\n!plan.md\n").unwrap();
     git(&dir, &["add", "README", ".gitignore"]);
     git(&dir, &["commit", "-q", "-m", "start"]);
     dir

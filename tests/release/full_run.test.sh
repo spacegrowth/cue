@@ -19,7 +19,8 @@ export CALLS="$WORK/calls"
 # ---- the stand-in steps ----------------------------------------------------------------------------------------
 # A commit says what is broken in it by the files it holds: broken-build, broken-check, broken-rust (the names of the
 # Rust tests that fail, one a line), broken-node (node test files), broken-window (spec files), slow (seconds the
-# build takes), flaky-rust (Rust tests that fail the first time they are run in a case and pass after). Asked for a
+# build takes), flaky-rust (Rust tests that fail the first time they are run in a case and pass after), flaky-check
+# (the calls of the check step, counted in a case from 1, that fail). Asked for a
 # node test file or a spec by name, the node and window steps fail whenever the commit names it broken, whether the
 # file is there or not: as the real runners fail on a file that isn't. Each step appends "<step> <commit's subject> [names…]" to $CALLS.
 cat >"$WORK/steps.sh" <<'STEPS'
@@ -31,7 +32,12 @@ step_build() {
   called build
   [ ! -f broken-build ] || { echo "error[E0308]: mismatched types"; return 1; }
 }
-step_check() { called check; [ ! -f broken-check ] || { echo "check: a lock taken inside a longer expression"; return 1; }; }
+step_check() {
+  called check
+  local n; n=$(($(cat "$CALLS.checks" 2>/dev/null || echo 0) + 1)); echo "$n" >"$CALLS.checks"
+  [ ! -f flaky-check ] || ! grep -qx "$n" flaky-check || { echo "check: timed out"; return 1; }
+  [ ! -f broken-check ] || { echo "check: a lock taken inside a longer expression"; return 1; }
+}
 step_rust() {
   called rust "$*"
   echo "running 3 tests"
@@ -80,7 +86,7 @@ start() {
   mkdir -p "$REPO"
   (cd "$REPO" && git init -q && echo "cue" >README.md && mkdir -p tests/ui && touch tests/box.test.js tests/ui/desk-list.spec.mjs)
   BASE="$(commit base)"
-  : >"$CALLS"; rm -f "$CALLS.flaked" "$CALLS.lock"
+  : >"$CALLS"; rm -f "$CALLS.flaked" "$CALLS.lock" "$CALLS.checks"
 }
 
 full_run() {
@@ -211,6 +217,21 @@ full_run --at "$C4" --since "$C1"
 exits 1; is failed '["tests/new.test.js","new.spec.mjs"]'; is culprit.commit "\"$C2\""; is culprit.subject '"two: adds them"'
 not_called "window one: would fail if asked new.spec.mjs"; not_called "node one: would fail if asked tests/new.test.js"
 called "window two: adds them new.spec.mjs"; called "node two: adds them tests/new.test.js"
+done_case
+
+start "a search that ends on a commit that changed only documents blames no commit: what failed fails only sometimes"
+# The check fails twice at --at (the run and once more), passes at --since and at c1: by halving, c2 is all that's left.
+C1="$(commit "one: code" 'printf "1\n2\n" >flaky-check; echo a >a')"
+C2="$(commit "two: a document (#9)" 'mkdir -p docs && echo plan >docs/plan.md && echo note >NOTES.md')"
+full_run --at "$C2" --since "$BASE"
+exits 1; is failed '["code check"]'; is culprit null; called "check one: code"
+grep -qF "changed only documents, so what failed fails only sometimes" <<<"$(field culprit_note)" || fail "the note doesn't say it ended on documents"
+done_case
+
+start "a commit that changed a document and code can still be blamed"
+C1="$(commit "one: a document and a check break" 'echo plan >plan.md; touch broken-check')"
+full_run --at "$C1" --since "$BASE"
+exits 1; is culprit.commit "\"$C1\""
 done_case
 
 start "the culprit is searched by halving, not commit by commit"

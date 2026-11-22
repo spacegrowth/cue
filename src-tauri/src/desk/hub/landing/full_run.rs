@@ -54,10 +54,12 @@ impl Told {
 
 /// Run `r` failed with no item to blame (no commit found, or one that is no item's landed commit): nothing holds the
 /// install, its commit is built as one that passed, and that its tests failed is kept apart.
-fn failed_on_nobody(s: &mut FullRunState, r: &Running, res: &FullRunResult) -> Told {
+/// `docs_only`: its culprit changed only documents, so it can't have broken anything.
+fn failed_on_nobody(s: &mut FullRunState, r: &Running, res: &FullRunResult, docs_only: bool) -> Told {
     (s.good, s.failing, s.unrun_since) = (r.at.clone(), r.at.clone(), 0);
     (s.held_since, s.held_item) = (0, String::new());
     let why = match res.culprit.as_ref().filter(|c| !c.commit.is_empty()) {
+        Some(c) if docs_only => format!("the search ended on commit {} ({}), which changed only documents, so what failed fails only sometimes", short(&c.commit), c.subject),
         Some(c) => format!("commit {} ({}) broke it, which is no item's landed commit on this Desk", short(&c.commit), c.subject),
         None => res.culprit_note.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or("the commit that broke it wasn't found").to_string(),
     };
@@ -222,9 +224,11 @@ impl Hub {
             return Some(Told::line(ChangeKind::FullRunPassed, format!("Full run passed on main{}.{}", kit::ids_words(&batch(repo, r)), instead_words(r))));
         }
         let culprit = res.culprit.as_ref().filter(|c| !c.commit.is_empty());
-        match culprit.and_then(|c| self.full_run_blamed(desk, c).map(|it| (c, it))) {
+        // A commit that changed only documents broke nothing (the script says so too; one on another machine may be older).
+        let docs_only = culprit.is_some_and(|c| only_documents(repo, &c.commit));
+        match culprit.filter(|_| !docs_only).and_then(|c| self.full_run_blamed(desk, c).map(|it| (c, it))) {
             Some((c, it)) => Some(failed_on_item(s, r, &res, c, &it, now)),
-            None => Some(failed_on_nobody(s, r, &res)),
+            None => Some(failed_on_nobody(s, r, &res, docs_only)),
         }
     }
 
@@ -310,6 +314,16 @@ impl Hub {
         let folder = folder.filter(|f| !f.trim().is_empty()).ok_or(format!("the project has no folder on {}", crate::machines::display_name(machine)))?;
         Ok((m.host, folder))
     }
+}
+
+/// Whether `commit` of `repo` changed only documents (Markdown, a licence) or nothing, against its first
+/// parent: what no test or build reads (scripts/full-run.sh `only_documents`). Unknown to git: no.
+pub(crate) fn only_documents(repo: &str, commit: &str) -> bool {
+    let Some(files) = crate::install::live_ui::changed_in(repo, commit) else { return false };
+    files.iter().map(|f| f.trim()).filter(|f| !f.is_empty()).all(|f| {
+        let name = f.rsplit('/').next().unwrap_or(f);
+        [".md", ".markdown"].iter().any(|e| name.ends_with(e)) || name == "LICENSE"
+    })
 }
 
 /// A commit's name, short.

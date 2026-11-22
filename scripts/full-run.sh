@@ -28,7 +28,8 @@
 # since..at are searched by halving, in the same copy, running only that (those Rust tests, those node test files,
 # those specs, or that step); the first commit where it fails is the culprit. A node test file or spec that isn't in
 # a commit doesn't fail there (so one added failing is blamed on the commit that added it), as a Rust test's name
-# that matches no test doesn't. Failing at <since> itself: no culprit, it failed before this batch. The copy is put
+# that matches no test doesn't. Failing at <since> itself: no culprit, it failed before this batch. A search that ends
+# on a commit that changed only documents: no culprit either, what failed fails only sometimes. The copy is put
 # back at <commit> afterwards.
 #
 # The result file, JSON:
@@ -381,6 +382,21 @@ drop_failing_before() {
   return 0
 }
 
+# Whether commit `$1` changed only documents (Markdown, a licence) or nothing at all, against its first
+# parent: no test or build reads those, so it can't have broken anything, and a search that ends on it was led there
+# by a test that fails only sometimes.
+only_documents() {
+  local f
+  while IFS= read -r f; do
+    case "$f" in
+      "") ;;
+      *.md|*.markdown|LICENSE|*/LICENSE) ;;
+      *) return 1 ;;
+    esac
+  done < <(git -C "$REPO" diff --no-renames --name-only "$1^1" "$1" 2>/dev/null || echo "?")
+  return 0
+}
+
 CULPRIT=null
 NOTE="no --since given: nothing to search"
 find_culprit() {
@@ -409,6 +425,10 @@ find_culprit() {
   done
   c="${commits[$hi]}"
   subject="$(git -C "$REPO" log -1 --format=%s "$c")"
+  if only_documents "$c"; then
+    NOTE="culprit unknown: the search ended on $(git -C "$REPO" rev-parse --short "$c") ($subject), which changed only documents, so what failed fails only sometimes"
+    return
+  fi
   CULPRIT="{\"commit\":$(json "$c"),\"subject\":$(json "$subject")}"
   NOTE="the first commit since --since where what failed fails"
   [ "$left" -le 1 ] || NOTE="$NOTE (several things failed: a later commit may have broken some of them)"
