@@ -1282,7 +1282,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
 | `src-tauri/src/testing/tests/desk_feed.rs::every_desk_change_names_you_to_the_lead` | test |  |
 
-Files over 1000 lines: `src-tauri/src/desk/model.rs`.
+Files over 1000 lines: .
 
 ## What this can't see
 
