@@ -54,6 +54,11 @@
 .col.split.col-waiting { overflow-y: auto; padding-bottom: 16px; }
 .col.col-waiting > .sec { flex: none; max-height: none; }
 .col.col-waiting .sec-body { overflow: visible; }
+/* Room below Waiting's last card, so the list scrolled to its end rests with a whole card under the pinned label
+   (helpers.js fitWaitingEnd sets --end-room, only while the list overflows; #737). The margin takes back the
+   column's gap before it. */
+.col.split.col-waiting::after { content: ""; flex: none; height: var(--end-room, 0px); margin-top: -10px; }
+:root:not([style*="--end-room"]) .col.split.col-waiting::after { content: none; }
 /* Need to decide's heading: its band reaches 4px above the text, held there by the margin; stuck at the same offset
    (stuck at 0, the band's top sat at the column's top and pushed the text 4px down). */
 .col.col-waiting > .sec > .col-head { --band: 4px; position: sticky; top: calc(-1 * var(--band)); z-index: 2; background: var(--bg); padding: var(--band) 0 6px; margin: calc(-1 * var(--band)) 0 -6px; }

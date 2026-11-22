@@ -351,7 +351,7 @@ button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent
 .ib-op-w:last-child { max-width: 100%; }
 .ib-op-o { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--type-pill); color: var(--muted); }
 .ib-op-o::before { content: "·"; padding: 0 6px; }
-.ib-op-act { flex: none; font-size: var(--type-small); font-weight: 600; padding: 3px 10px; border-radius: var(--radius-btn); border: 1px solid var(--line); background: none; color: var(--ink); white-space: nowrap; cursor: pointer; }
+.ib-op-act { flex: none; font-size: var(--type-small); line-height: 1.35; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-btn); border: 1px solid var(--line); background: none; color: var(--ink); white-space: nowrap; cursor: pointer; }
 /* Under the pointer it lights up, so you know a click lands; pressed, a shade deeper. */
 button.ib-op-act { transition: background-color 0.12s, border-color 0.12s; }
 button.ib-op-act:hover, button.ib-op-act:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--panel)); border-color: var(--muted); }

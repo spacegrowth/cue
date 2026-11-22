@@ -50,16 +50,16 @@
   --shell-bg: #16171A; --shell-line: #3A3C44; --shell-ink: #F2F3F5; --shell-hint: #A3A7B3; --shell-muted: #8B8F99; --shell-out: #D8DAE0;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
-  /* The type scale (#528, the Font sizes page's option B): whole pixels, one size per job, and every text size in the
-     app is one of these. Weight, caps and mono set things apart, never a half-pixel step. */
-  --type-tag: 10px;      /* caps tags and badges: NOTE, ASKS YOU, a count */
-  --type-pill: 11px;     /* small heads, mono meta: an item's number, an age, a column head */
-  --type-small: 12px;    /* buttons, secondary lines, the meta row of a message */
-  --type-body: 13px;     /* everything people read: card text, names, messages */
-  --type-chat: 15px;     /* the words in a chat, Slack's size (#703): replies, your messages, Cue's messages; on a 22px line */
-  --type-chat-lh: 22px;
-  --type-title: 15px;    /* a pane's or a card's title, and the glyphs on small square buttons */
-  --type-page: 20px;     /* a page's heading */
+  /* The type scale (#737): one size per job, whole pixels, built around the words people read, 15px on a 22px line
+     (Slack's size, #703). Every text size in the app is one of these; weight, caps and mono set things apart, never a
+     half-pixel step. Each step down is a clear one: 15 read, 13 press or glance, 12 meta, 11 tags. */
+  --type-tag: 11px;      /* caps tags and badges: NOTE, ASKS YOU, a count */
+  --type-pill: 12px;     /* small heads, mono meta: an item's number, an age, a column head */
+  --type-small: 13px;    /* buttons, secondary lines, the meta row of a message */
+  --type-body: 15px;     /* everything people read: card text, names, messages, what you type */
+  --type-body-lh: 22px;  /* the line a message's words sit on */
+  --type-title: 17px;    /* a pane's or a card's title, and the glyphs on small square buttons */
+  --type-page: 22px;     /* a page's heading */
   --type-figure: 32px;   /* big numbers (Insights) */
   /* The design system's corners (tokens.json): every border-radius in the app is one of these, or 50% for a circle.
      Every small label (a role, a mode, a state, a count, a chip) is a full capsule, --radius-pill
@@ -174,7 +174,7 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .wordmark svg { display: block; pointer-events: none; }
 /* Header chips: click to open the oldest of each kind (again for the next). */
 .hchips { display: flex; gap: 8px; align-items: center; }
-.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); font-size: var(--type-body); font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
+.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); font-size: var(--type-small); font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
 .hchip:hover { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
 /* Stronger = closer to the header's own text color, in either theme. */
 .hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }
@@ -197,7 +197,7 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 /* Waiting's dot: a session you wrote to came back and waits, not yet open. */
 .hdot.back { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .hdot.back { animation: none; } }
-.hall { font-size: var(--type-body); color: var(--on-bg-muted); }
+.hall { font-size: var(--type-small); color: var(--on-bg-muted); }
 .grow { flex: 1; }
 .top-btn { height: 32px; padding: 0 12px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font-size: var(--type-small); font-weight: 600; }
 .top-btn:hover { filter: brightness(0.97); }

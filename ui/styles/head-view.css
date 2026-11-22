@@ -14,7 +14,7 @@
 
 /* The Inbox's Show: one pill, the picked part lit. */
 .hv-segs { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 3px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
-.hv-seg { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); color: var(--on-bg); font: 650 var(--type-body) var(--sans); white-space: nowrap; }
+.hv-seg { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); color: var(--on-bg); font: 650 var(--type-small) var(--sans); white-space: nowrap; }
 .hv-seg:hover { background: color-mix(in srgb, var(--on-bg) 14%, transparent); }
 .hv-seg.on { background: var(--on-bg); color: var(--bg); }
 .hv-seg em { font: 600 var(--type-tag) var(--mono); font-style: normal; opacity: 0.75; }

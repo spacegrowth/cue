@@ -1,4 +1,28 @@
-# Font sizes: which scale to pick
+# Font sizes
+
+## The scale today (#737)
+
+One scale, built around the words people read: 15 pixels on a 22-pixel line, the size chat messages took in #703.
+Every text size in `ui/styles/` is one of these tokens (`ui/styles/base.css`), each with one job:
+
+| Token | Size | Its job |
+|---|---|---|
+| `--type-tag` | 11 | Caps tags and badges: NOTE, ASKS YOU, a count |
+| `--type-pill` | 12 | Small heads and mono meta: an item's number, an age, a column head |
+| `--type-small` | 13 | Buttons, secondary lines, the line of who and when around a message |
+| `--type-body` | 15 on a 22 line (`--type-body-lh`) | Everything people read: messages, card text, names, what you type |
+| `--type-title` | 17 | A pane's or a card's title, glyphs on small square buttons |
+| `--type-page` | 22 | A page's heading |
+| `--type-figure` | 32 | Big numbers (Insights) |
+
+Each step down is one you can see: 15 to read, 13 to press or glance at, 12 for meta, 11 for tags. Names are the
+body size in bold, never a size of their own. Before #737 the chat's words were 15 while everything around them was
+still on the 13 scale below, so a card or a panel beside a chat looked a size too small.
+
+The only sizes not on the scale are relative ones inside the reader (Read and a reply's Read view), which follow the
+reader's own text size setting, and the terminal, which draws its own text.
+
+## How the first scale was picked (#528)
 
 **Pick B, whole pixels with one size per job.** It's the best one for people using Cue. Below is why, and what the other two would mean.
 

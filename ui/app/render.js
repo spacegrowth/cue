@@ -201,6 +201,7 @@ function drawWindow() {
 /** Everything after the draw, in order: floating parts placed, scrolls back, motion, the chat's place, the cursor. */
 function afterDraw(was, lifted, kept) {
   placeFloating();
+  fitWaitingEnd();   // before the scrolls go back: the list's end may be where one was
   restoreScrolls(was);
   replayMotion(was, kept);
   placeForward();

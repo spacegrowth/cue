@@ -96,7 +96,7 @@ for (const scheme of ["light", "dark"]) {
       const fs = (sel) => getComputedStyle(e.querySelector(sel)).fontSize;
       return { bg: c.backgroundColor, panel2: tok("--panel-2"), border: c.borderTopColor, line: tok("--line"), leftW: c.borderLeftWidth, topW: c.borderTopWidth, leftC: c.borderLeftColor,
         radius: c.borderTopLeftRadius, pad: `${c.paddingTop} ${c.paddingLeft}`, ink: c.color, inkTok: tok("--ink"),
-        body: root.getPropertyValue("--type-chat").trim(), small: root.getPropertyValue("--type-small").trim(),
+        body: root.getPropertyValue("--type-body").trim(), small: root.getPropertyValue("--type-small").trim(),
         t: fs(".dk-ns-t"), s: fs(".dk-ns-s"), n: fs(".dk-ns-n"), muted: getComputedStyle(e.querySelector(".dk-ns-n")).color, mutedTok: tok("--muted"),
         btn: getComputedStyle(e.querySelector("button")).backgroundColor, accent: tok("--accent"), bgImg: c.backgroundImage };
     });
