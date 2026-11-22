@@ -543,3 +543,40 @@ fn a_reopened_items_done_counts_its_work_landed_in_a_repository_beside_its_proje
     let _ = std::fs::remove_dir_all(&beside);
     assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
 }
+
+#[test]
+fn a_reopened_items_fix_made_with_terminal_commands_and_committed_by_its_holder_counts() {
+    // #654: its holder fixed it with a script Cue can't read file by file, and committed it itself, straight on main.
+    let w = World::new();
+    let header = |_: &World, _: &str, dir: &std::path::Path| {
+        std::fs::write(dir.join("shared.txt"), "jumps\n").unwrap();
+        git(dir, &["add", "shared.txt"]);
+        git(dir, &["commit", "-q", "-m", "header"]);
+    };
+    let (dir, project, id, h) = routed_with(&w, header, |w, h, dir| {
+        std::fs::write(dir.join("a.txt"), "1\n").unwrap();
+        log(w, h).tool_use("toolu_1", "Edit", json!({ "file_path": dir.join("a.txt") }));
+    });
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    w.hub().desk_item_act(&id, "send_back", "Still jumps").unwrap();
+    w.settle();
+    w.advance(2000);
+    // Its fix, through a terminal command only, not committed yet: nothing landed.
+    log(&w, &h).tool_use("toolu_2", "Bash", json!({ "command": "python3 tools/fix_header.py" })).tool_result("toolu_2");
+    std::fs::write(dir.join("shared.txt"), "stays put\n").unwrap();
+    ends(&w, &h, &format!("Fixed it.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "{it}");
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("Nothing of it landed on main since it was reopened")), "told why");
+    // Its holder commits it itself, on main: git's line for it is in its log.
+    git(&dir, &["commit", "-q", "-am", "Header stays put"]);
+    let sha = git(&dir, &["rev-parse", "--short", "HEAD"]).trim().to_string();
+    let branch = git(&dir, &["branch", "--show-current"]).trim().to_string();
+    log(&w, &h).tool_use("toolu_3", "Bash", json!({ "command": "git commit -am 'Header stays put'" })).entry(json!({
+        "type": "user", "message": { "content": [{ "type": "tool_result", "tool_use_id": "toolu_3", "content": format!("[{branch} {sha}] Header stays put\n 1 file changed, 1 insertion(+), 1 deletion(-)") }] }
+    }));
+    ends(&w, &h, &format!("Committed.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
+}
