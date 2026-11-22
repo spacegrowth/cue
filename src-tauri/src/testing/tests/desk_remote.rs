@@ -276,6 +276,37 @@ fn a_clash_goes_back_to_the_holder_on_the_machine_and_the_page_shows_what_was_fe
     assert!(d["diff"].as_str().unwrap_or("").contains("+there"), "{d}");
 }
 
+/// The shared remote's main and this one with different histories (#691): a landing pushed there as one commit and
+/// here as another with the same files (history cleaned up here), then a newer screen image here. An item started on
+/// the machine from the remote's main lands here from its own changes, with no clash on the image and no catch-up
+/// round there.
+#[test]
+fn an_item_from_a_machine_whose_main_has_another_history_lands_here_from_its_own_changes() {
+    let w = World::new();
+    let ((dir, _, there, project, id, h), _ssh) = routed_there(&w);
+    let image = |v: u8| -> Vec<u8> { vec![0x89, b'P', b'N', b'G', 0, 0, v, 0, 1, 2, 3, v] };
+    std::fs::write(there.join("screen.png"), image(1)).unwrap();
+    git(&there, &["add", "-f", "screen.png"]);
+    git(&there, &["commit", "-q", "-m", "baseline (#1)"]);
+    git(&there, &["push", "-q", "origin", "main"]);
+    std::fs::write(dir.join("screen.png"), image(1)).unwrap();
+    git(&dir, &["add", "-f", "screen.png"]);
+    git(&dir, &["commit", "-q", "-m", "baseline (#2)"]);
+    std::fs::write(dir.join("screen.png"), image(2)).unwrap();
+    git(&dir, &["add", "-f", "screen.png"]);
+    git(&dir, &["commit", "-q", "-m", "newer baseline"]);
+    let before = git(&dir, &["rev-parse", "HEAD"]).trim().to_string();
+    works_there(&there, &id, "fix.txt", "fixed\n", "the fix");
+    ends(&w, &h, &done_there(&there, &id));
+    w.advance(1000);
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"].as_str(), Some("to_check"), "landed, not sent back: {it}");
+    assert!(!w.hosted.sent().into_iter().any(|(s, t)| s == h && t.contains("clashes")), "no catch-up round there");
+    assert_eq!(git(&dir, &["rev-parse", "HEAD~1"]).trim(), before, "one commit on the main line");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "fix.txt", "only its own change");
+    assert_eq!(std::fs::read(dir.join("screen.png")).unwrap(), image(2), "the newer image here stays");
+}
+
 /// Two landings on main here the shared copy doesn't have.
 fn two_ahead(_: &World, _: &str, dir: &Path) {
     for (f, m) in [("c.txt", "one landing"), ("d.txt", "another landing")] {

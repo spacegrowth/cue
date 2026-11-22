@@ -499,12 +499,7 @@ impl Hub {
             self.finish_ask(id, "error", &format!("Cue can't read its copy at {}", t.path), "");
             return Landed::Done;
         };
-        let base = if t.base.is_empty() { rev(&t.repo, &onto) } else { Some(t.base.clone()) };
-        let Some(base) = base else { return self.land_wait(id, "Cue can't read the main line") };
-        // Its copy moved onto a main line whose history was rewritten (its branch rebased, the commit it started from
-        // gone from it): measured from there, main's own changes would read as its, and clash. Where its branch
-        // meets the main line now is where it starts.
-        let base = moved_base_of(&t.repo, &t.path, &onto, &base).unwrap_or(base);
+        let Some(base) = crate::desk::hub::landing::tree_files::land_base(&t, id, &onto) else { return self.land_wait(id, "Cue can't read the main line") };
         if rev(&t.repo, &format!("{base}^{{tree}}")).as_deref() == Some(work.as_str()) {
             return self.land_nothing(id, &t);
         }

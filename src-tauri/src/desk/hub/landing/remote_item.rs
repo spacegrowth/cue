@@ -393,8 +393,10 @@ impl Hub {
         if !self.remote_clean(&it, &r, &there, &range) {
             return true;
         }
+        // Where its branch left the main line there (#691): its own changes are from there, as the word check read them.
+        let fork = git(&r.machine, &r.folder, &[], &["merge-base", &format!("{there}/{}", r.onto), &format!("refs/heads/{}", r.branch)]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         if let Some((repo, onto, sha)) = self.remote_pushed(&it, &r, &there, now) {
-            self.remote_to_line(&it, &r, (&repo, &onto, &sha), &there);
+            self.remote_to_line(&it, &r, (&repo, &onto, &sha), &there, fork.as_deref());
         }
         true
     }
@@ -492,9 +494,10 @@ impl Hub {
     }
 
     /// Step 5: a copy of its own here (`repo`, onto `onto`), on the fetched commit `sha`, and into the landing line.
-    fn remote_to_line(&self, it: &DeskItem, r: &RemoteWork, (repo, onto, sha): (&str, &str, &str), there: &str) {
+    /// `fork`: where its branch left the main line on the machine.
+    fn remote_to_line(&self, it: &DeskItem, r: &RemoteWork, (repo, onto, sha): (&str, &str, &str), there: &str, fork: Option<&str>) {
         let id = it.id.as_str();
-        let Some(base) = git("", repo, &[], &["merge-base", sha, onto]).map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) else {
+        let Some(base) = landing_base(repo, onto, sha, fork) else {
             self.remote_back(it, &format!("Not landed: {} shares no history with {onto} here. Make it from {there}/{} and say DONE again", r.branch, r.onto));
             return;
         };
@@ -764,6 +767,21 @@ pub(crate) fn carry_moved(repo: &str, path: &str, base: &str, from: &RemoteWork,
 fn guessed_email(m: &str, dir: &str, range: &str) -> Option<String> {
     let who = git(m, dir, &[], &["log", "--format=%an%n%ae%n%cn%n%ce", range]).unwrap_or_default();
     who.lines().skip(1).step_by(2).map(str::trim).find(|e| e.is_empty() || e.split_once('@').is_some_and(|(_, host)| !host.contains('.'))).map(str::to_string)
+}
+
+/// Where item work `sha` (fetched into `repo`) is landed from (#691): its changes are what it holds past this, brought
+/// up to `onto` here. Where it meets `onto` here, unless the main line it left on the machine (`fork`, fetched with
+/// it) is past that: the remote's main and this one with different histories (one rewritten, say), so the remote's
+/// own commits would read as the item's, clash with their twins here, and send it back to catch up there.
+pub(crate) fn landing_base(repo: &str, onto: &str, sha: &str, fork: Option<&str>) -> Option<String> {
+    let here = git("", repo, &[], &["merge-base", sha, onto]).map(|b| b.trim().to_string()).filter(|b| !b.is_empty());
+    let is_ancestor = |a: &str, b: &str| crate::safe_git::run("", repo, &[], &["merge-base", "--is-ancestor", a, b]).is_ok_and(|(_, code)| code == 0);
+    let fork = fork.filter(|f| is_ancestor(f, sha));
+    match (here, fork) {
+        (Some(h), Some(f)) if !is_ancestor(&f, &h) => Some(f.to_string()),
+        (Some(h), _) => Some(h),
+        (None, f) => f.map(str::to_string),
+    }
 }
 
 /// Commit `sha` as shown: its first 10 characters.

@@ -29,6 +29,18 @@ pub(crate) fn moved_base_of(repo: &str, path: &str, onto: &str, base: &str) -> O
     (meet != base).then_some(meet)
 }
 
+/// Where item `id`'s copy `t` is landed from, onto main line `onto`: the commit it started from. Its copy moved onto a
+/// main line whose history was rewritten (its branch rebased, the commit it started from gone from it): measured from
+/// there, main's own changes would read as its, and clash, so where its branch meets the main line now is where it
+/// starts. A copy of work fetched from another machine keeps the base set from that machine's main line (#691).
+pub(crate) fn land_base(t: &crate::desk::ItemTree, id: &str, onto: &str) -> Option<String> {
+    let base = if t.base.is_empty() { rev(&t.repo, onto)? } else { t.base.clone() };
+    if crate::desk::hub::landing::remote_item::is_remote_copy(t, id) {
+        return Some(base);
+    }
+    Some(moved_base_of(&t.repo, &t.path, onto, &base).unwrap_or(base))
+}
+
 /// The full commit `what` names in `repo`.
 pub(crate) fn rev(repo: &str, what: &str) -> Option<String> {
     git("", repo, &[], &["rev-parse", "-q", "--verify", what]).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
