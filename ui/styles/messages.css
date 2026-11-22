@@ -24,8 +24,9 @@
   border-radius: var(--radius-card); background: var(--panel-2); color: var(--ink);
   font: var(--mg-body); text-align: left; overflow-wrap: anywhere;
 }
-/* The head row: mark, who → to, TAG, #item, age (right). */
-.mg-h { display: flex; align-items: center; gap: 7px; min-width: 0; font: var(--mg-meta); color: var(--muted); }
+/* The head row: mark, who → to, TAG, #item, age (right); its parts wrap, whole, when a narrow card has no room for
+   them all on one line (#610). */
+.mg-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; min-width: 0; font: var(--mg-meta); color: var(--muted); }
 .mg-mk { flex: none; width: 14px; height: 14px; color: var(--accent); }
 .mg-who { color: var(--ink); font-weight: 650; white-space: nowrap; }
 .mg-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

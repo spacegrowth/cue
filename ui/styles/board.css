@@ -28,6 +28,8 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .sec-recent .sec-body { overflow: hidden; }
 .sec-recent .card.recent, .sec-starred .card.recent { min-height: 0; overflow-y: auto; flex: 0 1 auto; }
 .sec-starred .sec-body { overflow: hidden; }
+/* With nothing starred it holds only how to star one: its own height, kept whole; the sections that scroll give the room (#610). */
+.sec-starred:has(.sec-body > .quiet-line:only-child) { flex: none; }
 /* Starred, drawn like Recently answered: amber when stuck; the star unstars it. */
 .tl.star-tl { cursor: pointer; }
 .tl.stuck::before { background: var(--caution); }
@@ -49,8 +51,9 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .mach.lead { margin: 0 6px 0 0; vertical-align: 1px; }
 :is(.doing, .tl-said) > .mach.lead { margin-right: 0; align-self: center; }
 .prow .mach.lead { margin: 0; }
-/* In a card's top line, by the name: the name keeps a few letters (.nrow-top .proj), then this shortens, then the state words. */
-:is(.nrow-top, .card-head, .tl-top) .mach { flex: 0 3 auto; min-width: 22px; overflow: hidden; }
+/* In a card's top line, by the name: whole, on the next line when the name leaves no room (.nrow-who, .working
+   .card-head wrap); shortened only when it's wider than a line by itself. */
+:is(.nrow-top, .card-head, .tl-top) .mach { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; }
 :is(.nrow-top, .card-head, .tl-top) .mach > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .proj { font-weight: 650; }
 .dim { color: var(--muted); }
@@ -193,7 +196,10 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .menu .sub { font-size: var(--type-pill); color: var(--muted); }
 
 .working { border-radius: var(--radius-pane); border: 1px dashed var(--on-bg-muted); padding: 12px 14px; font-size: var(--type-body); color: var(--on-bg-muted); }
-.working .card-head { color: var(--on-bg); flex-wrap: nowrap; min-width: 0; }
+/* Its name, then its time, star and × at the right; on a line of their own, still at the right, when a narrow column
+   has no room for them all (#610). */
+.working .card-head { color: var(--on-bg); flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+.working .card-head > .age { margin-left: auto; }
 .working .bar { margin-top: 6px; background: color-mix(in srgb, var(--on-bg-muted) 20%, transparent); }
 .working .prompt { margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 

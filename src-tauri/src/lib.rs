@@ -88,10 +88,39 @@ pub fn hook_main(args: &[String]) {
     hook::main(args)
 }
 
-/// Text size: the whole window zooms (text, cards and buttons together), as a browser's ⌘+ does.
+/// Text size: the whole window zooms (text, cards and buttons together), as a browser's ⌘+ does. The smallest the
+/// window goes grows with it (`min_window`), and a window smaller than that grows to it.
 pub(crate) fn apply_zoom(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_zoom(config::zoom());
+        let z = config::zoom();
+        let _ = w.set_zoom(z);
+        let room = w.current_monitor().ok().flatten().map(|m| {
+            let (s, a) = (m.scale_factor(), m.work_area());
+            (a.size.width as f64 / s, a.size.height as f64 / s)
+        });
+        let (mw, mh) = min_window(z, room);
+        let _ = w.set_min_size(Some(tauri::LogicalSize::new(mw, mh)));
+        if let (Ok(size), Ok(s)) = (w.inner_size(), w.scale_factor()) {
+            let (cw, ch) = (size.width as f64 / s, size.height as f64 / s);
+            if cw < mw || ch < mh {
+                let _ = w.set_size(tauri::LogicalSize::new(cw.max(mw), ch.max(mh)));
+            }
+        }
+    }
+}
+
+/// The smallest the window goes (tauri.conf.json minWidth / minHeight), as a page: what every screen's layout is made
+/// to fit.
+const MIN_PAGE: (f64, f64) = (900.0, 600.0);
+
+/// The smallest window at zoom `z`, in points: the zoom lays the page out in a window that much smaller, so the window
+/// is that much bigger, and the page never smaller than MIN_PAGE (#610) — but never past `room`, the screen's (without
+/// the menu bar and the Dock), when it's known.
+pub(crate) fn min_window(z: f64, room: Option<(f64, f64)>) -> (f64, f64) {
+    let (w, h) = (MIN_PAGE.0 * z.max(1.0), MIN_PAGE.1 * z.max(1.0));
+    match room {
+        Some((rw, rh)) => (w.min(rw.max(MIN_PAGE.0)), h.min(rh.max(MIN_PAGE.1))),
+        None => (w, h),
     }
 }
 
@@ -168,6 +197,21 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use super::min_window;
+
+    /// Larger text, a bigger smallest window: the page in it is never under 900×600; and never past the screen.
+    #[test]
+    fn the_smallest_window_grows_with_the_text_size_within_the_screen() {
+        assert_eq!(min_window(0.9, None), (900.0, 600.0));
+        assert_eq!(min_window(1.0, Some((1512.0, 945.0))), (900.0, 600.0));
+        assert_eq!(min_window(1.3, Some((1512.0, 945.0))), (1170.0, 780.0));
+        assert_eq!(min_window(1.3, None), (1170.0, 780.0));
+        // A 13-inch screen: as tall as its room, no taller.
+        assert_eq!(min_window(1.3, Some((1280.0, 775.0))), (1170.0, 775.0));
+        // Never under the window's own smallest, whatever the screen says.
+        assert_eq!(min_window(1.15, Some((800.0, 500.0))), (900.0, 600.0));
+    }
+
     /// The window's scripts (ui/index.html, in order) share one global scope: a top-level name declared
     /// in two of them is a SyntaxError that stops the second script before it runs, and the window
     /// shows its background and nothing else (that reached the installed app once). Each name once.

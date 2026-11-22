@@ -30,7 +30,9 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-ric { color: var(--sel); } }
 :root[data-theme="dark"] .dk-srow.on .dk-ric, :root[data-theme="dark"] .dk-lcard.on .dk-ric { color: inherit; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.dk-srow, .dk-lcard).on .dk-ric { color: inherit; } }
-.dk-s1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Its name, then its state at the right; the state on a line of its own, still at the right, when a narrow column
+   has no room for both whole (#610: never squeezed to a letter). */
+.dk-s1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: var(--type-body); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-tag) var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .dk-pill.loose { color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); text-transform: none; letter-spacing: 0; }
@@ -44,7 +46,7 @@
 .dk-older-h[aria-expanded="false"] > .dk-gchev { transform: none; }
 .dk-older-close { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-pill) var(--sans); letter-spacing: 0; text-transform: none; cursor: pointer; }
 .dk-older-close:hover, .dk-older-close:focus-visible { background: var(--panel-2); }
-.dk-st { flex: 0 0 auto; max-width: 50%; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); white-space: nowrap; overflow: hidden; }
+.dk-st { flex: 0 1 auto; max-width: 100%; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); white-space: nowrap; overflow: hidden; }
 .dk-st > b { min-width: 0; font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
 .dk-st > i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--work); }
 .dk-st > i.ask { background: var(--deny); }
@@ -53,8 +55,6 @@
 .dk-srow.on .dk-st > i:not(.ask):not(.idle) { background: var(--on-sel); }
 .dk-lcard.on .dk-st > i:not(.ask):not(.idle) { background: currentColor; }
 .dk-lcard .dk-st > i.idle { box-shadow: inset 0 0 0 1.5px currentColor; }
-/* Narrow: its state gives first, so its name keeps the row's width. */
-@media (max-width: 1100px) { .dk-s1 .dk-st { flex-shrink: 3; } }
 .dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--ink); font-size: var(--type-body); white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-s3 { margin: 3px 0 0; color: var(--muted); font: var(--type-pill) var(--mono); }
@@ -117,7 +117,9 @@
 /* What you'll see when it's done (#382): one quiet line under the title. */
 .dk-see { grid-column: 2; min-width: 0; margin: 1px 0 2px; color: var(--muted); font-size: var(--type-small); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-it.on .dk-see { color: inherit; opacity: .8; }
-.dk-i2 { grid-column: 2; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--type-small); }
+/* Its parts wrap, whole, to a next line when a narrow list has no room for them all, rather than squeezing its age or
+   who holds it to a letter (#610). */
+.dk-i2 { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; min-width: 0; color: var(--muted); font-size: var(--type-small); }
 .dk-i2 .dk-who { flex: 0 1 auto; min-width: 0; max-width: none; }
 /* A queued row's words of what it waits for (#576) wrap, whole, rather than cut; its age keeps its room. */
 .dk-i2 .dk-who.dk-qw { white-space: normal; overflow: visible; }
@@ -172,8 +174,9 @@
 .dk-who:has(.dk-givewrap) { overflow: visible; }
 .dk-age { color: var(--muted); font-family: var(--mono); font-size: var(--type-pill); white-space: nowrap; }
 /* At work (#285): what its holder is doing now, and how long since, in ink after its name; one line, cut at "…" so the
-   row keeps its height. Stalled: the word in bold, the rest and the title muted. A word and a tone, never a stripe. */
-.dk-doing { flex: 0 1 auto; min-width: 0; color: var(--ink); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+   row keeps its height: the rest of its line, the holder's name giving way to it down to a few words. Stalled: the word in bold, the rest and the title muted. A word and a tone, never a stripe. */
+.dk-i2:has(> .dk-doing) { flex-wrap: nowrap; }
+.dk-doing { flex: 1 1 0; min-width: 6em; color: var(--ink); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-doing::before { content: "· "; color: var(--muted); }
 .dk-doing [data-ago] { color: var(--muted); font: var(--type-pill) var(--mono); }
 .dk-it.stalled:not(.on) .dk-t, .dk-it.stalled:not(.on) .dk-doing { color: var(--muted); }
