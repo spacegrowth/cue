@@ -133,8 +133,9 @@ fn pressing_away_asks_the_lead_to_sort_things_out_until_its_turn_ends() {
     assert_eq!(desk(&w, &project)["away"]["sweeping"], json!(false), "cleared at the lead's turn end");
 }
 
-/// #612: the lead's pass before Away runs only when something changed on the Desk since its last one (an item added
-/// or moved, a new question); turning Away off and on again with nothing new doesn't send it again.
+/// #612: the lead's pass before Away runs only when something it must settle changed on the Desk since its last one (an
+/// item new, stopped or waiting on a question; a new question), and then names only those; progress and turning Away off
+/// and on again with nothing new don't send it again.
 #[test]
 fn the_pass_before_away_runs_only_when_the_desk_changed_since_the_last_one() {
     let w = World::new();
@@ -160,14 +161,27 @@ fn the_pass_before_away_runs_only_when_the_desk_changed_since_the_last_one() {
     away(true);
     assert_eq!((passes(&w), desk(&w, &project)["away"]["sweeping"].clone()), (1, json!(false)));
 
-    // A new item: the next Away goes through the items again.
+    // Items only making progress (one checked, one done): nothing for the lead to settle, no pass. A busy Desk always
+    // has these, and they sent the whole pass again each time.
     away(false);
+    let ids: Vec<String> = w.hub().read(|st| st.desk.items.iter().filter(|i| i.project == project).map(|i| i.id.clone()).collect());
+    for (id, to) in ids.iter().zip(["to_check", "done"]) {
+        w.hub().write(|st| st.desk.item_mut(id).unwrap().state = to.into());
+    }
+    w.settle();
+    assert!(!crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap(), "progress isn't worth a pass");
+    assert_eq!(passes(&w), 1);
+
+    // A new item: the next Away asks about that item only, not every open item again.
     w.hub().desk_add(&project, "bug", "Header overlaps", "", None).unwrap();
     w.settle();
     assert!(crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap());
     w.settle();
     ends(&w, &d, "Routed it.");
     assert_eq!(passes(&w), 2);
+    let second = sent_to(&w, &d).into_iter().filter_map(|t| t.split_once("The owner is about to go away").map(|(_, w)| w.to_string())).last().unwrap();
+    assert!(second.contains("Since your last pass, only these changed:") && second.contains("(Header overlaps): new, not routed yet"), "{second}");
+    assert!(!second.contains("Go through every open item") && second.contains("Leave at most 1 question that truly needs"), "{second}");
     assert!(!crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap(), "nothing new since that pass");
 
     // A new question from a session on the Desk: due again.
@@ -175,6 +189,9 @@ fn the_pass_before_away_runs_only_when_the_desk_changed_since_the_last_one() {
     w.hub().add_ask(w.hub().session_origin(&h).unwrap(), crate::hub::NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: serde_json::Value::Null, context: vec![], agent_id: String::new() });
     w.settle();
     assert!(crate::ipc::desk_away_sweep_with(w.hub(), &project, &json!({})).unwrap(), "a new question is worth a pass");
+    w.settle();
+    let third = sent_to(&w, &d).into_iter().filter_map(|t| t.split_once("The owner is about to go away").map(|(_, w)| w.to_string())).last().unwrap();
+    assert!(third.contains("a new question from") && third.contains("\"Which color?\"") && !third.contains("Header overlaps"), "{third}");
 }
 
 #[test]

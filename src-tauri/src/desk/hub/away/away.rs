@@ -137,16 +137,34 @@ fn pass_marks(st: &Store, desk: &str) -> Value {
     json!({ "items": crate::desk::hub::away::away_log::item_states(st, desk), "asks": asks })
 }
 
-/// Whether the Desk changed since the lead's last pass (`last`, its marks then; Null: none yet): an item added or
-/// moved, or a new question. One answered, closed or dropped from the list isn't a change worth another pass.
-fn changed_since(last: &Value, now: &Value) -> bool {
-    if last.is_null() {
-        return true;
+/// Item states that need their lead before Away (#612): not routed yet, waiting on a question, stopped. Progress (working,
+/// queued, to check, done) and parked items don't: going through them again would redo the same pass.
+const SETTLE: [(&str, &str); 3] = [("new", "new, not routed yet"), ("needs_you", "waits on a question"), ("stopped", "stopped")];
+
+/// What changed on Desk `desk` since the lead's last pass (`last`, its marks then) that it must settle (#612): an item
+/// that came into a state needing it, and each new question from a session on the Desk, one line each. Empty: nothing.
+fn pass_news(st: &Store, desk: &str, last: &Value) -> Vec<String> {
+    let mut out: Vec<String> = st
+        .desk
+        .items
+        .iter()
+        .filter(|i| i.project == desk && last["items"].get(&i.id).and_then(Value::as_str) != Some(i.state.as_str()))
+        .filter_map(|i| SETTLE.iter().find(|(k, _)| *k == i.state).map(|(_, w)| format!("#{} ({}): {w}", i.id, i.title)))
+        .collect();
+    let was: Vec<&str> = last["asks"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    let sids = desk_sids(st, desk);
+    for it in st.items.iter().filter(|it| it.status == "pending" && it.kind != "waiting" && sids.contains(&it.origin.session_id) && !was.contains(&it.id.as_str())) {
+        let q = it.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or(&it.tool_name);
+        let who = st.sessions.get(&it.origin.session_id).map(|s| s.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| "a session".into());
+        out.push(format!("a new question from {who}: \"{}\"", q.trim()));
     }
-    let moved = now["items"].as_object().is_some_and(|m| m.iter().any(|(id, s)| last["items"].get(id) != Some(s)));
-    let was: Vec<&Value> = last["asks"].as_array().map(|a| a.iter().collect()).unwrap_or_default();
-    let asked = now["asks"].as_array().is_some_and(|a| a.iter().any(|x| !was.contains(&x)));
-    moved || asked
+    out
+}
+
+/// The lead's pass before Away (#612): the first one goes through every open item; a later one only what changed since.
+pub(crate) enum Pass {
+    Full,
+    Only(Vec<String>),
 }
 
 /// The marks of Desk `desk`'s lead's last pass (config.json `desk.away_pass`), Null when it never made one.
@@ -167,12 +185,21 @@ pub(crate) fn away_view(st: &Store, desk: &str, now: u64) -> Value {
     v
 }
 
-/// What Desk `desk`'s lead is asked as the owner presses Away (before it's on): settle what it can under `rules`.
-pub(crate) fn sweep_words(rules: &Value) -> String {
+/// What Desk `desk`'s lead is asked as the owner presses Away (before it's on): settle what it can under `rules`;
+/// every open item the first time, only what changed since its last pass after that (#612).
+pub(crate) fn sweep_words(rules: &Value, pass: &Pass) -> String {
     let rules = rules_in(rules, &Value::Null);
     let may: Vec<&str> = RULES.iter().filter(|(k, _, _)| rules.get(*k).and_then(Value::as_bool).unwrap_or(false)).map(|(_, _, w)| *w).collect();
     let list = if may.is_empty() { "nothing: every call waits for the owner".to_string() } else { may.iter().map(|w| format!("\n- {w}")).collect::<String>() };
-    format!("The owner is about to go away. Go through every open item (working, waiting, to check) and settle everything you can under these rules, writing a DECIDED line for each call (DECIDED: <what you chose> — <why>). You may decide alone:{list}\nAnswer or close any ASK you can settle yourself. Leave at most 5 questions that truly need the owner, as ASK lines, most important first: any still open as Away goes on comes back to you to decide. Then stop.")
+    let what = match pass {
+        Pass::Full => "Go through every open item (working, waiting, to check) and settle everything you can".to_string(),
+        Pass::Only(news) => format!(
+            "Since your last pass, only these changed:\n{}\nSettle just these, nothing else: the rest stays as you left it. Settle them",
+            news.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n")
+        ),
+    };
+    let most = match pass { Pass::Only(n) => n.len().min(5), Pass::Full => 5 };
+    format!("The owner is about to go away. {what} under these rules, writing a DECIDED line for each call (DECIDED: <what you chose> — <why>). You may decide alone:{list}\nAnswer or close any ASK you can settle yourself. Leave at most {most} {} the owner, as ASK lines, most important first: any still open as Away goes on comes back to you to decide. Then stop.", if most == 1 { "question that truly needs" } else { "questions that truly need" })
 }
 
 /// While Away is on: when it started (ms), so the Desk keeps showing the decisions made since.
@@ -477,14 +504,18 @@ impl Hub {
         true
     }
 
-    /// Whether Desk `desk`'s lead should go through its items before Away (#612): only when something changed on the
-    /// Desk since its last pass, and not while it's on one now.
-    pub(crate) fn desk_away_pass_due(&self, desk: &str) -> bool {
-        let (lead, marks) = self.read(|st| (st.desk.lead.get(desk).map(|l| l.sid.clone()), pass_marks(st, desk)));
+    /// The pass Desk `desk`'s lead should make before Away (#612): None when there's nothing new since its last one
+    /// (or it's on one now); every item the first time; after that only what changed and needs it.
+    pub(crate) fn desk_away_pass_due(&self, desk: &str) -> Option<Pass> {
+        let last = last_pass(desk);
+        let (lead, news) = self.read(|st| (st.desk.lead.get(desk).map(|l| l.sid.clone()), pass_news(st, desk, &last)));
         if lead.as_deref().is_some_and(is_sweeping) {
-            return false;
+            return None;
         }
-        changed_since(&last_pass(desk), &marks)
+        if last.is_null() {
+            return Some(Pass::Full);
+        }
+        (!news.is_empty()).then_some(Pass::Only(news))
     }
 
     /// Desk `desk`'s lead finished its pass: the Desk as it left it is kept, so the next Away goes by what changed since.

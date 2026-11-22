@@ -101,14 +101,14 @@ pub(crate) async fn desk_away_sweep(hub: State<'_, Arc<Hub>>, desk: String, rule
 
 pub(crate) fn desk_away_sweep_with(h: &Arc<Hub>, desk: &str, rules: &serde_json::Value) -> Result<bool, String> {
     // Nothing new since the lead last went through the items, or it's going through them now: no second pass.
-    if !h.desk_away_pass_due(desk) {
+    let Some(pass) = h.desk_away_pass_due(desk) else {
         return Ok(false);
-    }
+    };
     // Its lead stopped by a usage limit: nothing sent now (Cue carries it on after the reset).
     if !h.desk_away_sweeping(desk) {
         return Ok(false);
     }
-    let words = crate::owner::in_prompt(&crate::hub::desk_away_sweep_words(rules));
+    let words = crate::owner::in_prompt(&crate::hub::desk_away_sweep_words(rules, &pass));
     if let Err(e) = desk_send_with(h, desk, &words) {
         h.desk_away_sweep_failed(desk);
         return Err(e);
