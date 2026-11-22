@@ -563,7 +563,8 @@ function deskItemNow(i) {
     : i.state === "held" ? ["stop", "Parked", `${i.held?.[1] && i.held[1] !== "You" ? `The Desk lead parked it for you${i.held[2] ? `: ${esc(firstLine(i.held[2]))}` : ""}. ` : "You parked it. "}Nothing starts it until you press Start.`]
     : i.state === "done" ? ["done", "Done", ""] : ["stop", i.state, ""];
   // To check, in the app (#526): what to do with it in larger type, a quiet note of where that line came from.
-  if (deskCheckBox(i)) return { dot, word, say: `<p class="dk-ckl">${deskCheckHtml(deskToCheckLine(i))}</p><p class="dk-cks">${esc(deskCheckFrom(i))}</p>${ub}` };
+  // Its three steps when its session gave them (#668).
+  if (deskCheckBox(i)) return { dot, word, say: `${deskCheckSteps(i, deskToCheckLine(i))}<p class="dk-cks">${esc(deskCheckFrom(i))}</p>${ub}` };
   return { dot, word, say: pick ? `<p class="dk-pickl">${pick}</p>${ub}` : say };
 }
 /** Where item `i`'s check line came from, quiet, and where the item is (#526): "cue-231 said this when it finished ·

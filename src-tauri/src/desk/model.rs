@@ -170,6 +170,10 @@ pub struct DeskItem {
     /// or nothing to see and why. Cleared when it's sent back or resumed, so an old one never shows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check: Option<Check>,
+    /// Cue sent its holder its check line back once since its last DONE (#668): no steps, or words to change. Only
+    /// once, so a card can't go round at its DONE.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub check_back: bool,
     /// Its designs' canvas: the link a session gave last on a DESIGNS: line, shown as "Designs" on its page.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub designs: String,
@@ -496,8 +500,15 @@ pub struct CommitWait {
 pub struct Check {
     /// "try" (one thing to do in the app) | "nothing" (nothing to see).
     pub kind: String,
-    /// The words after the label.
+    /// The words after the label; for three steps, the Do.
     pub text: String,
+    /// Its three steps (#668), when its holder gave them: where (the screen or page), what to do there, what happens.
+    #[serde(default, rename = "where", skip_serializing_if = "String::is_empty")]
+    pub at: String,
+    #[serde(default, rename = "do", skip_serializing_if = "String::is_empty")]
+    pub act: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub expect: String,
 }
 
 /// Where an item's finishing is (desk/hub/landing/finish.rs).

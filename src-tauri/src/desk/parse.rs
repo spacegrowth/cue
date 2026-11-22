@@ -71,8 +71,10 @@ pub enum Line {
     ToLead { id: Option<String>, text: String },
     /// What you check on item `id` once it's done (#526), as its holder says next to its DONE:
     /// `CHECK: #<id> | Try: <one thing to do in the app>` (`kind` "try") or `CHECK: #<id> | Nothing to see: <why>`
-    /// (`kind` "nothing"). `text`: the words after the label.
-    Check { id: String, kind: String, text: String },
+    /// (`kind` "nothing"). `text`: the words after the label. Its three steps (#668):
+    /// `CHECK: #<id> | Where: <screen> | Do: <what to click or type> | Expect: <what happens>` (`kind` "try", `text` the
+    /// Do, `steps` [where, do, expect]); `steps` is empty for the one-line forms.
+    Check { id: String, kind: String, text: String, steps: Vec<String> },
     /// The lead giving item `id` a copy of another repository on a branch it names (#557):
     /// `COPY: #<id> | in: <add-on, or a repository's folder> | branch: <name> | why: …`.
     Copy { id: String, repo: String, branch: String, why: String },
@@ -591,22 +593,45 @@ fn not_done(body: &str) -> Option<Line> {
     Some(Line::NotDone { id, text: text.to_string() })
 }
 
-/// "#111 | Try: <thing>" or "#111 | Nothing to see: <why>" (labels in any case; the words may hold `|`).
+/// "#111 | Try: <thing>" or "#111 | Nothing to see: <why>" (labels in any case; the words may hold `|`), or its three
+/// steps (#668): "#111 | Where: <screen> | Do: <what to do> | Expect: <what happens>", each needed.
 fn check(body: &str) -> Option<Line> {
     let (head, rest) = body.split_once('|')?;
     let head = head.trim();
     if !head.starts_with('#') || head.contains(' ') {
         return None;
     }
-    // The label and its colon: "Try:" or "Nothing to see:", any case.
-    let rest = rest.trim();
-    let said = |label: &str| rest.get(..label.len()).filter(|h| h.eq_ignore_ascii_case(label)).and_then(|_| rest[label.len()..].trim_start().strip_prefix(':')).map(str::trim);
-    let (kind, text) = match said("try") {
-        Some(t) => ("try", t),
-        None => ("nothing", said("nothing to see")?),
-    };
     let id = id_of(head)?;
-    (!text.is_empty()).then(|| Line::Check { id, kind: kind.into(), text: text.into() })
+    // The label and its colon: "Try:", "Nothing to see:" (or "Nothing to try:"), "Where:", any case.
+    let said = |rest: &str, label: &str| -> Option<String> {
+        let rest = rest.trim();
+        rest.get(..label.len()).filter(|h| h.eq_ignore_ascii_case(label)).and_then(|_| rest[label.len()..].trim_start().strip_prefix(':')).map(|t| t.trim().to_string())
+    };
+    if said(rest, "where").is_some() {
+        // Each part after a "|" starts a step when it's labelled; one that isn't is the step before's words, with its "|".
+        let mut steps = [String::new(), String::new(), String::new()];
+        let mut at: Option<usize> = None;
+        for part in rest.split('|') {
+            let label = ["where", "do", "expect"].iter().position(|l| said(part, l).is_some());
+            match (label, at) {
+                (Some(n), _) if steps[n].is_empty() => {
+                    steps[n] = said(part, ["where", "do", "expect"][n]).unwrap_or_default();
+                    at = Some(n);
+                }
+                (_, Some(n)) => steps[n] = format!("{} | {}", steps[n], part.trim()),
+                _ => return None,
+            }
+        }
+        if steps.iter().any(|s| s.trim().is_empty()) {
+            return None;
+        }
+        return Some(Line::Check { id, kind: "try".into(), text: steps[1].clone(), steps: steps.to_vec() });
+    }
+    let (kind, text) = match said(rest, "try") {
+        Some(t) => ("try", t),
+        None => ("nothing", said(rest, "nothing to see").or_else(|| said(rest, "nothing to try"))?),
+    };
+    (!text.is_empty()).then(|| Line::Check { id, kind: kind.into(), text, steps: vec![] })
 }
 
 /// "#111 | <title>": the item and its new title.

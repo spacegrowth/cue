@@ -100,16 +100,43 @@ test("a Try line from its session: on its row, and in a box at the top of its pa
   await expect(b.locator(".dk-soon")).toContainText("Done");
 });
 
-test("a Nothing to see line from its session, on its row and in its panel's box (#526)", async ({ page, cue }) => {
+test("a Nothing to try line from its session, on its row and in its panel's box (#526, #668)", async ({ page, cue }) => {
   const { since, row } = await openChecked(page, cue, { check: { kind: "nothing", text: "tests passed, close it" } });
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Nothing to see: tests passed, close it`);
-  await expect(row.locator(".dk-h b")).toHaveText("Nothing to see:");
+  await expect(row.locator(".dk-h")).toHaveText(`${since} · Nothing to try: tests passed, close it`);
+  await expect(row.locator(".dk-h b")).toHaveText("Nothing to try:");
   await row.locator(".dk-t").click();
   const b = box(page);
-  await expect(b.locator(".dk-ckl")).toHaveText("Nothing to see: tests passed, close it");
-  await expect(b.locator(".dk-ckl b")).toHaveText("Nothing to see:");
+  await expect(b.locator(".dk-ckl")).toHaveText("Nothing to try: tests passed, close it");
+  await expect(b.locator(".dk-ckl b")).toHaveText("Nothing to try:");
   await expect(b.locator(".dk-cks")).toHaveText(`web-lead said this when it finished · ${since.replace(/^In/, "in")}`);
   await expect(b.locator(".dk-pacts button")).toHaveText(["Close", "Send back"]);
+  await expect(b.locator(".dk-steps, .dk-show")).toHaveCount(0);
+});
+
+// Three steps someone new can follow (#668): Where, Do, Expect, numbered in the box; the row says the Do and where.
+const steps = { kind: "try", text: "pick a machine, close and reopen", where: "Desk settings", do: "pick a machine, close and reopen", expect: "it's still picked" };
+
+test("three steps from its session: numbered Where, Do, Expect in its box, the Do and where on its row, no Show me without a page (#668)", async ({ page, cue }) => {
+  const { since, row } = await openChecked(page, cue, { check: steps });
+  await expect(row.locator(".dk-h")).toHaveText(`${since} · Try: pick a machine, close and reopen · Desk settings`);
+  await row.locator(".dk-t").click();
+  const b = box(page);
+  await expect(b.locator(".dk-steps li")).toHaveText(["Where Desk settings", "Do pick a machine, close and reopen", "Expect it's still picked"]);
+  await expect(b.locator(".dk-steps li b")).toHaveText(["Where", "Do", "Expect"]);
+  await expect(b.locator(".dk-ckl")).toHaveCount(0);
+  await expect(b.locator(".dk-show")).toHaveCount(0);
+  await expect(b.locator(".dk-cks")).toHaveText(`web-lead said this when it finished · ${since.replace(/^In/, "in")}`);
+  await expect(b.locator(".dk-pacts button")).toHaveText(["Close", "Send back"]);
+  await expect(page.locator(".dk-right [title], .dk-pg [title]")).toHaveCount(0);
+});
+
+test("Show me opens the page its steps name (#668)", async ({ page, cue }) => {
+  const url = "https://claude.ai/artifact/abc123";
+  const { row } = await openChecked(page, cue, { check: { ...steps, where: `the Desk mocks page, ${url}.` } });
+  await row.locator(".dk-t").click();
+  const show = box(page).locator(".dk-show");
+  await expect(show).toHaveText("Show me");
+  await expect(show).toHaveAttribute("data-href", url);
 });
 
 test("no line from its session: Cue's words, its You'll see to try, else that nothing said what to try (#526)", async ({ page, cue }) => {
@@ -125,6 +152,14 @@ test("no line from its session: Cue's words, its You'll see to try, else that no
   await expect(b.locator(".dk-ckl")).toHaveText("Nothing said what to try: Send back to ask its session");
   await expect(b.locator(".dk-cks")).toHaveText(`Cue's words: web-lead didn't say what to try · ${since.replace(/^In/, "in")}`);
   await expect(b.locator(".dk-pacts button")).toHaveText(["Close", "Send back"]);
+});
+
+test("the steps in dark: their words in the dark theme's ink (#668)", async ({ page, cue }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  const { row } = await openChecked(page, cue, { check: steps });
+  await row.locator(".dk-t").click();
+  const ink = await box(page).locator(".dk-steps").evaluate((el) => getComputedStyle(el).color);
+  expect(ink).toBe("rgb(233, 236, 223)");
 });
 
 test("the box in dark: the line and its note readable on the box (#526)", async ({ page, cue }) => {

@@ -129,13 +129,16 @@ function deskInAppSince(i) {
   const at = i.finish?.step === "checked" && i.finish.at ? i.finish.at : app ? state.desk?.installed_ms || 0 : 0;
   return `${app ? "In the app" : "On main"}${at ? ` since ${clockAt(at)}` : ""}`;
 }
-/** The words before an item's check line, by its kind (#526). */
-const DESK_CHECK_LABEL = { try: "Try:", nothing: "Nothing to see:", unsaid: "Nothing said what to try:" };
-/** What to do with item `i` to check, in one line (#526): { kind, text, cue }. Its session's line at DONE (`i.check`:
- *  "try", something to try, or "nothing", nothing to see and why); else Cue's own words (`cue`): its you'll-see to
- *  try, or, with none, that nothing said what to try (kind "unsaid"). */
+/** The words before an item's check line, by its kind (#526; "Nothing to try:" since #668). */
+const DESK_CHECK_LABEL = { try: "Try:", nothing: "Nothing to try:", unsaid: "Nothing said what to try:" };
+/** What to do with item `i` to check, in one line (#526): { kind, text, cue, steps }. Its session's line at DONE
+ *  (`i.check`: "try", something to try, or "nothing", nothing to try and why); else Cue's own words (`cue`): its
+ *  you'll-see to try, or, with none, that nothing said what to try (kind "unsaid"). `steps` (#668): its session's
+ *  three steps, [where, do, expect], when it gave them; its one line is then the Do and where. */
 function deskToCheckLine(i) {
   const c = i?.check, text = c && (c.kind === "try" || c.kind === "nothing") ? plain(c.text) : "";
+  const steps = c?.kind === "try" && c.where && c.do && c.expect ? [plain(c.where), plain(c.do), plain(c.expect)] : null;
+  if (steps) return { kind: "try", text: `${steps[1]} · ${steps[0]}`, cue: false, steps };
   if (text) return { kind: c.kind, text, cue: false };
   const see = deskOneLine(i?.see);
   return see ? { kind: "try", text: see, cue: true } : { kind: "unsaid", text: "Send back to ask its session", cue: true };
@@ -143,6 +146,18 @@ function deskToCheckLine(i) {
 /** That line as text ("Try: …") and as html, its label bold. */
 const deskCheckText = (c) => `${DESK_CHECK_LABEL[c.kind]} ${c.text}`;
 const deskCheckHtml = (c) => `<b class="dk-vb">${DESK_CHECK_LABEL[c.kind]}</b> ${esc(c.text)}`;
+/** Its three steps on its page (#668): Where, Do, Expect, numbered, each label bold; then Show me when its steps (or
+ *  its mocks) give a page to open. Its one line (deskCheckHtml) when it has no steps. */
+function deskCheckSteps(i, c) {
+  if (!c.steps) return `<p class="dk-ckl">${deskCheckHtml(c)}</p>`;
+  const li = c.steps.map((s, n) => `<li><b class="dk-vb">${["Where", "Do", "Expect"][n]}</b> <span>${esc(s)}</span></li>`).join("");
+  const url = deskShowMe(i, c);
+  const show = url ? `<a class="btn small dk-show" href="#" data-href="${esc(url)}">Show me</a>` : "";
+  return `<ol class="dk-steps">${li}</ol>${show}`;
+}
+/** Where Show me goes (#668): a web page its steps name (a canvas page, say), else its mocks' canvas; "" for none.
+ *  Screens inside Cue have no link, so their Where says the way there. */
+const deskShowMe = (i, c) => (c.steps || []).join(" ").match(/https?:\/\/[^\s)\]>"']+/)?.[0]?.replace(/[.,;:]+$/, "") || deskCanvas(i) || "";
 function deskVerb(i) {
   if (i.state === "to_check") return ["", deskWhereLine(i).text];
   if (i.state !== "needs_you") return null;
