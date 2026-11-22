@@ -601,6 +601,13 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
    panel to fold it to its Now line (#418). */
 @container dkcard (max-width: 640px) {
   .dk-pg[data-desk-page="item"] .dk-ptog { display: inline-flex; }
+  /* The box keeps its whole height (bigger chat text, a short window): the panel, which scrolls, gives way (#610). */
+  .dk-pg[data-desk-page="item"]:not(.hid) { grid-template-rows: auto minmax(0, auto) minmax(min-content, 1fr); }
+  /* (The chat scrolls in what's left, so its length doesn't count toward that least height.) */
+  .dk-pg[data-desk-page="item"]:not(.hid) > .dk-pgm > .dk-pane { contain: size; }
+  /* An ask over the box scrolls within a share of the window (its usual 55% of the column has nothing to be a share
+     of while that least height is measured). */
+  .dk-pg[data-desk-page="item"]:not(.hid) > .dk-pgm > .dk-ask { max-height: 22vh; }
   .dk-pg[data-desk-page="item"]:not(.hid) > .dk-panel { max-height: 34vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 12px 20px 14px; background: var(--panel-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .dk-pg[data-desk-page="item"]:not(.hid) :is(.dk-psec, .dk-pnow > .dk-psh, .dk-psay) { display: block; }
   .dk-pg[data-desk-page="item"]:not(.hid) > .dk-panel > .dk-sfoot { display: flex; }

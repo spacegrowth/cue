@@ -15,10 +15,13 @@
    with a readable name (7.5em of it), the time and buttons wrap to a line of their own, still at the right. The two
    keep the room between them a spacer with a gap each side gave. */
 .nrow-top:has(> .nrow-side) { flex-wrap: wrap; gap: 6px 16px; }
-.nrow-who { display: flex; align-items: center; gap: 8px; flex: 1 1 7.5em; min-width: 0; }
-.nrow-side { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
-.nrow-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 100 auto; min-width: 0; }
-/* The name stays on one line (Later, the pin and × take the room); "your turn" shortens first. */
+/* Who it is: the name first; where it runs and its state words ("asks", "your turn") sit after it, or under it when
+   the line has no room for them whole (#610: never squeezed to a letter). */
+.nrow-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1 1 7.5em; min-width: 0; }
+/* Its time and buttons: on one line, at the right, unless the card is narrower than them all (#610). */
+.nrow-side { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 8px; flex: 0 1 auto; min-width: 0; margin-left: auto; }
+.nrow-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+/* The name stays on one line (Later, the pin and × take the room), shortened only when it's wider than the line. */
 .nrow-top .proj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 2.6em; flex: 0 1 auto; }
 .x-clear { width: 22px; height: 22px; margin: -3px -4px -3px 2px; border-radius: var(--radius-qp); display: grid; place-items: center; font-size: var(--type-title); line-height: 1; color: var(--muted); flex: none; }
 .x-clear:hover { background: var(--panel-2); color: var(--ink); }
