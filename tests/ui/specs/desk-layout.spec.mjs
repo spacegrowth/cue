@@ -2,7 +2,7 @@
 // the Desk's sessions at the left on the green (the lead on top, a heading per machine), the lead's chat with a panel of
 // only Now and Activity, Items as one card (Waiting on you and Working, six steps a row) with Up next and Done today side
 // by side under it, each folding to its heading; the header's count the Desk's own. Off: today's Desk, untouched.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 
 /** Desk settings, from the header's Desks menu. */
 async function settings(page) {
@@ -149,4 +149,45 @@ test("no tooltips on the new layout", async ({ page, cue }) => {
   await open(page, cue);
   await expect(page.locator(".dk-c [title]")).toHaveCount(0);
   await expect(page.locator(".top [data-desk-c-head][title]")).toHaveCount(0);
+});
+
+test("the lead's own ask is in Waiting on you, and the header counts the same", async ({ page, cue }) => {
+  await open(page, cue);
+  // The lead asks something of its own (not a crew member's ask).
+  await cue.change((st) => {
+    const a = st.items.find((i) => i.id === "n-focus-ask");
+    st.items.push({ ...a, id: "n-lead-ask", agent_id: "", agent_name: "", tool_input: { questions: [{ question: "Ship the phrases today?", header: "Ship", multiSelect: false, options: [{ label: "Yes" }, { label: "No" }] }] } });
+  });
+  const row = page.locator(".dkn-card .dkn-row[data-desk-c-lead]");
+  await expect(row).toContainText("web-lead");
+  const head = page.locator(".top [data-desk-c-head]");
+  const n = (await head.textContent()).match(/^\d+/)[0];
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] span')).toHaveText(n);
+});
+
+test("the lead's block brings its chat back from All sessions", async ({ page, cue }) => {
+  await open(page, cue);
+  await page.locator(".dkn-side [data-desk2b-sessions]").click();
+  await expect(page.locator(".dk-c .dk-sessions")).toHaveCount(1);
+  await page.locator(".dkn-side .dkn-lead").click();
+  await expect(page.locator(".dk-c .dk-sessions")).toHaveCount(0);
+  await expect(page.locator(".dk-c > .dk2b-chat")).toHaveCount(1);
+  await expect(page.locator(".dkn-side .dkn-lead")).toHaveClass(/\bon\b/);
+});
+
+test("switch off: dragging the grip with All sessions open moves from its own width", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 1800, height: 1095 });
+  await cue.open("desk");
+  await openDesk(page);
+  await deskAllSessions(page);
+  const card = page.locator(".board.dk-b2 > .dk-card.dk-sessions");
+  const w0 = await card.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+  const g = await page.locator('.board.dk-b2 [data-col-grip="items"]').boundingBox();
+  const x = g.x + g.width / 2, y = g.y + g.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 20, y, { steps: 4 });
+  await page.mouse.move(x + 40, y, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(() => card.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(w0 + 40);
 });

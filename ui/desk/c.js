@@ -48,7 +48,7 @@ function deskCHeadWait() {
   const n = deskB2WaitN(d, taskApprovals);
   if (!n) return null;
   const g = deskGroups(d.project, taskApprovals), first = [...g.asks, ...g.check][0];
-  return { n, attrs: first ? `data-desk-chk-item="${esc(first.id)}"` : `data-desk-tab="lead"` };
+  return { n, attrs: first ? `data-desk-chk-item="${esc(first.id)}"` : `data-desk-c-lead` };
 }
 
 /** The header's chip in that case: "2 wait on you", the same number as the strip, the lead's panel and the list. */
@@ -62,7 +62,7 @@ if (typeof document !== "undefined") {
     const el = e.target.closest?.("[data-desk-c-head]");
     if (!el) return;
     e.stopPropagation();
-    if (el.dataset.deskChkItem) DESK_CLICKS.deskChkItem(el); else DESK_CLICKS.deskLeadChat(el);
+    if (el.dataset.deskChkItem) DESK_CLICKS.deskChkItem(el); else DESK_CLICKS.deskCLead(el);
   }, true);
 }
 
@@ -113,7 +113,7 @@ function deskCSessions(project) {
   if (leadSid) {
     const s = sessionOf(leadSid), [dot, word] = s ? deskSessWithHelpers(s, false) : ["idle", "ended"];
     const on = !o && deskPick !== project;
-    lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-lead-chat="${esc(leadSid)}" aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span><span class="dkn-st">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${on ? " ›" : ""}</span></span></button>`;
+    lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-c-lead aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span><span class="dkn-st">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${on ? " ›" : ""}</span></span></button>`;
   }
   // A machine's busy count: the Desk's items at work there, of as many as it runs at once (Desk settings, #711).
   const items = d.items || [];
@@ -199,7 +199,10 @@ function deskCList(project, taskApprovals) {
   const queued = new Set(g.queued), next = [...g.queued, ...g.held];
   const doneToday = deskB2DoneToday(d);
   const grp = (key, label, list, extra = "", n = list.length) => (list.length || extra ? `<div class="dkn-gh" data-desk2b-group="${key}">${label} <span>${n}</span></div>${list.map(deskCRow).join("")}${extra}` : "");
-  const you = grp("you", "WAITING ON YOU", waits, aw.html || "", waits.length + (aw.n || 0));
+  // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
+  const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
+  const leadAsk = ask ? `<div class="dk-it dkn-row ask" role="button" tabindex="0" data-desk-c-lead><span class="dkn-id"></span><div class="dkn-t"><span class="dkn-tt">${esc(deskLeadName(d))}</span><span class="dkn-sub">The Desk lead</span></div><div class="dkn-steps"></div><div class="dkn-bar"></div><div class="dkn-now"><span class="dkn-nask">${esc(deskOneLine(summary(ask) || "Asks you something"))}</span></div></div>` : "";
+  const you = grp("you", "WAITING ON YOU", waits, leadAsk + (aw.html || ""), waits.length + (aw.n || 0) + (ask ? 1 : 0));
   const work = grp("working", "WORKING", working);
   const kept = (d?.kept || []).length ? `<div class="dkn-gh" data-desk2b-group="kept">KEPT COPIES <span>${d.kept.length}</span></div>${d.kept.map(deskKeptRow).join("")}` : "";
   const calls = d?.away?.on ? deskAwayCalls(d) : [];
@@ -221,6 +224,9 @@ function deskCList(project, taskApprovals) {
 // ---------- clicks ----------
 
 deskClicks({
+  // The lead (its block in the sessions column, its ask in Items, the header's count): its chat, whatever was open,
+  // All sessions too.
+  deskCLead: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(null); },
   deskCFold: (el) => {
     const k = el.dataset.deskCFold;
     if (!deskCFolds.delete(k)) deskCFolds.add(k);

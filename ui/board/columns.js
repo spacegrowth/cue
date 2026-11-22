@@ -179,7 +179,8 @@ function deskColDrag(e, board) {
   // The new layout (desk/c.js): the sessions column at the left takes its share first.
   const side = board.querySelector(":scope > .dkn-side");
   const W = board.clientWidth - (side?.offsetWidth ? side.offsetWidth + 14 : 0), unit = (W - 28) / 3.75;
-  const chat0 = board.querySelector(":scope > .dk-right")?.getBoundingClientRect().width || 0;
+  // The chat card, or what's open in its place (All sessions' card has no dk-right).
+  const chat0 = (board.querySelector(":scope > .dk-right") || board.querySelector(":scope > :not(.dkn-side)"))?.getBoundingClientRect().width || 0;
   const lo = DESK_COLS.chatMin, hi = W - 14 - DESK_COLS.itemsMin;
   // Too narrow for both (the grip is hidden then): today's split stays.
   if (unit <= 0 || hi < lo) return;
