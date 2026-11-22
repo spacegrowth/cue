@@ -173,11 +173,13 @@ try {
 function saveDeskCols() { try { localStorage.setItem("cue.deskCols", JSON.stringify(deskColFr)); } catch {} }
 /** The Desk board's own style (its chat's share) and its grip, for deskView. */
 const deskColStyle = () => `--dk-fr:${deskColFr}`;
-const deskColGrip = () => colGrip({ name: "items", left: "var(--dk-chat)" });
+const deskColGrip = () => colGrip({ name: "items", left: typeof deskCOn === "function" && deskCOn() ? "calc(var(--dkn-s) + var(--dkn-gap) + var(--dk-chat))" : "var(--dk-chat)" });
 /** Drag the Desk's grip: the chat and Items trade width, between their mins; near the usual width it clicks onto it. */
 function deskColDrag(e, board) {
-  const W = board.clientWidth, unit = (W - 28) / 3.75;
-  const chat0 = board.firstElementChild?.getBoundingClientRect().width || 0;
+  // The new layout (desk/c.js): the sessions column at the left takes its share first.
+  const side = board.querySelector(":scope > .dkn-side");
+  const W = board.clientWidth - (side?.offsetWidth ? side.offsetWidth + 14 : 0), unit = (W - 28) / 3.75;
+  const chat0 = board.querySelector(":scope > .dk-right")?.getBoundingClientRect().width || 0;
   const lo = DESK_COLS.chatMin, hi = W - 14 - DESK_COLS.itemsMin;
   // Too narrow for both (the grip is hidden then): today's split stays.
   if (unit <= 0 || hi < lo) return;

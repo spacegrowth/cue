@@ -1,6 +1,6 @@
 // The main screens, each a screenshot compared with its baseline (shots.mjs). The clock is frozen at the
 // scenarios' NOW and nothing animates (?still=1), so a screen draws the same pixels every run.
-import { test, expect } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { compareShot } from "./shots.mjs";
 import { pillProblems } from "./pills.mjs";
 
@@ -41,6 +41,16 @@ const dropOn = (page, sel, text) => page.evaluate(([sel, text]) => {
   const el = document.querySelector(sel);
   for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
 }, [sel, text]);
+
+// A laptop's window (#734's review: every mock was drawn at 2560 wide).
+const LAPTOP = { width: 1440, height: 900 };
+/** The new Desk layout switched on, the Desk open on cue. */
+const deskLayout = async (page) => {
+  await page.evaluate(() => deskCTurn(true));
+  await openDesk(page);
+};
+/** The new layout drawn: its sessions, Items' card, Up next and Done today. */
+const deskLayoutDrawn = async (p) => { await p.locator(".dk-c .dkn-side").waitFor(); await p.locator(".dk-c .dkn-card .dkn-row").first().waitFor(); await p.locator('.dk-c [data-dkn-drawer="done"]').waitFor(); };
 
 /** name → { scenario, flags, viewport, setup(page): what to open, done(page): what's on screen once it's drawn } */
 const SCREENS = {
@@ -202,6 +212,23 @@ const SCREENS = {
     },
   },
   "narrowest-window": { scenario: "board-waiting", viewport: NARROWEST, done: (p) => p.locator('[data-big="n6"]').first().waitFor() },
+  // The new Desk layout (#738, desk/c.js), switched on: at a laptop's size the sessions a strip of dots, the lead's chat,
+  // Items' card with Up next and Done today side by side under it; dark with host-lead's chat open and Done today
+  // folded; and the smallest window.
+  "desk-layout-laptop": { scenario: "desk", viewport: LAPTOP, setup: (p) => deskLayout(p), done: deskLayoutDrawn },
+  "desk-layout-laptop-dark": {
+    scenario: "desk",
+    viewport: LAPTOP,
+    setup: async (p) => {
+      await p.emulateMedia({ colorScheme: "dark" });
+      await deskLayout(p);
+      await p.locator('.dkn-side [data-desk-chat-of="host"]').click();
+      await p.locator('[data-desk-c-fold="done"]').click();
+    },
+    done: async (p) => { await deskLayoutDrawn(p); await p.locator(".dk-c .dk-right .dk-ph").waitFor(); await p.locator('[data-desk-c-fold="done"][aria-expanded="false"]').waitFor(); },
+  },
+  "desk-layout-wide": { scenario: "desk", viewport: { width: 1800, height: 1095 }, setup: (p) => deskLayout(p), done: deskLayoutDrawn },
+  "desk-layout-narrowest": { scenario: "desk", viewport: NARROWEST, setup: (p) => deskLayout(p), done: deskLayoutDrawn },
 };
 
 for (const [name, s] of Object.entries(SCREENS)) {

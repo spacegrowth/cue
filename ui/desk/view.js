@@ -187,7 +187,8 @@ function deskRightChat(d, taskApprovals) {
   const workRows = working.map(({ sid, name, on }) => `<button class="dk-prow" ${deskChatAttrs(sid, d)}><i class="dk-pdot work" aria-hidden="true"></i><span class="dk-prt"><b>${esc(name)}</b>${on ? ` <span class="dk-prs">on ${deskKindIcon(on)}#${esc(on.id)}</span>` : ""}</span></button>`).join("");
   // The lead's own ask waits on you too, at the top, until it's answered (its card is under its chat).
   const leadAsk = ask ? `<button class="dk-prow" data-desk-tab="lead"><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskLeadName(d))}</b></span><span class="dk-prs">${esc(summary(ask) || "Asks you something")} · ${ago(ask.created_ms || now())}</span></button>` : "";
-  const panel = deskPsec(`Waits on you · ${waits.length + (ask ? 1 : 0)}`, leadAsk || waitRows ? `<div class="dk-prows">${leadAsk}${waitRows}</div>` : "")
+  // The new layout (desk/c.js): only Now and Activity, the columns either side showing what waits and who works.
+  const panel = deskCOn() ? "" : deskPsec(`Waits on you · ${waits.length + (ask ? 1 : 0)}`, leadAsk || waitRows ? `<div class="dk-prows">${leadAsk}${waitRows}</div>` : "")
     + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
   const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d, deskB2On() ? null : deskOpen);
   // B2: with the panel hidden (Hide panel; it opens shown), Now and Waits on you are the strip over the chat (deskB2Strip).
@@ -254,6 +255,9 @@ function deskView() {
   // Today's page, B2 (#666, desk/b2.js): at the left the lead's chat, or in its place what's open (‹ Items N or Esc goes
   // back); at the right the item list, always.
   // The grip between the two trades their width (board/columns.js deskColDrag, styles/desk-cols.css).
+  // The new Desk layout (#738, desk/c.js): today's page with the Desk's sessions at the left, Items as one white card
+  // with Up next and Done today under it on the green.
+  if (deskCOn()) return `<div class="board dk-board dk-b2 dk-cols dk-c" style="${deskColStyle()}">${deskCSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskCList(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
   return `<div class="board dk-board dk-b2 dk-cols" style="${deskColStyle()}">${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskB2List(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page

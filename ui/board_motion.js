@@ -182,7 +182,7 @@ function headerChips() {
   const back = groups().yours.some((i) => talking(i) && i.session_id !== active?.sid);
   const html = chip("waiting", "waiting", "", heat, back ? "z back" : "z")
     + chip("cold", "going cold", cold[0] ? `<span data-cold-in="${cold[0].since}">${coldIn(cold[0].since)}</span>` : "", "cold", "c")
-    + chip("asking", "asking you", "", "", "ask");
+    + (typeof deskCHeadWait === "function" && deskCHeadWait() ? deskCHeadChip() : chip("asking", "asking you", "", "", "ask"));
   return html || `<span class="hall" data-tauri-drag-region>all clear</span>`;
 }
 /** Waiting's list, under its chip: each session that waits on you, newest first; a click opens it, and ‹ › on the chip
