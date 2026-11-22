@@ -16,12 +16,18 @@ let lands = null;   // { desk, set: { where, how, check, after, push, at_once, c
 function deskSettingsLine(d) {
   if (!d?.lead || !(d.lands || d.ask_before?.project)) return "";
   const l = d.lands, ab = d.ask_before;
-  const asks = ab?.project ? askBeforeWords(ab) : "";
-  const words = [asks ? (asks === "nothing" ? "Asks nothing first" : `Asks before ${asks}`) : "", l?.summary ? `lands in ${l.summary}` : ""].filter(Boolean).join(" · ");
+  // Pushing to main is said once, by the push choice, when the Desk has one (#692).
+  const push = l?.set?.push, skip = push ? ["main"] : [];
+  const asks = ab?.project ? askBeforeWords(ab, skip) : "";
+  const sends = LANDS_PUSH_WORDS[push] || "";
+  const askWords = asks ? (asks === "nothing" ? (sends ? "" : "Asks nothing first") : `Asks before ${asks}`) : "";
+  const words = [sends, askWords, l?.summary ? `lands in ${l.summary}` : ""].filter(Boolean).join(" · ");
   const open = l ? `data-lands-change="${esc(d.id || d.project)}"` : `data-ab-change="${esc(ab.project)}"`;
   const said = words ? `<span class="dk-ab-words">${esc(words[0].toUpperCase() + words.slice(1))}</span><span class="dk-ab-sep"> · </span>` : "";
   return `<span class="dk-ab">${said}<button class="dk-ab-change" ${open}>Change</button></span>`;
 }
+/** The push choice in a Desk's header line (#692). */
+const LANDS_PUSH_WORDS = { after: "Sends to GitHub right away", ask: "Asks before sending to GitHub", never: "Doesn't send to GitHub" };
 /** Open Desk `desk`'s settings. */
 function landsChange(desk) {
   const d = deskOf(desk), l = d?.lands;
@@ -29,11 +35,14 @@ function landsChange(desk) {
   const project = d.ask_before?.project || d.workspace_project || l.project;
   // Your own steps, one per line while you edit them.
   const steps = { check: (l.set.check_steps || []).join("\n"), after: (l.set.after_steps || []).join("\n") };
-  const ab = project && askBeforeKinds().length ? { project, ticks: [...askBeforeNow(project)], more: false } : null;
+  // Pushing to main isn't an Ask me before row here: the push row says what happens (#692). Sessions never push main
+  // themselves, so it stays asked; saving the screen keeps it so.
+  const now = project && askBeforeKinds().length ? [...askBeforeNow(project)] : null;
+  const ab = now ? { project, ticks: now.includes("main") ? now : [...now, "main"], more: false, stored: now } : null;
   // Where its new sessions start (#597): this Mac or a machine, with the folder of the Desk's clone there.
   const ms = d.machines?.machines || [], mach = ms.length ? { machine: d.machines.machine || "", folder: ms.find((m) => m.name === d.machines.machine)?.folder || "" } : null;
   const model = d.model || "default";
-  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.ticks] : null, mach: mach ? { ...mach } : null, model } };
+  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { ...mach } : null, model } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -168,7 +177,7 @@ function landsMach() {
 function landsAskBefore() {
   if (!lands.ab) return "";
   return `<div class="ld-sec" data-ld-sec="ask"><div class="set-group ld-h">Ask me before</div>
-    <div class="ld-hint ld-sub">The lead and its sessions stop and ask you first.</div>${askBeforeRows(lands.ab)}</div>`;
+    <div class="ld-hint ld-sub">The lead and its sessions stop and ask you first.</div>${askBeforeRows(lands.ab, ["main"])}</div>`;
 }
 function landsHtml() {
   // Opened from the new Desk page's Desk settings: its drawer shows them (desk/v2.js).

@@ -16,7 +16,7 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
-  await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Push to main"]);
+  await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Send finished work to GitHub"]);
   const seg = (label) => dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: label }) }).locator(".ld-seg");
   await expect(seg("Where an item works").locator("button.on")).toHaveText("Own copy");
   await expect(dlg.locator(".ld-n")).toHaveText("3");
@@ -24,7 +24,7 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await expect(seg("Check before landing").locator("button.on")).toHaveText("Cue's own check");
   await expect(dlg.locator(".ld-steps li b")).toHaveText(["Build", "Rust tests", "Window loads"]);
   await expect(seg("After landing").locator("button.on")).toHaveText("Install or serve Cue");
-  await expect(seg("Push to main").locator("button.on")).toHaveText("Ask each time");
+  await expect(seg("Send finished work to GitHub").locator("button.on")).toHaveText("Ask me first");
   // Not built yet: shown, can't be picked.
   for (const [label, name] of [["Where an item works", "A branch"], ["How it lands", "Merge"]]) {
     const b = seg(label).locator("button", { hasText: name });
@@ -32,9 +32,11 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
     await expect(b.locator(".ld-not")).toHaveText("not yet");
   }
   // Built: a pull request, and every push choice.
-  for (const [label, name] of [["How it lands", "Pull request"], ["Push to main", "Never"], ["Push to main", "After each landing"], ["Check before landing", "Your own steps"], ["After landing", "Your own steps"]]) {
+  for (const [label, name] of [["How it lands", "Pull request"], ["Send finished work to GitHub", "Never"], ["Send finished work to GitHub", "Right away"], ["Check before landing", "Your own steps"], ["After landing", "Your own steps"]]) {
     await expect(seg(label).locator("button", { hasText: name })).toBeEnabled();
   }
+  // Pushing is said once, on its own row: Ask me before has no push to main row (#692).
+  await expect(dlg.locator('[data-ab-kind="main"]')).toHaveCount(0);
   await expect(dlg.locator("[title]")).toHaveCount(0);
   // Esc closes it.
   await page.keyboard.press("Escape");

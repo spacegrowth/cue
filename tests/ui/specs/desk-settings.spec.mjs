@@ -13,15 +13,17 @@ test("the screen has its parts, no Away, Ask me before on one line, and Esc at i
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".ld-h")).toHaveText(["How work lands", "Ask me before", "Old working folders"]);
   await expect(dlg.getByRole("button", { name: "Remove old working folders" })).toBeVisible();
-  await expect(dlg.locator('[data-ab-kind="main"]')).toHaveAttribute("aria-checked", "true");
+  // Pushing to main is its own row, said once (#692): not an Ask me before tick here.
+  await expect(dlg.locator('[data-ab-kind="main"]')).toHaveCount(0);
+  await expect(dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: "Send finished work to GitHub" }) }).locator("button.on")).toHaveText("Ask me first");
   await expect(dlg.locator('[data-ld-sec="away"]')).toHaveCount(0);
   // Save and Cancel at its foot; Save comes on only once something changed.
   await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
   await expect(dlg.locator('[data-ld="cancel"]')).toHaveText("Cancel");
   await expect(dlg.locator(".ld-intro")).toContainText("Changes apply when you press Save");
-  // The three kinds side by side on one line.
+  // Its kinds side by side on one line: releasing and deleting (pushing has its own row).
   const tops = await dlg.locator('[data-ld-sec="ask"] .ab-row').evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().top)));
-  expect(tops.length).toBe(3);
+  expect(tops.length).toBe(2);
   expect(new Set(tops).size).toBe(1);
   await expect(dlg.locator("[title]")).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -101,6 +103,8 @@ test("your own check: steps one per line, saved in order with a tick by one Save
   expect(call.args.lands.after_steps).toBeUndefined();
   const ab = await cue.called("ask_before_set");
   expect(ab.args.kinds).toContain("release");
+  // Sessions never push main themselves: saving keeps a push to main asked.
+  expect(ab.args.kinds).toContain("main");
 });
 
 test("a tick that can't be saved says so on Save; the screen stays with it ticked", async ({ page, cue }) => {
@@ -150,7 +154,7 @@ test("the settings line is under the counts at the top left, its words then one 
   await deskAllSessions(page);
   const link = lands(page).locator("[data-lands-change]"), sub = page.locator(".dk-strip .dk-sub"), words = lands(page).locator(".dk-ab-words");
   await expect(link).toHaveText("Change");
-  await expect(words).toHaveText("Asks before push to main · lands in own copy, checked, one commit per item");
+  await expect(words).toHaveText("Asks before sending to GitHub · lands in own copy, checked, one commit per item");
   // Narrow, the words shorten (once laid out at this width).
   await expect.poll(() => words.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
   const [s, w, b, strip] = await Promise.all([sub.boundingBox(), words.boundingBox(), link.boundingBox(), page.locator(".dk-strip").boundingBox()]);

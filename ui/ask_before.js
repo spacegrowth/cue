@@ -31,7 +31,7 @@ function askBeforeChange(project) {
 const AB_SHORT = { main: "push to main", push: "any push", release: "release", deploy: "deploy", data: "delete", outside: "outside files" };
 /** What a Desk asks before (its `ask_before`, from desk_view), in short words: "push to main, release, delete", or
  *  "nothing". Shown in the Desk's one header line (lands.js deskSettingsLine). */
-const askBeforeWords = (ab) => (ab.kinds || []).map((k) => AB_SHORT[k.key] || k.label.toLowerCase()).join(", ") || "nothing";
+const askBeforeWords = (ab, skip = []) => (ab.kinds || []).filter((k) => !skip.includes(k.key)).map((k) => AB_SHORT[k.key] || k.label.toLowerCase()).join(", ") || "nothing";
 const AB_FIRST = ["main", "release", "data"];
 const AB_CHECK = `<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2.5 6.3l2.3 2.3 4.7-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 /** Kind `k`'s row, ticked as `st` (this dialog's, or the settings screen's) has it. */
@@ -39,11 +39,11 @@ function askBeforeRow(k, st = askBefore) {
   const on = st.ticks.includes(k.key);
   return `<button class="ab-row" role="checkbox" aria-checked="${on}" data-ab-kind="${esc(k.key)}"><span class="ab-box${on ? " on" : ""}">${on ? AB_CHECK : ""}</span>${esc(k.label)}</button>`;
 }
-/** The kinds' rows, ticked as `st` has them (this dialog's state, or the settings screen's in lands.js): the three
+/** The kinds' rows (less those in `skip`: on the settings screen pushing to main is its own row), ticked as `st` has them (this dialog's state, or the settings screen's in lands.js): the three
  *  first, and another already ticked (carried over) with them; the rest behind a "More:" button until `st.more`, with
  *  those Cue can't check. */
-function askBeforeRows(st) {
-  const kinds = askBeforeKinds(), offered = kinds.filter((k) => k.offered);
+function askBeforeRows(st, skip = []) {
+  const kinds = askBeforeKinds().filter((k) => !skip.includes(k.key)), offered = kinds.filter((k) => k.offered);
   const first = offered.filter((k) => AB_FIRST.includes(k.key) || st.ticks.includes(k.key));
   const rest = offered.filter((k) => !first.includes(k));
   const unchecked = kinds.filter((k) => !k.offered);

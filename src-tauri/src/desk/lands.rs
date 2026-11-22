@@ -73,11 +73,11 @@ pub const PARTS: &[Part] = &[
     },
     Part {
         key: "push",
-        label: "Push to main",
+        label: "Send finished work to GitHub",
         choices: &[
-            c("never", "Never", "The Desk pushes nothing and asks nothing. You push by hand.", true),
-            c("ask", "Ask each time", "A push to main asks you first, naming its commits.", true),
-            c("after", "After each landing", "After each landing the Desk pushes main as it is, everything on it, without asking. Never forced. Sessions still never push main.", true),
+            c("after", "Right away", "Each finished item goes to GitHub as soon as it lands, without asking, so GitHub and your other computers stay current. Nothing there is ever overwritten.", true),
+            c("ask", "Ask me first", "You're asked first. Sending keeps GitHub and your other computers current.", true),
+            c("never", "Never", "Nothing is sent. GitHub and your other computers get the work only when you push it yourself.", true),
         ],
     },
 ];
@@ -519,7 +519,7 @@ fn part_words(part: &str) -> &'static str {
         "how" => "how it lands",
         "check" => "check",
         "after" => "after landing",
-        "push" => "push to main",
+        "push" => "send finished work to GitHub",
         _ => "items at once",
     }
 }
