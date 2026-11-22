@@ -217,6 +217,22 @@ function pinnedOver(el) {
   const above = [...body.querySelectorAll(":scope > .col-sub")].filter((l) => l.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && getComputedStyle(l).position === "sticky");
   return above.length ? above[above.length - 1].getBoundingClientRect().height : 0;
 }
+/** Waiting scrolled to its end rests with a whole card at its top, not one half under the pinned label (#737: with
+ *  taller cards the list overflows more often): the list gets just the room below its last card that takes
+ *  (box.css --end-room; kept on the window's root, as a redraw makes new elements). None while the list fits. */
+function fitWaitingEnd() {
+  const sc = document.querySelector(".col.split.col-waiting"), root = document.documentElement;
+  const had = sc && parseFloat(getComputedStyle(sc, "::after").height) || 0;
+  let room = 0;
+  // As far as it scrolls without the room; each card's place when its top is just under its label.
+  const max = sc ? sc.scrollHeight - had - sc.clientHeight : 0;
+  if (max > 0) {
+    const top = sc.getBoundingClientRect().top - sc.scrollTop;
+    const stops = [...sc.querySelectorAll(".sec-body > :not(.col-sub)")].map((c) => c.getBoundingClientRect().top - top - pinnedOver(c)).filter((y) => y >= max - 0.5);
+    if (stops.length) room = Math.ceil(Math.min(...stops) - max);
+  }
+  if (room > 0) root.style.setProperty("--end-room", `${room}px`); else root.style.removeProperty("--end-room");
+}
 /** Glide a list just enough to show a card in full (with a little room past it). Your own scrolling stops it. */
 let glide = null;
 function glideIntoView(el) {

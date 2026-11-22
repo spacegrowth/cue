@@ -51,7 +51,8 @@
 .move-screen { font: var(--type-pill) var(--mono); color: var(--on-slab); background: var(--slab); border-radius: var(--radius-btn); padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tplace-btn:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-accent)); }
 .tplace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.quick:has(.tplace-btn) { padding-right: 130px; }
+.quick:has(.tplace-btn) { padding-right: 140px; }
+.quick:has(.tplace > :nth-child(2)) { padding-right: 232px; }   /* both corner buttons (Move to Cue, Open its terminal): the phrases wrap before them */
 /* The reply box joins the strip above it: its top corners stay square against the dock's flat
    bottom edge, so the two read as one attached unit (the box's own corners stay rounded). A button in
    the box's top right corner (Move to hosted) flattens on top too, flush with the box edge. */

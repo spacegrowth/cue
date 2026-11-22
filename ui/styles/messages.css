@@ -1,6 +1,6 @@
 /* Messages: one family for every message Cue shows (#501, the Messages page's option B, "one card family").
    Whatever is said (Cue's message, a note, an ask, another Desk's message, the agent's reply, your own words) is one
-   body size, --mg-body (--type-chat, 15px on a 22px line, #703); everything around it (who → to, the tag, the item, the age, how it went, its actions, the
+   body size, --mg-body (--type-body, 15px on a 22px line, #703); everything around it (who → to, the tag, the item, the age, how it went, its actions, the
    status line) is one meta size, --mg-meta. Cue's and the Desk's messages are the same compact card: a head row
    (mark, who → to, TAG, #item, age), the words in two lines with More, then the foot (how it went at the left, actions
    at the right). An ask is that card outlined all round in --deny; never a coloured left edge. No hover text.
@@ -8,12 +8,11 @@
    which kind, on which screen, takes which class. */
 :root {
   /* The type scale itself (--type-tag … --type-figure) is in base.css; these name its jobs in a message. */
-  --type-body-lh: 1.5;
   --type-button: var(--type-small);   /* Mac "button", 650 */
   --type-meta: var(--type-small);     /* who → to, how it went, the status line (the head row of option B) */
   /* The family's two sizes, by name, so a screen never picks its own. */
-  --mg-body: 400 var(--type-chat) / var(--type-chat-lh) var(--sans);   /* Slack's size and spacing (#703) */
-  --mg-meta: 400 var(--type-meta) / 1.4 var(--sans);
+  --mg-body: 400 var(--type-body) / var(--type-body-lh) var(--sans);   /* Slack's size and spacing (#703) */
+  --mg-meta: 400 var(--type-meta) / 18px var(--sans);   /* a whole-pixel line, like the body's: rows of them add up to whole pixels */
 }
 
 /* ---------- the card: Cue's message, a note, an item line set, another Desk's message, Ready to check ---------- */

@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { test, expect, openDesk } from "./cue.mjs";
 
-const BODY = "15px", META = "12px";   // a chat's words at Slack's size (#703)
+const BODY = "15px", META = "13px";   // a chat's words at Slack's size (#703)
 
 /** `read` run on what `loc` finds now (`all`: every match, else the first), again when a redraw replaced it between
  *  finding it and reading it: a chat redraws as its older messages and steps come in, and a replaced element reads as

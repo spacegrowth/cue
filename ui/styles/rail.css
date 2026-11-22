@@ -1,5 +1,5 @@
 /* ---------- collapse to the rail + full-screen chat ---------- */
-.collapse-x { color: var(--on-bg-muted); font-size: var(--type-body); line-height: 1; cursor: pointer; opacity: 0; transition: opacity .14s ease; }
+.collapse-x { color: var(--on-bg-muted); font-size: var(--type-small); line-height: 1; cursor: pointer; opacity: 0; transition: opacity .14s ease; }
 .col-head:hover .collapse-x { opacity: 1; }
 .esc-hint { font-size: var(--type-tag); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-qp); padding: 2px 7px; font-weight: 600; }
 .rail-col { justify-content: flex-start; }

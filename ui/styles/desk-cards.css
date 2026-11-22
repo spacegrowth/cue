@@ -8,25 +8,25 @@
 .dkc-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 12px 14px 18px; }
 @container dkcards (min-width: 1000px) { .dkc-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
 .dkc-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.dkc-gh { display: flex; gap: 10px; padding: 2px 2px 0; color: var(--ink); font: 700 10.5px var(--sans); letter-spacing: .08em; }
+.dkc-gh { display: flex; gap: 10px; padding: 2px 2px 0; color: var(--ink); font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; }
 .dkc-gh span { color: var(--muted); font-weight: 600; }
 .dkc-none { padding: 6px 2px; color: var(--muted); font-size: var(--type-small); }
-.dkc-n { flex: none; font: 600 11px var(--mono); color: var(--muted); }
+.dkc-n { flex: none; font: 600 var(--type-pill) var(--mono); color: var(--muted); }
 
 /* ---------- a filled card per item with a session ---------- */
-.dkc-card { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; border-radius: var(--radius-pane); background: var(--panel-2); color: var(--ink); font-size: 12.5px; cursor: pointer; }
+.dkc-card { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; border-radius: var(--radius-pane); background: var(--panel-2); color: var(--ink); font-size: var(--type-small); cursor: pointer; }
 .dkc-card:hover { box-shadow: var(--shadow); }
 .dkc-card.on { background: var(--sel); color: var(--on-sel); }
 .dkc-h { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.dkc-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
-.dkc-k { flex: none; color: var(--muted); font-size: 11.5px; }
+.dkc-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-body); }
+.dkc-k { flex: none; color: var(--muted); font-size: var(--type-pill); }
 .dkc-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .dkc-who b { color: var(--ink); }
 .dkc-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--ink); vertical-align: 1px; }
 .dkc-card .dk2b-trk i { height: 4px; }
-.dkc-st { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.dkc-st { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: var(--type-pill); white-space: nowrap; }
 .dkc-st b { color: var(--ink); font-weight: 600; }
-.dkc-run { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11.5px; }
+.dkc-run { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-pill); }
 .dkc-run.mono { font-family: var(--mono); }
 .dkc-card.ask .dkc-run { color: var(--deny); }
 .dkc-card.on :is(.dkc-n, .dkc-k, .dkc-who, .dkc-who b, .dkc-st, .dkc-st b, .dkc-run) { color: inherit; }
@@ -35,12 +35,12 @@
 .dkc-card.on .dk2b-trk i:not(.done):not(.cur) { background: color-mix(in srgb, var(--on-sel) 25%, transparent); }
 
 /* ---------- the quiet boxes: dashed, unfilled, muted ---------- */
-.dkc-box { display: flex; flex-direction: column; padding: 10px 12px 8px; border: 1px dashed var(--muted); border-radius: var(--radius-pane); background: none; color: var(--muted); font-size: 12.5px; }
+.dkc-box { display: flex; flex-direction: column; padding: 10px 12px 8px; border: 1px dashed var(--muted); border-radius: var(--radius-pane); background: none; color: var(--muted); font-size: var(--type-small); }
 .dkc-bh { display: flex; align-items: baseline; gap: 8px; padding: 0 2px 6px; min-width: 0; }
 .dkc-bh b { flex: none; color: var(--ink); opacity: .8; }
 .dkc-bh i { font-style: normal; }
 .dkc-bw { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkc-more { flex: none; padding: 0; border: 0; background: none; color: var(--muted); font: 600 12.5px var(--sans); cursor: pointer; }
+.dkc-more { flex: none; padding: 0; border: 0; background: none; color: var(--muted); font: 600 var(--type-small) var(--sans); cursor: pointer; }
 .dkc-more:hover { color: var(--ink); }
 .dkc-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 5px 2px; border-radius: var(--radius-btn); }
 .dkc-row[data-desk-item] { cursor: pointer; }
@@ -48,6 +48,6 @@
 .dkc-row.on { background: var(--sel); color: var(--on-sel); }
 .dkc-row.on .dkc-n { color: inherit; }
 .dkc-rt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkc-rr { white-space: nowrap; text-align: right; font-size: 11.5px; }
-.dkc-undo { padding: 0; border: 0; background: none; color: var(--ink); font: 700 12px var(--sans); cursor: pointer; }
+.dkc-rr { white-space: nowrap; text-align: right; font-size: var(--type-pill); }
+.dkc-undo { padding: 0; border: 0; background: none; color: var(--ink); font: 700 var(--type-small) var(--sans); cursor: pointer; }
 .dkc-undo:hover { text-decoration: underline; }

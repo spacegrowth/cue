@@ -21,7 +21,7 @@
 /* Its head, as the old page's (desk-page.css .dk-ph1, .dk-ph2): back and Hide panel on a line, its kind, number and
    name under it. */
 .dk-pg.dk2b-ipage > .dk-ph.dk2b-iph { flex-direction: column; align-items: stretch; gap: 4px; }
-.dk2b-iph > .dk-ph2 { font-size: 17px; }
+.dk2b-iph > .dk-ph2 { font-size: var(--type-title); }
 .dk2b-iph .dk-hk .dk2b-in { font: inherit; color: inherit; }
 .dk2b-iph > .dk-ph2 > .dk-tname.dk2b-ititle { display: inline; overflow: visible; white-space: normal; font-size: inherit; }
 /* Its chat's tabs beside its label (Chat, Record, Decisions). */

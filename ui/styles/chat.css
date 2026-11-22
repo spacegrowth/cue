@@ -216,7 +216,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .rd-seg .rd-of { padding: 0 10px; font-size: var(--type-small); font-weight: 650; color: var(--muted); border-left: 1px solid var(--line); height: 100%; display: inline-flex; align-items: center; }
 .rd-seg .rd-a.small { font-size: var(--type-pill); }
 .rd-seg .rd-a.big { font-size: var(--type-title); }
-.rd { max-width: 34em; width: 100%; margin: 0 auto; padding: 18px 4px 40px; font-size: var(--rd-size, 17px); line-height: 1.65; user-select: text; -webkit-user-select: text; }
+.rd { max-width: 34em; width: 100%; margin: 0 auto; padding: 18px 4px 40px; font-size: var(--rd-size, var(--type-title)); line-height: 1.65; user-select: text; -webkit-user-select: text; }
 .rd-by { font-size: var(--type-small); font-weight: 650; color: var(--muted); margin-bottom: 14px; }
 .rd .msg p, .rd .msg ul, .rd .msg ol, .rd .msg pre, .rd .msg .md-table, .rd .msg blockquote { margin-bottom: .85em; }
 .rd .msg li { margin: .25em 0; }
