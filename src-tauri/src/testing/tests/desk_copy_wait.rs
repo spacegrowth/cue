@@ -529,3 +529,41 @@ fn start_on_an_item_at_work_in_line_for_a_copy_gives_it_a_copy_of_its_own_at_onc
     let path = it["tree"]["path"].as_str().unwrap();
     assert!(w.hosted.sent()[n..].iter().any(|(s, m)| *s == h && m.contains(&format!("Desk item #{a}")) && m.contains(path)), "its holder is sent its copy");
 }
+
+#[test]
+fn the_leads_send_back_on_an_item_waiting_for_a_copy_reaches_its_holder_at_once_and_again_with_its_copy() {
+    // #657 (seen on #594): the lead sent an item back to its holder (ROUTE with a why) while every copy was in use.
+    // Its words were held for the copy, and once one was free the item's words went without them: never delivered.
+    let w = World::new();
+    let (_, project, id) = super::desk_commit::ready(&w);
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    w.hub().desk_hold_copies(&top(&w), &[1, 2, 3]);
+    let snap = w.snapshot();
+    let h = snap.session_ids().into_iter().find(|s| snap.session(s)["name"] == "cue-teams").unwrap();
+    let lead = super::desk_finish::lead_of(&w, &project);
+    let before = w.hosted.sent().len();
+    let why = "Bring back the A- and A+ buttons on the text size row";
+    super::desk_commit::ends(&w, &lead, &format!("ROUTE: #{id} -> cue-teams | why: {why}"));
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree_wait"].as_bool()), (Some("queued"), Some(true)), "waits for a copy: {it}");
+    let to_holder = |w: &World, from: usize| -> Vec<String> { w.hosted.sent()[from..].iter().filter(|(s, t)| *s == h && t.contains(&format!("#{id}"))).map(|(_, t)| t.clone()).collect() };
+    let now = to_holder(&w, before);
+    assert!(now.len() == 1 && now[0].contains(why) && now[0].contains("Don't change any files until Cue sends you where its copy is"), "the lead's words now, told to wait for its copy: {now:?}");
+    // Its page shows the step as sent, with the words that went.
+    let d = super::desk::desk(&w, &project);
+    let step = d["decisions"].as_array().unwrap().iter().rev().find(|s| s["item_id"] == id.as_str() && s["why"] == why).unwrap_or_else(|| panic!("no step: {d}"));
+    assert!(step["delivery"]["text"].as_str().is_some_and(|t| t.contains(why)) && !step["delivery"]["went"].as_str().unwrap_or("").starts_with("failed"), "{step}");
+    // A copy frees: its holder gets where it is, with the lead's words again.
+    let mid = w.hosted.sent().len();
+    w.hub().desk_let_go_copy(&top(&w), 2);
+    w.settle();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["tree"]["slot"].as_u64()), (Some("working"), Some(2)), "{it}");
+    let path = it["tree"]["path"].as_str().unwrap().to_string();
+    let sent = to_holder(&w, mid);
+    assert!(sent.iter().any(|t| t.contains(why) && t.contains(&path)), "the lead's words, with its copy: {sent:?}");
+}

@@ -15,7 +15,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 179 (3 sync) |
-| Lock declarations (static or field) | 118 |
+| Lock declarations (static or field) | 119 |
 | Lock acquisitions | 283 |
 | Lock-graph edges | 54 |
 | Spawn sites | 92 |
@@ -230,6 +230,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `desk/hub/away/away.rs::SWEEPING` | `std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,u8>>>` | — |
 | `desk/hub/landing/found_words.rs::KEPT` | `Mutex<Option<Found>>` | "found words" (3 sites) |
 | `desk/hub/landing/found_words.rs::WORKING` | `Mutex<()>` | "working out found words" (1 sites) |
+| `desk/hub/landing/found_words.rs::EVERYDAY` | `LazyLock<std::collections::HashSet<String>>` | — |
 | `desk/hub/landing/found_words.rs::SEEN` | `LazyLock<Mutex<HashMap<String,(Instant,Option<bool>)>>>` | "repo visibility" (2 sites) |
 | `desk/hub/theirs/theirs.rs::SAVED` | `std::sync::OnceLock<std::sync::Mutex<Option<(u64,Vec<Known>)>>>` | — |
 | `desk/hub/theirs/theirs_log.rs::SO_FAR` | `std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,SoFar>>>` | — |

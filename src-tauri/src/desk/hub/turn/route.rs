@@ -250,18 +250,29 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
     if reopen {
         it.mark_reopened();
     }
-    if waits.is_none() {
-        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, rule)));
-    }
+    let words = waits.is_none().then(|| crate::desk::handed_words(it, why, rule));
     let text = routed_text(id, &h.name, waits.as_deref(), (reopen || unfinished) && same, same && was_working);
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);
     // Back to the session that had it, with what's left (#374): one of the lead's own moves.
-    if same && waits.is_none() && (reopen || unfinished || was_working) {
+    let back = same && waits.is_none() && (reopen || unfinished || was_working);
+    routed_out(st, id, h.to(), words, back.then_some(why), now, fx);
+    Some(taken(id, &h.name, waits.as_deref()))
+}
+
+/// Item `id`'s words (`words`, when it goes now) to session `to`, the route just noted. Sent back with the lead's
+/// words (`back`): the step is a send back with its delivery (#657), so it goes now even when the item has to wait for
+/// a free copy (desk/hub/landing/trees.rs `words_now`), and its page shows it as sent.
+fn routed_out(st: &mut Store, id: &str, to: &str, words: Option<String>, back: Option<&str>, now: u64, fx: &mut Effects) {
+    if back.is_some() {
         if let Some(d) = st.desk.decisions.last_mut() {
             d.act = "send_back".into();
         }
     }
-    Some(taken(id, &h.name, waits.as_deref()))
+    match words {
+        Some(w) if back.is_some_and(|why| !why.trim().is_empty()) => send_step(st, id, to, w, now, fx),
+        Some(w) => fx.sends.push((to.to_string(), w)),
+        None => {}
+    }
 }
 
 /// Whether a route of item `id` to `h` goes through the queue (#576): an item not yet at work there, nor with you

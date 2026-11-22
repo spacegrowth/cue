@@ -397,7 +397,8 @@ impl Hub {
                 let words = if at_work {
                     format!("Desk item #{id} ({}): a copy of its repository is free now, and it's yours. Move any work you've done for it so far into it, then carry on there.", it.title)
                 } else {
-                    crate::desk::handed_words(it, "", &rule)
+                    // With the why it was routed with (#657: a lead's send back held for a copy went without it).
+                    crate::desk::handed_words(it, &it.after_why, &rule)
                 };
                 fx.sends.push((h.to().to_string(), words));
             }
