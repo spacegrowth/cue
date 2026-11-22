@@ -67,6 +67,23 @@ pub(crate) fn start_place(st: &Store, it: &DeskItem) -> Result<Option<OnMachine>
     Ok(Some(OnMachine { machine: m, folder }))
 }
 
+/// Err when session `to` is on a machine, in a folder another open item's work is in (#679): both would commit in one
+/// folder, and one's work would land under the other's name.
+fn folder_free(st: &Store, id: &str, to: &str) -> Result<(), String> {
+    if let Some((m, cwd)) = st.sessions.iter().find(|s| crate::desk::hub::core::desk::shown_name(s).eq_ignore_ascii_case(to)).map(|s| (s.origin.machine.clone(), s.origin.cwd.clone())).filter(|(m, _)| !m.is_empty()) {
+        let other = st.desk.items.iter().find(|i| i.id != id && matches!(i.state.as_str(), "working" | "finishing") && i.remote.as_ref().is_some_and(|r| r.machine == m && r.folder == cwd));
+        if let Some(o) = other {
+            return Err(format!(
+                "Refused: {to} works in {cwd} on {}, where #{} is being worked, so #{id} wasn't routed: two items in one folder mix their work. Route it to new (it gets a copy of its own there), or wait until #{} is done.",
+                crate::machines::display_name(&m),
+                o.id,
+                o.id
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// The lead's `on:` and `in:` on a ROUTE of item `id` to `to`: where a new session for it starts, set on the item once
 /// the route is made (Some: what to set; a route to new without `on:` starts it where you chose, else where the Desk's
 /// sessions start; `on: this Mac` here). Your choice on the item wins, and a Desk's first item on a machine waits for
@@ -76,20 +93,8 @@ pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option
     let fresh = to.eq_ignore_ascii_case("new");
     let pick = it.start_on.as_deref();
     let pick_shown = |p: &str| if p.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(p) };
-    // To a session on a machine whose folder another open item's work is in (#679): both would commit in one folder,
-    // and one's work would land under the other's name.
     if !fresh {
-        if let Some((m, cwd)) = st.sessions.iter().find(|s| crate::desk::hub::core::desk::shown_name(s).eq_ignore_ascii_case(to)).map(|s| (s.origin.machine.clone(), s.origin.cwd.clone())).filter(|(m, _)| !m.is_empty()) {
-            let other = st.desk.items.iter().find(|i| i.id != id && matches!(i.state.as_str(), "working" | "finishing") && i.remote.as_ref().is_some_and(|r| r.machine == m && r.folder == cwd));
-            if let Some(o) = other {
-                return Err(format!(
-                    "Refused: {to} works in {cwd} on {}, where #{} is being worked, so #{id} wasn't routed: two items in one folder mix their work. Route it to new (it gets a copy of its own there), or wait until #{} is done.",
-                    crate::machines::display_name(&m),
-                    o.id,
-                    o.id
-                ));
-            }
-        }
+        folder_free(st, id, to)?;
     }
     let Some(on) = on else {
         // To a session already at work: it has to be where you chose.

@@ -18,8 +18,8 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock declarations (static or field) | 119 |
 | Lock acquisitions | 283 |
 | Lock-graph edges | 54 |
-| Spawn sites | 92 |
-| External calls: fs / db / process / notify / login / socket | 516 / 232 / 60 / 4 / 1 / 4 |
+| Spawn sites | 93 |
+| External calls: fs / db / process / notify / login / socket | 523 / 232 / 60 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -419,6 +419,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
 | `desk/hub/landing/found_words.rs::keep_warm` | thread::spawn | 1 |
 | `desk/hub/landing/found_words.rs::visibility` | thread::spawn | 1 |
+| `desk/hub/landing/remote_setup.rs::ensure` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
 | `hosted/conn.rs::machine` | thread::spawn | 2 |
 | `hosted/host_link.rs::HostLink::lost` | thread::spawn | 1 |
@@ -497,7 +498,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (516)
+### fs (523)
 
 | In | Call | Times |
 |---|---|---|
@@ -533,6 +534,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/schema.rs::import_old_files` | rename | 2 |
 | `db/schema.rs::keep_aside` | rename | 2 |
 | `db/schema.rs::open` | create_dir_all | 1 |
+| `desk/hub/landing/clear_land.rs::Hub::desk_clear_and_land` | create_dir_all | 1 |
+| `desk/hub/landing/clear_land.rs::Hub::desk_clear_and_land` | write | 1 |
+| `desk/hub/landing/clear_land.rs::same_as_branch` | Path::exists | 1 |
+| `desk/hub/landing/clear_land.rs::same_as_branch` | Path::is_file | 1 |
+| `desk/hub/landing/clear_land.rs::set_back` | Path::exists | 1 |
+| `desk/hub/landing/clear_land.rs::set_back` | remove_file | 1 |
 | `desk/hub/landing/commit.rs::commit_parts` | remove_file | 1 |
 | `desk/hub/landing/commit.rs::put_parts` | metadata | 1 |
 | `desk/hub/landing/commit.rs::put_parts` | remove_file | 1 |
@@ -611,6 +618,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/tree_files.rs::unlink_shared` | Path::is_symlink | 1 |
 | `desk/hub/landing/tree_files.rs::unlink_shared` | remove_file | 1 |
 | `desk/hub/landing/tree_files.rs::unlink_shared` | symlink_metadata | 1 |
+| `desk/hub/landing/unlanded.rs::Hub::holder_landed_since` | Path::is_dir | 1 |
 | `desk/hub/landing/unlanded.rs::branch_trees` | Path::is_dir | 1 |
 | `desk/hub/landing/unlanded.rs::landed_elsewhere` | canonicalize | 1 |
 | `desk/hub/lead/checks.rs::Hub::desk_check_files` | metadata | 1 |
@@ -619,7 +627,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/lead/mod.rs::desk_start_with_agent` | Path::is_dir | 1 |
 | `desk/hub/lead/mod.rs::desk_start_with_agent` | canonicalize | 1 |
 | `desk/hub/lead/run.rs::Hub::loop_folder` | Path::is_dir | 1 |
-| `desk/hub/lead/stop_lead.rs::Hub::main_edits_named` | canonicalize | 2 |
+| `desk/hub/lead/stop_lead.rs::Hub::spellings_of` | canonicalize | 2 |
 | `desk/hub/theirs/by_hunk.rs::own_by_hunk` | read_to_string | 1 |
 | `desk/hub/theirs/by_hunk.rs::sent_text` | read_to_string | 1 |
 | `desk/hub/theirs/theirs.rs::own_part` | read_to_string | 1 |

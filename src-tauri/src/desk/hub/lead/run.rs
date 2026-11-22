@@ -151,17 +151,7 @@ impl Hub {
         // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
         let place = self.read(|st| st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None)));
         let on = place.clone().ok().flatten();
-        // Routed to another repository on this Mac (#635): it starts there.
-        let in_repo = self.read(|st| st.desk.item(&s.id).and_then(|i| i.in_repo.as_ref()).map(|r| r.repo.clone()));
-        let dir = match (&place, &on, in_repo) {
-            (Err(e), _, _) => Err(e.clone()),
-            // Its folder there not made yet (#664): the project downloaded into it first, from its online home.
-            (_, Some(o), _) => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)).and_then(|local| crate::desk::hub::landing::remote_setup::ensure(&o.machine, &o.folder, &local))
-                // A copy of its own there (#679), so items on one machine never mix their work.
-                .and_then(|_| self.remote_start_dir(&s.project, &s.id, &o.machine, &o.folder)),
-            (_, _, Some(repo)) => Ok(repo),
-            _ => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
-        };
+        let dir = self.new_start_dir(s, &place, &on);
         // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,
         // as you trust it there.
         // Its model (#620): the lead's on the route, else the Desk's default, else Claude Code's pick. Kept on the item,
@@ -200,6 +190,22 @@ impl Hub {
             fx
         });
         self.desk_done(fx);
+    }
+
+    /// The folder new start `s` begins in: `place`'s error if it can't, its own copy in the Desk's clone on machine `on`,
+    /// the repository it was routed to, else the Desk's folder.
+    fn new_start_dir(&self, s: &crate::desk::hub::core::desk::NewStart, place: &Result<Option<crate::desk::copies::OnMachine>, String>, on: &Option<crate::desk::copies::OnMachine>) -> Result<String, String> {
+        // Routed to another repository on this Mac (#635): it starts there.
+        let in_repo = self.read(|st| st.desk.item(&s.id).and_then(|i| i.in_repo.as_ref()).map(|r| r.repo.clone()));
+        match (place, on, in_repo) {
+            (Err(e), _, _) => Err(e.clone()),
+            // Its folder there not made yet (#664): the project downloaded into it first, from its online home.
+            (_, Some(o), _) => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)).and_then(|local| crate::desk::hub::landing::remote_setup::ensure(&o.machine, &o.folder, &local))
+                // A copy of its own there (#679), so items on one machine never mix their work.
+                .and_then(|_| self.remote_start_dir(&s.project, &s.id, &o.machine, &o.folder)),
+            (_, _, Some(repo)) => Ok(repo),
+            _ => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
+        }
     }
 
     /// The folder a new lead of `project` starts in: the repository of a session of the project on this Mac (live,

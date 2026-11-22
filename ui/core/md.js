@@ -140,6 +140,15 @@ function runCode(btn) {
   const line = codeText(btn).split("\n").map((l) => l.replace(/^\$ /, "")).join("\n").trim();
   if (line) runLine(btn.dataset.runCode, line);
 }
+/** A fenced code block (`chunk`, its language on its first line) as drawn: long code folds to ~12 lines (scrolls
+ *  inside), so a dump doesn't push the conversation away; shell code in a session (`runIn`) gets Run. */
+function codeBlock(chunk, runIn) {
+  const lang = /^([a-z]*)\n/.exec(chunk)?.[1] || "";
+  const code = chunk.replace(/^[a-z]*\n/, "").replace(/\n$/, "");
+  const n = code.split("\n").length;
+  const run = runIn && SHELL_LANG.test(lang) && code.trim() ? runBtn(runIn) : "";
+  return `<div class="code-wrap">${n > 12 ? `<pre class="long">${esc(code)}</pre><div class="code-more">${n} lines · scroll inside</div>` : `<pre>${esc(code)}</pre>`}${run}${COPY_BTN}</div>`;
+}
 /** What a `lines` hook gives for a line of its page's own that's shown elsewhere, not in the text (the lead's ASK: its
  *  card is in the chat already). */
 const MD_DROP = "<!--drop-->";
@@ -155,12 +164,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {
     if (i % 2 === 1) {
-      // Long code folds to ~12 lines (scrolls inside); a dump doesn't push the conversation away.
-      const lang = /^([a-z]*)\n/.exec(chunk)?.[1] || "";
-      const code = chunk.replace(/^[a-z]*\n/, "").replace(/\n$/, "");
-      const n = code.split("\n").length;
-      const run = runIn && SHELL_LANG.test(lang) && code.trim() ? runBtn(runIn) : "";
-      out.push(`<div class="code-wrap">${n > 12 ? `<pre class="long">${esc(code)}</pre><div class="code-more">${n} lines · scroll inside</div>` : `<pre>${esc(code)}</pre>`}${run}${COPY_BTN}</div>`);
+      out.push(codeBlock(chunk, runIn));
       return;
     }
     const LIST = /^\s*([-*•]|\d+[.)])\s+/;

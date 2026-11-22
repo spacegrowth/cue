@@ -383,21 +383,7 @@ impl Hub {
                     return None;
                 }
                 Err((step, question)) => {
-                    let main = match &m {
-                        Merge::Folder(folder) => main_checkout(folder).map(|(main, _)| main).unwrap_or_default(),
-                        Merge::Ref { main, .. } => main.clone(),
-                    };
-                    let question = self.main_edits_named(it, &main, &question);
-                    self.finish_ask(&it.id, step, &question, "");
-                    // Edits in its way already on its branch: Clear and land offered (#659).
-                    let (plain, _) = crate::desk::hub::lead::stop_lead::plain_and_said(&question);
-                    if let Some(files) = crate::desk::hub::lead::stop_lead::edits_of(&plain) {
-                        let sha = match &m {
-                            Merge::Folder(folder) => crate::desk::hub::landing::git::git("", folder, &[], &["rev-parse", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default(),
-                            Merge::Ref { sha, .. } => sha.clone(),
-                        };
-                        self.finish_clearable(it, &main, &sha, &files);
-                    }
+                    self.finish_merge_failed(it, &m, step, &question);
                     return None;
                 }
             }
@@ -410,6 +396,26 @@ impl Hub {
             }
         }
         Some(tops)
+    }
+
+    /// Item `it`'s merge `m` refused at `step` (git refusing, or a word): it waits on you with `question`, and when
+    /// edits on its main line are in the way, Clear and land is offered (#659).
+    fn finish_merge_failed(&self, it: &DeskItem, m: &Merge, step: &str, question: &str) {
+        let main = match m {
+            Merge::Folder(folder) => main_checkout(folder).map(|(main, _)| main).unwrap_or_default(),
+            Merge::Ref { main, .. } => main.clone(),
+        };
+        let question = self.main_edits_named(it, &main, question);
+        self.finish_ask(&it.id, step, &question, "");
+        // Edits in its way already on its branch: Clear and land offered (#659).
+        let (plain, _) = crate::desk::hub::lead::stop_lead::plain_and_said(&question);
+        if let Some(files) = crate::desk::hub::lead::stop_lead::edits_of(&plain) {
+            let sha = match m {
+                Merge::Folder(folder) => crate::desk::hub::landing::git::git("", folder, &[], &["rev-parse", "HEAD"]).map(|s| s.trim().to_string()).unwrap_or_default(),
+                Merge::Ref { sha, .. } => sha.clone(),
+            };
+            self.finish_clearable(it, &main, &sha, &files);
+        }
     }
 
     /// Item `id`, its work on the main line in `tops`: queued for an install when one of them is this Cue's source,
