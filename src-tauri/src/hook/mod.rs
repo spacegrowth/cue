@@ -15,6 +15,8 @@
 //! Never gets in the agent's way: if Cue isn't running or anything goes wrong, it exits 0 with no
 //! output and the agent carries on with its normal terminal prompt.
 
+mod scratch;
+
 use serde_json::{json, Map, Value};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::os::unix::net::UnixStream;
@@ -453,7 +455,17 @@ fn guard(p: &Value, harness: &str) -> Option<()> {
     let tool = s(p, "tool_name");
     let edit = matches!(tool.as_str(), "Edit" | "Write" | "MultiEdit" | "NotebookEdit");
     let git = input.get("command").and_then(Value::as_str).is_some_and(|c| c.contains("git"));
+    // A shell command that only writes in the session's own scratch folder runs without a prompt (#720): nothing
+    // you'd want to say yes to, and work left running while you're away mustn't wait on it.
+    let scratch = harness == "claude"
+        && hits.is_empty()
+        && tool == "Bash"
+        && input.get("command").and_then(Value::as_str).is_some_and(|c| scratch::only_writes_in_scratch(c, &cwd, &s(p, "session_id")));
     if hits.is_empty() && !edit && !git {
+        if scratch {
+            print!("{}", scratch_allow());
+            let _ = std::io::stdout().flush();
+        }
         return None;
     }
     let mut msg = origin(p, harness);
@@ -465,11 +477,22 @@ fn guard(p: &Value, harness: &str) -> Option<()> {
     msg.insert("hits".into(), json!(hits));
     msg.insert("agent_id".into(), json!(s(p, "agent_id")));
     msg.insert("checked".into(), json!(true));
-    if let Some(out) = guard_answer(&Value::Object(msg), harness) {
+    // A git command goes by Cue first (a holder stays in its own copy); one it lets pass that only writes in the
+    // scratch folder (`git archive` into it) runs without a prompt too.
+    let out = match wait_for_answer(&Value::Object(msg)) {
+        Answer::Pass | Answer::Never if scratch => Some(scratch_allow()),
+        a => guard_reply(a, harness),
+    };
+    if let Some(out) = out {
         print!("{out}");
         let _ = std::io::stdout().flush();
     }
     Some(())
+}
+
+/// The PreToolUse output that runs a call in the session's own scratch folder without a prompt.
+fn scratch_allow() -> Value {
+    json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": "Only writes in this session's own scratch folder." } })
 }
 
 /// A checked call's message (`{"type": "guard", …}`) sent to Cue and its answer waited for: the PreToolUse output the

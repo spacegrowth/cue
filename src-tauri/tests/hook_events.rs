@@ -130,3 +130,17 @@ fn a_codex_session_is_told_apart_from_claudes() {
     assert!(cue.run(&["stop", "codex"], &json!({"session_id": "c1", "last_assistant_message": "done"})).status.success());
     assert_eq!(cue.received()[0]["harness"], "codex");
 }
+
+/// A shell command that only writes in the session's own scratch folder runs without a prompt (#720), Cue running
+/// or not; a delete there still goes the usual way (the hook says nothing, so the agent's own prompt stands).
+#[test]
+fn a_command_only_writing_in_its_scratch_folder_runs_without_a_prompt_and_a_delete_still_asks() {
+    // SAFETY: getuid has no preconditions and can't fail.
+    let pad = format!("/private/tmp/claude-{}/-work-app/s1/scratchpad", unsafe { libc::getuid() });
+    let call = |command: String| json!({"session_id": "s1", "cwd": "/work/app", "tool_name": "Bash", "tool_input": {"command": command}});
+    let cue = FakeCue::absent();
+    let made = cue.run(&["guard"], &call(format!("mkdir -p {pad}/src && cd {pad}/src && cargo build -q")));
+    assert_eq!(printed(&made)["hookSpecificOutput"]["permissionDecision"], "allow", "{made:?}");
+    let deleted = cue.run(&["guard"], &call(format!("rm -rf {pad}/src")));
+    assert_eq!(printed(&deleted), Value::Null, "a delete is left to its own prompt: {deleted:?}");
+}
