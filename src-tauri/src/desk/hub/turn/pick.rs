@@ -144,31 +144,79 @@ pub(crate) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Eff
     let option = pickable(st, &it, text)?;
     let canvas = canvas_of(&it);
     let filed = file_follow_ups(st, &it, &option, &canvas, now);
+    let ids: Vec<String> = filed.iter().map(|(n, _)| n.clone()).collect();
     fx.answers.extend(question_answered(st, &it, &option));
     // Done first, so its holder is free to take what follows.
-    let first = filed.first().map(|(n, _)| n.clone()).unwrap_or_default();
     let m = st.desk.item_mut(&id).ok_or("no such item")?;
-    (m.picked, m.built_as) = (option.clone(), first.clone());
-    (m.state, m.after, m.close_on_check, m.done_at, m.updated) = ("done".into(), None, false, Some(secs(now)), secs(now));
-    fx.items.push(id.clone());
-    let list = filed.iter().map(|(n, _)| format!("#{n}")).collect::<Vec<_>>().join(", ");
-    let whom = if filed.is_empty() { "nothing follows it".to_string() } else if filed.len() == 1 { format!("being built as #{first}") } else { format!("followed by {list}") };
-    you_wrote(st, &it.project, &id, &format!("Picked option {option}"), &whom, now, &mut fx);
-    release(st, &id, now, &mut fx);
+    (m.picked, m.built_as) = (option.clone(), ids.first().cloned().unwrap_or_default());
+    close_picked(st, &it, &option, &ids, now, &mut fx);
     let (routed, heard) = route_follow_ups(st, &it, &option, &filed, now, &mut fx);
-    // Something of it left for its lead to route: the lead hears the pick at once, ahead of the new item's row, so it
-    // routes it now. All of it routed already: no lead step.
+    // The lead hears every pick (#667), so it doesn't close the item again or wait on it, and its chat shows the one
+    // line ("You picked B2 on #652; #666 builds it"). Something of it left for it to route: at once, so it routes it
+    // now, ahead of the new item's row. All of it routed already: no lead step, the line goes with its next message.
+    let route = if heard.is_empty() { String::new() } else { format!(" {}.", heard.join("; ")) };
+    let words = format!("The owner picked option {option} on #{id} ({}): \"{}\". #{id} is done; {}.{route}", it.title, text.trim(), follows_words(&ids));
+    let first = ids.first().cloned().unwrap_or_default();
     if !heard.is_empty() {
-        let words = format!("The owner picked option {option} on #{id} ({}): \"{}\". #{id} is done; {}.", it.title, text.trim(), heard.join("; "));
         crate::desk::hub::lead::feed::raise(st, &it.project, &id, crate::desk::feed::ChangeKind::Picked, words, &format!("{option}:{first}"), now);
+    } else if st.desk.lead_sid(&it.project).is_some() {
+        crate::desk::feed::add(&mut st.desk.feed, &it.project, &id, crate::desk::feed::ChangeKind::YouDid, words, &now.to_string(), now);
     }
-    // Its holder is told it's done and what follows, so it doesn't carry on there.
-    if let Some(h) = it.holder.as_ref() {
-        let next = if routed.is_empty() { "Nothing follows it.".to_string() } else { format!("What follows: {}.", routed.join("; ")) };
-        let mark = if canvas.is_empty() { String::new() } else { format!(" Mark \"Picked: {option}\" where it shows its options ({canvas}), keeping the others.") };
-        fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {next}{mark} Do no other work on #{id}.", it.title)));
-    }
+    tell_holder(&it, &option, &ids, &routed, &canvas, &mut fx);
     Ok(fx)
+}
+
+/// The lead filed item `build` for your pick of `option` on item `id` in its chat (`ITEM: … | from: #<id> | picked:
+/// <option>`, #606, #667): `id` closes at once as a Pick on its page closes it, even while its holder is still at
+/// work or finishing on it; its holder is told, and a question it waits on is answered. One done or dropped already
+/// stays as it is.
+pub(crate) fn picked_in_chat(st: &mut Store, id: &str, build: &str, option: &str, now: u64, fx: &mut Effects) {
+    let Some(it) = st.desk.item(id).filter(|i| !matches!(i.state.as_str(), "done" | "dropped")).cloned() else { return };
+    let ids = vec![build.to_string()];
+    fx.answers.extend(question_answered(st, &it, option));
+    close_picked(st, &it, option, &ids, now, fx);
+    let routed = vec![format!("#{build}, which the Desk lead filed")];
+    tell_holder(&it, option, &ids, &routed, &canvas_of(&it), fx);
+}
+
+/// Item `it` done by your pick of `option` (picked and built_as set already), `follows` filed after it: done whatever
+/// stage it was at, as its holder may still be at work or finishing on it (#667: nothing later takes a done item back
+/// to check), and what waited on it let go.
+fn close_picked(st: &mut Store, it: &DeskItem, option: &str, follows: &[String], now: u64, fx: &mut Effects) {
+    let id = &it.id;
+    if let Some(m) = st.desk.item_mut(id) {
+        (m.state, m.after, m.close_on_check, m.done_at, m.updated) = ("done".into(), None, false, Some(secs(now)), secs(now));
+        (m.paused, m.asks) = (None, None);
+    }
+    fx.items.push(id.clone());
+    you_wrote(st, &it.project, id, &format!("Picked option {option}"), &follows_words(follows), now, fx);
+    release(st, id, now, fx);
+}
+
+/// What follows a pick, in a few words: "#666 builds it", "#666, #667 follow it", "nothing follows it".
+pub(crate) fn follows_words(ids: &[String]) -> String {
+    match ids {
+        [] => "nothing follows it".to_string(),
+        [one] => format!("#{one} builds it"),
+        many => format!("{} follow it", many.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ")),
+    }
+}
+
+/// Its holder, if any, told it's done by your pick and what follows, so it doesn't carry on there.
+fn tell_holder(it: &DeskItem, option: &str, ids: &[String], routed: &[String], canvas: &str, fx: &mut Effects) {
+    let Some(h) = it.holder.as_ref() else { return };
+    let id = &it.id;
+    let follows = follows_words(ids);
+    let follows = format!("{}{}", follows[..1].to_uppercase(), &follows[1..]);
+    let next = if routed.is_empty() { String::new() } else { format!(" What follows: {}.", routed.join("; ")) };
+    let mark = if canvas.is_empty() { String::new() } else { format!(" Mark \"Picked: {option}\" where it shows its options ({canvas}), keeping the others.") };
+    fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {follows}.{next}{mark} Do no other work on #{id}.", it.title)));
+}
+
+/// An item of options to pick from (#667): mocks or a canvas, what follows each option (IF PICKED: lines), or a pick
+/// made on it already. The lead's DONE or CLOSE on one is never refused because its holder still has it.
+pub(crate) fn has_options(it: &DeskItem) -> bool {
+    !it.picked.is_empty() || it.mocks_only || !it.designs.trim().is_empty() || !it.next.is_empty() || it.finish.as_ref().is_some_and(|f| f.mocks)
 }
 
 /// The option `text` picks on `it`, or why it can't be picked: picked already (and being built as an item still

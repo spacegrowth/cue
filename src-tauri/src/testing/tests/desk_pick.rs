@@ -69,7 +69,7 @@ fn a_pick_on_mocks_makes_one_build_item_linked_both_ways_for_the_lead_to_route()
     assert_eq!(b["why"], format!("You picked option B on #{m}: https://example.com/canvas"), "{b}");
     // Its steps say so, on both.
     let steps = d["decisions"].as_array().unwrap();
-    assert!(steps.iter().any(|s| s["item_id"] == m.as_str() && s["text"] == "Picked option B" && s["why"] == format!("being built as #{n}")), "{d}");
+    assert!(steps.iter().any(|s| s["item_id"] == m.as_str() && s["text"] == "Picked option B" && s["why"] == format!("#{n} builds it")), "{d}");
     assert!(steps.iter().any(|s| s["item_id"] == n.as_str() && s["text"] == format!("Follows option B, picked on #{m}")), "{d}");
     // Its holder, still at work on the mocks, is told they're done.
     assert!(sent_to(&w, &h).iter().any(|t| t.contains("option B was picked, so it's done") && t.contains(&format!("#{n} goes to the Desk lead to route")) && t.contains("Mark \"Picked: B\" where it shows its options (https://example.com/canvas)")));
@@ -146,7 +146,7 @@ fn answering_the_holders_question_with_an_option_is_the_pick() {
     ends(&w, &h, "Noted.");
     w.settle();
     let n = b[0]["id"].as_str().unwrap();
-    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("option B was picked, so it's done. What follows: #{n} goes to the Desk lead to route.")));
+    assert!(sent_to(&w, &h).last().unwrap().contains(&format!("option B was picked, so it's done. #{n} builds it. What follows: #{n} goes to the Desk lead to route.")));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn a_pick_doesnt_answer_an_ask_of_several_questions() {
     w.settle();
     ends(&w, &h, "Noted.");
     w.settle();
-    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("option B was picked, so it's done. What follows: #{} goes to the Desk lead to route.", done.built_as))));
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("option B was picked, so it's done. #{0} builds it. What follows: #{0} goes to the Desk lead to route.", done.built_as))));
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn a_pick_while_the_holder_waits_on_its_question_answers_it() {
     w.settle();
     let sent = sent_to(&w, &h);
     assert_eq!(sent.len(), told + 1, "{sent:?}");
-    assert!(sent.last().unwrap().contains(&format!("option B was picked, so it's done. What follows: #{} goes to the Desk lead to route.", done.built_as)), "then told it's done: {sent:?}");
+    assert!(sent.last().unwrap().contains(&format!("option B was picked, so it's done. #{0} builds it. What follows: #{0} goes to the Desk lead to route.", done.built_as)), "then told it's done: {sent:?}");
 }
 
 #[test]
@@ -267,7 +267,7 @@ fn a_pick_files_and_routes_what_its_holder_said_follows_with_no_lead_step() {
     assert!(docs["holder"]["name"].as_str().is_some_and(|n| n != "cue-teams"), "{docs}");
     // Its holder is told what follows; the lead has nothing to route.
     let n = side["id"].as_str().unwrap();
-    assert!(sent_to(&w, &h).iter().any(|t| t.contains("option B was picked, so it's done. What follows:") && t.contains(&format!("#{n} to cue-teams")) && !t.contains("Mark \"Picked")), "{:?}", sent_to(&w, &h));
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains("option B was picked, so it's done. #") && t.contains(&format!("#{n} to cue-teams")) && !t.contains("Mark \"Picked")), "{:?}", sent_to(&w, &h));
     w.advance(2000);
     assert_eq!(sent_to(&w, &l).len(), told_lead, "no lead step: {:?}", &sent_to(&w, &l)[told_lead..]);
 }
@@ -373,4 +373,100 @@ fn a_build_item_the_lead_files_for_your_pick_links_both_ways() {
     let b = item(&desk(&w, &project), "Build: working items (option B)").clone();
     assert_eq!((b["built_as"].as_str(), b["picked"].as_str()), (f["id"].as_str(), None), "{b}");
     assert!(sent_to(&w, &l).iter().any(|t| t.contains("from: #zz9") && t.contains("there's no #zz9")), "{:?}", sent_to(&w, &l));
+}
+
+/// #667: Its mocks session `h` at work on mocks item `m` again (a turn of yours taken, not ended).
+fn at_work(w: &World, h: &str) {
+    w.hosted_says(h, crate::hosted::HostedEvent::Taken { text: "Tidy the canvas".into() });
+    w.settle();
+}
+
+#[test]
+fn a_pick_while_its_holder_is_still_at_work_closes_it_and_its_done_later_doesnt_reopen_it() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: feature | Mocks: working items | done when: three ways on the canvas\nROUTE: #new -> cue-teams | why: it knows the list");
+    let m = item(&desk(&w, &project), "Mocks: working items")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Three on the canvas.\nDESIGNS: #{m} https://example.com/canvas\nPick one for working items: B1, B2 or B3."));
+    ends(&w, &l, "Waiting on the pick.");
+    at_work(&w, &h);
+    assert_eq!(item(&desk(&w, &project), "Mocks: working items")["state"], "working", "its holder is still at it");
+
+    let picked = w.hub().desk_item_act(&m, "pick", "B2").unwrap();
+    assert_eq!((picked.state.as_str(), picked.picked.as_str()), ("done", "B2"));
+    let n = picked.built_as.clone();
+    assert!(!n.is_empty());
+    // The lead hears it with the line its chat shows: "You picked B2 on #m; #n builds it".
+    w.advance(1000);
+    let told = sent_to(&w, &l).into_iter().filter(|t| t.contains("(Desk changes ")).collect::<Vec<_>>();
+    assert!(told.iter().any(|t| t.contains(&format!("picked option B2 on #{m} (Mocks: working items)")) && t.contains(&format!("#{m} is done; #{n} builds it."))), "{told:?}");
+
+    // Its holder finishes the turn it was on, with DONE: the item stays done, never back at your check.
+    ends(&w, &h, &format!("Canvas tidied.\nDONE: #{m}"));
+    w.advance(5000);
+    w.tick(false);
+    // Its holder is told (once its turn ends), in the words its chat shows as one line.
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("option B2 was picked, so it's done. #{n} builds it."))), "{:?}", sent_to(&w, &h));
+    let it = crate::db::desk_get_item(&m).unwrap();
+    assert_eq!((it.state.as_str(), it.picked.as_str(), it.built_as.as_str()), ("done", "B2", n.as_str()));
+
+    // The lead's DONE or CLOSE on it now: nothing refused, nothing to say.
+    let before = sent_to(&w, &l).len();
+    ends(&w, &l, &format!("DONE: #{m}\nCLOSE: #{m} | why: picked"));
+    w.advance(1000);
+    let after = sent_to(&w, &l);
+    assert!(after[before..].iter().all(|t| !t.contains("not closed")), "{:?}", &after[before..]);
+}
+
+#[test]
+fn a_pick_in_the_leads_chat_closes_the_item_while_its_holder_still_has_it() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: feature | Mocks: working items | done when: three ways on the canvas\nROUTE: #new -> cue-teams | why: it knows the list");
+    let m = item(&desk(&w, &project), "Mocks: working items")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Three on the canvas.\nDESIGNS: #{m} https://example.com/canvas\nPick one for working items: B1, B2 or B3."));
+    at_work(&w, &h);
+    let before = sent_to(&w, &l).len();
+
+    // You tell the lead "B2"; it files what builds it and closes the mocks, as #652's lead did.
+    ends(&w, &l, &format!("ITEM: feature | Build: working items B2 | you'll see: the B2 list | done when: B2 is in the app | from: #{m} | picked: B2\nDONE: #{m}\nCLOSE: #{m} | why: B2 was picked"));
+    let d = desk(&w, &project);
+    let n = item(&d, "Build: working items B2")["id"].as_str().unwrap().to_string();
+    let it = item(&d, "Mocks: working items");
+    assert_eq!((it["state"].as_str(), it["picked"].as_str(), it["built_as"].as_str()), (Some("done"), Some("B2"), Some(n.as_str())), "{it}");
+    w.advance(1000);
+    let after = sent_to(&w, &l);
+    assert!(after[before..].iter().all(|t| !t.contains("not closed")), "never refused: {:?}", &after[before..]);
+
+    // Its holder's DONE, said after, doesn't take it to your check.
+    ends(&w, &h, &format!("Canvas tidied.\nDONE: #{m}"));
+    w.advance(5000);
+    w.tick(false);
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("option B2 was picked, so it's done. #{n} builds it."))), "its holder is told");
+    assert_eq!(crate::db::desk_get_item(&m).unwrap().state, "done");
+}
+
+#[test]
+fn the_leads_done_on_mocks_its_holder_still_has_closes_it_once_its_back() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: feature | Mocks: working items | done when: three ways on the canvas; nothing in the repo changes\nROUTE: #new -> cue-teams | why: it knows the list");
+    let m = item(&desk(&w, &project), "Mocks: working items")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("Three on the canvas.\nDESIGNS: #{m} https://example.com/canvas"));
+    at_work(&w, &h);
+    let before = sent_to(&w, &l).len();
+    ends(&w, &l, &format!("DONE: #{m}"));
+    w.advance(1000);
+    let after = sent_to(&w, &l);
+    assert!(after[before..].iter().all(|t| !t.contains("not closed")), "not refused: {:?}", &after[before..]);
+    assert!(crate::db::desk_get_item(&m).unwrap().close_on_check);
+    ends(&w, &h, &format!("Canvas tidied.\nDONE: #{m}"));
+    for _ in 0..5 {
+        w.advance(2000);
+        w.tick(false);
+    }
+    assert_eq!(crate::db::desk_get_item(&m).unwrap().state, "done", "closed once its DONE brought it to your check");
 }
