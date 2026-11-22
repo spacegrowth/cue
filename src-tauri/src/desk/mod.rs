@@ -91,8 +91,8 @@ macro_rules! lead_loop_line {
     () => {
         "LOOP: <project> | name: <2 to 4 words> | goal: <the full instructions for the AI that runs it> | done when: <plain words> | \
 check: <a shell command that passes when the work is right, or none> | rounds: <1 to 10> | time: <minutes> | spend: <dollars> | \
-decisions: one-way, every or none      (only when the user asks for a loop, for this project or another of theirs: \
-Cue finds that project's folder and shows the draft in your chat as a card with Start loop; it starts only when the \
+decisions: one-way, every or none | folder: <its full path, when you know it>      (only when the user asks for a loop, for this project or another of theirs: \
+Cue finds that project's folder, by its name or its repository's, and shows the draft in your chat as a card with Start loop; it starts only when the \
 user presses it, never by you. Give goal and done when always, a check and limits whenever you can)\n"
     };
 }

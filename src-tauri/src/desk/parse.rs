@@ -89,7 +89,7 @@ pub enum Line {
     /// <its side>`. Cue asks the user, both sides quoted. `item`: the #id the words start with.
     Disagree { to: String, item: Option<String>, text: String },
     /// A loop the lead drafts for you to start (#583): `LOOP: <project> | name: … | goal: … | done when: … | check: … |
-    /// rounds: … | time: … | spend: … | decisions: …`. Cue finds the project's folder and shows it as a card with
+    /// rounds: … | time: … | spend: … | decisions: … | folder: …`. Cue finds the project's folder and shows it as a card with
     /// Start loop; nothing starts until you press it.
     Loop(LoopDraft),
 }
@@ -109,6 +109,8 @@ pub struct LoopDraft {
     pub spend_usd: Option<f64>,
     /// "one-way" | "every" | "none"; "" when not said.
     pub decisions: String,
+    /// The folder the line names (`folder: ~/development/web`), "" when none: Cue finds the project's own then.
+    pub folder: String,
 }
 
 /// The Desk lines in `text`, in order.
@@ -243,7 +245,7 @@ fn one(t: &str) -> Option<Line> {
 /// `LOOP: <project> | name: … | goal: … | done when: … | check: … | rounds: … | time: … | spend: … | decisions: …`
 /// (#583): None without a project.
 fn loop_line(body: &str) -> Option<Line> {
-    const LABELS: [&str; 8] = ["name", "goal", "done when", "check", "rounds", "time", "spend", "decisions"];
+    const LABELS: [&str; 9] = ["name", "goal", "done when", "check", "rounds", "time", "spend", "decisions", "folder"];
     let ps = parts(body);
     let project = ps.first()?.trim_matches(['`', '*', '"']).trim();
     if project.is_empty() || project.contains(':') {
@@ -272,6 +274,7 @@ fn loop_line(body: &str) -> Option<Line> {
         time_min: digits(said("time")).parse().ok(),
         spend_usd: digits(said("spend")).parse().ok(),
         decisions: if ["one-way", "every", "none"].contains(&decisions.as_str()) { decisions } else { String::new() },
+        folder: said("folder").trim_matches('`').to_string(),
     }))
 }
 

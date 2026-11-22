@@ -73,7 +73,8 @@ type Read<'a> = (&'a [(String, Result<(String, String), String>)], &'a [(String,
 
 /// Lead `lsid` of `project` said `text` at its turn's end: its ITEM, ROUTE, ASK and DECIDED lines.
 /// `repos`: the repositories its COPY lines name, found before the store was taken (desk/hub/landing/named_copy.rs).
-/// `loops`: each project its LOOP lines name, with its folder on this Mac when Cue knows one (Hub::desk_folder).
+/// `loops`: each LOOP line's project and folder said (`loop_key`), with the folder on this Mac Cue found for it
+/// (Hub::loop_folder).
 #[allow(clippy::too_many_arguments)]
 fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loops, model_names, routed): Read<'_>, changes: &crate::desk::hold_check::Changes, now: u64, fx: &mut Effects) {
     let name = st.sessions.get(lsid).map(shown_name).or_else(|| st.desk.lead.get(project).map(|l| l.name.clone())).unwrap_or_default();
@@ -236,8 +237,13 @@ fn turn_said(st: &mut Store, sid: &str, text: &str, turn: &[crate::model::TurnPa
 /// card. One with no folder Cue knows, or no goal or done when, is refused and the lead is told why.
 #[allow(clippy::too_many_arguments)]
 fn loop_said(st: &mut Store, project: &str, by: &By, d: crate::desk::parse::LoopDraft, loops: &[(String, Option<String>)], now: u64, fx: &mut Effects, answers: &mut Vec<String>) {
-    let Some(folder) = loops.iter().find(|(p, _)| *p == d.project).and_then(|(_, f)| f.clone()) else {
-        answers.push(format!("Refused: LOOP: {}: Cue knows no folder of a project by that name on this Mac. You can name the project as its sessions are shown, or ask the user where it is.", d.project));
+    let Some(folder) = loops.iter().find(|(k, _)| *k == loop_key(&d)).and_then(|(_, f)| f.clone()) else {
+        let no = if d.folder.is_empty() {
+            format!("Cue knows no folder of a project by that name on this Mac. You can add its folder to the line (folder: ~/development/{}), or ask the user where it is.", d.project)
+        } else {
+            format!("{} is no folder on this Mac. You can write its full path after folder:, or ask the user where it is.", d.folder)
+        };
+        answers.push(format!("Refused: LOOP: {}: {no}", d.project));
         return;
     };
     if d.goal.is_empty() || d.done_when.is_empty() {
@@ -262,6 +268,11 @@ fn loop_said(st: &mut Store, project: &str, by: &By, d: crate::desk::parse::Loop
         x.undo = "none".into();
         x.draft = Some(draft);
     }
+}
+
+/// What a LOOP line's folder is found by: its project and the folder it names.
+fn loop_key(d: &crate::desk::parse::LoopDraft) -> String {
+    format!("{}\n{}", d.project, d.folder)
 }
 
 /// The lead's ROUTE line (`#new`: the reply's last ITEM). On another machine (#500) only a new session starts there,
@@ -739,7 +750,7 @@ impl Hub {
         let (repos, routed) = (crate::desk::hub::landing::named_copy::repos_said(text, &from), if said { self.repos_routed(text) } else { Vec::new() });
         // The folder of each project a LOOP line names (#583), found before the store is taken.
         let loops: Vec<(String, Option<String>)> = if said {
-            parse::lines(text).into_iter().filter_map(|l| if let Line::Loop(d) = l { Some(d.project) } else { None }).map(|p| { let f = self.desk_folder(&p); (p, f) }).collect()
+            parse::lines(text).into_iter().filter_map(|l| if let Line::Loop(d) = l { Some(d) } else { None }).map(|d| (loop_key(&d), self.loop_folder(&d.project, &d.folder))).collect()
         } else {
             Vec::new()
         };

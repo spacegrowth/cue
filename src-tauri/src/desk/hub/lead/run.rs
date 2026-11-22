@@ -219,6 +219,37 @@ impl Hub {
         Some(crate::logs::repos::repo_root(&cwd).map(|r| r.to_string_lossy().into_owned()).unwrap_or(cwd))
     }
 
+    /// The folder a loop the lead drafts for `project` runs in (#583), on this Mac: the one its line names (`folder`,
+    /// "~/" for your home; its repository's main checkout when it's in one), else the project's Desk or sessions'
+    /// (`desk_folder`), else a Desk by that name, else a repository by that name that a Desk or a session here works
+    /// in: a folder you put into another project still goes by its own name.
+    pub(crate) fn loop_folder(&self, project: &str, folder: &str) -> Option<String> {
+        let at_root = |cwd: String| crate::logs::repos::repo_root(&cwd).map(|r| r.to_string_lossy().into_owned()).unwrap_or(cwd);
+        if !folder.is_empty() {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let f = match folder.strip_prefix("~/") {
+                Some(rest) if !home.is_empty() => format!("{}/{rest}", home.trim_end_matches('/')),
+                _ => folder.to_string(),
+            };
+            let f = f.trim_end_matches('/').to_string();
+            return (f.starts_with('/') && std::path::Path::new(&f).is_dir()).then(|| at_root(f));
+        }
+        if let Some(f) = self.desk_folder(project) {
+            return Some(f);
+        }
+        let (spaces, cwds) = self.read(|st| {
+            let spaces: Vec<(String, String)> = st.desk.spaces.values().filter(|d| !d.folder.is_empty()).map(|d| (d.name.clone(), d.folder.clone())).collect();
+            let live = st.sessions.iter().map(|s| &s.origin);
+            let parked = st.parked.iter().map(|p| &p.session.origin);
+            let cwds: Vec<String> = live.chain(parked).filter(|o| o.machine.is_empty() && !o.cwd.is_empty()).map(|o| o.cwd.clone()).collect();
+            (spaces, cwds)
+        });
+        if let Some((_, f)) = spaces.iter().find(|(name, _)| name == project) {
+            return Some(f.clone());
+        }
+        spaces.into_iter().map(|(_, f)| f).chain(cwds).find(|cwd| crate::model::own_project(cwd, "") == project).map(at_root)
+    }
+
     /// What the lead is told before each message of yours: the project's items, who holds them, and the sessions it
     /// can hand work to, in one `<desk …>…</desk>` block (no `</desk>` inside it: the window strips the block by it).
     /// `lead`: the session told (left out of the sessions listed; "" for one not started yet). `with_skill`: how a
