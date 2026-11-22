@@ -61,7 +61,7 @@ teammate's "not done" after a failed finish is the same line as above.
 | Copy taken back | The lead's TAKE COPY | desk_unstick.rs | Told X · #id copy taken back: stop work on it |
 | Closed | CLOSE: its work is already on a branch | desk_unstick.rs | Told X · #id closed: already on main |
 | Dropped | You drop the item | desk_act.rs | Told X · #id dropped: stop work on it |
-| Option picked | You pick a mock | desk_act.rs | Told X · #id option B picked: done, #n builds it |
+| Option picked | You pick a mock (on its page, its card, or in the lead's chat) | pick.rs | Told X · #id You picked B; #n builds it |
 | Folded into | Another item was merged into one it has | desk_said.rs | Told X · #a folded into #b: “…” |
 | Done? | A turn on its item ended with no DONE | desk_stall.rs | Asked X · #id done? or what's left · 1 more item |
 | Desk paused | The Desk is paused | desk_pause.rs `PAUSE_WORDS` | Asked X · the Desk is paused: stop at a safe point |

@@ -28,7 +28,7 @@ const CUE_MSGS = [
   [cueRe(String.raw`^Desk item #ID: the Desk lead took back its copy`), (m) => ({ verb: "Told", id: m[1], what: "copy taken back: stop work on it", next: "{who} stops until it's routed to it again" }), "Taken back"],
   [cueRe(String.raw`^Desk item #ID is closed: its work is already on (\S+)`), (m) => ({ verb: "Told", id: m[1], what: `closed: already on ${m[2]}`, next: `Nothing more: its work is already on ${m[2]}` }), "Closed"],
   [cueRe(String.raw`^Desk item #ID was dropped: stop work on it`), (m) => ({ verb: "Told", id: m[1], what: "dropped: stop work on it", next: "{who} stops work on it" }), "Dropped"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\): option (\S+) was picked, so it's done\. #([\w.-]+) builds it`), (m) => ({ verb: "Told", id: m[1], what: `option ${m[3]} picked: done, #${m[4]} builds it`, next: `#${m[4]} builds option ${m[3]}` }), "Picked"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\): option (\S+) was picked, so it's done\. (?:#([\w.-]+) builds it|(Nothing follows it)|((?:#[\w.-]+, )+#[\w.-]+) follow it)`), (m) => ({ verb: "Told", id: m[1], what: `You picked ${m[3]}; ${m[4] ? `#${m[4]} builds it` : m[5] ? "nothing follows it" : `${m[6]} follow it`}`, next: m[4] ? `#${m[4]} builds option ${m[3]}` : m[5] ? "Nothing more: it's done" : `${m[6]} follow option ${m[3]}` }), "Picked"],
   [cueRe(String.raw`^Desk item #ID was folded into #([\w.-]+), which you have\. It said: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `folded into #${m[2]}: ${cueQ(m[3])}`, said: m[3], label: "It asked", next: `{who} does it as part of #${m[2]}` }), "Folded"],
   [cueRe(String.raw`^Done\? Write DONE: #ID, or say what's left`), (m, t) => cueLines(t).every((l) => /^Done\? Write DONE: #/.test(l)) && { verb: "Asked", id: m[1], what: "done? or what's left", more: cueMore(cueLines(t).length - 1, "more item"), next: "{who} says it's done, or what's left" }, "Done?"],
   [/^The Desk is paused\. Stop at the next safe point/, () => ({ verb: "Asked", what: "the Desk is paused: stop at a safe point", next: "{who} stops at a safe point until the Desk is resumed" }), "Paused"],
@@ -91,7 +91,14 @@ const CUE_CHANGES = [
   ["new", /^New item #/], ["finished", /^#[\w.-]+ \(.*\) finished: /], ["stuck finishing", /^#[\w.-]+ \(.*\) is stuck finishing/],
   ["clashed", /^#[\w.-]+ \(.*\) clashed with the main line/], ["stopped", /^#[\w.-]+ \(.*\) stopped/],
   ["asks you", /^#[\w.-]+ \(.*\)'s holder .*? asks /], ["holder gone", /^#[\w.-]+ \(.*\)'s holder /],
+  ["picked", /^.+? picked option \S+ on #/],
 ];
+/** A pick's row (desk/hub/turn/pick.rs: "<you> picked option B2 on #652 (title): "…". #652 is done; #666 builds
+ *  it.") as its one line (#667): "You picked B2 on #652; #666 builds it". "" for any other row. */
+function cuePickedLine(r) {
+  const m = /picked option (\S+) on #([\w.-]+) [\s\S]*?#\2 is done; ([^.]*)\./.exec(r);
+  return m ? `You picked ${m[1]} on #${m[2]}; ${m[3]}` : "";
+}
 /** The Desk's changes `t` (their paragraphs, the numbers line dropped) as one line: "#528, #561 finished · #535 sent
  *  back". A row's follow-up about an item already in it (where your words went) isn't counted again. */
 function cueChanges(t) {
@@ -108,6 +115,14 @@ function cueChanges(t) {
   // One item: what happened to it in words, and what you said with it.
   const said = one && /: "([^\n]*)"\.?$/.exec(rows[0])?.[1];
   const alone = { "sent back": "you sent it back", asked: "you asked its holder", restarted: "you restarted it", dropped: "you dropped it", "moved up": "you moved it up", new: "a new item" };
+  // A pick (#667): its one line first, the rows about what it filed folded into it ("#666 new" isn't said again).
+  const picks = rows.map(cuePickedLine).filter(Boolean);
+  if (picks.length) {
+    const named = new Set(picks.join(" ").match(/#[\w.-]+/g));
+    const rest = [...by].filter(([k]) => k !== "picked").map(([k, ids]) => [k, ids.filter((x) => x && !named.has(x))]).filter(([, ids]) => ids.length);
+    const what = [...picks, ...rest.map(([k, ids]) => `${ids.join(", ")} ${k}`)].join(" · ");
+    return { verb: "Told", ...(picks.length === 1 ? { id: /#([\w.-]+)/.exec(picks[0])[1] } : {}), what: cueCut(what, 100) };
+  }
   const what = [...by].map(([k, ids]) => (one ? `${alone[k] || k}${said ? `: ${cueQ(said, 60)}` : ""}` : `${ids.filter(Boolean).join(", ")} ${k}`.trim())).join(" · ");
   // Opened (#625): your words, whole, and what happens next.
   const next = { "sent back": "Its holder fixes it and says it's done", asked: "Its holder answers you", restarted: "A session starts on it again", "moved up": "It goes before the other in line" };

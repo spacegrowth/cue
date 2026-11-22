@@ -59,10 +59,15 @@ pub(crate) fn follow_on(st: &mut Store, project: &str, id: &str, from: &str, pic
     let b = st.desk.item_mut(id).ok_or("no such item")?;
     if b.builds.is_empty() {
         b.builds = from.clone();
-        b.from_pick = if picked.is_empty() { option } else { picked };
+        b.from_pick = if picked.is_empty() { option } else { picked.clone() };
     }
-    fx.items.push(from);
+    fx.items.push(from.clone());
     fx.items.push(id.to_string());
+    // Your pick in its chat closes the item it picks on, as a Pick on its page does (#667), even while its holder
+    // still has it: never left to its holder's DONE, which would take it to your check.
+    if !picked.is_empty() && st.desk.item(&from).is_some_and(|f| f.built_as == id) {
+        crate::desk::hub::turn::pick::picked_in_chat(st, &from, id, &picked, now, fx);
+    }
     Ok(())
 }
 
@@ -641,6 +646,19 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
         };
         let mine = it.holder.as_ref().is_some_and(|h| h.is(lsid));
         if mine && matches!(it.state.as_str(), "working" | "queued") {
+            continue;
+        }
+        // Done by your pick: nothing to close, nothing to tell (#667).
+        if it.state == "done" && !it.picked.is_empty() {
+            continue;
+        }
+        // An item of options its holder still has (#667): never refused; it closes once its holder's DONE brings it
+        // to your check, as one finishing does.
+        if crate::desk::hub::turn::pick::has_options(it) && matches!(it.state.as_str(), "working" | "queued") {
+            if let Some(it) = st.desk.item_mut(&id) {
+                it.close_on_check = true;
+            }
+            fx.items.push(id.clone());
             continue;
         }
         if matches!(it.state.as_str(), "to_check" | "finishing") {

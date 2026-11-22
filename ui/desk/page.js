@@ -418,12 +418,15 @@ const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url
 /** Its mocks' canvas: the DESIGNS: link its session gave, or for an item whose work was only mocks (#408, #436), the
  *  link it made. "" for none. */
 const deskCanvas = (i) => /^https?:\/\//.test(i?.designs || "") ? i.designs : i?.finish?.mocks ? (i.made || []).find((m) => /^https?:\/\//.test(m)) || "" : "";
+/** Where an item's options can be picked: waiting on you, to check, or still with its holder, at work or finishing
+ *  (#667: a pick closes it whatever stage it's at). */
+const DESK_PICK_STATES = new Set(["needs_you", "to_check", "working", "finishing"]);
 /** An item waiting on you to pick an option, one with a canvas or with what follows each option (IF PICKED: lines,
  *  #543): the line of its holder's newest words that asks you to, plain, for under its page's header ("Pick one for
  *  working items: D, E or F"). Its question first while it asks you, then its latest reply. An earlier pick can
  *  already have been answered. */
 function deskPickLine(i) {
-  if (i.picked || (!deskCanvas(i) && !(i.next || []).length) || (i.state !== "needs_you" && i.state !== "to_check")) return "";
+  if (i.picked || (!deskCanvas(i) && !(i.next || []).length) || !DESK_PICK_STATES.has(i.state)) return "";
   for (const t of [i.state === "needs_you" ? deskQuestion(i) : "", i.said?.at(-1)?.text || ""]) {
     const line = deskPickLineIn(t);
     if (line) return line;
@@ -477,7 +480,7 @@ function deskPickRun(line) {
  *  IF PICKED: lines name: those when the list shares none of them (a numbered list that isn't its options); none once
  *  picked. */
 function deskPickOptions(i) {
-  if (i.picked || (i.state !== "needs_you" && i.state !== "to_check")) return [];
+  if (i.picked || !DESK_PICK_STATES.has(i.state)) return [];
   const run = deskPickRun(deskPickLine(i));
   if (run.length > 1) return run;
   if (!deskCanvas(i) && !(i.next || []).length) return [];
@@ -508,16 +511,17 @@ function deskPickReplyAt(i, ex) {
 /** Item `id` wherever the window has it: a Desk's open items, or the finished ones fetched for its Done list. */
 const deskItemAnywhere = (id) => (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.id === id)
   || [...deskDonePages.values()].flatMap((pg) => pg.items).find((x) => x.id === id) || null;
-/** A finished item and the item that carries it on, each linking to the other (#281, #606): "You picked option B.
- *  It's being built as #604" (built: "It was built as #604"), or, not a pick, "Followed by #604"; on the other end
- *  "From your pick on #593", or "Follows #593". Empty when it has neither. */
+/** A finished item and the item that carries it on, each linking to the other (#281, #606, #667): one line, "You
+ *  picked B2 on #652; #666 builds it" (built: "#666 built it"; nothing filed: "nothing follows it"), or, not a pick,
+ *  "Followed by #604"; on the other end "From your pick on #593", or "Follows #593". Empty when it has neither. */
 function deskBuiltWords(i) {
   const a = (id) => `<a href="#" data-desk-item="${esc(id)}">#${esc(id)}</a>`;
-  if (i.built_as) {
-    const b = deskItemAnywhere(i.built_as), done = b?.state === "done";
-    if (!i.picked) return `Followed by ${a(i.built_as)}`;
-    return `You picked option ${esc(i.picked)}. ${done ? "It was built as" : "It's being built as"} ${a(i.built_as)}`;
+  if (i.picked) {
+    const b = i.built_as && deskItemAnywhere(i.built_as);
+    const next = !i.built_as ? "nothing follows it" : `${a(i.built_as)} ${b?.state === "done" ? "built it" : "builds it"}`;
+    return `You picked ${esc(i.picked)} on #${esc(i.id)}; ${next}`;
   }
+  if (i.built_as) return `Followed by ${a(i.built_as)}`;
   if (!i.builds) return "";
   const from = i.from_pick || deskItemAnywhere(i.builds)?.picked;
   return from ? `From your pick on ${a(i.builds)}` : `Follows ${a(i.builds)}`;

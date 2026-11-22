@@ -41,6 +41,10 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
     // LAND FIRST may move up another Desk's item on the same code (#540; desk/across.rs).
     let ours = |p: &str| p == project || (what == "land_first" && crate::desk::across::same_code(st, project, p));
     let it = st.desk.item(id).filter(|i| ours(&i.project)).ok_or_else(|| format!("#{id} {line}: this Desk has no item #{id}"))?;
+    // CLOSE on an item your pick closed already: nothing to do, nothing refused (#667).
+    if it.state == "done" && what == "close" && !it.picked.is_empty() {
+        return Ok(());
+    }
     // DROP takes a done item off the list too (#544).
     if it.state == "done" && !matches!(what, "take_copy" | "drop") {
         return Err(format!("#{id} {line}: it's done already"));
@@ -60,10 +64,18 @@ pub(crate) fn unstick(st: &mut Store, project: &str, by: &By, what: &str, id: &s
 }
 
 /// CLOSE: what git is asked is asked a moment later, off the store (`Hub::desk_close_on_main`).
-fn close(st: &Store, project: &str, by: &By, id: &str, commit: &str, why: &str, fx: &mut Effects) -> Result<(), String> {
+fn close(st: &mut Store, project: &str, by: &By, id: &str, commit: &str, why: &str, fx: &mut Effects) -> Result<(), String> {
     let it = st.desk.item(id).ok_or_else(|| format!("#{id} not closed: this Desk has no item #{id}"))?;
     let fin = it.finish.as_ref();
     if st.desk.run.finish_claims.contains(id) || fin.is_some_and(|f| it.state == "finishing" && f.question.is_empty() && matches!(f.step.as_str(), "building" | "installing" | "starting")) {
+        // An item of options its holder is still finishing (#667): never refused; closed once it's at your check.
+        if crate::desk::hub::turn::pick::has_options(it) {
+            if let Some(it) = st.desk.item_mut(id) {
+                it.close_on_check = true;
+            }
+            fx.items.push(id.to_string());
+            return Ok(());
+        }
         return Err(format!("#{id} not closed: it's being committed or installed right now; wait for that to end"));
     }
     let commit = [commit.to_string(), fin.map(|f| f.commit.clone()).unwrap_or_default(), it.commit.split_whitespace().next().unwrap_or("").to_string()]
