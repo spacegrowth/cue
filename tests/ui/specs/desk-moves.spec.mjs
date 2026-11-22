@@ -37,11 +37,14 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
   await expect(rows.nth(2)).toContainText("Closed #d8: its work is on main (old 0) · it landed by hand");
   await expect(rows.nth(2).locator(".dk-mv-at")).toContainText(",");   // an older day says its date
   await expect(rows).toHaveCount(30);
-  // Scrolled to its end: more load.
-  await list.locator("[data-desk-moves-more]").scrollIntoViewIfNeeded();
-  await expect(rows).toHaveCount(60);
-  await list.locator("[data-desk-moves-more]").scrollIntoViewIfNeeded();
-  await expect(rows).toHaveCount(72);
+  // Scrolled to its end: more load. The window is drawn anew whenever older ones come in from Cue, which can take the
+  // list's end away mid-scroll (#719): it's looked up again, and the count waited for, until it's there.
+  const toEnd = (count) => expect(async () => {
+    await list.locator("[data-desk-moves-more]").scrollIntoViewIfNeeded({ timeout: 1000 });
+    await expect(rows).toHaveCount(count, { timeout: 1000 });
+  }).toPass({ timeout: 10000 });
+  await toEnd(60);
+  await toEnd(72);
   await expect(rows.last()).toContainText("(old 69)");
   // Its item's number opens the item.
   await rows.first().locator('[data-desk-chk-item="d3"]').click();
