@@ -3,3 +3,4 @@
 pub(crate) mod theirs;
 pub(crate) mod theirs_log;
 pub(crate) mod theirs_codex;
+pub(crate) mod by_hunk;

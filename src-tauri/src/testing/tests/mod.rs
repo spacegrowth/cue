@@ -52,6 +52,7 @@ mod desk_spec_check;
 mod desk_spec_copies;
 mod desk_spec_landing;
 mod desk_theirs;
+mod desk_theirs_hunks;
 mod desk_features;
 mod desk_finish;
 mod desk_install;

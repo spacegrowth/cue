@@ -39,9 +39,24 @@ pub(crate) struct Theirs {
     edits: Vec<(String, TheirEdit)>,
     /// The item they're others' to: its own commits ("… (#id)") aren't a file's last commit (`own_part`).
     id: String,
+    /// The logs (agent logs too) of the item's own sessions, and of each other session by the files it changed
+    /// (absolute): a file's change told hunk by hunk by them (desk/hub/theirs/by_hunk.rs, #658).
+    pub(crate) mine_logs: Vec<String>,
+    changed_by: Vec<(String, String)>,
 }
 
 impl Theirs {
+    /// The logs of the other sessions that changed `file` (absolute).
+    pub(crate) fn logs_of(&self, file: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for (_, l) in self.changed_by.iter().filter(|(f, _)| f == file) {
+            if !out.contains(l) {
+                out.push(l.clone());
+            }
+        }
+        out
+    }
+
     /// The sessions these changes are named to (never a guess), once each.
     pub(crate) fn named(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -161,10 +176,17 @@ impl Hub {
         known.retain(|k| k.here && !k.log.is_empty() && seen.insert(k.id.clone()));
         let all: Vec<String> = known.iter().map(|k| k.log.trim_end_matches(".jsonl").to_string()).collect();
         let mut out = Theirs { id: it.id.clone(), ..Theirs::default() };
+        for k in known.iter().filter(|k| mine_ids.contains(&k.id)) {
+            out.mine_logs.push(k.log.clone());
+            out.mine_logs.extend(k.agents.clone().unwrap_or_else(|| agents_of(&k.log)));
+        }
         for k in known.into_iter().filter(|k| !mine_ids.contains(&k.id)) {
             let agents = k.agents.clone().unwrap_or_else(|| agents_of(&k.log));
             for path in std::iter::once(k.log.clone()).chain(agents) {
                 let (edits, _) = read_edits(&path, &k.cwd, wanted);
+                for (f, _) in &edits {
+                    out.changed_by.push((f.clone(), path.clone()));
+                }
                 out.edits.extend(edits.into_iter().map(|(f, e)| (f, TheirEdit { by: k.name.clone(), ..e })));
             }
         }
@@ -194,7 +216,16 @@ impl Hub {
                         left.push(p);
                     }
                     Own::Nothing => {}
-                    Own::Mixed(by) => mixed.push((p, if by.is_empty() { SOMEONE.to_string() } else { by })),
+                    // Theirs can't be taken out by its text: told apart hunk by hunk when it can be (#658).
+                    Own::Mixed(by) => match crate::desk::hub::theirs::by_hunk::own_by_hunk(&theirs, &folder, &p, last_commit(&theirs, &folder, &p)) {
+                        Some(Own::Whole) => left.push(p),
+                        Some(Own::Part(content)) => {
+                            parts.push(Part { folder: folder.clone(), path: p.clone(), content });
+                            left.push(p);
+                        }
+                        Some(_) => {}
+                        None => mixed.push((p, if by.is_empty() { SOMEONE.to_string() } else { by })),
+                    },
                 }
             }
             if !left.is_empty() {
@@ -239,12 +270,7 @@ pub(crate) fn own_part(theirs: &Theirs, folder: &str, path: &str) -> Own {
     }
     edits.sort_by_key(|e| std::cmp::Reverse(e.at));
     let git = |args: &[&str]| crate::desk::hub::landing::git::git("", folder, &[], args);
-    // Its last commit not the item's own: a commit its holder made of only its own part of the file (#650's of
-    // trees.rs) says nothing of others' changes made before it, still there uncommitted (#653, e7361cace).
-    let own = format!("(#{})", theirs.id);
-    let committed = git(&["log", "-50", "--format=%ct %s", "--", path])
-        .and_then(|t| t.lines().find(|l| theirs.id.is_empty() || !l.contains(&own)).and_then(|l| l.split(' ').next()?.parse::<u64>().ok()))
-        .map_or(0, |s| s * 1000);
+    let committed = last_commit(theirs, folder, path);
     let head = git(&["show", &format!("HEAD:./{path}")]).unwrap_or_default();
     let Ok(now) = std::fs::read_to_string(&abs) else {
         // Gone, or not text: theirs can't be taken out of it. Only a change since its last commit is named (#248).
@@ -259,6 +285,16 @@ pub(crate) fn own_part(theirs: &Theirs, folder: &str, path: &str) -> Own {
         Ok(Some(rest)) if rest == head => Own::Nothing,
         Ok(Some(rest)) => Own::Part(rest.into_bytes()),
     }
+}
+
+/// When `path` in `folder` was last committed (ms), not counting the item's own commits: a commit its holder made of
+/// only its own part of the file (#650's of trees.rs) says nothing of others' changes made before it, still there
+/// uncommitted (#653, e7361cace).
+pub(crate) fn last_commit(theirs: &Theirs, folder: &str, path: &str) -> u64 {
+    let own = format!("(#{})", theirs.id);
+    crate::desk::hub::landing::git::git("", folder, &[], &["log", "-50", "--format=%ct %s", "--", path])
+        .and_then(|t| t.lines().find(|l| theirs.id.is_empty() || !l.contains(&own)).and_then(|l| l.split(' ').next()?.parse::<u64>().ok()))
+        .map_or(0, |s| s * 1000)
 }
 
 /// `now` with `edits` (newest first) taken out: None when none of them is in it, Err(who) when one can't be.

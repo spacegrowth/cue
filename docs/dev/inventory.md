@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 283 |
 | Lock-graph edges | 54 |
 | Spawn sites | 92 |
-| External calls: fs / db / process / notify / login / socket | 513 / 232 / 60 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 516 / 232 / 60 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -497,7 +497,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (513)
+### fs (516)
 
 | In | Call | Times |
 |---|---|---|
@@ -618,7 +618,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/lead/checks.rs::note_installed` | metadata | 1 |
 | `desk/hub/lead/mod.rs::desk_start_with_agent` | Path::is_dir | 1 |
 | `desk/hub/lead/mod.rs::desk_start_with_agent` | canonicalize | 1 |
+| `desk/hub/lead/run.rs::Hub::loop_folder` | Path::is_dir | 1 |
 | `desk/hub/lead/stop_lead.rs::Hub::main_edits_named` | canonicalize | 2 |
+| `desk/hub/theirs/by_hunk.rs::own_by_hunk` | read_to_string | 1 |
+| `desk/hub/theirs/by_hunk.rs::sent_text` | read_to_string | 1 |
 | `desk/hub/theirs/theirs.rs::own_part` | read_to_string | 1 |
 | `desk/hub/theirs/theirs_log.rs::read_edits` | File::open | 1 |
 | `desk/hub/theirs/theirs_log.rs::read_edits` | Path::metadata | 1 |
