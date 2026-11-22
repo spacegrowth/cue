@@ -20,6 +20,8 @@ async function deskSendBox(key, sendNow = false) {
   const text = draft(key).text.trim();
   const images = boxImages(draft(key).images);
   if (!to || (!text && !images.length)) return;
+  // Sent from Away's "Before you go": that one is answered there (#618).
+  deskAwayNoteSent(to);
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
   if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);

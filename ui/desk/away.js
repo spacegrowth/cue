@@ -84,7 +84,37 @@ function deskAwayFirstList(d) {
   const sorted = [...asks].sort((x, y) => (y.session_id === lead) - (x.session_id === lead) || at(y) - at(x));
   const stale = (sid) => { const its = sid && sid !== lead ? d.items.filter((i) => deskHolderSid(i) === sid) : []; return its.length > 0 && its.every((i) => i.state === "done" || i.state === "dropped"); };
   return [...sorted.map((it) => ({ key: `a:${it.id}`, desk: d.project, back: !!it.desk && it.session_id === lead, stale: stale(it.session_id), at: at(it), html: () => deskAwayAsk(it, d) })),
-    ...[...waits].sort((x, y) => deskMs(y.updated) - deskMs(x.updated)).map((i) => ({ key: `i:${i.id}`, desk: d.project, at: 0, html: () => deskItemRow(i, false) }))];
+    ...[...waits].filter((i) => !deskAwaySent.has(`i:${i.id}`)).sort((x, y) => deskMs(y.updated) - deskMs(x.updated)).map((i) => ({ key: `i:${i.id}`, desk: d.project, at: 0, html: () => deskAwayItem(i, d) }))];
+}
+/** An item that waits on you, whole (#618: not the Desk list's short row, cut to a line): its number and who holds it,
+ *  its full title and You'll see, then what it waits on you for, answerable right here: a question's card with its
+ *  choices, an option to pick, a question in its holder's words with a box to answer it, or Looks right. Nothing in it
+ *  opens a page. */
+function deskAwayItem(i, d) {
+  const who = deskHolderOf(i);
+  const head = `<div class="dk-aw-ih">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b>${who ? `<span aria-hidden="true">·</span><span>${esc(who)}</span>` : ""}</div>`
+    + `<div class="dk-aw-it">${esc(i.title)}</div>${i.see ? `<div class="dk-aw-see">You'll see: ${esc(i.see)}</div>` : ""}`;
+  const request = deskItemRequest(i);
+  let body;
+  if (request) body = deskAwayAsk(request, d);
+  else if (deskPickOptions(i).length) body = `<p class="dk-aw-q">${esc(deskPickLine(i))}</p>${deskPickBtns(i)}`;
+  else if (i.state === "needs_you") {
+    const q = deskQuestion(i);
+    // To its holder, about it (deskSendItem works out where it goes); no holder: to the lead, about it.
+    const foot = i.holder ? deskItemFoot(i, d) : (() => { const key = deskBoxKey({ project: d.project, item: i.id }), line = deskToLine(deskLeadName(d), i); return boxHtml({ key, top: deskPreHtml(line.pre), placeholder: line.ph, send: { attrs: `data-desk-send="${esc(key)}"` } }); })();
+    body = `${q ? `<div class="dk-aw-q dk-md">${deskMd(q)}</div>` : ""}${foot}`;
+  } else {
+    const where = deskWhereLine(i)?.html || "";
+    body = `${where ? `<p class="dk-aw-q">${where}</p>` : ""}<div class="row-btns"><button class="btn primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button></div>`;
+  }
+  return `<div class="dk-aw-item" data-away-item="${esc(i.id)}">${head}${body}</div>`;
+}
+/** Items you wrote to from "Before you go" (their key, "i:<id>"): answered, so it moves on, though the item waits on
+ *  you until its holder reads it. Kept while the sheet is open (or set aside), cleared when Away opens afresh. */
+const deskAwaySent = new Set();
+/** Box `to` sent (desk/act.js deskSendBox): an item answered from the sheet counts as answered there. */
+function deskAwayNoteSent(to) {
+  if (to?.item && (deskAwayEdit || deskAwayAside) && document.querySelector(`.dk-aw-dialog [data-away-item="${CSS.escape(to.item)}"]`)) deskAwaySent.add(`i:${to.item}`);
 }
 /** An open ask, answerable where it is: who asks and what, a single question's choices, then the controls its card
  *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
@@ -254,6 +284,7 @@ let deskAwayEdit = null;
 const deskAwayDesks = () => (state.desk?.projects || []);
 /** The Away switch: off, one click turns it on (#612); on, it opens its rules. */
 function deskAwayOpen(project) {
+  deskAwayAside = null; deskAwaySent.clear();
   const d = deskOf(project), a = deskAwayOf(d);
   if (!a.on) return deskAwayQuick(project);
   const desks = deskAwayDesks().map((x) => { const was = !!deskAwayOf(x).on; return { project: x.project, desk: x.id || x.project, was, on: was, fresh: false, swept: true, ran: false }; });
@@ -268,6 +299,7 @@ function deskAwayOpen(project) {
 let deskAwayTurning = false;
 async function deskAwayQuick(project) {
   if (deskAwayTurning) return;
+  deskAwayAside = null; deskAwaySent.clear();
   const a = deskAwayOf(deskOf(project)), used = !!a.since;
   const e = { project, on: true, until: used ? (a.until ? deskHm(a.until) : "") : "07:00", budget: used ? (a.budget != null ? String(a.budget) : "") : "10",
     rules: { ...DESK_AWAY_DEFAULTS, ...(a.rules || {}) }, busy: false, shown: null, step: 0, live: new Set(), stale: 0, open: false,
@@ -428,6 +460,33 @@ function deskAwayHtml() {
     <div class="row-btns"><span class="dk-aw-left">${esc(deskAwayLeftLine(left))}</span><span class="grow"></span><button class="btn" data-away="off"${e.busy ? " disabled" : ""}>Turn Away off</button><button class="btn primary" data-away="done"${e.busy ? " disabled" : ""}>Done</button></div>
   </div></div>`;
 }
+/** The sheet set aside (#618): something in it opened a page (a session's chat, an item). It isn't thrown away: a bar
+ *  at the top of the Desk, "‹ Back to Away · 2 of 5", brings it back where you left off, with Until, Budget and your
+ *  answers kept; Esc does too; × lets it go. */
+let deskAwayAside = null;
+function deskAwayBackHtml() {
+  const e = deskAwayAside;
+  if (!e || view !== "desk") return "";
+  const n = e.shown?.length || 0, at = n ? Math.min(e.step, n - 1) + 1 : 0;
+  return `<div class="dk-aw-back" role="group" aria-label="Away"><button class="dk-aw-backb" data-away-back>‹ Back to Away${n ? ` · ${at} of ${n}` : ""}</button><button class="dk-aw-backx" data-away-back-x aria-label="Close">×</button></div>`;
+}
+/** The middle card with the bar at its top right, where nothing else sits. */
+function deskAwayBackIn(html) {
+  const bar = deskAwayBackHtml();
+  return bar ? html.replace(/^(<div class="dk-card dk-right[^"]*">)/, `$1${bar}`) : html;
+}
+/** Set the sheet aside, to come back to (deskAwayBackHtml). */
+function deskAwaySetAside() {
+  deskAwayAside = deskAwayEdit;
+  deskAwayEdit = null;
+}
+/** Back to the sheet where you left off. */
+function deskAwayBack() {
+  if (!deskAwayAside) return;
+  deskAwayEdit = deskAwayAside;
+  deskAwayAside = null;
+  renderMain();
+}
 /** Away set on every Desk of `e` as its switch says (`on` false: off on all); a Desk that was off and stays off isn't
  *  touched. Each Desk's view kept at once. Returns what failed, in words. */
 async function deskAwaySetAll(e, on) {
@@ -467,12 +526,19 @@ async function deskAwaySave(on) {
  *  opens a page closes the card first. */
 const DESK_AWAY_GOES = ["deskItem", "deskChkItem", "deskChatOf", "deskLeadChat", "deskCrew"];
 document.addEventListener("click", (ev) => {
+  const back = ev.target.closest?.("[data-away-back], [data-away-back-x]");
+  if (back && !deskAwayEdit) {
+    ev.stopPropagation();
+    if ("awayBackX" in back.dataset) { deskAwayAside = null; deskAwaySent.clear(); return renderMain(); }
+    return deskAwayBack();
+  }
   if (!deskAwayEdit) return;
   const own = ev.target.closest?.(".dk-aw-dialog") && ev.target.closest?.(deskSel());
   if (own && !own.closest("[data-away]:not([data-away=scrim]), [data-away-rule]")) {
     ev.stopPropagation();
     const k = Object.keys(DESK_CLICKS).find((x) => x in own.dataset);
-    if (DESK_AWAY_GOES.includes(k)) deskAwayEdit = null;
+    // One that opens a page sets the sheet aside: "Back to Away" brings it back (#618).
+    if (DESK_AWAY_GOES.includes(k)) deskAwaySetAside();
     DESK_CLICKS[k](own);
     if (!deskAwayEdit) renderMain();
     return;
@@ -508,7 +574,7 @@ document.addEventListener("click", (ev) => {
     return renderMain();
   }
   const act = b.dataset.away;
-  if (act === "scrim" || act === "cancel") { deskAwayEdit = null; return renderMain(); }
+  if (act === "scrim" || act === "cancel") { deskAwayEdit = null; deskAwaySent.clear(); return renderMain(); }
   if (act === "off") return deskAwaySave(false);
   if (act === "done" && !b.disabled) return deskAwaySave(true);
 }, true);
@@ -516,11 +582,14 @@ document.addEventListener("input", (ev) => {
   const f = ev.target.closest?.("[data-away-field]");
   if (f && deskAwayEdit) deskAwayEdit[f.dataset.awayField] = f.value;
 }, true);
-/** Esc closes the Away sheet (app/keys.js KEY_FIRST), and only it: kept from the Desk's Esc and the Board's. */
+/** Esc closes the Away sheet (app/keys.js KEY_FIRST), and only it: kept from the Desk's Esc and the Board's. On a page
+ *  opened from the sheet, Esc goes back to the sheet first (#618). */
 function deskAwayKey(ev) {
-  if (ev.key !== "Escape" || !deskAwayEdit) return false;
+  if (ev.key !== "Escape") return false;
+  if (!deskAwayEdit && deskAwayAside && view === "desk") { ev.stopPropagation(); ev.preventDefault(); deskAwayBack(); return true; }
+  if (!deskAwayEdit) return false;
   ev.stopPropagation(); ev.preventDefault();
-  deskAwayEdit = null;
+  deskAwayEdit = null; deskAwayAside = null; deskAwaySent.clear();
   renderMain();
   // Taken: the Desk under it doesn't see this Esc (#521).
   return true;

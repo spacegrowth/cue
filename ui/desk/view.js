@@ -183,8 +183,8 @@ function deskView() {
   // Progress (#409): over the Desk while open, the table of every item under way.
   const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
   // The new Desk page (#628, desk/v2.js): no sessions column, Desks in its head, Progress in the list.
-  if (deskV2) return `<div class="board dk-board dk-v2">${deskV2Head(project)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${deskV2Drawer(project)}</div>${deskAwayHtml()}`;
-  return `<div class="board dk-board">${deskSessions(project)}${deskRight(project, taskApprovals)}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
+  if (deskV2) return `<div class="board dk-board dk-v2">${deskV2Head(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskList(project, taskApprovals)}${deskV2Drawer(project)}</div>${deskAwayHtml()}`;
+  return `<div class="board dk-board">${deskSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,

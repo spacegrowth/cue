@@ -655,3 +655,137 @@ test("the budget box takes any number you type, 0 and 100 too, with a question o
   await expect(card).toHaveCount(0);
   expect((await cue.calls("desk_away_set")).at(-1).args.away.budget).toBe(100);
 });
+
+const LONG_TITLE = "Reply box loses focus after Send, and the cursor lands in the search field at the top of the window instead of the box";
+const LONG_SEE = "After Send the cursor is still in the reply box, ready for the next line, and nothing else on the page takes it, not even the search field at the top.";
+
+test("Before you go shows a waiting item whole, answered right there; nothing in it opens a page (#618)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await keepAway(cue);
+  await cue.override("desk_away_sweep", () => null);
+  await openDesk(page);
+  // d1 waits on you with a question that has choices.
+  await cue.change((st, [t, s]) => { const i = st.desk.projects.find((x) => x.project === "cue").items.find((x) => x.id === "d1"); i.title = t; i.see = s; }, [LONG_TITLE, LONG_SEE]);
+  await page.locator(".dk-items .dk-aw-sw").click();
+  const card = page.locator(".dk-aw-dialog");
+  await sweepEnds(cue);
+  const item = card.locator('.dk-aw-item[data-away-item="d1"]');
+  await expect(item).toHaveCount(1);
+  // Whole: no list row, the title and You'll see in full, on as many lines as they take.
+  await expect(card.locator(".dk-it")).toHaveCount(0);
+  await expect(item.locator(".dk-aw-ih")).toContainText("focus-fix");
+  await expect(item.locator(".dk-aw-it")).toHaveText(LONG_TITLE);
+  await expect(item.locator(".dk-aw-see")).toHaveText(`You'll see: ${LONG_SEE}`);
+  if (process.env.SHOT_DIR) await card.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-item.png` });
+  for (const sel of [".dk-aw-it", ".dk-aw-see"]) expect(await item.locator(sel).evaluate((el) => el.scrollWidth <= el.clientWidth && getComputedStyle(el).textOverflow !== "ellipsis" && el.getBoundingClientRect().height > 20)).toBe(true);
+  // The question's whole card, its choices right here; nothing that opens a page.
+  await expect(item.locator(".qtext")).toHaveText("Keep focus in the box, or move to the next item?");
+  await expect(card.locator("[data-desk-item], [data-desk-chk-item]")).toHaveCount(0);
+  await expect(card.locator("[title]")).toHaveCount(0);
+  await item.locator('[data-pick="0:0"]').click();
+  await item.locator('[data-act="submit-answers"]').click();
+  await cue.called("respond", { id: "n-focus-ask" });
+  await expect(item).toHaveCount(0);
+  await expect(card).toBeVisible();
+});
+
+test("Before you go: an item asking in its own words gets a box; Send answers it and moves on (#618)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await keepAway(cue);
+  await cue.override("desk_away_sweep", () => null);
+  await openDesk(page);
+  await clear(cue);
+  await leadAsks(cue, 1);
+  // d1 asks in its holder's words, no choices; the lead's question comes first.
+  await cue.change((st) => {
+    st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "id-focus", project: "cue", name: "focus-fix", state: "idle", thread: [{ role: "agent", text: "Which file should keep the focus code: box.js or compose.js?" }] });
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((x) => x.id === "d1"), { state: "needs_you", ask: null, holder: { kind: "lead", sid: "id-focus", name: "focus-fix" } });
+  });
+  await page.locator(".dk-items .dk-aw-sw").click();
+  const card = page.locator(".dk-aw-dialog");
+  await sweepEnds(cue);
+  await expect(card.locator(".dk-aw-nav")).toContainText("1 of 2");
+  await card.locator("[data-away-skip]").click();
+  const item = card.locator('.dk-aw-item[data-away-item="d1"]');
+  await expect(card.locator(".dk-aw-nav")).toContainText("2 of 2");
+  await expect(item.locator(".dk-aw-q")).toHaveText("Which file should keep the focus code: box.js or compose.js?");
+  await item.locator("textarea").fill("compose.js");
+  await item.locator("[data-desk-send]").click();
+  await expect(item).toHaveCount(0);
+  await expect(card.locator(".dk-aw-end")).toHaveText("That's all of them. 1 left for later.");
+  await expect(card.locator(".dk-aw-pip").nth(1)).toHaveClass(/ans/);
+});
+
+test("something that leaves the sheet sets it aside: Back to Away and Esc bring it back where you were; Esc again closes it (#618)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await keepAway(cue);
+  await cue.override("desk_away_sweep", () => null);
+  await openDesk(page);
+  await clear(cue);
+  await leadAsks(cue, 2);
+  // A session that stopped: its card has Open its chat, which leaves the sheet.
+  await cue.change((st) => {
+    const ask = st.items.find((i) => i.id === "n-lead1");
+    st.items.push({ ...ask, id: "n-stop", kind: "stop", tool_name: "", tool_input: {}, message: "Stopped: tests need a decision", created_ms: ask.created_ms - 60000 });
+  });
+  await page.locator(".dk-items .dk-aw-sw").click();
+  const card = page.locator(".dk-aw-dialog");
+  await sweepEnds(cue);
+  await card.locator('[data-away-field="budget"]').fill("25");
+  await card.locator("[data-away-skip]").click();
+  await card.locator("[data-away-skip]").click();
+  await expect(card.locator(".dk-aw-nav")).toContainText("3 of 3");
+  await card.locator('[data-desk-lead-chat="lead"]').click();
+  await expect(card).toHaveCount(0);
+  const back = page.locator(".dk-aw-back [data-away-back]");
+  await expect(back).toHaveText("‹ Back to Away · 3 of 3");
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-back.png` });
+  await back.click();
+  await expect(card.locator(".dk-aw-nav")).toContainText("3 of 3");
+  await expect(card.locator('[data-away-field="budget"]')).toHaveValue("25");
+  await expect(page.locator(".dk-aw-back")).toHaveCount(0);
+  // Esc on the page it opened goes back to the sheet; Esc on the sheet closes it, with no bar left.
+  await card.locator('[data-desk-lead-chat="lead"]').click();
+  await expect(card).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(card.locator(".dk-aw-nav")).toContainText("3 of 3");
+  // × lets a set-aside sheet go: no bar, and Esc doesn't bring it back.
+  await card.locator('[data-desk-lead-chat="lead"]').click();
+  await page.locator(".dk-aw-back [data-away-back-x]").click();
+  await expect(page.locator(".dk-aw-back")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
+});
+
+test("Esc on the sheet closes it and leaves no Back to Away (#618)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await keepAway(cue);
+  await cue.override("desk_away_sweep", () => null);
+  await openDesk(page);
+  await clear(cue);
+  await leadAsks(cue, 1);
+  await page.locator(".dk-items .dk-aw-sw").click();
+  const card = page.locator(".dk-aw-dialog");
+  await sweepEnds(cue);
+  await expect(card.locator(".dk-aw-nav")).toContainText("1 of 1");
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
+  await expect(page.locator(".dk-aw-back")).toHaveCount(0);
+  await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the Desks field names every Desk in full, wrapping, never cut (#618)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await keepAway(cue);
+  await cue.override("desk_away_sweep", () => null);
+  await openDesk(page);
+  await clear(cue);
+  await page.locator(".dk-items .dk-aw-sw").click();
+  await page.locator(".dk-items .dk-aw-sw").click();
+  const card = page.locator(".dk-aw-dialog");
+  await card.locator(".dk-aw-sum").click();
+  await card.locator('[data-away-desk="website"]').click();
+  const b = card.locator(".dk-aw-fld b");
+  await expect(b).toContainText(",");
+  expect(await b.evaluate((el) => getComputedStyle(el).textOverflow !== "ellipsis" && el.scrollWidth <= el.clientWidth)).toBe(true);
+});

@@ -420,7 +420,22 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-aw-opt { margin-top: -4px; color: var(--muted); font-size: var(--type-small); }
 /* Before you go (#618, pick C): one question at a time, marks per Desk, Skip; the rules fold into one row. */
 .dk-aw-flds .dk-aw-fld { all: unset; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); color: var(--muted); font-size: var(--type-pill); cursor: pointer; }
-.dk-aw-fld b { color: var(--ink); font: 400 var(--type-body) var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-aw-fld b { color: var(--ink); font: 400 var(--type-body) var(--sans); overflow-wrap: anywhere; }
+/* A waiting item in Before you go (#618): whole, never cut to a line; answered right here. */
+.dk-aw-item { border: 1px solid var(--line); border-radius: var(--radius-tray); padding: var(--card-pad-y) var(--card-pad-x); display: flex; flex-direction: column; gap: 6px; font-size: var(--type-body); }
+.dk-aw-ih { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); }
+.dk-aw-ih b { color: var(--ink); font-weight: 650; }
+.dk-aw-it { color: var(--ink); font-weight: 650; overflow-wrap: anywhere; }
+.dk-aw-see { color: var(--muted); overflow-wrap: anywhere; }
+.dk-aw-q { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.dk-aw-item .dk-aw-ask { border: 0; padding: 0; margin: 0; }
+.dk-aw-item .dk-aw-ask > .dk-request-who { display: none; }
+.dk-aw-item .dk-opts { margin: 0; }
+/* The sheet set aside (#618): a bar at the top right of the middle card brings it back. */
+.dk-aw-back { position: absolute; z-index: 5; top: 8px; right: 12px; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); box-shadow: 0 4px 14px color-mix(in srgb, var(--shade) 18%, transparent); }
+.dk-aw-backb, .dk-aw-backx { all: unset; padding: 6px 12px; color: var(--ink); font: 600 var(--type-small) var(--sans); cursor: pointer; }
+.dk-aw-backx { padding: 6px 12px 6px 4px; color: var(--muted); }
+.dk-aw-backb:focus-visible, .dk-aw-backx:focus-visible { outline: 2px solid var(--accent); border-radius: 999px; }
 .dk-aw-fld:focus-visible { outline: 2px solid var(--accent); }
 .dk-aw-oneh { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .dk-aw-oneh .dk-aw-h { margin: 0; }
