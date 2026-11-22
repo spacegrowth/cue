@@ -203,6 +203,27 @@ pub(crate) fn telling(name: &str) -> bool {
     n.chars().count() >= 4 && !COMMON.contains(&n.as_str())
 }
 
+/// The macOS word list: one word a line, lowercase entries are everyday words (capitalized ones are proper names).
+const WORD_LIST: &str = "/usr/share/dict/words";
+
+static EVERYDAY: LazyLock<std::collections::HashSet<String>> = LazyLock::new(|| {
+    std::fs::read_to_string(WORD_LIST)
+        .map(|all| all.lines().filter(|w| !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase())).map(str::to_string).collect())
+        .unwrap_or_default()
+});
+
+/// An ordinary English word, alone or as a plural ("gadget", "gadgets", "libraries"): a project named so isn't a secret,
+/// and refusing every push that says it would block ordinary commits.
+pub(crate) fn everyday(name: &str) -> bool {
+    let n = name.trim().to_lowercase();
+    let words = &*EVERYDAY;
+    let plain = |w: &str| !w.is_empty() && words.contains(w);
+    plain(&n)
+        || n.strip_suffix('s').is_some_and(plain)
+        || n.strip_suffix("es").is_some_and(plain)
+        || n.strip_suffix("ies").is_some_and(|w| plain(&format!("{w}y")))
+}
+
 /// The names of the projects in `projects` that aren't public, when `pushed` is (none otherwise): each one's shown
 /// name and folder name, the telling ones, never `pushed`'s own. `pushed` "" lists them all.
 pub(crate) fn private_names(pushed: &str, projects: &[Known]) -> Vec<String> {
@@ -214,7 +235,7 @@ pub(crate) fn private_names(pushed: &str, projects: &[Known]) -> Vec<String> {
     let mut out = vec![];
     for k in projects.iter().filter(|k| !k.public && (pushed.is_empty() || k.project != pushed)) {
         for w in [&k.shown, &k.folder] {
-            if telling(w) && !is_own(w) {
+            if telling(w) && !everyday(w) && !is_own(w) {
                 add(&mut out, w.clone());
             }
         }
@@ -362,6 +383,15 @@ mod tests {
         let all = [k("widget", "widget", "widget", true), k("web", "web", "web", false), k("api", "API", "api", false), k("xy", "xy", "xy", false), k("server", "Server", "server", false), k("acme-secret", "acme-secret", "acme-secret", false)];
         assert_eq!(private_names("widget", &all), ["acme-secret"]);
         assert!(!telling("abc") && telling("abcd") && !telling("Docs") && !telling("MAIN"));
+    }
+
+    #[test]
+    fn a_project_named_with_an_everyday_word_isnt_a_secret() {
+        // "gadgets" is a word anyone writes; a private project folder named so mustn't block pushes that say it.
+        let all = [k("widget", "widget", "widget", true), k("gadgets", "gadgets", "gadgets", false), k("Library", "Library", "library", false), k("acme-secret", "Acme Secret", "acme-secret", false), k("quuxcorp", "quuxcorp", "quuxcorp", false)];
+        assert_eq!(private_names("widget", &all), ["Acme Secret", "acme-secret", "quuxcorp"]);
+        assert!(everyday("gadgets") && everyday("Gadget") && everyday("libraries") && everyday("branches"));
+        assert!(!everyday("quuxcorp") && !everyday("acme-secret") && !everyday("Acme Secret"));
     }
 
     #[test]
