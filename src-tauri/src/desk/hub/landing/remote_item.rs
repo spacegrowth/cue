@@ -329,13 +329,20 @@ impl Hub {
     }
 
     /// The folder a new session for item `id` starts in on a machine (#679): a copy of its own in the Desk's clone
-    /// `folder` there, on its branch, when its work lands from a branch; else the clone. Two items on one machine never
-    /// share a folder, so one's work can't land under the other's name. Err: why it can't start, as the item says.
+    /// `folder` there, on its branch, when the Desk's items work in copies (however they land: from here, by pull
+    /// request or by you); else the clone. Two items on one machine never share a folder, so one's work can't land
+    /// under the other's name. Copies there of closed items whose sessions are gone are cleared as it's made. Err: why
+    /// it can't start, as the item says.
     pub(crate) fn remote_start_dir(&self, project: &str, id: &str, machine: &str, folder: &str) -> Result<String, String> {
         let code = self.read(|st| st.desk.item(id).is_some_and(|i| !crate::desk::hub::landing::unlanded::rules_out_code(&i.done_when)));
-        let Some((_, onto, remote, _)) = code.then(|| self.remote_branch_of(project)).flatten() else { return Ok(folder.to_string()) };
-        let there = remote_of(machine, folder, &onto).unwrap_or(remote);
-        crate::desk::hub::landing::remote_setup::own_copy(machine, folder, id, &format!("desk/{id}"), &there, &onto)
+        let Some(local) = code.then(|| self.desk_folder(project)).flatten() else { return Ok(folder.to_string()) };
+        let Some((repo, onto)) = main_checkout(&local).filter(|(_, b)| !b.is_empty()) else { return Ok(folder.to_string()) };
+        if crate::desk::lands::lands_of(project, &repo).at != "copy" {
+            return Ok(folder.to_string());
+        }
+        let Some(there) = remote_of(machine, folder, &onto).or_else(|| remote_of("", &repo, &onto)) else { return Ok(folder.to_string()) };
+        let keep = self.read(|st| copies_kept_on(st, machine, id));
+        crate::desk::hub::landing::remote_setup::own_copy(machine, folder, id, &format!("desk/{id}"), &there, &onto, &keep)
     }
 
     /// Item `id`'s DONE, when its work is on another machine: pushed from there, fetched here and put in the landing
@@ -745,6 +752,18 @@ fn holder_has(st: &Store, it: &DeskItem) -> bool {
     let Some(r) = it.remote.as_ref() else { return true };
     let s = it.holder.as_ref().and_then(|h| st.sessions.get(h.to()));
     s.is_some_and(|s| s.origin.machine == r.machine && s.origin.cwd == r.folder)
+}
+
+/// The items whose own copies on `machine` stay as `id`'s is made (#679): every open item, `id`, and any item a session
+/// there still works in (its folder is that item's copy).
+fn copies_kept_on(st: &Store, machine: &str, id: &str) -> Vec<String> {
+    let open = st.desk.items.iter().filter(|i| !matches!(i.state.as_str(), "done" | "dropped")).map(|i| i.id.clone());
+    let marker = format!("/{TREES}/desk-");
+    let in_use = st.sessions.iter().filter(|s| s.origin.machine == machine).filter_map(|s| s.origin.cwd.trim_end_matches('/').rsplit_once(marker.as_str()).map(|(_, x)| x.to_string()));
+    let mut keep: Vec<String> = open.chain(in_use).chain(std::iter::once(id.to_string())).collect();
+    keep.sort();
+    keep.dedup();
+    keep
 }
 
 /// Whether copy `t` is the one Cue made here of item `id`'s fetched work.

@@ -794,3 +794,49 @@ fn a_route_to_a_session_in_a_folder_another_items_work_is_in_is_refused() {
     let refused = told_lead(&w, &lead, "two items in one folder");
     assert!(refused.contains(&format!("#{id} is being worked")) && refused.contains("Route it to new"), "{refused}");
 }
+
+#[test]
+fn a_desk_that_lands_by_pull_request_still_gives_each_item_on_a_machine_a_copy_of_its_own() {
+    let w = World::new();
+    let ((_, _, there, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "how": "pr" })).unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": there.to_string_lossy() })).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let (a, _, at) = holder_there(&w, &project, "Footer jumps");
+    let (b, _, bt) = holder_there(&w, &project, "Sidebar jumps");
+    let there = there.canonicalize().unwrap();
+    assert_eq!(at.canonicalize().unwrap(), there.join(format!(".claude/worktrees/desk-{a}")));
+    assert_eq!(bt.canonicalize().unwrap(), there.join(format!(".claude/worktrees/desk-{b}")));
+}
+
+#[test]
+fn copies_on_a_machine_of_closed_items_go_as_the_next_is_made_unless_something_in_them_isnt_committed() {
+    let w = World::new();
+    let ((_, _, there, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": there.to_string_lossy() })).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let (a, ha, at) = holder_there(&w, &project, "Footer jumps");
+    let (b, hb, bt) = holder_there(&w, &project, "Sidebar jumps");
+    // Both closed and their sessions gone; one left a file it never committed.
+    std::fs::write(bt.join("half.txt"), "half\n").unwrap();
+    w.hub().write(|st| {
+        for i in [&a, &b] {
+            if let Some(it) = st.desk.item_mut(i) {
+                it.state = "done".into();
+            }
+        }
+        st.sessions.remove(&ha);
+        st.sessions.remove(&hb);
+    });
+    ends(&w, &lead, "ITEM: bug | Header wraps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let (c, _, ct) = holder_there(&w, &project, "Header wraps");
+    assert!(ct.is_dir(), "#{c}'s own copy");
+    assert!(!at.exists(), "a closed item's copy is gone");
+    assert!(!git(&there, &["branch", "--list", &format!("desk/{a}")]).trim().is_empty(), "its branch stays");
+    assert!(bt.join("half.txt").is_file(), "one with uncommitted work stays");
+}
