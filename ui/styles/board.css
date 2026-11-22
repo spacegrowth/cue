@@ -69,6 +69,9 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 /* A long request cut to a few lines (#426): more opens the rest in place, less folds it back. */
 .req-cut { min-width: 0; }
 .req-cut:not(.open) :is(pre, .dk-h, .req-t) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--cut-lines, 3); overflow: hidden; }
+/* A folded command cuts at whole lines (#611): a clamped box clips at its padding's edge, so bottom padding would show
+   the top of the next line. The gap is a see-through border instead, which the box's own background fills. */
+.req-cut:not(.open) pre.slab { padding-bottom: 0; border-bottom: 9px solid transparent; }
 .req-cut.open pre { max-height: none; }
 .req-cut.open :is(.dk-h, .req-t) { display: block; -webkit-line-clamp: unset; }
 .req-cut.fits:not(.open) > .req-more { display: none; }

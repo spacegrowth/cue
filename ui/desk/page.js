@@ -555,7 +555,7 @@ function deskAnswered(it, decision) {
   if (!item) return;
   const picked = decision.answers ? Object.values(decision.answers).join("; ") : decision.message || "";
   const a = decision.behavior === "deny" ? (picked ? `Declined: ${picked}` : "Declined") : picked || (decision.behavior === "allow_always" ? "Always allowed" : "Allowed");
-  deskAnswers.set(item.id, { q: item.ask.text, a, ask: it.id, at: now() });
+  deskAnswers.set(item.id, { q: item.ask.text, a, ask: it.id, at: now(), kind: item.ask.kind });
 }
 /** What item `i`'s holder asks you: its ask's question, or, for a turn that ended on it, the last paragraph of its last
  *  words (all of it, not a line cut short; the hub's latest when its session isn't here). */
@@ -582,8 +582,13 @@ function deskAnswerOf(i) {
  *  answered at the page's foot, deskItemFoot), then what you answered. */
 function deskChain(i) {
   const said = deskAnswerOf(i);
-  if (said) return `<div class="dk-chain"><div class="dk-cn dk-q"><div><div class="dk-lt dk-md">${deskMd(said.q)}</div><div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
+  // A command you allowed or denied (#611): its first lines, folded, with more; not the whole script.
+  const asked = (q) => said?.kind === "permission" ? reqCut(`said:${i.id}`, `<pre class="slab">${esc(q)}</pre>`, q) : `<div class="dk-lt dk-md">${deskMd(q)}</div>`;
+  if (said) return `<div class="dk-chain"><div class="dk-cn dk-q"><div>${asked(said.q)}<div class="dk-ls dk-picked"><span class="sent-check">✓</span> You answered: ${esc(said.a)}</div></div></div></div>`;
   if (i.state === "needs_you") {
+    // A tool it waits to run (#611): its card at the page's foot has the command, folded, with Deny and Allow. Its
+    // whole command here as well put the full script above that card and pushed the card down.
+    if (deskItemRequest(i)?.kind === "permission") return "";
     const q = deskQuestion(i);
     return q ? `<div class="dk-chain"><div class="dk-cn dk-q"><div class="dk-lt dk-md">${deskMd(q)}</div></div></div>` : "";
   }
