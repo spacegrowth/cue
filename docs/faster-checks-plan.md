@@ -37,6 +37,22 @@ gets a broken version.
 **If the full run fails:** Cue finds which card broke it, reopens that card, and sends its session the
 failure. The other cards stay landed.
 
+## Which Mac runs what
+
+No Mac runs all the tests for every bug fix any more. That is the whole point.
+
+- **The Mac where a card is worked on** (this Mac, or any other Mac a card is sent to) runs only that
+  card's small set. Two minutes or less. It never runs everything.
+- **The second Mac** runs everything, but not once per card. It runs once for each group of cards that
+  landed since its last run. Five bug fixes landing close together get one run, not five.
+
+So on a day with sixty cards: today that is about 180 full runs, all on this Mac. With this plan it is
+sixty short runs spread over wherever the cards are worked on, plus perhaps twenty to thirty full runs
+on the second Mac, where nobody is waiting on them.
+
+The only time this Mac runs everything is when the second Mac has been out of reach for 30 minutes.
+Then it does one run, at a moment when no card is building.
+
 ## What you would notice
 
 - Cards reach "to check" about 20 to 30 minutes sooner. A typical card takes 109 minutes today.
