@@ -152,8 +152,11 @@ test("a redone mocks item asks again with numbered options: the new ones replace
   // Under the new ask only; the old one's A/B/C are gone.
   await expect(page.locator(".dk-right .dk-ichat .dk-chat-opts")).toHaveCount(1);
   await expect(page.locator(".dk-right").getByText("Old band")).toHaveCount(0);
-  // The Desk row says what to pick.
+  // The Desk row says what to pick (in the Items list, ‹ Items: the item's page took its place, #666); then the item again.
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();
   await expect(page.locator('[data-desk-item="d5"]').first()).toContainText("4, 6, 8 or 9");
+  await page.locator('[data-desk-item="d5"] .dk-t').click();
+  await expect(side.locator(".dk-optk")).toHaveText(["4", "6", "8", "9"]);
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);

@@ -1,6 +1,6 @@
 // What the lead moved (#374): the Dispatcher's "Dispatcher Actions" tab (named so in #390) lists every move the lead made on its own, newest first, each
 // with its item, why and time; older ones load from Cue as you scroll; Clear asks once, then empties it.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 const s = (ms) => Math.floor(ms / 1000);
@@ -11,6 +11,7 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
   await page.setViewportSize({ width: 1728, height: 900 });
   await cue.open("desk");
   await openDesk(page);
+  await deskShowPanel(page);   // the panel (Just did's More), behind Show panel
   // Today's in the Desk's state; 70 older ones only in Cue's database.
   const today = [
     act("t1", "d3", "send_back", "Sent #d3 to web again", "the header still jumps", NOW - 60 * 1000),

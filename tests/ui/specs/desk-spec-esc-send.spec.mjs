@@ -2,7 +2,7 @@
 // (Edit or Esc), with its words intact and nothing typed since lost; Esc closes what's open before it stops anything.
 // Sources: #494 (Esc pulls back a kept message, Esc twice stops a working session, on the lead's chat, an item's page and
 // a session's page), #422 (Edit on a kept message, back into this page's box), #437 (an item's box keeps what you typed).
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 
 /** desk_send as the hub answers it for a busy lead (ipc/desk.rs deliver + hub/send.rs keep): the Desk's summary block,
  *  a blank line, your words, kept in Cue till its turn ends. */
@@ -60,6 +60,7 @@ test("the lead's chat: Edit on a kept message puts your words back in the lead's
 test("a session's page: kept while it works, Edit brings it back into that page's box, draft kept after it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
   await expect(page.locator('.dk-right .dk-pg[data-desk-page="session"]')).toHaveCount(1);
   const box = page.locator(".dk-right .dk-box textarea");
@@ -102,6 +103,7 @@ test("Esc with words in a page's box keeps the page and the words; empty, it clo
   await cue.open("desk");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "host").state = "waiting"; });
   await openDesk(page);
+  await deskAllSessions(page);
   await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
   const sp = page.locator('.dk-right .dk-pg[data-desk-page="session"]');
   await expect(sp).toHaveCount(1);

@@ -13,7 +13,7 @@ function onInput(e) {
   draft(id).text = e.target.value;
   if (id === "find-live") { liveSel = 0; return runSearch(e.target.value); }
   if (id === "find-sessions") return renderMain();
-  if (id === "desk-find") { deskSwitchAt = 0; return renderMain(); }
+  if (id === "hv-desk-find") { hvAt = 0; return renderMain(); }
   if (id === "new-cwd") { nfFolderOpen = true; nfFolderQ = e.target.value; nfFolderSel = -1; saveDrafts(); return renderMain(); }
   if (id === "new-model-id") { newModel = e.target.value.replace(/\s+/g, ""); remember("newModel", newModel); remember("newModelOther", newModel); return; }
   saveDrafts();

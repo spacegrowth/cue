@@ -55,6 +55,8 @@ const SCREENS = {
         await page.locator(`.dk-items [data-desk-item="${id}"]`).first().click();
         await page.locator(`.dk-right`).first().waitFor();
         out.push(...(await check(page, `${where}, item ${id}`)));
+        // The item opens in the list's place (B2, #666): back to the list for the next.
+        await page.locator(".dk-right .dk-back").click();
       }
       return out;
     },

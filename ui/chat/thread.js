@@ -14,6 +14,13 @@ function shownChat(sid) {
   const s = view === "desk" && typeof deskShownChat === "function" ? deskShownChat(sid) : null;
   return s ? { it: null, s } : null;
 }
+/** The chat showing session `sid`'s earlier-messages row: on the Desk two chats show at once (B2: the lead's on the
+ *  left, what's open on the right), so the row says whose it is, never the first chat on the page. */
+function olderChat(sid, where) {
+  const row = [...document.querySelectorAll(".cv-older[data-older-for]")].find((r) => r.dataset.olderFor === sid);
+  return row?.closest(where) || (view === "desk" ? null : document.querySelector(where));
+}
+let holdChatSid = null;   // whose chat holdChat measured (desk/view.js deskSettle puts it back in that one)
 async function loadOlder(sid, fromTranscript = false, pressed = false) {
   const o = older.get(sid) || { msgs: [], anchor: 0, done: false, tdone: false, busy: false };
   older.set(sid, o);
@@ -39,12 +46,15 @@ async function loadOlder(sid, fromTranscript = false, pressed = false) {
     o.tdone = Array.isArray(probe) && probe.every((e) => sameMessage(e, top));
   }
   o.busy = false;
-  const where = view === "desk" ? ".dk-chat, .dk-ipane" : "[data-chat]", chat = document.querySelector(where);
-  if (chat && !pressed) holdChat = chat.scrollHeight - chat.scrollTop;
+  const where = view === "desk" ? ".dk-chat, .dk-ipane" : "[data-chat]", chat = olderChat(sid, where);
+  if (chat && !pressed) { holdChat = chat.scrollHeight - chat.scrollTop; holdChatSid = sid; }
   renderMain();
   // Moved by code, not you (ui/box/end.js): its scroll to the top loads nothing more (app/bind.js onChatScroll).
-  const shown = pressed && document.querySelector(where);
+  const shown = pressed && olderChat(sid, where);
   if (shown) { shown._pinAt = Date.now(); shown.scrollTop = 0; }
+  // On the Desk, off its end now, before the scroll event says so: a draw in between would put it back at its end.
+  // (The chat desk/view.js deskSettle keeps at its end: the right one while something is open, B2.)
+  if (shown && view === "desk" && shown === (document.querySelector(".dk-right .dk-chat") || (!deskB2On() && document.querySelector(".dk-chat")))) deskChatEnd = false;
 }
 /** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
 const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();
@@ -60,11 +70,12 @@ async function fillOlderGap(sid, o, upTo) {
 /** The top of the chat: earlier messages to load, loading, or the start of what Cue has. */
 function olderRow(sid, harness) {
   const o = older.get(sid);
-  if (o?.busy) return `<div class="cv-older">Loading earlier messages…</div>`;
-  if (o?.tdone) return `<div class="cv-older">Start of the conversation</div>`;
+  const row = `<div class="cv-older" data-older-for="${esc(sid)}">`;
+  if (o?.busy) return `${row}Loading earlier messages…</div>`;
+  if (o?.tdone) return `${row}Start of the conversation</div>`;
   // Cue's log starts when Cue first saw the session; anything before is only in Claude Code's transcript.
-  if (o?.done) return `<div class="cv-older">Start of the conversation in Cue${harness === "claude" ? ` · <button data-act="load-transcript" data-sid="${esc(sid)}">Load earlier from its transcript</button>` : ""}</div>`;
-  return `<div class="cv-older"><button data-act="load-older" data-sid="${esc(sid)}">Earlier messages</button></div>`;
+  if (o?.done) return `${row}Start of the conversation in Cue${harness === "claude" ? ` · <button data-act="load-transcript" data-sid="${esc(sid)}">Load earlier from its transcript</button>` : ""}</div>`;
+  return `${row}<button data-act="load-older" data-sid="${esc(sid)}">Earlier messages</button></div>`;
 }
 
 /** The conversation for the Active pane: the live session's thread, or the item's own copy once the session is gone. */

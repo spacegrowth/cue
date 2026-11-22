@@ -93,7 +93,7 @@ test("each queued row says what it waits for, in words; the item's page says the
   await expect(who(page, "d4").locator("[data-desk-give]")).toHaveCount(0);
   // An older one still queued with a holder reads as before.
   await queue(cue, "d6", { holder: { kind: "lead", sid: "lead", name: "web-lead" }, after: "d3" });
-  await expect(who(page, "d6")).toHaveText("web-lead · after #d3");
+  await expect(who(page, "d6")).toHaveText("after #d3");
   // Nothing in the list has hover text.
   await expect(page.locator(".dk-items [title]")).toHaveCount(0);
 

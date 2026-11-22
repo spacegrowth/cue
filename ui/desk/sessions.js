@@ -129,7 +129,10 @@ function deskSessRow({ name, sid = "", mark = "", dot, word, item, line, on, att
 function deskSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
   const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
-  const lit = (sid) => (sid === leadSid && !o && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid);
+  // B2: the lead's chat is always open on the left, so with only this list beside it, its card is the open one; back
+  // from a session's chat (`o.was`), that session's row is.
+  const leadShown = !o || (deskB2On() && o.kind === "sessions" && !o.was && !o.crew);
+  const lit = (sid) => (sid === leadSid && leadShown && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid) || (o?.kind === "sessions" && o.was === sid);
   const row = (s, card = false) => deskSessionsRow({ project, d, o, leadSid, lit }, s, card);
   const leadS = sessions.find((s) => s.session_id === leadSid);
   const mine = sessions.filter((s) => s !== leadS && deskHasSession(d, s.session_id));
@@ -192,7 +195,7 @@ function deskSessionsMate({ project, o }, sid, t, past) {
   const [cd, cw] = past ? ["idle", t.state === "aside" ? "set aside" : t.state] : mateNeeds(sid, t) ? ["ask", "needs you"] : deskMateBusy(t) ? ["", t.state] : ["idle", t.state];
   return deskSessRow({ name: t.name, mark: "crew", dot: cd, word: cw, item: it, line: it ? "" : t.what, crew: true, past, loose: !past && !deskMateBusy(t) && !!t.uncommitted,
     step: past ? "" : deskStepLine(cd === "", t.step, t.step_ms || t.started_ms),
-    on: o?.kind === "crew" && o.lead === sid && o.agent === key, attrs: `data-desk-crew="${esc(key)}" data-lead="${esc(sid)}"` });
+    on: (o?.kind === "crew" && o.lead === sid && o.agent === key) || (o?.kind === "sessions" && o.crew?.[0] === sid && o.crew[1] === key), attrs: `data-desk-crew="${esc(key)}" data-lead="${esc(sid)}"` });
 }
 /** Add session's list of sessions to tick (deskSessions): this Desk's own, then free, recent ones. */
 function deskSessionsPicker(project, d, leadSid) {
@@ -240,20 +243,22 @@ function deskLeadBar(s) {
   return `<div class="dk-lbar on"><i class="sweep${calm ? " calm" : ""}" style="animation-duration:${ms}ms;animation-delay:-${Date.now() % ms}ms"></i></div>`;
 }
 /** The head strip (pick B2), set in from the card's sides so it never meets the window's own colour: the Desk's name
- *  opens the switcher (every Desk, All Desks, + New Desk), ⋯ to hand the Desk to another session, this Desk's name (✎ on hover renames it, as the projects list
- *  does), how many sessions and how many work; then the lead's line (`bar`, #263, #359) and its card (`lead`), which says
+ *  (✎ on hover renames it, as the projects list does; the header's Desks menu switches Desk), ⋯ to hand the Desk to
+ *  another session, how many sessions and how many work; then the lead's line (`bar`, #263, #359) and its card (`lead`), which says
  *  "Lead" in a pill by its name and has a divider under it (pick M1, #446: no "Run by" head). */
 let deskDeleteAsk = null, deskDeleting = false, deskCloseSelected = new Set();
 function deskSessHead(project, n, working, lead = "", bar = "") {
-  if (deskRecent[0] !== project && deskStepped !== project) deskRecentPut(project);
+  if (deskRecent[0] !== project) deskRecentPut(project);
   const d = deskOf(project);
   const title = deskName(d);
   const name = pjRenaming === project
     ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
-  const sw = pjRenaming === project ? `<span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${name}` : `<span class="dk-sw-anchor"><button class="dk-sw-btn" data-desk-switch aria-haspopup="menu" aria-expanded="${deskSwitchOpen}"><span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span><b>${esc(title)}</b><svg class="dk-sw-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>${deskSwitchOpen ? deskSwitchMenu(project) : ""}</span>${name.slice(name.indexOf("<button"))}`;
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${sw}<span class="grow"></span>${pjRenaming === project ? "" : deskStepArrows(project)}${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div>${pjRenaming === project ? "" : deskStepDots(project)}${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}${deskHoldsLine(d)}</div>${lead ? `${bar}${lead}` : ""}</div>`;
+  // Today's page (B2, desk/b2.js): this list opens on the right from All N sessions, ‹ Items back; switching Desks is
+  // the window header's, so no switcher, arrows or dots here.
+  const head = `${deskBack("")}<span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${pjRenaming === project ? name : `<b>${esc(title)}</b>${name.slice(name.indexOf("<button"))}`}`;
+  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${head}<span class="grow"></span>${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div>${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}${deskHoldsLine(d)}</div>${lead ? `${bar}${lead}` : ""}</div>`;
 }
 /** A held part of the code as the header says it (#540): the path under src-tauri/src, a glob's extension left off
  *  ("src-tauri/src/hub/desk_*.rs" → "hub/desk_*"). */
@@ -265,24 +270,6 @@ function deskHoldsLine(d) {
   if (!hs.length) return "";
   return `<div class="dk-holds">${hs.map((h) => `<span class="dk-hold">${esc(h.desk_name || h.desk)} #${esc(h.item)} holds ${esc((h.area || []).map(deskHoldArea).join(", "))} till ${esc(h.till || "it lands")}</span>`).join("")}</div>`;
 }
-/** The switcher (pick A, #240): the Desk's name opens a menu of every Desk, those waiting on you first, found by typing,
- *  ↑ ↓ ↵ to pick; All Desks and + New Desk under them. A row is the Desk's name and what needs you, nothing else: a
- *  name too long for its room fades at its end and, while its row is lit, slides to show the rest (desk-landing.css). Open while `deskSwitchOpen`; `deskSwitchAt` is the lit row. */
-let deskSwitchOpen = false, deskSwitchAt = 0;
-function deskSwitchList() {
-  const q = (draft("desk-find").text || "").trim().toLowerCase();
-  return deskSorted().filter((d) => !q || deskName(d).toLowerCase().includes(q));
-}
-function deskSwitchMenu(project) {
-  const ds = deskSwitchList(), at = Math.min(deskSwitchAt, ds.length - 1);
-  const rows = ds.map((d, k) => {
-    const n = deskWaitingItems(d).length;
-    return `<div class="dk-sw-row${k === at ? " at" : ""}${d.project === project ? " on" : ""}" role="menuitem" tabindex="-1" data-desk-go="${esc(d.project)}"><span class="dk-sw-tick" aria-hidden="true">${d.project === project ? "✓" : ""}</span><span class="dk-sw-nm"><span>${esc(deskName(d))}</span></span>${n ? `<span class="dk-sw-need">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</div>`;
-  }).join("");
-  return `<div class="dk-sw-menu" role="menu"><input class="dk-sw-find" data-text="desk-find" placeholder="Find a Desk…" aria-label="Find a Desk" spellcheck="false" autocomplete="off" value="${esc(draft("desk-find").text || "")}"/><div class="dk-sw-list">${rows || `<div class="dk-sw-none">No Desk matches.</div>`}</div><div class="dk-sw-foot"><button class="dk-sw-act" data-desk-home>All Desks</button><button class="dk-sw-act" data-desk-new-desk>+ New Desk</button></div><div class="dk-sw-keys">↑ ↓ move · ↵ open · Esc close</div></div>`;
-}
-/** Close the switcher (and forget what was typed in it). */
-function deskSwitchClose() { deskSwitchOpen = false; delete drafts["desk-find"]; }
 /** Session `sid` on `project`'s Desk (`on`) or off it: the sessions its lead routes to without asking you. */
 async function deskMember(project, sid, on) {
   try {

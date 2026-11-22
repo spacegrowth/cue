@@ -14,6 +14,9 @@ test("the Desk opens with a pending ask and a finished turn: only the ask reads 
     st.items.push({ ...ask, id: "n-asker", session_id: "asker" }, { ...ask, id: "n-done1", session_id: "done1", kind: "waiting" });
     st.desk.projects.find((d) => d.project === "cue").members.push("asker", "done1");
   });
+  // B2 (#666): the sessions list opens on the right from the strip's Working ▾, then All N sessions ›.
+  await page.locator("[data-desk2b-work]").click();
+  await page.locator("[data-desk2b-sessions]").click();
   const left = page.locator(".dk-sessions");
   await expect(left.locator('[data-desk-chat-of="asker"] .dk-st')).toHaveText("needs you");
   await expect(left.locator('[data-desk-chat-of="done1"] .dk-st')).not.toHaveText("needs you");

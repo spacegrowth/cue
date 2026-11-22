@@ -152,7 +152,7 @@ for (const scheme of ["light", "dark"]) {
     // The lead's chat: each one quiet line (#616), "+ Cue · its tag", its item's chip and age, its words under them;
     // a click opens Cue's full text.
     await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
-    const lchat = page.locator(".dk-chat");
+    const lchat = page.locator(".dk2b-chat .dk-chat");   // the lead's chat is the left card (#666)
     const llines = lchat.locator(".dk-cue");
     await expect(lchat.locator(".mg.cue-msg")).toHaveCount(0);
     await expect(llines).toHaveCount(IN_LEAD.length);

@@ -40,10 +40,11 @@ test("an item's page is its holder's chat, other items' turns folded, the item b
   await expect(ichat.locator(".dk-fold")).toHaveAttribute("aria-expanded", "true");
   await ichat.locator(".dk-fold").click();
   await expect(ichat).not.toContainText("Looking at the rail dot.");
-  // The item in its panel beside the chat, in the middle; the Items list stays at the right, the item's row lit.
+  // The item in its panel beside the chat; the Items list behind ‹ Items N, the item in its place (#666).
   const side = right.locator('.dk-pg[data-desk-page="item"] > .dk-panel[data-side-for="d5"]');
   await expect(side).toBeVisible();
-  await expect(page.locator(".dk-board > .dk-items")).toBeVisible();
+  await expect(page.locator(".dk-board > .dk-items")).toHaveCount(0);
+  await expect(right.locator(".dk-ph .dk-back")).toHaveText(/^‹ Items \d+$/);
   // Narrow, the whole panel over the chat; wide enough for both, beside it.
   // (Polled: a redraw can catch either one between boxes.)
   await expect(async () => { const [c, p] = [await ichat.boundingBox(), await side.boundingBox()]; expect(p.y + p.height).toBeLessThanOrEqual(c.y + 1); }).toPass();

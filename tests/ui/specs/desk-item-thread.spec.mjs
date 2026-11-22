@@ -28,7 +28,7 @@ test("an item's replies show whole, a Done is the Desk's line, and Open host-lea
   // Its whole session opens here, as its name on the left does, with no pop-up (#306); ‹ goes back to the item.
   await page.locator(".dk-panel[data-side-for] .dk-sfoot").getByText("Open host-lead").click();
   await expect(page.locator(".convo-sheet")).toHaveCount(0);
-  await expect(page.locator(".dk-chat")).toBeVisible();
+  await expect(page.locator('.dk-right .dk-chat[data-desk-chat="host"]')).toBeVisible();
   await page.locator("[data-desk-chat-back]").click();
   await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
 });

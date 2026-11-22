@@ -56,7 +56,7 @@ function deskV2Sessions(d) {
 
 /** The window head: a pill per Desk (what waits on you there, or what's open), + New Desk, Desk settings. */
 function deskV2Head(project) {
-  if (deskRecent[0] !== project && deskStepped !== project) deskRecentPut(project);
+  if (deskRecent[0] !== project) deskRecentPut(project);
   const pill = (d) => {
     const on = d.project === project, need = deskWaitingItems(d).length, open = d.items.filter((i) => !["done", "dropped"].includes(i.state)).length;
     const sub = need ? `${need} waiting` : open ? `${open} open` : "nothing open";

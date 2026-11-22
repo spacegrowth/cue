@@ -36,7 +36,7 @@ test("a file on a card's Files it's on opens in the viewer, from its panel and i
 
   // Its Files tab: the same list, each a button that opens the viewer.
   const pane = page.locator(".dk-right .dk-ipane");
-  await pane.locator('[data-desk-itab="files"]').click();
+  await pane.locator('.dk-itab[data-desk-itab="files"]').click();
   await expect(pane.locator(".dk-sec h3")).toHaveText("Files it's on");
   await pane.locator('button.dk-fc[data-desk-open-file="ui/styles/header.css"]').click();
   const css = await cue.called("peek_file", { path: "ui/styles/header.css" });

@@ -128,6 +128,8 @@ function deskRecall(key) {
  *  opened from the sessions on the left. Null otherwise. */
 function deskShownChat(sid) {
   if (!deskSelection()) return null;
+  // B2 (desk/b2.js): the lead's chat stays in its card whatever is open on the right.
+  if (deskB2On() && deskOpen && deskTab === "lead" && deskPick !== deskSelection()) { const d = deskOf(deskSelection()); if (deskLead(d)?.sid === sid && !deskLeadEnded(d)) return deskLeadSession(d); }
   if (deskOpen?.kind === "chat") return deskOpen.project === deskSelection() && deskOpen.sid === sid ? sessionOf(sid) : null;
   // An item's page shows its holder's chat from when it took the item (#575): that chat loads earlier messages till
   // that time is in (thread.js deskLoadStint).
@@ -298,6 +300,10 @@ const DESK_MARKS = { desk: "Dispatcher", session: "Session", crew: "Crew", lead:
 const DESK_PANEL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg>`;
 /** Kinds of page whose panel you hid ("item", "session", "crew", "lead", "dispatcher"), kept across restarts. */
 const deskPanelHid = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskPanelHidden") || "[]")); } catch { return new Set(); } })();
+/** On today's Desk page (B2, desk/b2.js) the lead's panel starts hidden, its Now and Waits on you in the strip over
+ *  the chat: Show panel brings it back, remembered as "dispatcher-shown". Every other page as before. */
+const deskPanelKey = (page) => (page === "dispatcher" && deskB2On() ? "dispatcher-shown" : page);
+const deskPanelHidden = (page) => (deskPanelKey(page) === page ? deskPanelHid.has(page) : !deskPanelHid.has(deskPanelKey(page)));
 function deskPanelToggle(page) {
   if (!deskPanelHid.delete(page)) deskPanelHid.add(page);
   try { localStorage.setItem("cue.deskPanelHidden", JSON.stringify([...deskPanelHid])); } catch { /* kept for this window only */ }
@@ -323,8 +329,8 @@ const deskChatLink = (sid, name, d) => (sessionOf(sid) ? `<button class="dk-pwa"
  *  panel's sections, `main` its own column and `foot` the box under it. */
 function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", aside = "" }) {
   // `aside`: more attributes on its panel (an item's names the item, deskItemSide).
-  const hid = deskPanelHid.has(page);
-  const tog = `<button class="btn small dk-ptog" data-desk-panel="${page}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
+  const hid = deskPanelHidden(page);
+  const tog = `<button class="btn small dk-ptog" data-desk-panel="${deskPanelKey(page)}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
   return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph"><div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>`
     + `<h1 class="dk-ph2"><span class="dk-hk"${["desk", "session", "crew", "lead"].includes(kind) ? ` data-desk-mark="${kind}"` : ""}>${deskKindIcon(kind)}${esc(mark.replace(/ · $/, ""))}</span><span class="dk-hsep"> · </span><span class="dk-tname">${title}</span></h1>${meta ? `<div class="dk-ph3">${meta}</div>` : ""}</div>`
     + `<aside class="dk-panel"${aside}>${now}${panel}</aside><div class="dk-pgm">${main}${foot}</div></div>`;
@@ -337,7 +343,7 @@ const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid ? "desk" : deskIsLead
 /** The way back from a session's chat: to what opened it (an item's page, a holder's), else to the lead's chat. */
 function deskChatBack(from, d) {
   const i = from?.kind === "item" && deskItem(d.project, from.id);
-  const label = i ? deskNum(i) : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskLeadName(d) || "Back";
+  const label = i ? deskNum(i) : from?.kind === "sessions" ? "All sessions" : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskB2On() ? deskB2ItemsWord(d) : deskLeadName(d) || "Back";
   return `<button class="dk-back" data-desk-chat-back>‹ ${esc(label)}</button>`;
 }
 function deskSessChat(sid, from, d, foot = "") {
@@ -549,7 +555,9 @@ function deskCheckInfo(i, d) {
   return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago${files}</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
 }
 const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
-const deskBack = (label, to = "") => `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`;
+/** Back to `to` (a holder's sid), else to what shows with nothing open: the lead's chat, or on today's page (B2,
+ *  desk/b2.js) the item list ("‹ Items 40"). */
+const deskBack = (label, to = "") => (deskB2On() && !to ? `<button class="dk-back dk2b-items" data-desk-back="">‹ ${esc(deskB2ItemsWord(deskOf(deskSelection())))}</button>` : `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`);
 
 /** What you answered an item's holder on its page, by item: { q, a, ask, at }. Shown there until its holder asks again
  *  goes back to work, or ten minutes pass (board/board.js respond calls deskAnswered). */

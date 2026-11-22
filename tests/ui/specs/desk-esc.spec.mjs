@@ -1,7 +1,7 @@
 // Esc on the Desk (#494), as on the Board (app/keys.js escSession): a message Cue kept for the session the Desk has
 // open comes back into its box, and Esc twice stops that session while it works. In the lead's chat, on an item's page
 // (its holder's) and on a session's page. Desk panels still close first.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 
 const hold = (cue, sid, text) => cue.change((st, [sid, text]) => { st.sessions.find((s) => s.session_id === sid).held = { text, images: [], at_ms: Date.now() }; }, [sid, text]);
 
@@ -42,6 +42,7 @@ test("an item's page: Esc brings back what Cue kept for its holder without the A
 test("a session's page: Esc twice stops it; once it's stopped, Esc goes back as before", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
   const sp = page.locator('.dk-right .dk-pg[data-desk-page="session"]');
   await expect(sp).toHaveCount(1);
@@ -59,7 +60,7 @@ test("a session's page: Esc twice stops it; once it's stopped, Esc goes back as 
   await expect(sp).toHaveCount(0);
 });
 
-test("Desk panels close before Esc reaches the session: the Give to… menu, the switcher", async ({ page, cue }) => {
+test("Desk panels close before Esc reaches the session: the Give to… menu, the header's Desks menu", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.evaluate(() => { deskGiveFor = { id: "d6" }; renderMain(); });
@@ -68,8 +69,10 @@ test("Desk panels close before Esc reaches the session: the Give to… menu, the
   expect(await page.evaluate(() => deskGiveFor)).toBeNull();
   await page.keyboard.press("Escape");
   expect(await cue.calls("interrupt_session")).toHaveLength(0);
-  await page.evaluate(() => { deskSwitchOpen = true; renderMain(); });
+  // The switcher is the header's Desks menu now (app/head_view.js): Esc closes it, and stops nothing.
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  await expect(page.locator(".top .hv-menu")).toBeVisible();
   await page.keyboard.press("Escape");
-  expect(await page.evaluate(() => deskSwitchOpen)).toBe(false);
+  await expect(page.locator(".top .hv-menu")).toHaveCount(0);
   expect(await cue.calls("interrupt_session")).toHaveLength(0);
 });

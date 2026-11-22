@@ -1,4 +1,5 @@
 import { test, expect, openDesk } from "./cue.mjs";
+import { openSessions } from "./desk.mjs";
 
 async function setup(cue, page) {
   await cue.open("desk");
@@ -84,6 +85,8 @@ test("Inbox and Desk count the same open decisions, excluding resolved requests 
 // the request is on its item on the right and in the session's chat.
 test("a request with no item tag puts no card on the left: the session's row reads needs you, and its chat answers it (#431)", async ({ cue, page }) => {
   await setup(cue, page);
+  // The sessions (All N sessions, on the right in the list's place, #666).
+  await openSessions(page);
   const left = page.locator(".dk-sessions");
   const row = left.locator('[data-desk-chat-of="host"]');
   await expect(row.locator(".dk-st")).toHaveText("needs you");
@@ -98,6 +101,8 @@ test("a request with no item tag puts no card on the left: the session's row rea
   await page.locator('.dk-right [data-act="allow"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval", decision: { behavior: "allow" } });
   await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
+  // ‹ All sessions: the list again, its row no longer needing you.
+  await page.locator(".dk-right .dk-back", { hasText: "All sessions" }).click();
   await expect(row.locator(".dk-st")).not.toHaveText("needs you");
 });
 
@@ -109,6 +114,7 @@ test("a request on an item shows on the item and in its session's chat, never as
   });
   const left = page.locator(".dk-sessions");
   await expect(page.locator('.dk-items [data-desk-item="d5"] [data-desk-decision="allow"]')).toHaveCount(1);
+  await openSessions(page);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-st')).toHaveText("needs you");
   await expect(left.locator('[data-desk-request], .dk-request, .dk-approvals, [data-act="allow"], [data-desk-decision]')).toHaveCount(0);
   await left.locator('[data-desk-chat-of="host"]').click();
@@ -117,6 +123,7 @@ test("a request on an item shows on the item and in its session's chat, never as
 
 test("the worker chat on Desk has the live approval footer and Deny clears it", async ({ cue, page }) => {
   await setup(cue, page);
+  await openSessions(page);
   await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
   await expect(page.locator(".dk-right .dk-ask")).toContainText("printf approval-check");
   await page.locator('.dk-right [data-act="deny"][data-id="codex-approval"]').click();
@@ -126,12 +133,14 @@ test("the worker chat on Desk has the live approval footer and Deny clears it", 
 
 test("Allow from the session removes the same pending request from Desk", async ({ cue, page }) => {
   await setup(cue, page);
+  await openSessions(page);
   await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
   await page.locator('.dk-right [data-desk-session="host"]').click();
   await page.locator('.active-pane [data-act="allow"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval" });
   await page.locator('.switch-view [data-view="desk"]').click();
   await expect(page.locator('.dk-right [data-id="codex-approval"]')).toHaveCount(0);
+  await openSessions(page);
   await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-st')).not.toHaveText("needs you");
 });
 
@@ -144,6 +153,7 @@ for (const choice of ["Allow", "No"]) {
       request.tool_name = "cua_repl";
       request.tool_input = { server: "cua_repl", message: 'Allow Computer Use to use "Cue"?', form: { type: "object", properties: {} } };
     });
+    await openSessions(page);
     await expect(page.locator('.dk-sessions [data-desk-request], .dk-sessions .dk-request')).toHaveCount(0);
     await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
     const footer = page.locator(".dk-right .dk-ask");

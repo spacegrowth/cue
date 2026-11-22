@@ -88,51 +88,14 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: color-mix(in oklab, var(--accent) 22%, var(--panel)); color: var(--ink); } }
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
 /* The strip's top line (‹ Desks … ⋯). Not .dk-stop: a stopped item's row is .dk-it.dk-stop and took this flex (#218). */
-/* The switcher (pick A, #240): the Desk's name is a button with ▾; its menu drops under it, over the sessions. */
-.dk-sw-anchor { position: relative; display: inline-flex; min-width: 0; }
-.dk-sw-btn { all: unset; display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin-left: -6px; padding: 0 8px 0 6px; border-radius: var(--radius-btn); color: inherit; cursor: pointer; }
-.dk-sw-btn:hover, .dk-sw-btn:focus-visible, .dk-sw-btn[aria-expanded="true"] { background: color-mix(in oklab, currentColor 12%, transparent); }
-.dk-sw-caret { flex: none; opacity: .75; }
-.dk-sw-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: -6px; width: 300px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); color: var(--ink); box-shadow: 0 12px 32px color-mix(in srgb, var(--shade) 28%, transparent); font-size: var(--type-body); font-weight: 400; }
-.dk-sw-find { box-sizing: border-box; width: 100%; height: 30px; margin-bottom: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel-2, var(--panel)); color: var(--ink); font: inherit; outline: none; }
-.dk-sw-find:focus { border-color: var(--sel); }
-.dk-sw-list { max-height: 320px; overflow-y: auto; }
-.dk-sw-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: var(--radius-btn); cursor: pointer; }
-.dk-sw-row.at, .dk-sw-row:hover { background: color-mix(in oklab, var(--sel) 22%, transparent); }
-.dk-sw-tick { flex: none; width: 12px; color: var(--sel); font-weight: 700; }
-/* The name takes the row's room up to the count, never over it. Too long: its end fades (the fade lies over 18px of
-   padding, so a name that fits is never faded), and while its row is lit (keys or pointer) it slides left to show its
-   end, back and forth; unlit, it's back at its start. 100cqw is the room, 100% the name's own width. */
-.dk-sw-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; container-type: inline-size; white-space: nowrap; font-weight: 600; -webkit-mask-image: linear-gradient(to left, transparent, var(--shade) 18px); mask-image: linear-gradient(to left, transparent, var(--shade) 18px); }
-.dk-sw-nm > span { display: inline-block; padding-right: 18px; }
-.dk-sw-row:is(.at, :hover) .dk-sw-nm > span { animation: dk-sw-slide 5s ease-in-out .6s infinite alternate; }
-@keyframes dk-sw-slide { 0%, 15% { transform: none; } 85%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); } }
-@media (prefers-reduced-motion: reduce) { .dk-sw-row:is(.at, :hover) .dk-sw-nm > span { animation: none; } }
-.dk-sw-row.on .dk-sw-nm { font-weight: 700; }
-.dk-sw-need { flex: none; margin-left: auto; color: var(--deny); font-size: var(--type-small); font-weight: 600; white-space: nowrap; }
-.dk-sw-none { padding: 8px; color: var(--muted); }
-.dk-sw-foot { display: flex; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
-.dk-sw-act { all: unset; flex: none; height: 30px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: var(--radius-btn); font-weight: 600; cursor: pointer; }
-.dk-sw-act:hover, .dk-sw-act:focus-visible { background: color-mix(in oklab, var(--sel) 22%, transparent); }
-.dk-sw-keys { padding: 6px 8px 2px; color: var(--muted); font-size: var(--type-pill); }
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* Step through the recent Desks (pick F, #464): ‹ › at the right of the name's line; on a row of its own under the
-   counts (#402) a dot per recent Desk (the open one a lime bar) and the next one's name, which opens it too. A long
-   name wraps there rather than being cut short, at any width. */
-.dk-steprow { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-top: 3px; }
-.dk-step { flex: none; display: inline-flex; align-items: center; gap: 2px; }
-.dk-step-btn { all: unset; width: 22px; height: 22px; border-radius: var(--radius-qp); display: inline-grid; place-items: center; opacity: .85; cursor: pointer; }
-.dk-step-btn:hover, .dk-step-btn:focus-visible { background: color-mix(in oklab, currentColor 14%, transparent); opacity: 1; }
-.dk-dots { flex: none; display: inline-flex; align-items: center; gap: 4px; margin: 0 2px; align-self: center; }
-.dk-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; }
-.dk-dots i.at { width: 14px; border-radius: var(--radius-pill); background: var(--sel); opacity: 1; }
+/* A quiet line in the pill size: the landing line's "next …" (desk/desk.js). */
 .dk-next { all: unset; display: inline; min-width: 0; font-size: var(--type-pill); opacity: .7; overflow-wrap: anywhere; cursor: pointer; }
 .dk-next:hover, .dk-next:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
 /* The Desk's mark takes the strip's text colour: in --accent it would vanish into the light strip. */
 .dk-strip .dk-shr :is(.dk-ric, .dk-kic) { color: inherit; }
 /* The Desk's name shows in full: a long one wraps onto a second line rather than being cut short (#402). */
 .dk-shr b { min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title); font-weight: 700; line-height: 1.25; }
-.dk-sw-btn b { padding: 3px 0; }
 .dk-shr > .dk-more-btn { flex: none; }
 .dk-strip .dk-sub { color: inherit; opacity: .75; font-size: var(--type-pill); }
 /* The counts, then under them at the left the Desk's settings line (#417, #447): what it asks before and how work

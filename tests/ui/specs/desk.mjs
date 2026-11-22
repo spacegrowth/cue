@@ -20,3 +20,19 @@ export async function openDone(page) {
   if ((await head.getAttribute("aria-expanded")) === "false") await head.click();
   await page.locator('.dk-items [data-desk-gbody="done"]:not(.shut):not(.moving)').waitFor();
 }
+
+/** The Desk's sessions list (B2, #666): it's no column now but opens on the right in the list's place, from All N
+ *  sessions under the Working pill in the strip over the lead's chat. */
+export async function openSessions(page) {
+  if (await page.locator(".dk-sessions").count()) return;
+  const pill = page.locator(".dk2b-strip [data-desk2b-work]");
+  if (await pill.count()) {
+    if ((await pill.getAttribute("aria-expanded")) !== "true") await pill.click();
+    await page.locator(".dk2b-strip [data-desk2b-sessions]").click();
+  } else {
+    // With Show panel on, the panel stands in for the strip: All sessions is in the header's Desks menu.
+    await page.locator('.top [data-hv-menu="desks"]').click();
+    await page.locator(".top [data-hv-desk-sessions]").click();
+  }
+  await page.locator(".dk-sessions").waitFor();
+}

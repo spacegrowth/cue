@@ -1,10 +1,11 @@
 // Holds on a repository's code (#540): every hold on the Desk's repository, its own or another Desk's, is one quiet
 // line under the Desk's header, "cue #509 holds hub/desk_*, ui/desk_* till it lands". No hover text, no stripe.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 
 test("a hold on this Desk's code shows as a quiet line under its header, and goes when it ends (#540)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   const holds = page.locator(".dk-strip .dk-holds");
   await expect(holds).toHaveCount(0);
   await cue.change((st) => {

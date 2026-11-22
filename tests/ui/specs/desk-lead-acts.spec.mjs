@@ -1,7 +1,7 @@
 // What the lead does on the Desk (#360): anything that needs you, its own asks too, waits in the Dispatcher's
 // panel until it's answered; what it did on its own (closed, started, moved up, took back a copy, answered a
 // session) is a line in its chat as it happens, and its last few show in the panel for a while, then drop off.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 const s = (ms) => Math.floor(ms / 1000);
@@ -11,6 +11,7 @@ test("the lead's own moves show in its chat and, for a while, in the panel; its 
   await page.setViewportSize({ width: 1728, height: 1000 });
   await cue.open("desk");
   await openDesk(page);
+  await deskShowPanel(page);   // B2 hides the panel till Show panel (#666)
   const acts = [
     act("a1", "d4", "start", "Started #d4 now, without waiting for a copy", "the user needs it now", NOW - 3 * 60 * 1000),
     act("a2", "d3", "land_first", "Moved #d3 up in the landing line", "the user waits on it", NOW - 60 * 1000),
@@ -56,10 +57,11 @@ test("the lead's own moves show in its chat and, for a while, in the panel; its 
 });
 
 test("Just did and Working read as lines, not pieces, at the panel's narrowest (#392)", async ({ page, cue }) => {
-  // The narrowest window that still shows the panel beside the chat: the chat card is 642px, the panel 272px.
+  // The narrowest window that still shows the panel beside the chat: the chat under 660px, the panel 272px.
   await page.setViewportSize({ width: 1500, height: 900 });
   await cue.open("desk");
   await openDesk(page);
+  await deskShowPanel(page);   // B2 hides the panel till Show panel (#666)
   await cue.change((st, { acts }) => {
     const d = st.desk.projects.find((p) => p.project === "cue");
     d.decisions.push(...acts);
@@ -73,7 +75,10 @@ test("Just did and Working read as lines, not pieces, at the panel's narrowest (
   await expect(panel).toBeVisible();
   const box = await panel.boundingBox();
   expect(box.width).toBeLessThanOrEqual(272);
-  expect(await page.locator(".dk-right").evaluate((e) => e.getBoundingClientRect().width)).toBeLessThan(660);
+  // B2 (#666): the lead's card is 878px wide with the panel inside it; its chat beside the panel is the narrow part.
+  const [chatPart, side] = await page.evaluate(() => [".dk-right .dk-pgm", ".dk-right .dk-panel"].map((q) => { const r = document.querySelector(q).getBoundingClientRect(); return { x: r.x, right: r.right, w: r.width }; }));
+  expect(chatPart.w).toBeLessThan(660);
+  expect(side.x).toBeGreaterThanOrEqual(chatPart.right - 1);
   const did = panel.locator(".dk-psec", { hasText: "Just did" }).locator(".dk-pdid");
   // What it did on one line, why and when under it.
   const parked = did.nth(1);
@@ -103,7 +108,7 @@ test("a long reopen, note and start each show at most three lines in the lead's 
   await openDesk(page);
   // A reopen like #418's: twelve lines of feedback.
   const why = Array.from({ length: 12 }, (_, n) => `${n + 1}. The right column must stay the item list while its page is open, and the chat beside it keeps its width.`).join("\n");
-  const note = "Top priority from Robin: as soon as the scroll test passes, commit, land it and install, then check the item's page in the installed app at a small window and at a wide one, and only then say DONE.";
+  const note = "Top priority from Robin: as soon as the scroll test passes, commit, land it and install, then check the item's page in the installed app at a small window and at a wide one, and only then say DONE. If the scroll test fails again, send it back to its session with what failed and the window size it failed at, and tell me before you start anything else.";
   const start = "it only reads and writes one doc, no code; it shouldn't wait behind five items that each need a copy of the code, and Robin is waiting on it right now, so it starts at once: the recovered notes go to them at seven in the morning, before they open the Desk, with what was lost and what came back.";
   await cue.change((st, { a }) => { st.desk.projects.find((p) => p.project === "cue").decisions.push(...a); }, { a: [
     act("r1", "d3", "send_back", "Reopened #d3 for cue-387", why, NOW - 3 * 60 * 1000),

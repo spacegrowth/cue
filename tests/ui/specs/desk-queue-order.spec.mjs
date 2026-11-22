@@ -3,8 +3,12 @@
 import { test, expect, openDesk } from "./cue.mjs";
 
 /** The Desk open, then its list settled. */
-const openSettled = async (page) => {
+const openSettled = async (page, long = false) => {
   await openDesk(page);
+  // A long queue shows its first 3 (B2, #666): the whole of it, to order. A short one has no Show all.
+  const all = page.locator('.dk-items [data-desk2b-all="queued"]');
+  if (long) await all.click();
+  else await expect(all).toHaveCount(0);
   // The list is drawn again just after the Desk opens: wait for it to settle, so a row looked up isn't swapped mid-drag.
   await page.evaluate(() => new Promise((ok) => {
     let t = setTimeout(done, 200);
@@ -66,7 +70,7 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
     const d = st.desk.projects.find((x) => x.project === "cue"), d6 = d.items.find((i) => i.id === "d6"), t = Math.max(...d.items.map((i) => i.created));
     for (let k = 1; k <= 10; k++) d.items.push({ ...d6, id: `q${k}`, title: `Queued thing ${k}`, created: t + k });
   });
-  await openSettled(page);
+  await openSettled(page, true);
   // Cue is slow to save it: a change that comes in meanwhile still shows your order.
   await cue.override("desk_item_act", () => new Promise(() => {}));
   await drag(page, "d6", "d4");

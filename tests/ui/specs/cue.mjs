@@ -59,12 +59,40 @@ export const test = base.extend({
 });
 export { expect };
 
-/** Project `p` picked in the header's project menu (All projects with ""). */
+/** Project `p` picked in the header's project menu (All projects with ""). The menu is in the header on the Board and
+ *  Read only (#666): from another view it's picked on the Board, then that view is shown again. */
 export const pick = async (page, p) => {
-  await page.locator('[data-pj="toggle"]').click();
+  const toggle = page.locator('[data-pj="toggle"]');
+  // The window drawn first (just after a reload its scripts may not have run yet).
+  await page.locator('.switch-view [data-view="board"]').waitFor();
+  const was = (await toggle.count()) ? "" : await page.evaluate(() => view);
+  if (was) await page.locator('.switch-view [data-view="board"]').click();
+  await toggle.click();
   await page.locator(`.pj-pop [data-pj="pick"][data-project="${p}"]`).click();
+  if (was) await page.locator(`.switch-view [data-view="${was}"]`).click();
 };
 /** The Desk opened from the header on project `p`; resolves once its first item row is drawn. */
+/** The Desk's sessions list, B2's All N sessions (#666): the Working pill unfolded in the strip over the lead's chat,
+ *  then All N sessions › opens the list on the right in the item list's place (its head: the Desk's name, its
+ *  sessions count, How work lands, holds, the lead's card and ⋯). Resolves once it's drawn. */
+export const deskAllSessions = async (page) => {
+  if (await page.locator(".dk-card.dk-sessions").count()) return;
+  const strip = page.locator(".dk2b-strip");
+  if (!(await strip.locator(".dk2b-wlist").count())) await strip.locator("[data-desk2b-work]").click();
+  await strip.locator("[data-desk2b-sessions]").click();
+  await page.locator(".dk-card.dk-sessions").waitFor();
+};
+/** The lead's full panel (Now, Waits on you, Just did, Working) shown: B2 opens with it hidden behind Show panel, and
+ *  a chat card too narrow for it (the 1280 default) has no Show panel, so the window is made as wide as the Board's
+ *  design size (1800) first when it's narrower. */
+export const deskShowPanel = async (page) => {
+  const tog = page.locator('.dk2b-chat [data-desk-panel="dispatcher-shown"]');
+  const vp = page.viewportSize();
+  if (vp.width < 1800) await page.setViewportSize({ width: 1800, height: Math.max(vp.height, 900) });
+  await tog.waitFor();
+  if ((await tog.textContent()).trim() === "Show panel") await tog.click();
+  await page.locator(".dk2b-chat .dk-panel .dk-pnow").waitFor();
+};
 export const openDesk = async (page, p = "cue") => {
   await pick(page, p);
   await page.locator('.switch-view [data-view="desk"]').click();

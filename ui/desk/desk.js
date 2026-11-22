@@ -9,43 +9,15 @@ function deskSelection() {
 }
 function deskSelect(id) {
   if (id !== deskSelected) deskAddingSession = null;
-  if (id !== deskStepped) deskStepped = null;
   deskSelected = id;
   try { if (id === null) localStorage.removeItem("cue.deskSelected"); else localStorage.setItem("cue.deskSelected", id); } catch {}
 }
-/** The Desks you opened last, newest first (#274): ‹ › on the Desk's head step through them (#464). Kept in this
- *  window; a Desk goes first as its head is drawn (deskSessHead), unless you stepped to it with ‹ ›: then the order
- *  stays as it was (`deskStepped`), so stepping on goes on through the same Desks rather than back and forth. */
+/** The Desks you opened last, newest first (#274): the header's Desk chips follow it (app/head_view.js). Kept in this
+ *  window; a Desk goes first as its head is drawn (deskSessHead). */
 let deskRecent = (() => { try { return JSON.parse(localStorage.getItem("cue.deskRecent") || "[]").filter((x) => typeof x === "string"); } catch { return []; } })();
-let deskStepped = null;
-const DESK_STEP_N = 3;
 function deskRecentPut(id) {
   deskRecent = [id, ...deskRecent.filter((x) => x !== id)].slice(0, 8);
   try { localStorage.setItem("cue.deskRecent", JSON.stringify(deskRecent)); } catch {}
-}
-/** The recent Desks ‹ › step through (pick F, #464): the first three you opened that still exist, in the order you
- *  opened them, `project` among them. With `at` its place; each end steps round to the other. */
-function deskStepRing(project) {
-  const ds = state.desk?.projects || [];
-  const ring = deskRecent.map((id) => ds.find((x) => x.project === id)).filter(Boolean).slice(0, DESK_STEP_N);
-  return { ring, at: ring.findIndex((d) => d.project === project) };
-}
-const DESK_STEP_SVG = (d) => `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
-/** ‹ › for the name's line: the previous and next recent Desk. Nothing when this is the only one. */
-function deskStepArrows(project) {
-  const { ring, at } = deskStepRing(project);
-  if (ring.length < 2 || at < 0) return "";
-  const prev = ring[(at - 1 + ring.length) % ring.length], next = ring[(at + 1) % ring.length];
-  return `<span class="dk-step"><button class="dk-step-btn" data-desk-step="${esc(prev.project)}" aria-label="Previous Desk: ${esc(deskName(prev))}">${DESK_STEP_SVG("m15 6-6 6 6 6")}</button><button class="dk-step-btn" data-desk-step="${esc(next.project)}" aria-label="Next Desk: ${esc(deskName(next))}">${DESK_STEP_SVG("m9 6 6 6-6 6")}</button></span>`;
-}
-/** On a row of its own under the counts (#402): a dot per recent Desk (the open one a lime bar) and the next one's
- *  name, which opens it. Its own row so the name always has the strip's width, never squeezed beside the counts. */
-function deskStepDots(project) {
-  const { ring, at } = deskStepRing(project);
-  if (ring.length < 2 || at < 0) return "";
-  const next = ring[(at + 1) % ring.length];
-  const dots = ring.map((_, k) => `<i${k === at ? ' class="at"' : ""}></i>`).join("");
-  return `<div class="dk-steprow"><span class="dk-dots" role="img" aria-label="${at + 1} of ${ring.length} recent Desks">${dots}</span><button class="dk-next" data-desk-step="${esc(next.project)}"><span>${esc(deskName(next))}</span> ›</button></div>`;
 }
 const deskHasSession = (d, sid) => !!sid && (deskLead(d)?.sid === sid || (d.members || []).includes(sid));
 const deskWorkspace = (d) => d.workspace_project || d.project;
@@ -81,6 +53,7 @@ const deskSent = new Map();
 let deskChatEnd = true;
 /** A reply's "This turn in …" opened its session here (#306): the time of the reply to bring into view, once. */
 let deskTurnAt = 0;
+let deskTurnLead = false;   // B2: that turn is in the lead's chat at the left (desk/act.js deskShow), not the right card's
 
 /** Seconds or ms, as the hub stamps them, in ms. */
 const deskMs = (t) => (!t ? 0 : t < 1e12 ? t * 1000 : t);

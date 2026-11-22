@@ -13,7 +13,7 @@ const churn = (page) => page.evaluate(() => {
 const pointerFine = async (page, box) => {
   expect(await box.evaluate((t) => { const r = t.getBoundingClientRect(); return document.elementFromPoint(r.x + 20, r.y + r.height / 2) === t; })).toBe(true);
   expect(await box.evaluate((t) => getComputedStyle(t).cursor)).toMatch(/^(auto|text)$/);
-  expect(await page.evaluate(() => { const b = document.querySelector(".dk-items [data-desk-prog-toggle]"); return [getComputedStyle(b).cursor, document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4) === b || b.contains(document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4))]; })).toEqual(["pointer", true]);
+  expect(await page.evaluate(() => { const b = document.querySelector(".dk-items [data-desk-prog-toggle]") || document.querySelector(".dk-right .dk-back"); return [getComputedStyle(b).cursor, document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4) === b || b.contains(document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4))]; })).toEqual(["pointer", true]);
   expect(await page.evaluate(() => [getComputedStyle(document.body).cursor, getComputedStyle(document.body).pointerEvents])).toEqual(["auto", "auto"]);
 };
 const clickAndType = async (page, box) => {
@@ -39,8 +39,11 @@ test("clicking the lead's text box and an item's puts the cursor there and typin
   await page.locator('.dk-items [data-desk-item="d3"] .dk-t').click();
   await expect(box).toHaveAttribute("data-text", /"d3"\]$/);
   await clickAndType(page, box);
+  // Back to the list (the item opened in its place, B2 #666), the lead's chat beside it: what you typed is still there.
+  await page.locator(".dk-right .dk-back").click();
+  await expect(box).toHaveAttribute("data-text", 'desk:["cue",""]');
+  await expect(box).toHaveValue("the dot is too big");
   // The Progress popover open (redrawing too) and closed again: the box still takes the cursor.
-  await page.locator('[data-desk-lead-chat]').first().click();
   await page.locator('.dk-items [data-desk-prog-toggle]').click();
   await expect(page.locator(".dk-prog")).toBeVisible();
   await page.waitForTimeout(300);
@@ -49,8 +52,5 @@ test("clicking the lead's text box and an item's puts the cursor there and typin
   await expect(box).toHaveValue("the dot is too big");
   await box.fill("");
   await clickAndType(page, box);
-  // Back to the lead's chat: what you typed is still there, and the box still takes the cursor.
-  await page.locator('[data-desk-lead-chat]').first().click();
-  await expect(box).toHaveAttribute("data-text", 'desk:["cue",""]');
   await expect(box).toHaveValue("the dot is too big");
 });

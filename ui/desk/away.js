@@ -473,7 +473,8 @@ function deskAwayBackHtml() {
 /** The middle card with the bar at its top right, where nothing else sits. */
 function deskAwayBackIn(html) {
   const bar = deskAwayBackHtml();
-  return bar ? html.replace(/^(<div class="dk-card dk-right[^"]*">)/, `$1${bar}`) : html;
+  // On today's page (B2, #666) the chat card or the open page beside it, whichever is the dk-right one.
+  return bar ? html.replace(/^(<div class="dk-card(?: [^"]*)? dk-right(?: [^"]*)?">)/, `$1${bar}`) : html;
 }
 /** Set the sheet aside, to come back to (deskAwayBackHtml). */
 function deskAwaySetAside() {

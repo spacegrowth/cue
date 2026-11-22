@@ -35,8 +35,8 @@ for (const kind of ["task", "bug", "feature"]) {
     await expect(hand).toHaveText(`${word} #d5`);
     expect(await kindOf(hand.locator("svg.dk-kic"))).toBe(kind);
     // Desk home's line under the Desk's name.
-    await page.locator("[data-desk-switch]").click();
-    await page.locator("[data-desk-home]").click();
+    await page.locator('.top [data-hv-menu="desks"]').click();
+    await page.locator(".top [data-hv-desk-home]").click();
     const about = page.locator(".dk-desks .dk-desk .dh-ab").first();
     await expect(about).toHaveText(new RegExp(`^(On|Next): ${word} #\\S+ .+`));
     expect(await kindOf(about.locator("svg.dk-kic"))).toBe(kind);

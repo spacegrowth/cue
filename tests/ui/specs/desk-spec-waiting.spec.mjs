@@ -2,7 +2,7 @@
 // clear ask: Answer / Pick / Try it), #475 (a session's question puts its item in Waiting on you until you answer it),
 // the Dispatcher panel's "Waits on you" (#200, #392: what waits on you, each opening its item), held steps (a tool
 // approval on an item's session waits on you as the item's ask, #299/#431), and answered asks leave the list.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
 
 // Wide enough that the Dispatcher's panel stands beside its chat (narrower, it folds into the Now line).
 test.use({ viewport: { width: 1728, height: 1000 } });
@@ -14,6 +14,7 @@ const panelWaits = (page) => page.locator(".dk-right .dk-panel .dk-psec:not(.dk-
 test("the lead's panel lists what waits on you, the same as the list's group, and a row opens its item", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskShowPanel(page);   // the lead's panel, behind Show panel
   await expect.poll(() => waitingIds(page)).toEqual(["d1"]);
   const rows = panelWaits(page).locator("[data-desk-chk-item]");
   await expect(rows).toHaveCount(1);

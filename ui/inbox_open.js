@@ -11,7 +11,7 @@ const openSending = new Set(); // row keys whose Send fixes is on its way: their
 /** The rows of every lead in the shown project, each in its seat. */
 function openRows() {
   const rows = [];
-  for (const l of state.open || []) if (inProj(l.project)) for (const r of l.rows || []) rows.push(r);
+  for (const l of state.open || []) if (inboxIn(l.project)) for (const r of l.rows || []) rows.push(r);
   const t = now(), live = new Set(rows.map((r) => r.key));
   for (const [k, g] of openSent) if (t - g.at > OPEN_SENT_MS) openSent.delete(k);
   for (const k of [...openSeats.keys()]) if (!live.has(k) && !openSent.has(k) && !openSending.has(k)) openSeats.delete(k);

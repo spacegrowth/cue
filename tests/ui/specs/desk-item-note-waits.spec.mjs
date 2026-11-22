@@ -84,6 +84,8 @@ test("a send-back waiting for a free working folder says so, not Sending, and th
   const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
   await expect(ichat.locator(".cv-you .ml-words", { hasText: "Waiting: sent back, it starts when a working folder is free" })).toHaveCount(1);
   await expect(ichat).not.toContainText("Sending…");
-  // Its row says it waits for a folder, sent back (whether it's Waiting on you is the hub's: desk_copy_wait.rs).
+  // Its row says it waits for a folder, sent back (whether it's Waiting on you is the hub's: desk_copy_wait.rs). In the
+  // Items list: ‹ Items first, the item's page took its place (#666).
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();
   await expect(page.locator('.dk-items [data-desk-item="d5"]').first()).toContainText("Sent back · waiting for a free working folder");
 });

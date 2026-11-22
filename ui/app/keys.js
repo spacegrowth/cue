@@ -239,7 +239,7 @@ function onKey(e) {
 /** A view's step that took the key: kept from its default too. */
 const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
 /** The views' own keys, before anything in the page sees them (a box, a terminal, the steps above): Esc closes the
- *  nearest thing first. In order: what's over the window (+ New Desk's sheet and menu, desk/home.js; the diff
+ *  nearest thing first. In order: the header's open Desks or Show menu (app/head_view.js), what's over the window (+ New Desk's sheet and menu, desk/home.js; the diff
  *  overlay, diff_overlay.js; the file viewer, file_view.js), the crew's tray (team.js), the crew's page
  *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the Inbox (inbox/), the
  *  Desk's Away sheet (desk/away.js), an add-on's panel (extensions.js), then the Desk (desk/view.js notes the key,
@@ -248,7 +248,7 @@ const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
  *  alone (e.stopPropagation()) and let the rest of these run, as Settings → Insights' chooser does. The main window
  *  adds its dialogs' (app/bind.js keyDeleteAsk); the mini window runs these too, before its own (mini.js keyHere). */
 const KEY_FIRST = [
-  deskHomeKey, diffOverlayKey, fileViewKey,
+  keyTook(headViewKey), deskHomeKey, diffOverlayKey, fileViewKey,
   keyTook(crewEsc), keyTook((e) => crewPageEsc(e) || crewListKey(e)), keyTook(crewBarKey),
   insChooserKey, keyTook(inboxKey), deskAwayKey, extKey, deskKeyNote, keyTook(deskKey),
 ];

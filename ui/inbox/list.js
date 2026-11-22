@@ -12,7 +12,7 @@
 // with each choice and what it means, what it plans next when it says, and a box to answer in; its side column what
 // you asked it, what it did this turn (repeats folded: "Read 6 files"), what this turn changed (a peek of the biggest
 // change) and its context. After Send it stays open, as a sent email does; you move on. With nothing needing you, what's running and
-// what's done lately stand in. With a project picked in the header, only its sessions.
+// what's done lately stand in. With a project picked in the header's Show (app/head_view.js), only its sessions.
 
 /** The session open beside the list; null when none is (nothing needs you, or a narrow window shows the list). */
 let inboxSid = null;
@@ -80,7 +80,7 @@ function inboxItems() {
   const by = new Map();
   for (const it of [...state.items].sort((a, b) => b.created_ms - a.created_ms)) {
     const had = by.get(it.session_id);
-    if (unresolvedCard(it) && inProj(it.project) && (!had || (had.kind === "waiting" && actionableRequest(it)))) by.set(it.session_id, it);
+    if (unresolvedCard(it) && inboxIn(it.project) && (!had || (had.kind === "waiting" && actionableRequest(it)))) by.set(it.session_id, it);
   }
   return by;
 }
@@ -113,7 +113,7 @@ function inboxRows() {
     if (r) rows.push(r);
   }
   for (const s of state.sessions) {
-    if (items.has(s.session_id) || !inProj(s.project) || cutOff(s)) continue;
+    if (items.has(s.session_id) || !inboxIn(s.project) || cutOff(s)) continue;
     const r = inboxRowOf(s.session_id, s, null, inboxPinned(s) || inboxLater(s) || inboxTabOf(s) !== "inbox");
     if (r) rows.push(r);
   }
@@ -125,8 +125,8 @@ const inboxRowFor = (sid) => inboxRowOf(sid, sessionOf(sid), inboxItems().get(si
 const inboxSectOf = (r, respectLater = true) => (respectLater && inboxLater(r.s) ? "later" : ["ask", "turn", "crew"].includes(r.kind) ? "need" : r.kind);
 /** The rows needing you under the Inbox tab, a session once each (parked ones wait in Parked). */
 const inboxNeedRows = () => inboxRows().filter((r) => inboxTabOf(r.s) === "inbox" && inboxSectOf(r) === "need");
-/** How many sessions need you, for the header's "Inbox 3". */
-const inboxCount = () => inboxNeedRows().length + inboxDeskVerifications().length;
+/** How many sessions need you in the projects the Inbox shows (the header's "Inbox 3" counts every project: inboxCountAll). */
+const inboxCount = () => inboxNeedRows().length + inboxVerifications().length;
 
 /** `rows` (newest first) in the order they keep: one stays where it was while it stays in `sect`; one that came in
  *  goes on top. */
@@ -298,7 +298,7 @@ function inboxFold(key) {
   renderMain();
 }
 /** The Board's Parked (stopped and kept, chat/parked.js), newest first, in the project picked. */
-const inboxParkedRows = () => (state.parked || []).filter((p) => inboxTab === "inbox" && inProj(p.project)).sort((a, b) => (b.parked_ms || 0) - (a.parked_ms || 0));
+const inboxParkedRows = () => (state.parked || []).filter((p) => inboxTab === "inbox" && inboxIn(p.project)).sort((a, b) => (b.parked_ms || 0) - (a.parked_ms || 0));
 /** A parked session: its name, what it said last, how long it's been parked, and Resume. A click opens it beside the
  *  list, as any row. */
 function inboxParkedHtml(p) {
@@ -342,7 +342,7 @@ const inboxEmpty = () => ({ inbox: "Nothing needs you, and nothing is working.",
 /** The list: its head (how many need you and run, the tabs), then the sections. */
 function inboxList() {
   const secs = inboxSections(), of = (k) => secs.find(([key]) => key === k)[2];
-  const verifications = inboxTab === "inbox" ? inboxDeskVerifications() : [];
+  const verifications = inboxTab === "inbox" ? inboxVerifications() : [];
   const need = inboxNeedRows().length + verifications.length, run = of("run").length;
   const counts = inboxTab === "inbox" ? [[need, "need you"], [run, "running"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(" · ") : "";
   // With Desks above, what's on none sits under its own heading.

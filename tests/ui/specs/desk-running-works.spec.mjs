@@ -1,12 +1,15 @@
 // A session whose turn is over while its tests, build, install or landing run in the background is at work (#556):
 // it counts in the head's "N working", the Working group, the Dispatcher's Working list, and its row says what runs;
 // its item reads as working, never waiting.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 
 for (const running of ["Running tests…", "Building…", "Landing…"]) {
   test(`a session ${running.toLowerCase()} in the background counts as working everywhere the Desk shows it (#556)`, async ({ page, cue }) => {
     await cue.open("desk");
     await openDesk(page);
+    // The sessions list (All N sessions) on the right, the lead's panel shown beside it.
+    await deskAllSessions(page);
+    await deskShowPanel(page);
     const sub = page.locator(".dk-strip .dk-sub");
     const count = async () => Number(((await sub.textContent()).match(/(\d+) working/) || [0, 0])[1]);
     const working = page.locator(".dk-sessions .dk-gh", { hasText: "Working" }).locator(".n");
@@ -27,7 +30,14 @@ for (const running of ["Running tests…", "Building…", "Landing…"]) {
     await expect(st.locator("b")).toHaveText(`working · ${running.charAt(0).toLowerCase()}${running.slice(1)}`);
     await expect(st.locator("i")).not.toHaveClass(/idle/);
     await expect.poll(panelCount).toBe(beforePanel + 1);
-    await expect(page.locator('.dk-row[data-desk-item="d556"], [data-desk-item="d556"]').first()).not.toContainText("waiting");
+    // Its item, in the Items list (‹ Items back from the sessions list, B2 #666), then the sessions list again.
+    await page.locator(".dk-sessions .dk2b-items").click();
+    await expect(page.locator('.dk-items [data-desk-item="d556"]')).toHaveCount(1);
+    await expect(page.locator('.dk-items [data-desk-item="d556"]')).not.toContainText("waiting");
+    // The panel hidden for the strip's All N sessions, then shown again.
+    await page.locator('.dk2b-chat [data-desk-panel="dispatcher-shown"]').click();
+    await deskAllSessions(page);
+    await deskShowPanel(page);
     // Its run over and its turn ended: idle again, out of every count.
     await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "s-run"); s.running = ""; });
     await expect(st.locator("b")).toHaveText("idle");

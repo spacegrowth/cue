@@ -1,6 +1,6 @@
 // The Desk: the quick-add line, the lead's own lines and Cue's notes as its chat draws them, an item's pane,
 // paused and parked items, and items back to check.
-import { test, expect, pick, openDesk } from "./cue.mjs";
+import { test, expect, pick, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 import { listOrder } from "./desk.mjs";
 
 // ---------- the quick-add line ----------
@@ -132,6 +132,7 @@ test("⋯ in the head strip with an item open: the open pane closes and the pick
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
   await page.locator(".dk-panel[data-side-for] .dk-drop").click();
+  await deskAllSessions(page);
   await page.locator(".dk-strip [data-desk-change]").click();
   await expect(page.locator(".dk-pick h2")).toHaveText("Who runs this Desk?");
   await expect(page.locator(".dk-right .dk-ipane")).toHaveCount(0);
@@ -163,6 +164,7 @@ test("the shots: the lead's Desk, Give to…, Change, the picker", async ({ page
   await page.locator('[data-desk-item="d6"] [data-desk-give]').click();
   await page.screenshot({ path: `${dir}/cue-desk-give.png` });
   await page.locator("body").press("Escape");
+  await deskAllSessions(page);
   await page.locator(".dk-strip [data-desk-change]").click();
   await page.screenshot({ path: `${dir}/cue-desk-change.png` });
   await pick(page, "website");
@@ -566,7 +568,7 @@ test("Desk handoff shows only the routing note in Desk and session chat", async 
   await expect(chat.locator(".cv-you-text").last()).toHaveText(note);
   await expect(chat).toContainText("Earlier handoff");
   await expect(chat).not.toContainText(/<desk|#193|abcdef|142k/);
-  const deskComposer = page.locator(".dk-box textarea");
+  const deskComposer = page.locator(".dk-right .dk-box textarea");
   await deskComposer.press("ArrowUp");
   await expect(deskComposer).toHaveValue(note);
   await deskComposer.evaluate((el) => el.setSelectionRange(0, 0));
@@ -641,6 +643,8 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await pane.locator(".dk-ph [data-desk-back]").click();
   await expect(rows.locator(".dk-gh", { hasText: "Needs resume" }).locator("+ .dk-gbody > .dk-gin > [data-desk-item='d5']:first-child")).toBeVisible();
   await expect(rows.locator("[data-desk-item='d4']")).toContainText("after #d5");
+  // The lead's panel, behind Show panel.
+  await deskShowPanel(page);
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item needs to resume.");
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-pfc')).toContainText("1 to resume");
   await rows.locator('[data-desk-item="d5"]').click();
@@ -649,7 +653,7 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await pane.locator('[data-desk-act="start_now"]').click();
   await cue.called("desk_item_act", { id: "d5", act: "start_now" });
   // A crew member's item: Resume only when that teammate isn't at work.
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
   await page.locator('[data-desk-item="d3"]').click();
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
   await cue.change((st) => {
@@ -676,6 +680,7 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
   await expect(pane).toContainText("keeps its place. The Desk lead paused it: #9 is urgent.");
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
   await pane.locator(".dk-ph [data-desk-back]").click();
+  await deskShowPanel(page);
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item is paused.");
 });
 
@@ -710,7 +715,7 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Start");
   await expect(pane.locator('[data-desk-act="park"]')).toHaveCount(0);
   // A queued item's page has Park too.
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
   await rows.locator('[data-desk-item="q7"] .dk-t').click();
   await expect(page.locator('.dk-panel[data-side-for] [data-desk-act="park"]')).toHaveText("Park");
 });
@@ -729,7 +734,7 @@ test("an item back to check stands out until you open it; its pane links to what
   await expect(row.locator(".dk-tag")).toHaveClass(/landed/);
   await row.locator(".dk-t").click();
   await expect(page.locator(".dk-pane .dk-sec", { hasText: "What it made" }).locator(".dk-made")).toHaveText(["Open the page ↗", "list.html ↗"]);
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
   await expect(row).not.toHaveClass(/landed/);
   await expect(row.locator(".dk-tag")).toHaveClass(/check/);
 });
@@ -742,7 +747,7 @@ test("a to-check item's page lists its Files changed, each with its counts; a cl
   // The files Looks right will commit, as the hub reads them.
   await cue.called("desk_item_diff", { id: "d2" });
   // Under its Files tab (#149), counted there.
-  const ftab = page.locator('.dk-pane [data-desk-itab="files"]');
+  const ftab = page.locator('.dk-pane .dk-itab[data-desk-itab="files"]');
   await expect(ftab).toHaveText("Files2");
   await ftab.click();
   await expect(page.locator(".dk-pane .dk-thread")).toHaveCount(0);
@@ -780,19 +785,20 @@ test("a to-check item's page lists its Files changed, each with its counts; a cl
 });
 
 test("the panel lists the files an item and a crew member changed, three then the rest, a click opening its diff (#313)", async ({ page, cue }) => {
-  // A window wide enough for the panel to show beside the thread (#200).
-  await page.setViewportSize({ width: 1512, height: 945 });
+  // A window wide enough for the panel to show beside the thread (#200): B2's right card is narrower, so 1800 (#666).
+  await page.setViewportSize({ width: 1800, height: 1095 });
   await cue.open("desk");
   await openDesk(page);
   const files = ["ui/a.js", "ui/b.js", "ui/c.js", "ui/d.js", "ui/e.css"];
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").files = ["ui/a.js", "ui/b.js", "ui/c.js", "ui/d.js", "ui/e.css"]; });
   await page.locator('.dk-items [data-desk-item="d2"] .dk-t').click();
-  const sec = page.locator(".dk-panel .dk-pfiles");
+  // The panel of the page open on the right (the lead's own, hidden behind Show panel, is the chat card's).
+  const sec = page.locator(".dk-right .dk-panel .dk-pfiles");
   await expect(sec.locator("h4")).toHaveText("Files changed · 5");
   await expect(sec.locator(".ib-file code")).toHaveText(files.slice(0, 3));
   await expect(sec.locator(".ib-file").first()).toContainText("+2");
   // Said once: no Files line under Who as well.
-  await expect(page.locator(".dk-panel .dk-pw", { hasText: "Files" })).toHaveCount(0);
+  await expect(page.locator(".dk-right .dk-panel .dk-pw", { hasText: "Files" })).toHaveCount(0);
   await sec.locator(".ib-file").nth(1).click();
   await expect(page.locator(".dov-fh .dov-p")).toHaveText("ui/b.js");
   await page.keyboard.press("Escape");
@@ -812,8 +818,9 @@ test("the panel lists the files an item and a crew member changed, three then th
   // A session: what its turn changed, as Inbox's Changed this turn.
   const diff = "diff --git a/cache.ts b/cache.ts\n--- a/cache.ts\n+++ b/cache.ts\n@@ -1,2 +1,3 @@\n const key = sku;\n+const hit = cache.get(key);\n";
   await cue.override("diff_git", ({ op, against }, d) => (op === "toplevel" ? { code: 0, stdout: "/x\n" } : op === "diff" ? { code: 0, stdout: against === "abc123" ? d : "" } : { code: 0, stdout: "" }), diff);
-  await cue.change((st) => { st.sessions.find((x) => x.session_id === "lead").turn_from = { root: "/x", commit: "abc123", untracked: [] }; });
-  await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
+  // B2 (#666): the lead's chat is always the left card, with no session page of its own; a crew session's page is.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").turn_from = { root: "/x", commit: "abc123", untracked: [] }; });
+  await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
   await expect(sec.locator("h4")).toHaveText("Changed this turn · 1");
   await sec.locator(".ib-file").click();
   await expect(page.locator(".dov-fh .dov-p")).toHaveText("cache.ts");
@@ -823,24 +830,24 @@ test("written about an item ready to check, it's sent back with your words: off 
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d2"]').click();
-  await page.locator(".dk-box textarea").fill("The More menu is cut off");
-  await page.locator(".dk-box textarea").press("Enter");
+  await page.locator(".dk-right .dk-box textarea").fill("The More menu is cut off");
+  await page.locator(".dk-right .dk-box textarea").press("Enter");
   // As Send back: to its holder, not the lead.
   await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "The More menu is cut off" });
   expect(await cue.calls("desk_send")).toEqual([]);
   await expect(page.locator(".toast").last()).toContainText("Sent back");
   // The box emptied, the item's page still open.
-  await expect(page.locator(".dk-box textarea")).toHaveValue("");
+  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("");
   await expect(page.locator(".dk-pane")).toHaveCount(1);
   // Off Waiting on you: back in the Items list, it's In progress (#418: the list is behind ‹ Items while it's open).
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
   await expect.poll(() => listOrder(page)).toEqual(["# Waiting on you", "d1", "# In progress", "d3", "d2", "d5", "# Queue", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   // One that doesn't go: still waiting on you, red in its chat with why, Retry and Edit (#422).
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
   await cue.override("desk_item_act", () => { throw "its session has ended"; });
-  await page.locator(".dk-box textarea").fill("Still loses focus");
-  await page.locator(".dk-box textarea").press("Enter");
+  await page.locator(".dk-right .dk-box textarea").fill("Still loses focus");
+  await page.locator(".dk-right .dk-box textarea").press("Enter");
   await expect(page.locator(".dk-right .dk-ipane .cv-you.msg-failed .msg-line")).toContainText("Couldn't send · its session has ended · Retry · Edit");
   await expect(page.locator(".dk-right .dk-pg h1")).toHaveText("Bug #d1 · Reply box loses focus after Send");
 });

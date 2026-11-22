@@ -6,7 +6,8 @@ import { test, expect } from "./cue.mjs";
 const openHome = async (page, cue) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="desk"]').click();
-  await page.locator("[data-desk-switch]").click(); await page.locator("[data-desk-home]").click();
+  // The Desk switcher moved to the header's Desks menu (#666).
+  await page.locator('.top [data-hv-menu="desks"]').click(); await page.locator(".top [data-hv-desk-home]").click();
   await page.locator(".dk-desks .dk-desk").first().waitFor();
 };
 /** A full Desk: a long name and project, and every kind with working, paused, finishing, need-you and to-review. */

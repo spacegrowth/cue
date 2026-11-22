@@ -3,11 +3,13 @@
 // the lead's chat; List | Progress in the Items head; the groups in their order; an item's page led by its steps, who
 // is on it and its buttons; a session's chat with ‹ Lead chat and Its item ›.
 import { test, expect, openDesk } from "./cue.mjs";
-import { listOrder } from "./desk.mjs";
+import { listOrder, openSessions } from "./desk.mjs";
 
 /** Turn the new page on from today's Desk settings. */
 async function turnOn(page) {
-  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  // Desk settings… in the header's Desks menu (today's page has no settings line of its own, #666).
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  await page.locator(".top .hv-menu [data-hv-desk-set]").click();
   const sw = page.locator(".ld-dialog [data-desk2-try]");
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await sw.click();
@@ -21,15 +23,23 @@ test("Today's Desk page is the default", async ({ page, cue }) => {
   await openDesk(page);
   await expect(page.locator(".dk-board")).toHaveCount(1);
   await expect(page.locator(".dk-board.dk-v2")).toHaveCount(0);
-  await expect(page.locator(".dk-sessions")).toHaveCount(1);
+  // Today's page is B2 (#666): the lead's chat at the left and the item list beside it, no sessions column; the
+  // sessions open on the right, in the list's place, from All N sessions under the Working pill.
+  await expect(page.locator(".dk-board.dk-b2")).toHaveCount(1);
+  const [c, l] = await Promise.all([page.locator(".dk-board > .dk-card.dk2b-chat").boundingBox(), page.locator(".dk-board > .dk-card.dk-items").boundingBox()]);
+  expect(l.x).toBeGreaterThan(c.x + c.width);
+  await expect(page.locator(".dk-sessions")).toHaveCount(0);
   await expect(page.locator(".dk-items [data-desk-prog-toggle]")).toHaveCount(1);
+  await openSessions(page);
+  await expect(page.locator(".dk-items")).toHaveCount(0);
+  expect((await page.locator(".dk-board > .dk-sessions").boundingBox()).x).toBeGreaterThan(c.x + c.width);
 });
 
 test("The switch in Desk settings flips the page, and it's remembered", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await turnOn(page);
-  await expect(page.locator(".dk-sessions")).toHaveCount(0);
+  await expect(page.locator(".dk-board.dk-b2")).toHaveCount(0);
   await page.reload();
   await openDesk(page);
   await expect(page.locator(".dk-board.dk-v2")).toHaveCount(1);
@@ -39,10 +49,10 @@ test("The switch in Desk settings flips the page, and it's remembered", async ({
   await expect(sw).toHaveAttribute("aria-checked", "true");
   await sw.click();
   await expect(page.locator(".dk-board.dk-v2")).toHaveCount(0);
-  await expect(page.locator(".dk-sessions")).toHaveCount(1);
+  await expect(page.locator(".dk-board.dk-b2")).toHaveCount(1);
   await page.reload();
   await openDesk(page);
-  await expect(page.locator(".dk-sessions")).toHaveCount(1);
+  await expect(page.locator(".dk-board.dk-b2")).toHaveCount(1);
 });
 
 test("The new page: Desk pills, the drawer, Chats, List and Progress, the groups' order", async ({ page, cue }) => {

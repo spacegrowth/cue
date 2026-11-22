@@ -61,8 +61,11 @@ for (const scheme of ["light", "dark"]) {
     await setup(cue, page);
     const chat = ".dk-right .act-card .req-cut", held = '.dk-items [data-held-row="held-1"] .req-cut';
     await expect(page.locator(chat)).toBeVisible();
+    const c = await look(page, chat);
+    // The item opens in the list's place (B2, #666): back to the list, where the held steps are.
+    await page.locator(".dk-right .dk-back").click();
     await expect(page.locator(held)).toBeVisible();
-    const [c, h] = [await look(page, chat), await look(page, held)];
+    const h = await look(page, held);
     // The same block as the chat's.
     expect(h.style).toEqual(c.style);
     expect(h.style.font).toMatch(/mono/i);

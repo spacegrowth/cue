@@ -304,7 +304,10 @@ function deskItemRow(i, lit, held = false, lane = null) {
     : `<span class="dk-doing"${i.act.stalls_at > 0 ? ` data-stalls="${i.act.stalls_at}"` : ""}>${esc(i.act.now)} · <span data-ago="${i.act.at_ms}">${ago(i.act.at_ms)}</span></span>`;
   // In a lane (#346): its holder and its step, short; the lane's head has the rest.
   const feat = deskFeat(i), fopen = feat && deskFeatOpen(i);
-  const who = i.state === "held" ? "" : feat ? [esc(deskHolderOf(i)), deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [esc(deskHolderOf(i)), `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : deskCopyWaits(i) ? esc(deskCopyWaitLine(i)) : deskQueueLine(i) ? esc(deskQueueLine(i)) : i.state === "queued" && i.after ? [esc(deskHolderOf(i)), (deskAfterName(i).startsWith("#") ? `after ${esc(deskAfterName(i))}` : `Waits for ${esc(deskAfterName(i))}`)].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : deskClearable(i) ? `stopped · leftover edits in the main folder` : i.stopped && (i.state === "working" || deskFinishing(i)) ? `stopped · the Desk lead is on it` : s ? `working · ${esc(deskHolderOf(i))} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? `waiting for install · ${esc(deskHolderOf(i))}` : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : esc(deskHolderOf(i));
+  // Today's page (B2, #666): rows name no session (who has it is on its page and in the Working strip); what the line
+  // says besides (Give to…, the queue's words, its step) stays.
+  const hn = deskB2On() ? "" : esc(deskHolderOf(i));
+  const who = i.state === "held" ? "" : feat ? [hn, deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [hn, `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : deskCopyWaits(i) ? esc(deskCopyWaitLine(i)) : deskQueueLine(i) ? esc(deskQueueLine(i)) : i.state === "queued" && i.after ? [hn, (deskAfterName(i).startsWith("#") ? `after ${esc(deskAfterName(i))}` : `Waits for ${esc(deskAfterName(i))}`)].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : deskClearable(i) ? `stopped · leftover edits in the main folder` : i.stopped && (i.state === "working" || deskFinishing(i)) ? `stopped · the Desk lead is on it` : s ? `${["working", hn].filter(Boolean).join(" · ")} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? ["waiting for install", hn].filter(Boolean).join(" · ") : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : hn;
   // Finishing: no age, so its step has the room.
   const when = s || act || deskFinishing(i) || (feat && i.state !== "done") ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
   const ok = i.state === "held" ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start</button>`
@@ -332,8 +335,8 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const built = i.state === "done" && !piece ? deskBuiltWords(i) : "";
   const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
-    ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}</div>
-    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${(who && i.holder && i.state !== "held") || (!i.holder && i.machine) ? deskMachTag(i) : ""}${i.state !== "held" && !piece ? deskModelTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+    ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}${deskB2On() && !piece ? deskB2Track(i) : ""}</div>
+    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${((who || deskB2On()) && i.holder && i.state !== "held") || (!i.holder && i.machine) ? deskMachTag(i) : ""}${i.state !== "held" && !piece ? deskModelTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
 function deskAllowNo(id) {
@@ -440,9 +443,12 @@ function deskList(project, taskApprovals) {
   const group = deskGroupHtml;
   // The order, top to bottom (#602, Robin's): Waiting on you (questions), Ready to check, In progress (with the
   // landing lanes, nearly done, over it and what stopped under it), Queue, Parked (folded), Done (folded).
-  put("you", group("you", `Waiting on you <span class="n">${nWait}</span>`, `${g.asks.map(row).join("")}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
+  // Today's page (B2, desk/b2.js): the long groups show their first 3, then Show all N.
+  const cap = (k, list) => (deskB2On() ? deskB2Cap(k, list) : [list, ""]);
+  const [asks, asksMore] = cap("you", g.asks), [check, checkMore] = cap("check", g.check), [queued, queuedMore] = cap("queued", g.queued);
+  put("you", group("you", `Waiting on you <span class="n">${nWait}</span>`, `${asks.map(row).join("")}${asksMore}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
   // Ready to check: what finished and waits for your Looks right or Send back (split out of Waiting on you, #602).
-  if (g.check.length) put("check", group("check", `Ready to check <span class="n">${g.check.length}</span>`, g.check.map(row).join("")));
+  if (g.check.length) put("check", group("check", `Ready to check <span class="n">${g.check.length}</span>`, check.map(row).join("") + checkMore));
   // The landing line (above In progress, #468), numbered in the order it lands (one at a time), then what's on main for the next install, with
   // its time and Install now (#346).
   if (g.landing.length) put("landing", group("landing", `Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span>`, g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join(""), "dk-lane", ' data-lane="landing"'));
@@ -453,7 +459,7 @@ function deskList(project, taskApprovals) {
   // The Queue, under In progress (#602; at the top before, #576): what waits for a session hasn't started, so it comes
   // after what's yours and what's under way. In your order, dragged up and down into it (#387); each row says what it
   // waits for.
-  if (g.queued.length) put("queued", group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, g.queued.map(deskQRow(row)).join("")));
+  if (g.queued.length) put("queued", group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, queued.map(deskQRow(row)).join("") + queuedMore));
   if (g.paused.length) put("paused", group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
   if (g.held.length) put("held", group("held", `Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span>`, `<div class="dk-held">${g.held.map(row).join("")}</div>`, "dk-heldh"));
   for (const h of g.extra) put("extra", deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
@@ -461,7 +467,8 @@ function deskList(project, taskApprovals) {
   // its place while the next ones load, so nothing jumps.
   const pg = deskDonePages.get(project);
   if (!pg) queueMicrotask(() => deskDoneFetch(project));
-  const done = deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
+  // On B2's Done today tab, only what was done today (desk/b2.js deskB2DoneToday, its count).
+  const done = deskB2On() && deskB2Tab === "done" ? deskB2DoneToday(g.d) : deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
   const more = done.length > shown.length || !pg?.end;
   // Dropped items' copies kept with their work, till you remove them (desk/hub/landing/trees.rs).
   const kept = g.d?.kept || [];
@@ -472,12 +479,18 @@ function deskList(project, taskApprovals) {
   else if (doneMore) put("done", doneMore);
   if (deskV2) parts.sort((a, b) => deskV2Order(a[0]) - deskV2Order(b[0]));
   const n = parts.length + (top ? 1 : 0);
-  let body = top + parts.map((x) => x[1]).join("") + (n > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
+  // B2: tabs by group over the list (All · Waits on you · Up next · Done today · Calls while away); one picked shows
+  // only its groups.
+  const tabs = deskB2On() ? deskB2Tabs(g, taskApprovals) : "";
+  const pick = deskB2On() ? deskB2Shown(parts, top) : { parts, top };
+  // A tab with nothing in it says so in a plain line, not an empty list.
+  const tabNone = deskB2On() && deskB2Tab !== "all" && !deskB2TabCounts(g, taskApprovals).find(([k]) => k === deskB2Tab)?.[2];
+  let body = tabNone ? `<div class="dk-empty">${DESK_B2_NONE[deskB2Tab] || "Nothing here."}</div>` : pick.top + pick.parts.map((x) => x[1]).join("") + (n > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
   // The new Desk page: List or Progress in its head, one at a time; Progress is its rows in place of the list.
   if (deskV2 && deskV2Mode === "progress") body = deskV2Progress(g);
   const head = deskV2 ? deskV2ListSwitch() : deskProgButtonHead();
   return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${head}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
-    ${deskQuickAdd()}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}${deskV2 && deskV2Mode === "progress" ? ":progress" : ""}">${body}</div></div>`;
+    ${deskQuickAdd()}${tabs}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}${deskV2 && deskV2Mode === "progress" ? ":progress" : ""}">${body}</div></div>`;
 }
 
 // ---------- the Queued list in your order (#387) ----------

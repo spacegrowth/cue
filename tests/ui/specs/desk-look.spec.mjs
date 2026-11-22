@@ -1,7 +1,7 @@
 // The Desk's look: the head strip, Run by, the lead's card, the session rows and their dots, the Working group,
 // and Commit to main on a row.
 import { test, expect, openDesk } from "./cue.mjs";
-import { listOrder, crewNotLead, blinkOf, boxOf, openDone } from "./desk.mjs";
+import { listOrder, crewNotLead, blinkOf, boxOf, openDone, openSessions } from "./desk.mjs";
 
 // ---------- the left column's head and rows (#153: option B) ----------
 
@@ -13,9 +13,12 @@ const liveCss = (page, sel, ...props) => page.evaluate(([sel, ps]) => { const c 
 test("the head is one strip in the accent, flush across the card's top: the name (a switcher), its meta, then the lead's card in it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const left = page.locator(".dk-sessions"), strip = left.locator(".dk-strip");
   await expect(strip).toHaveCount(1);
-  await expect(strip.locator("[data-desk-switch]")).toHaveCount(1);
+  // Switching Desks is the window header's now (#666): the strip leads with ‹ Items N, back to the list.
+  await expect(strip.locator("[data-desk-switch]")).toHaveCount(0);
+  await expect(strip.locator(".dk2b-items")).toHaveText(/^‹ Items \d+$/);
   await expect(strip.locator(".dk-sh b")).toHaveText("cue");
   await expect(strip.locator(".dk-sub")).toHaveText("1 session · 1 working");
   await expect(strip.locator("[data-desk-change]")).toHaveCount(1);
@@ -42,6 +45,7 @@ test("the head is one strip in the accent, flush across the card's top: the name
 test("Run by shows the current Dispatcher's accessible agent icon", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const runBy = page.locator(".dk-lcard");
   await expect(runBy.getByRole("img", { name: "Claude Code" })).toBeVisible();
   await cue.change((st) => {
@@ -60,6 +64,7 @@ test("Run by shows the current Dispatcher's accessible agent icon", async ({ pag
 test("Run by gives idle and its icons contrasting colors in both themes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     const lead = st.sessions.find((s) => s.session_id === "lead");
     Object.assign(lead, { state: "idle", harness: "codex" });
@@ -78,7 +83,10 @@ test("Run by gives idle and its icons contrasting colors in both themes", async 
     expect(await liveCss(page, ".dk-lcard .dk-ric svg", "color")).toEqual([ink]);
     expect(await liveCss(page, ".dk-lcard .dk-sren", "color")).toEqual([ink]);
     expect(await liveCss(page, '.dk-lcard [role="img"][aria-label="Codex"]', "background-color", "color")).toEqual([ink, surface]);
+    // Another session's chat takes the list's place (#666): back in the list, the card isn't the open one.
     await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
+    await page.locator(".dk-right .dk-ph .dk-back").first().click();
+    await expect(page.locator('.dk-sessions [data-desk-chat-of="host"]')).toHaveClass(/\bon\b/);
     await expect(card).not.toHaveClass(/\bon\b/);
     const [statusInk] = await liveCss(page, ".dk-lcard .dk-st", "color");
     expect((await liveCss(page, ".dk-lcard .dk-st i.idle", "box-shadow"))[0]).toContain(statusInk);
@@ -88,6 +96,7 @@ test("Run by gives idle and its icons contrasting colors in both themes", async 
 test("the lead's card in the strip: a Lead pill, its state and the item it holds; open, lit lime as any open row, in both themes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const lead = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');
   await expect(lead.locator(".dk-larrow")).toHaveText("›");   // open, so it has the › (#219)
   // Pick M1 (#446): no "Run by" head; "Lead" in a lime pill right after its name, before its state.
@@ -104,6 +113,8 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   const pillBg = () => lead.locator(".dk-ltag").evaluate((el) => getComputedStyle(el).backgroundColor);
   const litPill = await pillBg();
   await page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first().click();
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();   // its chat took the list's place (#666): back
+  await expect(page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first()).toHaveClass(/\bon\b/);
   await expect(lead).not.toHaveClass(/\bon\b/);
   expect(await pillBg()).not.toBe(litPill);
   await expect(lead.locator(".dk-ltag")).toBeVisible();
@@ -126,6 +137,8 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   expect(bg).toBe("rgb(210, 222, 150)");
   // Another session's chat: the card goes back to white, that row lights in place.
   await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();   // its chat took the list's place (#666): back
+  await expect(page.locator('.dk-sessions [data-desk-chat-of="host"]')).toHaveClass(/\bon\b/);
   await expect(lead).not.toHaveClass(/\bon\b/);
   [bg, ring] = await cssOf(lead, "background-color", "box-shadow");
   expect(bg).toBe("rgb(255, 255, 255)");
@@ -144,6 +157,8 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   expect(onRing).toBe("none");
   const host = page.locator('.dk-sessions [data-desk-chat-of="host"]');
   await host.click();
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();   // back from its chat to the list (#666)
+  await expect(host).toHaveClass(/\bon\b/);
   await expect(lead).not.toHaveClass(/\bon\b/);
   const [offBg] = await cssOf(lead, "background-color");
   expect(offBg).not.toBe(onBg);
@@ -164,6 +179,7 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
 test("no line under the strip: the list starts right after it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await expect(page.locator(".dk-sessions .dk-sum")).toHaveCount(0);
   // The lead's working line (#263) is inside the strip, over the lead's card (#359): nothing between the strip and the list.
   // Never a "Needs your decision" block, even while a request waits (#431): the list right after the strip.
@@ -175,6 +191,7 @@ test("no line under the strip: the list starts right after it", async ({ page, c
 test("the lead's card is a session row's size: same padding, name, item line and indent (#269)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const lead = page.locator(".dk-strip .dk-lcard"), row = page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first();
   const look = (loc) => loc.evaluate((el) => {
     const c = getComputedStyle(el), nm = getComputedStyle(el.querySelector(".dk-nm")), s2 = el.querySelector(".dk-s2");
@@ -197,6 +214,7 @@ test("the lead's card is a session row's size: same padding, name, item line and
 test("the line under Run by is the chat's working light while the lead works, a plain lime line when idle (#263)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const lead = await page.locator(".dk-strip .dk-lcard").getAttribute("data-desk-lead-chat");
   const set = (state, extra = {}) => cue.change((st, a) => { Object.assign(st.sessions.find((x) => x.session_id === a.lead), { stuck_ms: 0, compacting_ms: 0, doing_ms: Date.now(), since_ms: Date.now(), ...a.v }); }, { lead, v: { state, ...extra } });
   const bar = page.locator(".dk-sessions .dk-lbar");
@@ -233,6 +251,7 @@ test("the line under Run by is the chat's working light while the lead works, a 
 test("a row's state dot sits after its name with its word: working blinks, waiting on you a still red dot, idle a hollow ring", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     const site = st.sessions.find((x) => x.session_id === "site");
     st.sessions.push({ ...site, session_id: "spare", project: "cue", name: "spare", state: "idle", thread: [] },
@@ -268,6 +287,7 @@ test("a row's state dot sits after its name with its word: working blinks, waiti
 test("under each session's name: the item it holds with its kind's icon, lined up with the name", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const host = page.locator('.dk-sessions [data-desk-chat-of="host"]');
   await expect(host.locator(".dk-s2 svg.dk-kic")).toHaveCount(1);
   await expect(host.locator(".dk-s2 .dk-id")).toHaveText("Bug #d5");
@@ -280,6 +300,7 @@ test("under each session's name: the item it holds with its kind's icon, lined u
 test("done teammates fold under their lead as \"N done · show\", opened in place; done but not committed stays out, tagged", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     const lead = st.sessions.find((x) => x.session_id === "lead"), t = Date.now(), base = lead.team[0];
     const mate = (agent_id, name, state) => ({ ...base, agent_id, call: agent_id, name, state, what: `${name}'s work`, step: "", ended_ms: t - 60000 });
@@ -321,6 +342,7 @@ test("done teammates fold under their lead as \"N done · show\", opened in plac
   await openDesk(page);
   await cue.change((st) => { const lead = st.sessions.find((x) => x.session_id === "lead"); lead.team.push({ ...lead.team[0], agent_id: "id-a", call: "id-a", name: "old-a", state: "committed" }); });
   await crewNotLead(cue);
+  await openSessions(page);
   await expect(left.locator('[data-desk-done-fold="lead"]')).toHaveAttribute("aria-expanded", "true");
   await expect(left.locator('[data-desk-crew="id-a"]')).toBeVisible();
 });
@@ -333,12 +355,20 @@ test("selecting a session lights nothing on the right: it can hold several items
   const ys = () => items.locator("[data-desk-item]").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().y)));
   const top = await ys();
   await expect(items.locator(".dk-it.on")).toHaveCount(0);
+  // A session opened from All sessions (#666), on the right in the list's place; back to the Items: none lit, none moved.
+  await openSessions(page);
   await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
   await expect(page.locator('.dk-right [data-desk-chat="host"]')).toHaveCount(1);
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();
+  await page.locator(".dk-sessions .dk-back").click();
+  await expect(items.locator("[data-desk-item]").first()).toBeVisible();
   await expect(items.locator(".dk-it.on")).toHaveCount(0);
   expect(await listOrder(page)).toEqual(before);
   expect(await ys()).toEqual(top);
+  // The lead's card picked: still none.
+  await openSessions(page);
   await page.locator('.dk-sessions [data-desk-lead-chat="lead"]').click();
+  await page.locator(".dk-sessions .dk-back").click();
   await expect(items.locator(".dk-it.on")).toHaveCount(0);
 });
 
@@ -381,6 +411,7 @@ test("the lead's box takes pictures and has the mic, as a session's chat box doe
 test("working sessions show first in a Working group; a session moves when its state changes, never on a click", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   // spare on this Desk: only its own sessions go up to Working (#189).
   await cue.change((st) => { st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", state: "idle", thread: [] }); st.desk.projects.find((d) => d.project === "cue").members.push("spare"); });
   const left = page.locator(".dk-sessions");
@@ -388,8 +419,9 @@ test("working sessions show first in a Working group; a session moves when its s
     : `${el.matches(".crew") ? "  " : ""}${el.dataset.deskLeadChat || el.dataset.deskChatOf || el.dataset.deskCrew}`));
   const before = ["# Working", "host", "# Idle", "spare"];
   await expect.poll(order).toEqual(before);
-  // A click lights a row where it is.
+  // A click lights a row where it is (its chat took the list's place, #666: back to see it).
   await left.locator('[data-desk-chat-of="spare"]').click();
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();
   await expect(left.locator('[data-desk-chat-of="spare"]')).toHaveClass(/\bon\b/);
   expect(await order()).toEqual(before);
   // spare starts work: it moves up to Working, after host; host stops: it leaves Working for Idle.
@@ -402,6 +434,7 @@ test("working sessions show first in a Working group; a session moves when its s
 test("an idle session whose crew is at work is listed under Working, its working crew first, never below idle sessions", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     st.sessions.find((x) => x.session_id === "host").state = "idle";
     st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", state: "idle", thread: [],
@@ -512,7 +545,7 @@ test("Commit to main on an item whose file another session is editing: done at o
   await expect(line).toContainText('Commit not made: Not committed: "x" is in ui/send.js');
 
   await cue.change((s) => { const i = s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2"); Object.assign(i, { state: "to_check", commit: "", commit_wait: null, files: [] }); });
-  await page.locator(".dk-back").click();   // the Items list is back once the item's page closes (#418)
+  await page.locator(".dk-right .dk-back").click();   // the Items list is back once the item's page closes (#418)
   await page.locator('[data-desk-item="d2"] .dk-ok').click();
   await expect(page.locator(".toast").last()).toContainText("Done");
   await expect(page.locator('[data-desk-item="d2"] .dk-cm')).toHaveCount(0);

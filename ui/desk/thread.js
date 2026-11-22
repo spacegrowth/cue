@@ -252,7 +252,9 @@ function deskItemPane(i, d, foot = "") {
     : tab === "record" ? deskItemRecord(steps)
     : tab === "files" ? (files ? deskSec(checking ? "Files changed" : deskDiffs.get(i.id)?.files?.length ? "Changed so far" : "Files it's on", files) : `<p class="dk-note">No files on it yet.</p>`)
     : `${s ? deskItemChat(i, d, s) : deskThreadHtml(thread, `${i.project}|${i.id}`)}<div class="dk-inow">${at}</div>`;
-  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}">${deskV2 ? deskV2ItemTop(i, d, tab) : ""}<div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}${s && tab === "thread" ? `<span class="grow"></span>${chatModeSwitch(s.session_id, body)}` : ""}</div></div>
+  // Today's page (B2, desk/b2.js): its steps, who, what it's doing, tests and what's next over its tabs, scrolling with
+  // its page (as the new page's top does) so the tabs stay pinned over what they show.
+  const main = `<div class="dk-pane dk-ipane${s && tab === "thread" ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}">${deskV2 ? deskV2ItemTop(i, d, tab) : deskB2On() ? deskB2ItemTop(i, d) : ""}<div class="dk-ihead"><div class="dk-itabs" role="tablist">${feat ? tabBtn("pieces", "Pieces", i.pieces.length) : ""}${tabBtn("thread", "Chat", null)}${tabBtn("record", "Record", steps.length)}${tabBtn("decisions", "Decisions", decs.filter((c) => !c.minor).length)}${tabBtn("files", "Files", nFiles)}${s && tab === "thread" ? `<span class="grow"></span>${chatModeSwitch(s.session_id, body)}` : ""}</div></div>
     <div class="dk-ibody dk-itab-${tab}">${body}</div></div>`;
   // Its holder's chat from when it took the item (#575); an item from before stints were kept, all of it, folded.
   const span = (i.stints || []).some((t) => t.sid === s?.session_id) ? (deskStintLeft(i, s.session_id) ? "while it had this item" : "from when it took this item") : "other items' turns folded";
@@ -672,7 +674,8 @@ function deskCrewPane(lead, agent, d, foot = "") {
     ${deskSec(`Doing${t.started_ms ? ` <span class="dk-csp">${esc(mateSpan(t))}</span>` : ""}`, doing)}
     ${deskSec("Why", why)}
     ${deskSec("Result", result)}</div>`;
-  return deskPage({ page: "crew", kind: "crew", back: deskBack(leadName, lead), mark: "Crew · ", title: esc(t.name),
+  const back = deskOpen?.kind === "crew" && deskOpen.from?.kind === "sessions" ? `<button class="dk-back" data-desk-chat-back>‹ All sessions</button>` : deskBack(leadName, lead);
+  return deskPage({ page: "crew", kind: "crew", back, mark: "Crew · ", title: esc(t.name),
     meta: `in <b>${esc(leadName)}</b>'s crew${it?.title || t.what ? ` · on <b>${esc(it?.title || t.what)}</b>` : ""} · ${esc(mateSpan(t))}`,
     now: deskPnow({ dot, word, say, acts: `${stop}${more}`, fold: `in ${esc(leadName)}'s crew` }),
     panel: who + deskCrewFiles(lead, t), main, foot });

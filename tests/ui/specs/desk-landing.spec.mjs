@@ -27,11 +27,11 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   const at = Date.now(), since = await page.evaluate((t) => clockAt(t), at);
   await patchItem(cue, "d5", { state: "finishing", tree: tree("d5"), finish: { step: "line", wait: "The main line kept moving", at } });
   // In the Landing lane (#346), its row short after its holder; its page has the step in full.
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Waits: The main line kept moving · 0s");
+  await expect(row.locator(".dk-who")).toHaveText("Waits: The main line kept moving · 0s");
   await patchItem(cue, "d5", { finish: { step: "line", at } });
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Next to land · 0s");
+  await expect(row.locator(".dk-who")).toHaveText("Next to land · 0s");
   await patchItem(cue, "d5", { finish: { step: "checking", at } });
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Checking · 0s");
+  await expect(row.locator(".dk-who")).toHaveText("Checking · 0s");
   const pane = await openItem(page, "d5");
   await expect(pane).toContainText(`Checking before it lands · since ${since}`);
   // No commit wait any more: nothing to ask of another session, nothing to land without.

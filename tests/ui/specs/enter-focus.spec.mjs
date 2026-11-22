@@ -84,14 +84,16 @@ test("a Desk item's box: opening it puts the cursor there; composing Enter never
   await enterKeys(page, cue, box, "desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): keep the old one" });
 });
 
-test("a Desk item opened from the keyboard keeps the keys on its row; one opened by a click puts them in its box", async ({ page, cue }) => {
+// The item opens in the list's place (B2, #666): its row is gone, so the keys stay on its page's way back, not its box.
+test("a Desk item opened from the keyboard keeps the keys out of its box; one opened by a click puts them there", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const row = page.locator('.dk-items [data-desk-item="d6"]');
   await row.focus();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".dk-pg h1")).toContainText("Tidy the Settings copy");
-  await expect(row).toBeFocused();
+  await expect(page.locator(".dk-right .dk-pg h1")).toContainText("Tidy the Settings copy");
+  await expect(page.locator(".dk-right .dk-ph [data-desk-back]")).toBeFocused();
+  await page.keyboard.press("Enter");
   await page.locator('.dk-items [data-desk-item="d5"]').click();
   await expect(page.locator(".dk-right .dk-box textarea")).toBeFocused();
 });

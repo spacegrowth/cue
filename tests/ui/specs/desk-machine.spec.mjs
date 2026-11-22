@@ -1,7 +1,7 @@
 // Sessions and items on another machine: the machine's label beside the holder's name (on an item's row, its page and
 // the Desk's sessions list; nothing for this Mac), and an item worked there says how that machine is doing in one quiet
 // line: not answering for how long, what it waits for, when it last pushed.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 
 test("a holder on another machine shows the machine, and its item says how that machine is doing", async ({ page, cue }) => {
   await cue.open("desk");
@@ -20,9 +20,12 @@ test("a holder on another machine shows the machine, and its item says how that 
   const mine = page.locator('.dk-it[data-desk-item="d2"]');
   await expect(mine.locator(".mach")).toHaveCount(0);
   await expect(mine.locator(".dk-rmt")).toHaveCount(0);
-  // The sessions list: the label on the session there, none on the lead's card here.
+  // The sessions list (All N sessions, on the right in the list's place): the label on the session there, none on
+  // the lead's card here.
+  await deskAllSessions(page);
   await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-s1 .mach')).toHaveText("remote-1");
   await expect(page.locator(".dk-sessions .dk-lcard .mach")).toHaveCount(0);
+  await page.locator(".dk-sessions .dk2b-items").click();
   // Its page: the label by its holder's name, the machine's line under it.
   await row.click();
   const right = page.locator(".dk-right");
@@ -34,6 +37,8 @@ test("a holder on another machine shows the machine, and its item says how that 
   // Quiet, and nothing of it was ever pushed (#598): its work is only there, and the item says so.
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: Date.now() - 31 * 60000, pushed_at: 0, sha: "" }));
   await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
+  // Its row, back in the list (‹ Items N: the item opens in the list's place).
+  await right.locator(".dk2b-items").click();
   await expect(row.locator(".dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
   await expect(page.locator(".dk-rmt[title], .dk-rmt [title]")).toHaveCount(0);
 });
@@ -63,11 +68,14 @@ test("an item nobody has yet shows where it will start, and you can choose anoth
   // This Mac: chosen, and the card's machine goes.
   await seg.locator('[data-desk-start-on=""]').click();
   await expect(seg.locator('[data-desk-start-on=""]')).toHaveAttribute("aria-checked", "true");
+  // Back in the list (the item opens in its place): the card's machine has gone.
+  await right.locator(".dk2b-items").click();
   await expect(row.locator(".mach")).toHaveCount(0);
   // An item someone has: no choice, it stays where it is.
   await page.locator('.dk-it[data-desk-item="d5"] .dk-t').click();
   await expect(right.locator(".dk-pmeta").first()).toBeVisible();
   await expect(right.locator(".dk-starts")).toHaveCount(0);
+  await right.locator(".dk2b-items").click();
   await row.locator(".dk-t").click();
   await expect(page.locator(".dk-right .dk-pg")).toContainText("Runs on the box");
   await expect(seg).toBeVisible();
@@ -81,6 +89,7 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await cue.open("desk");
   await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = ms; }, machines);
   await openDesk(page);
+  await deskAllSessions(page);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const sec = dlg.locator('[data-ld-sec="machine"]');
@@ -97,6 +106,7 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   // Saved, it comes back as saved: reopened, gpu-1 with its folder.
   await dlg.locator('[data-ld="save"]').click();
   await expect(dlg).toHaveCount(0);
+  await deskAllSessions(page);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("/srv/cue");

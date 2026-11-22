@@ -2,7 +2,7 @@
 // session's chat, over its box), #477 (one click sends the phrase at once as its own message, repeat clicks never stack
 // it, a draft stays untouched; every chat with phrases), #488 (on an item to check a phrase is a note to its holder, the
 // item stays to check). The scenario's phrases: Commit, Go ahead, Think hard.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 
 const box = (page) => page.locator(".dk-right .dk-box textarea");
 const phrase = (page, p) => page.locator(`.dk-right .dk-box .quick .qp[data-phrase="${p}"]`);
@@ -35,6 +35,7 @@ test("a session's page: a phrase goes to that session at once, the draft stays, 
   await cue.open("desk");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "host").state = "waiting"; });
   await openDesk(page);
+  await deskAllSessions(page);
   await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
   await expect(page.locator('.dk-right .dk-pg[data-desk-page="session"]')).toHaveCount(1);
   await box(page).fill("the canvas, then");

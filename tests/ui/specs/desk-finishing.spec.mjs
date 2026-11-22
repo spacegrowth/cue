@@ -1,5 +1,5 @@
 // The Desk: an item finishing (Landing, install, a failed build), waiting rows, the panel, and the list's look.
-import { test, expect, pick, openDesk } from "./cue.mjs";
+import { test, expect, pick, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 import { listOrder, boxOf } from "./desk.mjs";
 
@@ -19,7 +19,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to check", "d2", "# Landing", "d5", "# In progress", "d3", "# Queue", "d4", "d6", "# Done", "d7", "d8", "d9"]);
   await expect(page.locator('.dk-items .dk-gh[data-lane="landing"] .dk-split')).toHaveText("one at a time");
   await expect(row.locator(".dk-rn")).toHaveText("1");
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Waits: The main checkout is in the middle of a merge · 3m");
+  await expect(row.locator(".dk-who")).toHaveText("Waits: The main checkout is in the middle of a merge · 3m");
   // Steady: no blinking dot; amber, not the red of an ask.
   await expect(row.locator(".dk-si .dk-blink")).toHaveCount(0);
   const amber = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--amber)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
@@ -38,7 +38,7 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
   expect(await listOrder(page)).toEqual(["# Waiting on you", "d1", "# Ready to check", "d2", "# Waiting to install", "d5", "# In progress", "d3", "# Queue", "d4", "d6", "# Done", "d7", "d8", "d9"]);
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999");
+  await expect(row.locator(".dk-who")).toHaveText("On main · abc9999");
   await expect(row.locator(".dk-rn")).toHaveCount(0);
   await expect(row.locator('[data-desk-act="install_now"]')).toHaveCount(0);
   // Skip on its row (#490, #645), no hover text.
@@ -82,20 +82,20 @@ test("a finishing item: amber and steady, out of In progress into Landing, then 
   await expect(pane.locator(".dk-pnow")).toContainText("On main · Install now: starts the moment the install under way ends");
   await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
   await expect(pane.locator('.dk-acts [data-desk-act="skip_install"]')).toHaveText("Skip");
-  await page.locator(".dk-back").click();
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · On main · abc9999 · installs next");
+  await page.locator(".dk-right .dk-back").click();
+  await expect(row.locator(".dk-who")).toHaveText("On main · abc9999 · installs next");
   await expect(head.locator(".dk-next")).toHaveText("next · starts the moment the install under way ends");
   await row.locator(".dk-t").click();
 
   await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: began } });
   await expect(pane.locator(".dk-pnow")).toContainText(`On main · building Cue · since ${since}`);
   await expect(page.locator('[data-desk-act="install_now"], [data-desk-act="skip_install"]')).toHaveCount(0);
-  await page.locator(".dk-back").click();
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Building Cue");
+  await page.locator(".dk-right .dk-back").click();
+  await expect(row.locator(".dk-who")).toHaveText("Building Cue");
   await patchItem(cue, "d5", { finish: { step: "installing", commit: "abc9999", at: began } });
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Installing Cue");
+  await expect(row.locator(".dk-who")).toHaveText("Installing Cue");
   await patchItem(cue, "d5", { finish: { step: "starting", commit: "abc9999", at: began } });
-  await expect(row.locator(".dk-who")).toHaveText("host-lead · Cue is restarting");
+  await expect(row.locator(".dk-who")).toHaveText("Cue is restarting");
   expect(await listOrder(page)).toContain("# Waiting to install");
 });
 
@@ -158,7 +158,7 @@ test("Looks right on an item committed as it finished only closes it: its commit
   await openDesk(page);
   await patchItem(cue, "d2", { files: ["ui/a.js"], commit: "abc9999", finish: { step: "installed", commit: "abc9999", at: Date.now() } });
   const row = page.locator('.dk-items [data-desk-item="d2"]');
-  await expect(row.locator(".dk-who")).toHaveText("web-lead");
+  await expect(row.locator(".dk-who")).not.toContainText("web-lead");   // its row names no session (#666)
   await expect(row.locator(".dk-ok")).toHaveCount(1);
   await row.locator(".dk-t").click();
   const pane = page.locator(".dk-right .dk-pg");   // the item's page, its panel beside its chat (#418)
@@ -181,7 +181,7 @@ test("Looks right on an item committed as it finished only closes it: its commit
   await pane.locator('[data-desk-act="looks_right"]').click();
   await cue.called("desk_looks_right", { id: "d2" });
   await expect(page.locator(".toast").last()).toHaveText("Committed abc9999");
-  await page.locator(".dk-back").click();   // the Items list, behind ‹ Items while the item is open (#418)
+  await page.locator(".dk-right .dk-back").click();   // the Items list, behind ‹ Items while the item is open (#418)
   await expect(row).toHaveClass(/\bdk-done\b/);
 });
 
@@ -240,7 +240,7 @@ test("each waiting row says what to do in one line, and what it unblocks; the mo
   const head = page.locator(".dk-panel[data-side-for] .dk-pnow");
   await expect(head.locator(".dk-pickl")).toHaveText("Pick: Phrases left or right of Send?");
   await expect(head.locator(".dk-iub")).toHaveText("unblocks #d4, #d10, #d6 +1 more");
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
   await page.locator('[data-desk-item="d3"]').click();
   await expect(head.locator(".dk-pword")).toHaveText("Stopped");
 });
@@ -265,26 +265,35 @@ test("Hide panel folds the panel for that kind of page and is remembered; a narr
   await page.setViewportSize({ width: 1512, height: 945 });
   await cue.open("desk");
   await openDesk(page);
-  const pg = page.locator(".dk-right .dk-pg");
+  // The lead's page is the chat card at the left (B2, #666), its panel hidden behind Show panel as it opens: shown,
+  // then hidden again with Hide panel, which is remembered.
+  const pg = page.locator(".dk2b-chat .dk-pg");
   await expect(pg).toHaveAttribute("data-desk-page", "dispatcher");
+  // (Hidden by default there, so what's remembered is that it's shown: "dispatcher-shown".)
+  const kept = () => page.evaluate(() => JSON.parse(localStorage.getItem("cue.deskPanelHidden")) || []);
+  await deskShowPanel(page);
   await expect(pg).not.toHaveClass(/\bhid\b/);
   await expect(pg.locator(".dk-panel").first()).toBeVisible();
+  expect(await kept()).toContain("dispatcher-shown");
   await pg.locator(".dk-ptog").click();
   await expect(pg).toHaveClass(/\bhid\b/);
   await expect(pg.locator(".dk-ptog")).toHaveText("Show panel");
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cue.deskPanelHidden")))).toContain("dispatcher");
-  // A session's chat is another kind: its panel still shows.
+  expect(await kept()).not.toContain("dispatcher-shown");
+  // A session's chat is another kind: its panel still shows. It opens on the right, from All N sessions.
+  await deskAllSessions(page);
   await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
-  await expect(pg).not.toHaveAttribute("data-desk-page", "dispatcher");
-  await expect(pg).not.toHaveClass(/\bhid\b/);
-  await expect(pg.locator(".dk-ptog")).toHaveText("Hide panel");
+  const side = page.locator(".dk-right .dk-pg");
+  await expect(side).toHaveAttribute("data-desk-page", "session");
+  await expect(side).not.toHaveClass(/\bhid\b/);
+  await expect(side.locator(".dk-ptog")).toHaveText("Hide panel");
   // An item's page has its own panel beside its chat, and its own Hide panel (#418).
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
+  await page.locator('.dk-sessions .dk2b-items').click();
   await page.locator('[data-desk-item="d4"]').click();
   await expect(page.locator(".dk-panel[data-side-for]")).toBeVisible();
-  await expect(pg.locator(".dk-ptog")).toHaveText("Hide panel");
-  // The Dispatcher again: still folded; Show panel brings it back.
-  await page.locator(".dk-back").click();
+  await expect(side.locator(".dk-ptog")).toHaveText("Hide panel");
+  // The Dispatcher, beside it all along: still folded; Show panel brings it back.
+  await page.locator(".dk-right .dk-back").click();
   await expect(pg).toHaveAttribute("data-desk-page", "dispatcher");
   await expect(pg).toHaveClass(/\bhid\b/);
   await pg.locator(".dk-ptog").click();
@@ -309,18 +318,21 @@ test("a stopped item's row, open or not, keeps its full-size icon and its kind, 
     return { icon: [si.width, si.height], lines: Math.round(i1.height / parseFloat(getComputedStyle(el.querySelector(".dk-i1")).lineHeight)), under: i2.top >= i1.bottom - 1, sameLeft: Math.abs(i2.left - i1.left) < 1 };
   });
   await expect(row).toHaveClass(/dk-stop/);
-  expect(await shape()).toEqual({ icon: [14, 14], lines: 3, under: true, sameLeft: true });
+  // Its long title wraps (2 lines in B2's wider list, #666; 3 in the old narrow one).
+  const was = await shape();
+  expect(was).toEqual({ icon: [14, 14], lines: 2, under: true, sameLeft: true });
   // Opened, the list goes behind ‹ Items (#418); back, the row is as it was.
   await row.click();
   await expect(page.locator('.dk-panel[data-side-for="d3"]')).toBeVisible();
-  await page.locator(".dk-back").click();
+  await page.locator(".dk-right .dk-back").click();
   await expect(row).toBeVisible();
-  expect(await shape()).toEqual({ icon: [14, 14], lines: 3, under: true, sameLeft: true });
+  expect(await shape()).toEqual(was);
 });
 
 test("the Desk list's › sits only on the open row or card and moves with it, in both themes (#219)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);   // the sessions open on the right, from All N sessions (#666)
   const left = page.locator(".dk-sessions");
   const arrows = left.locator(".dk-larrow, .dk-go");
   // host-lead not working: on a working session's chat Esc is its Stop first (#494, desk-esc.spec.mjs).
@@ -331,13 +343,16 @@ test("the Desk list's › sits only on the open row or card and moves with it, i
     // The lead's chat shows: the Run by card alone has it.
     await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
     expect(await owner()).toEqual([["lead", true]]);
-    // Open another session: the › goes with it, none on the Run by card.
+    // Open another session: its chat takes the list's place (#666); back in the list, the › went with it, none on the
+    // Run by card.
     await left.locator('[data-desk-chat-of="host"]').click();
+    await expect(page.locator('.dk-right [data-desk-chat="host"]')).toHaveCount(1);
+    await page.keyboard.press("Escape");
     await expect(left.locator('[data-desk-chat-of="host"]')).toHaveClass(/\bon\b/);
     expect(await owner()).toEqual([["host", true]]);
     await expect(left.locator('[data-desk-lead-chat="lead"] .dk-larrow')).toHaveCount(0);
     // Back to the lead's: back on its card.
-    await page.keyboard.press("Escape");
+    await left.locator('[data-desk-lead-chat="lead"]').click();
     await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
     expect(await owner()).toEqual([["lead", true]]);
   }
@@ -346,6 +361,7 @@ test("the Desk list's › sits only on the open row or card and moves with it, i
 test("the Desk's session list: one hairline above each session but a group's first; crew and N done stay in its block; none at the end, open or not (#225)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await cue.change((st) => {
     const base = st.sessions.find((x) => x.session_id === "site");
     const m = (name, state, extra = {}) => ({ also: [], ended_ms: 0, files: [], summary: "", state, agent_id: `id-${name}`, call: `c-${name}`, name, what: "Check the build", asked: "", started_ms: 1793983560000, ...extra });
@@ -371,11 +387,14 @@ test("the Desk's session list: one hairline above each session but a group's fir
   for (const scheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: scheme });
     expect(await lines()).toEqual(want);
-    // Opening a session leaves the lines as they were, above it and under it.
+    // Opening a session leaves the lines as they were, above it and under it: its chat takes the list's place (#666),
+    // and back in the list its row is the lit one.
     await left.locator('[data-desk-chat-of="s-c"]').click();
+    await expect(page.locator('.dk-right [data-desk-chat="s-c"]')).toHaveCount(1);
+    await page.keyboard.press("Escape");
     await expect(left.locator('[data-desk-chat-of="s-c"]')).toHaveClass(/\bon\b/);
     expect(await lines()).toEqual(want);
-    await page.keyboard.press("Escape");
+    await left.locator('[data-desk-lead-chat="lead"]').click();
   }
   // No line closing the list: the last row draws none under it.
   expect(await left.locator(".dk-scroll > :last-child").evaluate((el) => [getComputedStyle(el).borderBottomWidth, getComputedStyle(el).boxShadow.includes("-1px")])).toEqual(["0px", false]);
@@ -387,6 +406,7 @@ test("the Desk panel's buttons are sized to their words; Stop is small and quiet
   await openDesk(page);
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
   await page.evaluate(() => { state.sessions.find((s) => s.name === "host-lead").state = "working"; renderMain(); });
+  await deskAllSessions(page);
   await page.locator('.dk-sessions .dk-srow:not(.crew)', { hasText: "host-lead" }).first().click();
   const sp = page.locator('.dk-right .dk-pg[data-desk-page="session"]');
   const now = sp.locator(".dk-pnow");
@@ -430,7 +450,7 @@ test("an item shows ready only once its work is on main: until then it says wher
   const at = Date.now(), since = await page.evaluate((t) => clockAt(t), at);
   await patchItem(cue, "d5", { state: "finishing", finish: { step: "landing", wait: "on side, not main", at } });
   const d5 = page.locator('.dk-items [data-desk-item="d5"]');
-  await expect(d5.locator(".dk-who")).toHaveText("host-lead · Not on main yet · on side, not main · 0s");
+  await expect(d5.locator(".dk-who")).toHaveText("Not on main yet · on side, not main · 0s");
   await expect(d5.locator(".dk-ok")).toHaveCount(0);
   // To check with its files uncommitted (its session on another machine): no ✓ on its row; its page says it isn't on
   // main and its button commits it there.
@@ -445,7 +465,7 @@ test("an item shows ready only once its work is on main: until then it says wher
   await patchItem(cue, "d2", { finish: { step: "checked", commit: "abc1234", at: Date.now() }, commit: "abc1234" });
   await expect(now.locator(".dk-pword")).toHaveText("Ready to check");
   await expect(now.locator('[data-desk-act="looks_right"]')).toHaveText("Close");
-  await page.locator(".dk-back").click();   // its row in the Items list, behind ‹ Items while it's open (#418)
+  await page.locator(".dk-right .dk-back").click();   // its row in the Items list, behind ‹ Items while it's open (#418)
   await expect(d2.locator(".dk-ok")).toHaveCount(1);
 });
 

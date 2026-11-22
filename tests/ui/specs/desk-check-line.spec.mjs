@@ -148,10 +148,12 @@ test("no line from its session: Cue's words, its You'll see to try, else that no
   await expect(b.locator(".dk-cks")).toHaveText(`Cue's words: web-lead didn't say what to try, so this is its You'll see · ${since.replace(/^In/, "in")}`);
   // No You'll see either.
   await patchItem(cue, "d2", { see: "" });
-  await expect(row.locator(".dk-h")).toHaveText(`${since} · Nothing said what to try: Send back to ask its session · Cue's words`);
   await expect(b.locator(".dk-ckl")).toHaveText("Nothing said what to try: Send back to ask its session");
   await expect(b.locator(".dk-cks")).toHaveText(`Cue's words: web-lead didn't say what to try · ${since.replace(/^In/, "in")}`);
   await expect(b.locator(".dk-pacts button")).toHaveText(["Close", "Send back"]);
+  // Its row says so too, in the Items list (‹ Items: the item's page took the list's place, #666).
+  await page.locator(".dk-right .dk-ph .dk-back").first().click();
+  await expect(row.locator(".dk-h")).toHaveText(`${since} · Nothing said what to try: Send back to ask its session · Cue's words`);
 });
 
 test("the steps in dark: their words in the dark theme's ink (#668)", async ({ page, cue }) => {

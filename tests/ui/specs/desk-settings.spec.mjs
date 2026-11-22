@@ -1,13 +1,14 @@
 // A project's settings on one screen (#381, lands.js): how work lands, Ask me before and old working folders, saved
 // together when you press Save (#600); Cancel drops them, and leaving with changes unsaved asks first. Opened from the Desk header's one Change link (#417); Away is on the Desk's own switch. The lead can propose a change in
 // plain words: it shows as its ask, and only your Yes saves it (desk/hub/lead/lands.rs); the screen shows it after.
-import { test, expect, openDesk } from "./cue.mjs";
+import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 
 const lands = (page) => page.locator(".dk-strip .dk-ab");
 
 test("the screen has its parts, no Away, Ask me before on one line, and Esc at its top right as Settings has (#417, #447)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".ld-h")).toHaveText(["How work lands", "Ask me before", "Old working folders"]);
@@ -30,6 +31,7 @@ test("the screen has its parts, no Away, Ask me before on one line, and Esc at i
   await expect(lands(page).locator(".dk-ab-words")).toContainText(/^Asks .* · lands in /);
   await expect(page.locator(".dk-strip [data-ab-change]")).toHaveCount(0);
   await expect(page.locator(".dk-strip button", { hasText: "Change" })).toHaveCount(1);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
   await expect(page.locator(".ab-dialog")).toHaveCount(0);
@@ -44,6 +46,7 @@ test("the screen has its parts, no Away, Ask me before on one line, and Esc at i
   await x.click();
   await expect(dlg).toHaveCount(0);
   // A click outside closes it too, as on Settings; a click inside doesn't.
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   await dlg.locator(".ld-intro").click();
   await expect(dlg).toHaveCount(1);
@@ -54,6 +57,7 @@ test("the screen has its parts, no Away, Ask me before on one line, and Esc at i
 test("the screen is built as Settings is: the same sheet, its title and Esc on one line, its groups headed the same way (#447)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await page.keyboard.press("Meta+,");
   const set = page.locator(".scrim > .sheet");
   await expect(set.locator(".sheet-head h3")).toHaveText("Settings");
@@ -64,6 +68,7 @@ test("the screen is built as Settings is: the same sheet, its title and Esc on o
   const theirs = await look(set);
   await page.keyboard.press("Escape");
   await expect(set).toHaveCount(0);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".sheet-head kbd")).toHaveText("Esc");
@@ -74,6 +79,7 @@ test("the screen is built as Settings is: the same sheet, its title and Esc on o
 test("your own check: steps one per line, saved in order with a tick by one Save, and the screen closes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const check = dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: "Check before landing" }) });
@@ -100,7 +106,9 @@ test("your own check: steps one per line, saved in order with a tick by one Save
 test("a tick that can't be saved says so on Save; the screen stays with it ticked", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await cue.override("ask_before_set", () => { throw "offline"; });
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await dlg.locator('[data-ab-kind="release"]').click();
@@ -114,6 +122,7 @@ test("a tick that can't be saved says so on Save; the screen stays with it ticke
 test("the lead's proposed change is its ask; it shows on the screen only after your Yes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   const q = "Change how work lands on cue: check → none?";
   await cue.change((st, q) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
@@ -128,6 +137,7 @@ test("the lead's proposed change is its ask; it shows on the screen only after y
   await ask.locator("[data-pick]", { hasText: "Yes" }).click();
   await ask.locator('[data-act="submit-answers"]').click();
   expect((await cue.called("respond")).args.id).toBe("n-lands-ask");
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const check = page.locator(".ld-dialog .ld-row", { has: page.locator(".ld-label", { hasText: "Check before landing" }) });
   await expect(check.locator("button.on")).toHaveText("None");
@@ -137,6 +147,7 @@ test("the settings line is under the counts at the top left, its words then one 
   await page.setViewportSize({ width: 520, height: 800 });
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   const link = lands(page).locator("[data-lands-change]"), sub = page.locator(".dk-strip .dk-sub"), words = lands(page).locator(".dk-ab-words");
   await expect(link).toHaveText("Change");
   await expect(words).toHaveText("Asks before push to main · lands in own copy, checked, one commit per item");
@@ -158,6 +169,7 @@ test("the settings screen is short: it fits a 900-high window without scrolling 
   await page.setViewportSize({ width: 1100, height: 900 });
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".ld-steps li b")).toHaveText(["Build", "Rust tests", "Window loads"]);
@@ -169,6 +181,7 @@ test("the settings screen is short: it fits a 900-high window without scrolling 
 test("Cancel drops what you changed; nothing is saved and the screen shows the setting as it was (#600)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const check = dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: "Check before landing" }) });
@@ -180,6 +193,7 @@ test("Cancel drops what you changed; nothing is saved and the screen shows the s
   await expect(dlg).toHaveCount(0);
   expect(await cue.calls("desk_lands_set")).toHaveLength(0);
   expect(await cue.calls("ask_before_set")).toHaveLength(0);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   await expect(check.locator("button.on")).toHaveText("Cue's own check");
   await expect(dlg.locator(".ld-n")).toHaveText("3");
@@ -195,6 +209,7 @@ test("Cancel drops what you changed; nothing is saved and the screen shows the s
 test("leaving with changes unsaved asks first: Esc, its Esc or a click outside; Keep editing, Discard or Save (#600)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await dlg.locator('[data-ld="less"]').click();
@@ -218,6 +233,7 @@ test("leaving with changes unsaved asks first: Esc, its Esc or a click outside; 
   await expect(dlg).toHaveCount(0);
   expect(await cue.calls("desk_lands_set")).toHaveLength(0);
   // Again, and Save from the ask saves it and closes.
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   await expect(dlg.locator(".ld-n")).toHaveText("3");
   await dlg.locator('[data-ld="less"]').click();
@@ -235,6 +251,7 @@ test("changing where an item works while items are open says what happens to the
     d.items = [it("o1", "working"), it("o2", "to_check"), it("o3", "queued"), it("o4", "done")];
   });
   await openDesk(page);
+  await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const where = dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: "Where an item works" }) });

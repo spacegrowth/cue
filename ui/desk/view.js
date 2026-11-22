@@ -4,7 +4,7 @@
 function deskBoxKey(to) {
   // An item's box keeps one key whoever it goes to (#437): a change of state mid-typing used to swap the box, and
   // what was in it was never sent.
-  const key = to.item ? `desk:${JSON.stringify([to.project || deskSelection(), to.item])}` : to.sid ? `desk-to:${JSON.stringify([to.sid, to.mate || "", ...(to.item ? [to.item] : [])])}` : `desk:${JSON.stringify([to.project, to.item || ""])}`;
+  const key = to.item ? `desk:${JSON.stringify([to.project || deskSelection(), to.item])}` : to.sid ? `desk-to:${JSON.stringify([to.sid, to.mate || "", ...(to.item ? [to.item] : [])])}` : to.kept ? `desk-kept:${JSON.stringify([to.project, to.kept])}` : `desk:${JSON.stringify([to.project, to.item || ""])}`;
   deskBoxes.set(key, to);
   return key;
 }
@@ -13,9 +13,9 @@ function deskBoxKey(to) {
 const deskToLine = (who, i) => ({ pre: `To ${who || "the lead"}${i ? ` · ${deskNum(i)}` : ""}`, ph: i ? `${deskShort(i.title)}…` : "" });
 const deskPreHtml = (pre) => (pre ? `<span class="dk-pre" data-desk-pre="">${esc(pre)}</span>` : "");
 /** The box at the foot: to the Desk's lead (about the open item, named, when one is), or to an open holder (about its
- *  crew member, when one is). None without a live lead; a holder whose session has ended has none either. */
-function deskBox(d) {
-  const o = deskOpen;
+ *  crew member, when one is). None without a live lead; a holder whose session has ended has none either. `o` what's
+ *  open (null: the lead's own box, as B2's chat card always shows it, desk/b2.js). */
+function deskBox(d, o = deskOpen) {
   const lead = deskLeadName(d);
   // No lead, or one that has ended: no box to it (a holder's own box stays).
   if ((!deskLead(d) || deskLeadEnded(d)) && (!o || o.kind === "item" || o.kind === "addon")) return "";
@@ -31,7 +31,8 @@ function deskBox(d) {
       pre = `To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}, who held it`;
       ph = "Write to it here…";
     }
-    else if (it?.kept) { to = { project: d.project }; ({ pre, ph } = deskToLine(lead, null)); }
+    // No live holder: to the lead, in a box of its own (B2 shows the lead's box beside this page: never one draft for two).
+    else if (it?.kept) { to = { project: d.project, kept: o.id }; ({ pre, ph } = deskToLine(lead, null)); }
     else if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
       to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
       pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
@@ -71,8 +72,16 @@ function deskItemFoot(i, d) {
   return boxHtml({ key, top: deskPreHtml(line.pre), placeholder: line.ph, send: { attrs: `data-desk-send="${esc(key)}"` } });
 }
 function deskRight(project, taskApprovals) {
+  return deskOpenCard(project, taskApprovals) || deskRightChat(deskOf(project), taskApprovals);
+}
+/** What's open on the Desk (an item's page, a session's chat, a holder's, a crew member's, an add-on's pane) as its
+ *  card, or null with nothing open (or an item just added that Cue's state doesn't have yet). Today's Desk page (B2,
+ *  desk/b2.js) shows it on the right in the list's place; the new page (desk/v2.js) in the chat card's. */
+function deskOpenCard(project, taskApprovals) {
   const d = deskOf(project);
   const o = deskOpen;
+  // B2's All N sessions: the Desk's sessions, as the old left column listed them (desk/sessions.js).
+  if (o?.kind === "sessions") return deskB2On() ? deskSessions(project) : ((deskOpen = null), null);
   let body;
   // Each page takes its foot, the box under its own column (#200); the add-on's pane has it under the whole card.
   const item = o?.kind === "item" ? deskItemsWithRequests(d, taskApprovals).find((i) => deskIdIs(i, o.id)) || deskItem(project, o.id) : null;
@@ -82,7 +91,7 @@ function deskRight(project, taskApprovals) {
     const i = item;
     if (i) { delete o.fresh; body = deskItemPane(i, d, foot()); }
     // Just added: it opens once Cue's state has it (the chat shows till then); not there in a few seconds, it won't.
-    else if (o.fresh && now() - o.fresh < 5000) return deskRightChat(d, taskApprovals);
+    else if (o.fresh && now() - o.fresh < 5000) return null;
   }
   else if (o?.kind === "holder") body = deskHolderPane(o.sid, d, foot());
   // A reply open in Read: read-only, as in a session's chat, so no box under it (Reply brings it back).
@@ -96,8 +105,8 @@ function deskRight(project, taskApprovals) {
     if (body) tail = foot();
   }
   if (o && !body) deskOpen = null;
-  if (deskOpen) return `<div class="dk-card dk-right">${body}${tail}</div>`;
-  return deskRightChat(d, taskApprovals);
+  if (deskOpen) return `<div class="dk-card dk-right${deskB2On() ? " dk2b-side" : ""}">${body}${tail}</div>`;
+  return null;
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
  *  saying it ended), or Decisions. */
@@ -106,7 +115,10 @@ function deskRightChat(d, taskApprovals) {
   const tab = (t, label, n) => `<button class="dk-tab ${deskTab === t ? "on" : ""}" data-desk-tab="${t}" aria-pressed="${deskTab === t}">${label}${n ? `<span class="n">${n}</span>` : ""}</button>`;
   const ask = deskLeadEnded(d) ? null : deskLeadAsk(d);
   const rd = deskTab === "lead" && !deskLeadEnded(d) ? deskReader(deskLeadSession(d), ask) : null;
-  if (rd) return `<div class="dk-card dk-right">${rd}</div>`;
+  // B2 (desk/b2.js): the chat card is always the lead's; `.dk-right` names the card that shows what's open, so it's
+  // this one only while nothing else is.
+  const card = deskB2On() ? `dk-card dk2b-chat${deskB2Side() ? "" : " dk-right"}` : "dk-card dk-right";
+  if (rd) return `<div class="${card}">${rd}</div>`;
   const ended = deskLeadEnded(d);
   const main = deskTab === "decisions" ? deskDecisions(d) : deskTab === "moves" ? deskMoves(d) : deskTab === "away" ? deskAwayLog(d) : ended ? deskEndedLine(d) : deskChat(d);
   // One page (#200): the Desk's name for back (it's where you are), "Dispatcher · " and its lead's name; its chat and
@@ -114,7 +126,7 @@ function deskRightChat(d, taskApprovals) {
   // the sessions at work for it.
   const open = d.items.filter((i) => i.state !== "done" && i.state !== "dropped").length;
   const working = deskWorkingFor(d);
-  const meta = ["The Desk lead", `${open} ${open === 1 ? "item" : "items"}`, working.length ? `${working.length} ${working.length === 1 ? "session" : "sessions"} working for it` : ""].filter(Boolean).join(" · ");
+  const meta = ["The Desk lead", `${open} ${open === 1 ? "item" : "items"}`, working.length ? (deskB2On() ? `${working.length} working` : `${working.length} ${working.length === 1 ? "session" : "sessions"} working for it`) : ""].filter(Boolean).join(" · ");
   const waits = deskWaitingItems(d, taskApprovals);
   const why = (i) => (i.state === "needs_you" ? (i.ask?.kind === "permission" ? "Asks to use a tool" : "Asks you something") : "Ready to check");
   const waitRows = waits.map((i) => `<button class="dk-prow" data-desk-chk-item="${esc(i.id)}"><i class="dk-pdot ${i.state === "needs_you" ? "ask" : "check"}" aria-hidden="true"></i><span class="dk-prt">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b></span><span class="dk-prs">${esc(why(i))} · ${ago(deskMs(i.updated))}</span></button>`).join("");
@@ -126,9 +138,11 @@ function deskRightChat(d, taskApprovals) {
   const panel = deskPsec(`Waits on you · ${waits.length + (ask ? 1 : 0)}`, leadAsk || waitRows ? `<div class="dk-prows">${leadAsk}${waitRows}</div>` : "")
     + deskPsec("Just did", did ? `<div class="dk-prows">${did}<button class="dk-pall" data-desk-tab="moves">More</button></div>` : "")
     + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
-  const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d);
-  return `<div class="dk-card dk-right">${deskPage({ page: "dispatcher", kind: "desk", back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, acts: deskV2 ? deskV2ChatsMenu(d) : "", mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
-    now: deskLeadNow(d, waits, working, ask), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Dispatcher Actions", 0)}${tab("away", "Away", 0)}${deskTab === "lead" && !ended ? `<span class="grow"></span>${chatModeSwitch(deskLead(d)?.sid, main)}` : ""}</div>${main}`, foot })}</div>`;
+  const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d, deskB2On() ? null : deskOpen);
+  // B2: with the panel hidden (as it opens), Now and Waits on you are the strip over the chat (deskB2Strip).
+  const strip = deskB2On() && deskPanelHidden("dispatcher");
+  return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, acts: deskV2 ? deskV2ChatsMenu(d) : "", mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
+    now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Dispatcher Actions", 0)}${tab("away", "Away", 0)}${deskTab === "lead" && !ended ? `<span class="grow"></span>${chatModeSwitch(deskLead(d)?.sid, main)}` : ""}</div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. */
 const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && deskSessBusy(sessionOf(r.sid))).map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
@@ -184,7 +198,10 @@ function deskView() {
   const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
   // The new Desk page (#628, desk/v2.js): no sessions column, Desks in its head, Progress in the list.
   if (deskV2) return `<div class="board dk-board dk-v2">${deskV2Head(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskList(project, taskApprovals)}${deskV2Drawer(project)}</div>${deskAwayHtml()}`;
-  return `<div class="board dk-board">${deskSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskList(project, taskApprovals)}${prog}</div>${deskAwayHtml()}`;
+  // Today's page, B2 (#666, desk/b2.js): the lead's chat at the left, always; at the right the item list, or in its
+  // place what's open (‹ Items N goes back).
+  const side = deskOpenCard(project, taskApprovals) || deskList(project, taskApprovals);
+  return `<div class="board dk-board dk-b2">${deskAwayBackIn(deskRightChat(deskOf(project), taskApprovals))}${deskAwayBackIn(side)}${prog}</div>${deskAwayHtml()}`;
 }
 /** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
  *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,
@@ -230,8 +247,11 @@ function deskFocusOpened() {
   if (k === deskBoxShown) return;
   deskBoxShown = k;
   const a = document.activeElement;
-  if (!k || sheet || a?.matches?.("input, textarea, select, [contenteditable]")) return;
-  if (a?.closest?.(".dk-board") && a.matches('[role="button"]') && deskKeyAt > pointedAt) return;   // keys, not a click
+  // B2 (desk/b2.js): the lead's box stays on screen as something opens beside it; what opened takes the cursor still.
+  const lead = deskB2Side() && a?.closest?.(".dk2b-chat");
+  if (!k || sheet || (a?.matches?.("input, textarea, select, [contenteditable]") && !lead)) return;
+  // Keys, not a click: a row, or the way back B2's item page gives the keyboard (desk/act.js deskKey).
+  if (a?.closest?.(".dk-board") && a.matches('[role="button"], [data-desk-back]') && deskKeyAt > pointedAt) return;
   focusComposer(undefined, { home: "desk", scroll: false });
 }
 function deskSettle() {
@@ -239,17 +259,24 @@ function deskSettle() {
   deskMovesWatch();
   deskThreadFollow();
   deskFocusOpened();
-  const c = document.querySelector(".dk-chat"), ip = !c && document.querySelector(".dk-ipane");
-  // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put. An item's page too.
-  if (ip && holdChat != null) { ip.scrollTop = ip.scrollHeight - holdChat; holdChat = null; }
-  if (c && holdChat != null) { c.scrollTop = c.scrollHeight - holdChat; holdChat = null; }
-  else if (c && deskTurnAt && c.querySelector(".cv-agent[data-at]")) {
+  // The chat or item page of the card that shows what's open (B2: the right one while something is, desk/b2.js).
+  const c = document.querySelector(".dk-right .dk-chat") || (!deskB2On() && document.querySelector(".dk-chat")), ip = !c && document.querySelector(".dk-ipane");
+  // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put, in the chat
+  // they went into (the lead's on the left or what's open on the right). An item's page too.
+  const held = holdChat != null ? olderChat(holdChatSid, ".dk-chat, .dk-ipane") : null;
+  if (held) held.scrollTop = held.scrollHeight - holdChat;
+  if (holdChat != null) { holdChat = null; holdChatSid = null; }
+  if (c && c === held) return;
+  // A turn in the lead's chat (B2: at the left while a page is open on the right) is found in that chat.
+  const tc = deskTurnLead ? document.querySelector(".dk2b-chat .dk-chat") : c;
+  if (tc && deskTurnAt && tc.querySelector(".cv-agent[data-at]")) {
     // The reply "This turn in …" was on: its session's last reply at or before that time (the reply's own time can
     // come a moment after its message); not in what's loaded, the end. Its messages not drawn yet: on the next draw.
-    const at = deskTurnAt, msgs = [...c.querySelectorAll(".cv-agent[data-at]")];
+    const at = deskTurnAt, msgs = [...tc.querySelectorAll(".cv-agent[data-at]")];
     const hit = msgs.filter((m) => Number(m.dataset.at) <= at + 5_000).at(-1);
     deskTurnAt = 0;
-    if (hit) { c.scrollTop += hit.getBoundingClientRect().top - c.getBoundingClientRect().top - 12; deskChatEnd = false; } else c.scrollTop = c.scrollHeight;
+    deskTurnLead = false;
+    if (hit) { tc.scrollTop += hit.getBoundingClientRect().top - tc.getBoundingClientRect().top - 12; if (tc === c) deskChatEnd = false; } else tc.scrollTop = tc.scrollHeight;
   }
   else if (c && deskChatEnd) c.scrollTop = c.scrollHeight;
 }

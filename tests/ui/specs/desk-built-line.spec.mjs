@@ -26,15 +26,20 @@ test("a picked mocks item in Done says which item builds your pick; each page li
   // The build item done too: the mocks item says it was built, and the build item's card in Done says where it came from.
   await patchItem(cue, "d6", { state: "done", done_at: Date.now() / 1000 });
   await expect(line).toHaveText("You picked B on #d7; #d6 built it");
+  // Back to the list (the item opens in its place, B2 #666).
+  await page.locator(".dk-right .dk-back").click();
   await expect(page.locator('.dk-items .dk-it[data-desk-item="d6"] .dk-built')).toHaveText("From your pick on #d7");
   for (const theme of ["light", "dark"]) {
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     // The number stands out from its line: the accent, or underlined on the lit row, where the accent is the ground.
     const [color, around, line] = await row.locator(".dk-built a").evaluate((a) => [getComputedStyle(a).color, getComputedStyle(a.parentElement).color, getComputedStyle(a).textDecorationLine]);
     expect(color !== around || line.includes("underline"), `${theme}: the number stands out from the line`).toBe(true);
+    // Its page (in the list's place): there the number is the accent.
+    await row.click();
     const page2 = await page.locator(".dk-panel[data-side-for] .dk-pnow .dk-built a").evaluate((a) => [getComputedStyle(a).color, getComputedStyle(a.parentElement).color]);
     expect(page2[0], `${theme}: on the page the number is the accent`).not.toBe(page2[1]);
     if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-606-${theme}.png`, timeout: 2000 })).toPass();
+    await page.locator(".dk-right .dk-back").click();
     if (process.env.SHOT_DIR) await row.locator("xpath=..").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-606-done-${theme}.png` });
   }
 });

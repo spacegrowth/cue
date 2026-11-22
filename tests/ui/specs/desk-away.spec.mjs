@@ -28,8 +28,8 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   }, SINCE);
   const sw = page.locator(".dk-items .dk-aw-sw");
   await expect(sw).toHaveAttribute("aria-pressed", "true");
-  // No fourth column.
-  await expect(page.locator(".dk-board > *")).toHaveCount(3);
+  // No column of its own: the lead's chat card and the item list (B2, #666).
+  await expect(page.locator(".dk-board > *")).toHaveCount(2);
   // The switch says until when and what it spent of the budget.
   await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
   // Waiting on you counts the waiting item and the asker's ask, not the session on a usage limit.
@@ -127,7 +127,9 @@ for (const mode of ["light", "dark"]) {
     await expect(root).toHaveClass(/away-on/);
     expect(await bg()).toBe(before);
     // The mark stands out from the head's ground and its words from the mark: lime capsule, dark words.
-    const c = await mark.evaluate((el) => { const s = getComputedStyle(el), lum = (v) => { const [r, g, b] = v.match(/[\d.]+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; }; return { mark: lum(s.backgroundColor), text: lum(s.color), head: lum(getComputedStyle(document.body).backgroundColor), radius: s.borderTopLeftRadius, left: s.borderLeftWidth }; });
+    // Read off the mark on the page at that moment: the head is drawn again as Cue's state comes in, and a handle taken
+    // before that is a detached element whose computed colours are empty.
+    const c = await page.evaluate(() => { const el = document.querySelector(".top .top-away"), s = getComputedStyle(el), lum = (v) => { const [r, g, b] = v.match(/[\d.]+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; }; return { mark: lum(s.backgroundColor), text: lum(s.color), head: lum(getComputedStyle(document.body).backgroundColor), radius: s.borderTopLeftRadius, left: s.borderLeftWidth }; });
     expect(Math.abs(c.mark - c.head)).toBeGreaterThan(0.35);
     expect(Math.abs(c.mark - c.text)).toBeGreaterThan(0.5);
     expect(c.radius).toBe("999px");

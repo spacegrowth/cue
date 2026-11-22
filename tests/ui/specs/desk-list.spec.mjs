@@ -1,11 +1,12 @@
 // The Desk's sessions on the left: their order, the three columns, each row's size, cache and live step.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
-import { crewNotLead, blinkOf } from "./desk.mjs";
+import { crewNotLead, blinkOf, openSessions } from "./desk.mjs";
 
 test("a session on no item says the first line of its latest reply, when it came, its size and cache, though no card brings them (#185)", async ({ page, cue }) => {
   await cue.open("desk", { flags: "cost=cold" });
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
   await cue.change((st) => st.desk.projects.find((d) => d.project === "cue").members.push("spare"));
   // Cold and on no item, it sits under Older (#485): open it.
@@ -19,6 +20,7 @@ test("a session on no item says the first line of its latest reply, when it came
 test("the sessions on the left: working first, then each group most recent first (#184)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     const site = st.sessions.find((x) => x.session_id === "site");
     for (const [sid, h] of [["older", 5], ["newest", 1], ["middle", 3]]) st.sessions.push({ ...site, session_id: sid, project: "cue", name: sid, state: "idle", since_ms: Date.now() - h * 3600000, thread: [] });
@@ -33,13 +35,17 @@ test("the sessions on the left: working first, then each group most recent first
   await expect.poll(ids).toEqual(["# Working", "host", "# Idle", "older", "newest", "middle"]);
 });
 
-test("three columns: the project's sessions on the left, the lead's chat in the middle, the items on the right", async ({ page, cue }) => {
+test("two cards: the lead's chat at the left, the items at the right; All N sessions puts the project's sessions in the items' place (#666)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const cols = await page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => [...el.classList].find((c) => ["dk-sessions", "dk-right", "dk-items"].includes(c))));
-  expect(cols).toEqual(["dk-sessions", "dk-right", "dk-items"]);
-  const xs = await page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().x));
-  expect(xs[0] < xs[1] && xs[1] < xs[2]).toBe(true);
+  const cols = () => page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => [...el.classList].find((c) => ["dk-sessions", "dk2b-chat", "dk-items"].includes(c))));
+  expect(await cols()).toEqual(["dk2b-chat", "dk-items"]);
+  const xs = async () => page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().x));
+  const [x0, x1] = await xs();
+  expect(x0 < x1).toBe(true);
+  await openSessions(page);
+  expect(await cols()).toEqual(["dk2b-chat", "dk-sessions"]);
+  expect(await xs()).toEqual([x0, x1]);
   // A Desk member with no item.
   await cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
   // The Desk's lead as a card in the head strip (a "Lead" pill by its name, #446), with no crew, not even old ones; the list under it: Working
@@ -58,11 +64,14 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   const [rx, rw, cx, cw] = await left.locator('[data-desk-chat-of="host"]').evaluate((el) => { const r = el.getBoundingClientRect(), c = el.closest(".dk-scroll").getBoundingClientRect(); return [r.x, r.width, c.x, c.width]; });
   expect([rx, Math.round(rw)]).toEqual([cx, Math.round(cw)]);
   // The right list: each item's kind as a small icon in the theme color before its number.
+  // ‹ Items N: the list again, in the sessions' place.
+  await page.locator(".dk-sessions .dk-back").click();
   const items = page.locator(".dk-items");
   await expect(items.locator('[data-desk-item="d1"] .dk-i2 .dk-kid > svg.dk-kic')).toHaveCount(1);
   expect(await items.locator(".dk-it").evaluateAll((els) => els.every((el) => el.querySelector(".dk-kic")))).toBe(true);
   const ic = await items.locator('[data-desk-item="d1"] .dk-kic').evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--accent")]);
   expect(ic[0]).not.toBe("");
+  await openSessions(page);
   await expect(left.locator(".dk-srow.crew")).toHaveCount(0);
   await expect(left.locator("[data-desk-done-fold]")).toHaveCount(0);
   await expect(left.locator(".dk-strip .dk-sub")).toHaveText("2 sessions · 1 working");
@@ -77,7 +86,8 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   // The lead's chat shows: its card is lit, alone.
   await expect(left.locator(".dk-srow.on, .dk-lcard.on")).toHaveCount(1);
   await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
-  // Another session: its chat in the middle, its row lit in place; Esc goes back to the lead's.
+  // Another session: its chat in the list's place (#666), ‹ All sessions back to the list, its row lit in place there.
+  const back = async () => { await page.locator(".dk-right .dk-ph .dk-back").first().click(); await left.waitFor(); };
   await left.locator('[data-desk-chat-of="host"]').click();
   await expect(page.locator('.dk-right [data-desk-chat="host"]')).toHaveCount(1);
   // A session's page (#200): back, Open its session; its kind's icon, "Session ·" and its name; under it what it's on
@@ -88,30 +98,39 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
   await expect(ph.locator(".dk-ph1")).toHaveText(/^‹ .+Open its session\s*Hide panel$/);
   await expect(ph.locator(".dk-ph3")).toHaveText(/^on #d5 · Hosted sessions can't open the canvas/);
   await expect(page.locator(".dk-right .dk-pnow .dk-pword")).toHaveText(/^(Idle|Working|Waiting on you)$/);
+  await back();
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
   // One with nothing on the Desk: back, its name, Open its session; it says it's on nothing.
   await left.locator('[data-desk-chat-of="spare"]').click();
   await expect(ph.locator("h1")).toHaveText("Session · spare");
   await expect(ph.locator(".dk-ph3")).toHaveText(/^nothing on the Desk/);
   if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.locator(".dk-right .dk-ph").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-head-${c}.png` }); }
   await page.emulateMedia({ colorScheme: "light" });
+  await back();
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "spare");
   await left.locator('[data-desk-chat-of="host"]').click();
-  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
+  const hostChat = page.locator('.dk-right [data-desk-chat="host"]');
+  await expect(hostChat).toHaveCount(1);
   await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Talk to /);
   // It's working: Esc is its Stop first, as on the Board (#494): once arms it, twice stops it, its chat still open.
   await page.keyboard.press("Escape");
-  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
+  await expect(hostChat).toHaveCount(1);
   await page.keyboard.press("Escape");
   await cue.called("interrupt_session", { sessionId: "host" });
-  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
-  // Stopped: Esc goes back to the lead's chat.
+  await expect(hostChat).toHaveCount(1);
+  // Stopped: Esc goes back, to the list, its row lit; the lead's chat at the left all along.
   await expect.poll(() => page.evaluate(() => sessionOf("host").state)).toBe("waiting");
   await page.keyboard.press("Escape");
-  await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
-  // Another session's crew sit under it; a crew row opens its pane, lit.
+  await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
+  await expect(page.locator(".dk-board > .dk2b-chat")).toHaveCount(1);
+  // Another session's crew sit under it; a crew row opens its pane, lit in the list when back.
   await crewNotLead(cue);
   await expect(left.locator('[data-desk-crew="id-focus"] .dk-st')).toHaveText("needs you");
   await left.locator('[data-desk-crew="id-search"]').click();
   await expect(page.locator(".dk-right .dk-pg h1 .dk-tname")).toHaveText("search-centre");
+  // Opened from All sessions, its ‹ goes back there, as a session's chat does.
+  await expect(page.locator(".dk-right .dk-ph .dk-back").first()).toHaveText("‹ All sessions");
+  await back();
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-crew", "id-search");
   await expect(left.locator(".dk-sfoot").getByRole("button")).toHaveAccessibleName("Add session");
 });
@@ -119,6 +138,7 @@ test("three columns: the project's sessions on the left, the lead's chat in the 
 test("each session row says its size and cache: \"142k · cache 12m\", \"cold\", amber in its last 5 minutes", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   // Its log read and no numbers in it: it says so, never a blank line (#592).
   await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-size')).toHaveText("no reply yet · no cache");
   await cue.change((st) => {
@@ -156,6 +176,7 @@ test("each session row says its size and cache: \"142k · cache 12m\", \"cold\",
 test("a working session's dot blinks and its current step shows under its title, with its time, live", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     const h = st.sessions.find((x) => x.session_id === "host");
     h.doing = "Editing ui/desk.js"; h.doing_ms = Date.now() - 4 * 60000 - 5000;
@@ -182,6 +203,7 @@ test("on first load every session row shows its size and its cache, the lead's t
   // cards): its row asked for them itself, as every other row does.
   await cue.open("desk", { flags: "cost=warm" });
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const left = page.locator(".dk-sessions");
   await expect(left.locator('[data-desk-lead-chat="lead"] .dk-size')).toHaveText("600k · cache 8m");
   await expect(left.locator('[data-desk-chat-of="host"] .dk-size')).toHaveText("600k · cache 8m");

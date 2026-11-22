@@ -250,10 +250,13 @@ async function attach(key, files) {
 // second while a session works): the row under the pointer lost its hover till the mouse moved, the buttons shown on
 // hover went and came back, and its scroll box was a new one each time. So the chat blinked as it updated. Now it is
 // never taken out: the window is drawn around it. Each element from the window down to the chat stays where it is (its
-// attributes as the draw has them), everything beside them is replaced, and the chat's messages are brought up to date
+// attributes as the draw has them), what beside them the draw has as it was stays too and the rest is replaced, and the chat's messages are brought up to date
 // by key (patchKids): only what's new or changed is touched.
 /** The chats kept in place: where one sits and what names it (its dataset key). */
-const KEPT_IN_PLACE = [[".dk-ipane [data-thread-for]", "threadFor"], [".dk-chat[data-desk-chat]", "deskChat"]];
+// The Desk's reader (desk/page.js deskReader) is kept as a chat is: drawn afresh, its bar and buttons went and came back
+// on every redraw while it was open. So is the lead's Decisions, Dispatcher Actions or Away tab (desk/view.js): drawn
+// afresh, a redraw for something elsewhere (its steps landing late) replaced the card's tab row too.
+const KEPT_IN_PLACE = [[".dk-ipane [data-thread-for]", "threadFor"], [".dk-chat[data-desk-chat]", "deskChat"], [".dk-rd[data-scroll-key]", "scrollKey"], [".dk-ptabs + .dk-pane[data-scroll-key]", "scrollKey"]];
 /** The chats kept by the last draw: their pulsing dots carry on as they are (app/render.js replayMotion). */
 let keptInPlace = [];
 /** `root`'s HTML set to `html`, with each Desk chat on screen kept in place where the draw has it too. Returns the
@@ -276,18 +279,35 @@ function drawAround(root, html) {
     ends.set(el, f);
   }
   if (!ends.size) { root.replaceChildren(tpl.content); return (keptInPlace = []); }
+  // Beside the way down, a part the draw has exactly as it is on screen (a page's heading, its back button) stays too:
+  // replaced, it would drop a text selection in it, and the element a test or a click just found would be gone.
+  const htmls = new Map(), htmlOf = (n) => (n.nodeType === 1 ? htmls.get(n) ?? htmls.set(n, n.outerHTML).get(n) : n.nodeValue);
+  // Its HTML doesn't show a box's or a tick's live state: one that went its own way since it was drawn (typed in, ticked)
+  // isn't the same, and is drawn afresh with what the draw says, as text boxes are (app/render.js settleDraftEditors).
+  const asDrawn = (n) => n.nodeType !== 1 || [...(n.matches("input, textarea, select") ? [n] : []), ...n.querySelectorAll("input, textarea, select")].every((c) =>
+    c.matches("select") ? (c.multiple ? [...c.options].every((o) => o.selected === o.defaultSelected) : c.selectedIndex === Math.max(0, [...c.options].findLastIndex((o) => o.defaultSelected)))
+      : /^(checkbox|radio)$/.test(c.type) ? c.checked === c.defaultChecked : c.value === c.defaultValue);
+  const same = (a, b) => a.nodeType === b.nodeType && htmlOf(a) === htmlOf(b) && asDrawn(a);
   const fill = (l, f) => {
-    for (const c of [...l.childNodes]) if (!chain.has(c)) c.remove();
     let at = l.firstChild;
+    const drop = (until) => { while (at && at !== until && !chain.has(at)) { const n = at.nextSibling; at.remove(); at = n; } };
     for (const c of [...f.childNodes]) {
       const m = pairs.get(c);
-      if (!m) { l.insertBefore(c, at); continue; }
+      if (!m) {
+        let k = at;
+        while (k && !chain.has(k) && !same(k, c)) k = k.nextSibling;
+        if (k && !chain.has(k)) { drop(k); at = k.nextSibling; }
+        else l.insertBefore(c, at);
+        continue;
+      }
+      drop(m);
       if (m === at) at = at.nextSibling;
       else l.insertBefore(m, at);   // out of order: moved (rare: the page's parts don't swap places)
       morphAttrs(m, c);
       if (ends.has(m)) patchKids(m, c, false);
       else fill(m, c);
     }
+    drop(null);
   };
   fill(root, tpl.content);
   return (keptInPlace = [...ends.keys()]);

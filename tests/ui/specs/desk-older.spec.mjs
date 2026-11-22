@@ -2,6 +2,7 @@
 // shut by default, that opens in place; Give to… lists the sessions with work (the hub's `with_work`), the rest on one
 // "N older" line.
 import { test, expect, openDesk } from "./cue.mjs";
+import { openSessions } from "./desk.mjs";
 
 
 /** Two idle sessions on the Desk, "busy" with work (an item) and "spare" with none. */
@@ -42,6 +43,7 @@ const order = (side) => side.locator(".dk-scroll > *").evaluateAll((els) => els.
 test("cold idle sessions holding no item fold under Older, shut till you open it; warm ones and ones holding an item stay in Idle (#485)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await fourIdle(page, cue);
   const side = page.locator(".dk-sessions"), olderH = side.locator('[data-desk-older="side:cue"]');
   await expect(olderH).toHaveAttribute("aria-expanded", "false");
@@ -69,6 +71,7 @@ test("cold idle sessions holding no item fold under Older, shut till you open it
 test("an item given to a session in Older brings it back to Idle; with the item gone and its cache cold it folds again (#485)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await fourIdle(page, cue);
   const side = page.locator(".dk-sessions");
   await expect(side.locator('[data-desk-chat-of="cold"]')).toHaveCount(0);
@@ -85,6 +88,7 @@ test("an item given to a session in Older brings it back to Idle; with the item 
 test("a session in Older for over a day: Close closes it, its chat kept; none offered before a day (#485)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await fourIdle(page, cue);
   const close = page.locator(".dk-sessions [data-desk-close-idle]");
   await expect(close).toHaveText("Close 1 idle over a day");
@@ -101,6 +105,7 @@ test("a session in Older for over a day: Close closes it, its chat kept; none of
 test("a session row keeps its shape and place whether or not its size and cache are known (#485)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   await cue.change((st) => {
     st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", state: "idle", since_ms: Date.now() - 600000, thread: [] });
     st.desk.projects.find((x) => x.project === "cue").members.push("spare");

@@ -13,7 +13,7 @@ test("the Add an item line keeps its words in view, not their start, through upd
   await openDesk(page);
   const line = page.locator('.dk-qa [data-qa="line"]');
   await line.click();
-  await line.pressSequentially("a long item title that runs well past the end of the box so it scrolls sideways while typing");
+  await line.pressSequentially("a long item title that runs well past the end of the box so it scrolls sideways while typing, even in the wide Add line of the Desk's item list");
   const left = await line.evaluate((el) => el.scrollLeft);
   expect(left).toBeGreaterThan(0);
   await tick(cue, 1);
@@ -34,6 +34,8 @@ test("the Items list and Give to…'s menu stay where you scrolled them through 
     for (let n = 0; n < 30; n++) p.items.push({ ...fresh, id: `n${n}`, title: `New thing ${n}` });
   });
   await openDesk(page);
+  // B2 (#666) shows a long group's first 3 rows: show them all, so the list is long enough to scroll.
+  for (const b of await page.locator("[data-desk2b-all]").all()) await b.click();
   const list = page.locator('.dk-scroll[data-scroll-key^="desk-items"]');
   await list.evaluate((el) => { el.scrollTop = 400; });
   await tick(cue, 1);

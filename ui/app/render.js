@@ -138,16 +138,16 @@ function beforeDraw() {
   return was;
 }
 
-/** The header: the chips; usage, search, the terminal, Extensions, Insights and Settings; then the views (Inbox, Board, Desk, the add-on's, Read) at the right edge. */
+/** The header: + New, the waiting count and the area that follows the view (app/head_view.js); usage, search, the terminal, Extensions, Insights and Settings; then the views (Inbox, Board, Desk, the add-on's, Read) at the right edge. */
 function topBarHtml(counts) {
-  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${awayHead()}
+  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${headViewHtml()}</span><span class="grow" data-tauri-drag-region></span>${awayHead()}
       ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon insights-btn" data-view="insights" aria-pressed="${view === "insights"}" aria-label="Insights">${INSIGHTS_ICON}</button><button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
       <div class="switch-view">${inboxBtn()}<button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
 }
 /** While a Desk is away, its mark in the middle of the head (desk/away.js), with room either side. */
 const awayHead = () => { const m = typeof deskAwayHeadMark === "function" ? deskAwayHeadMark() : ""; return m ? `${m}<span class="grow" data-tauri-drag-region></span>` : ""; };
-/** Inbox in the header's switch, with how many need you ("Inbox 3"). */
-const inboxBtn = () => { const n = inboxCount(); return `<button class="${view === "inbox" ? "on" : ""}" data-view="inbox">Inbox${n ? `<span class="ib-count">${n}</span>` : ""}</button>`; };
+/** Inbox in the header's switch, with how many need you in every project ("Inbox 3"), whatever it shows. */
+const inboxBtn = () => { const n = inboxCountAll(); return `<button class="${view === "inbox" ? "on" : ""}" data-view="inbox">Inbox${n ? `<span class="ib-count">${n}</span>` : ""}</button>`; };
 /** The view picked in the header. */
 // A lead's crew on its own page (team_page.js) takes the board's place while it's open.
 const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "inbox" ? inboxView() : view === "desk" ? deskView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
