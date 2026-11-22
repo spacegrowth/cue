@@ -318,6 +318,11 @@ pub struct DeskItem {
     /// with a retry until a session takes it or you start it again. The lead is told at once (desk/hub/lead/run.rs).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub start_failed: String,
+    /// Its new session was to start on this machine, which had its number of the Desk's items at work there already
+    /// (#711, Desk settings): it waits, queued with no holder, and starts by itself once there's room
+    /// (desk/hub/turn/queue.rs `machine_sweep`). Saved.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub machine_wait: String,
     /// The Desk lead paused it (#365, PAUSE:): when (secs) and why. Its holder keeps it and its place, stopped at a
     /// clean point; it isn't asked "Done?" and the lead isn't told it stopped, until RESUME: (or a new route, or its
     /// DONE) clears it. Shown as "paused" while it's at work (desk/hub/core/desk.rs `shown`). Saved.

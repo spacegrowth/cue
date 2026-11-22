@@ -70,20 +70,33 @@ pub(crate) fn start_place(st: &Store, it: &DeskItem) -> Result<Option<OnMachine>
 }
 
 /// Which of `list` (the machines Desk `project` spreads its new items over, #661, "" for this Mac) the next one starts
-/// on: the one with the fewest of the Desk's items at work there (held by a session on it, or starting on it), the
-/// first ticked on a tie.
+/// on: of those with room (#711), the one with the fewest of the Desk's items at work there, the first ticked on a tie.
+/// With none of them free, the least busy all the same: the item waits for room there (`has_room`).
 pub(crate) fn spread_pick(st: &Store, project: &str, list: &[String]) -> String {
     if list.len() < 2 {
         return list.first().cloned().unwrap_or_default();
     }
-    let mut at: Vec<String> = st.desk.run.start_machine.iter().filter(|(id, _)| st.desk.item(id).is_some_and(|i| i.project == project && i.holder.is_none())).map(|(_, m)| m.clone()).collect();
-    for it in st.desk.items.iter().filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "dropped")) {
-        let Some(h) = &it.holder else { continue };
-        let Some(s) = st.sessions.get(h.to()) else { continue };
-        at.push(s.origin.machine.clone());
-    }
-    let load = |m: &String| at.iter().filter(|x| *x == m).count();
-    list.iter().min_by_key(|m| load(m)).cloned().unwrap_or_default()
+    let free: Vec<&String> = list.iter().filter(|m| has_room(st, project, m)).collect();
+    let from: Vec<&String> = if free.is_empty() { list.iter().collect() } else { free };
+    from.into_iter().min_by_key(|m| machine_load(st, project, m)).cloned().unwrap_or_default()
+}
+
+/// How many of Desk `project`'s items are at work on `machine` ("" for this Mac) now: held by a session there and
+/// not done or waiting for your check, or starting there (#661, #711).
+pub(crate) fn machine_load(st: &Store, project: &str, machine: &str) -> usize {
+    let starting = st.desk.run.start_machine.iter().filter(|(id, m)| m.as_str() == machine && st.desk.item(id).is_some_and(|i| i.project == project && i.holder.is_none())).count();
+    let held = st.desk.items.iter()
+        .filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "dropped" | "to_check" | "held"))
+        .filter_map(|i| i.holder.as_ref())
+        .filter(|h| st.sessions.get(h.to()).is_some_and(|s| s.origin.machine == machine))
+        .count();
+    starting + held
+}
+
+/// Whether one more of Desk `project`'s items may start on `machine` (#711): fewer than its number in Desk settings
+/// are at work there. This Mac always: its items wait for a free copy instead (desk/hub/landing/trees.rs).
+pub(crate) fn has_room(st: &Store, project: &str, machine: &str) -> bool {
+    machine.is_empty() || machine_load(st, project, machine) < crate::desk::machine_pref::of(project).at_once(machine) as usize
 }
 
 /// Err when session `to` is on a machine, in a folder another open item's work is in (#679): both would commit in one

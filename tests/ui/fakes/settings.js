@@ -124,6 +124,13 @@ CueBridge.area("settings", (w) => {
           const m = ms.machines.find((x) => x.name === n);
           m.folder = (lands.machine_folders?.[n] || "").trim().replace(/(.)\/+$/, "$1") || m.folder;
         }
+        // How many at once on each (#711, machine_pref.rs save_at_once): 1 to 9.
+        for (const [n, k] of Object.entries(lands.machine_at_once || {})) {
+          const m = ms.machines.find((x) => x.name === n);
+          if (!m) throw `where new sessions start: Cue has no machine called ${n}`;
+          if (!(k >= 1 && k <= 9)) throw `where new sessions start: items at once on ${m.label} is 1 to 9`;
+          m.at_once = k;
+        }
         d.machines = { ...ms, machine: list[0], picked: list };
         w.changed(10);
         return d.lands;

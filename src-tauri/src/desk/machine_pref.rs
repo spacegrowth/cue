@@ -15,7 +15,15 @@ pub struct Pref {
     /// The machines you ticked for the Desk (#661, "" for this Mac): its new items spread over them, each to the one
     /// with the fewest of its items at work. Empty: only `machine`.
     pub machines: Vec<String>,
+    /// The most of the Desk's items at work on each machine at once (#711), as you set them; one not set has
+    /// `AT_ONCE_DEFAULT`. This Mac isn't one: its items wait for a free copy there (desk/lands.rs Items at once).
+    pub at_once: BTreeMap<String, u32>,
 }
+
+/// The most items a Desk may have at work on one machine at once (#711): the range you can set, and the number for a
+/// machine you haven't set.
+pub const AT_ONCE: (u32, u32) = (1, 9);
+pub const AT_ONCE_DEFAULT: u32 = 3;
 
 impl Pref {
     /// The folder of the Desk's clone on `machine`, if it has used it.
@@ -27,6 +35,11 @@ impl Pref {
     pub fn spread(&self) -> Vec<String> {
         if self.machines.is_empty() { vec![self.machine.clone()] } else { self.machines.clone() }
     }
+
+    /// The most of the Desk's items at work on `machine` at once (#711).
+    pub fn at_once(&self, machine: &str) -> u32 {
+        self.at_once.get(machine).copied().unwrap_or(AT_ONCE_DEFAULT)
+    }
 }
 
 /// Desk `desk`'s setting in config `c`.
@@ -35,7 +48,8 @@ pub fn of_in(c: &Value, desk: &str) -> Pref {
     let machine = v.get("machine").and_then(Value::as_str).unwrap_or("").to_string();
     let folders = v.get("folders").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, f)| Some((k.clone(), f.as_str()?.to_string()))).collect()).unwrap_or_default();
     let machines = v.get("machines").and_then(Value::as_array).map(|a| a.iter().filter_map(|m| m.as_str().map(str::to_string)).collect()).unwrap_or_default();
-    Pref { machine, folders, machines }
+    let at_once = v.get("at_once").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, n)| Some((k.clone(), n.as_u64()?.clamp(AT_ONCE.0 as u64, AT_ONCE.1 as u64) as u32))).collect()).unwrap_or_default();
+    Pref { machine, folders, machines, at_once }
 }
 
 /// Desk `desk`'s setting as saved.
@@ -70,6 +84,12 @@ pub fn checked(value: &Value) -> Result<Value, String> {
         if o.get("machines").is_some_and(|m| !m.as_array().is_some_and(|a| a.iter().all(Value::is_string))) {
             return Err("a Desk's machines are their names".into());
         }
+        if let Some(ns) = o.get("at_once") {
+            let ns = ns.as_object().ok_or("a Desk's items at once are machine: number")?;
+            if ns.values().any(|n| !n.as_u64().is_some_and(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(&n))) {
+                return Err(format!("items at once on a machine is {} to {}", AT_ONCE.0, AT_ONCE.1));
+            }
+        }
         if let Some(fs) = o.get("folders") {
             let fs = fs.as_object().ok_or("a Desk's folders are machine: folder")?;
             for f in fs.values() {
@@ -87,7 +107,14 @@ fn write(desk: &str, f: impl FnOnce(&mut Pref)) -> Result<Pref, String> {
         f(&mut p);
         let mut map = c.pointer("/project/machine").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
         let folders: Map<String, Value> = p.folders.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
-        map[desk] = if p.machines.is_empty() { json!({ "machine": p.machine, "folders": folders }) } else { json!({ "machine": p.machine, "machines": p.machines, "folders": folders }) };
+        let mut v = json!({ "machine": p.machine, "folders": folders });
+        if !p.machines.is_empty() {
+            v["machines"] = json!(p.machines);
+        }
+        if !p.at_once.is_empty() {
+            v["at_once"] = json!(p.at_once);
+        }
+        map[desk] = v;
         out = Some(p);
         Some(map)
     })?;
@@ -153,6 +180,20 @@ pub fn save_many(desk: &str, list: &[String], folders: &BTreeMap<String, String>
     })
 }
 
+/// Set how many of Desk `desk`'s items may be at work on each machine at once (#711): `at_once` is machine -> number,
+/// each a machine Cue has, `AT_ONCE` the range. Machines left out keep theirs.
+pub fn save_at_once(desk: &str, at_once: &BTreeMap<String, u32>) -> Result<Pref, String> {
+    for (m, n) in at_once {
+        if crate::machines::get(m).is_none() {
+            return Err(format!("Cue has no machine called {m}"));
+        }
+        if !(AT_ONCE.0..=AT_ONCE.1).contains(n) {
+            return Err(format!("items at once on {} is {} to {}", crate::machines::display_name(m), AT_ONCE.0, AT_ONCE.1));
+        }
+    }
+    write(desk, |p| p.at_once.extend(at_once.iter().map(|(k, v)| (k.clone(), *v))))
+}
+
 /// Remember the folder of Desk `desk`'s clone on `machine`, as a session of it started there.
 pub fn remember(desk: &str, machine: &str, folder: &str) {
     if machine.is_empty() || of(desk).folder(machine) == Some(folder) {
@@ -172,13 +213,13 @@ pub fn desk_view(desk: &str, extra: &BTreeMap<String, String>) -> Value {
         .iter()
         .map(|m| {
             let folder = p.folder(&m.name).or(extra.get(&m.name).map(String::as_str)).unwrap_or("");
-            json!({ "name": m.name, "label": crate::machines::display_name(&m.name), "folder": folder })
+            json!({ "name": m.name, "label": crate::machines::display_name(&m.name), "folder": folder, "at_once": p.at_once(&m.name) })
         })
         .collect();
     let known = |m: &str| m.is_empty() || machines.iter().any(|x| x["name"] == m);
     let picked: Vec<String> = p.spread().into_iter().filter(|m| known(m)).collect();
     let machine = if known(&p.machine) { p.machine } else { String::new() };
-    json!({ "machine": machine, "picked": if picked.is_empty() { vec![String::new()] } else { picked }, "machines": machines })
+    json!({ "machine": machine, "picked": if picked.is_empty() { vec![String::new()] } else { picked }, "machines": machines, "at_once": { "min": AT_ONCE.0, "max": AT_ONCE.1 } })
 }
 
 #[cfg(test)]
@@ -204,5 +245,11 @@ mod tests {
         assert_eq!(of_in(&c, "cue").spread(), vec![String::new(), "box".to_string()]);
         assert!(checked(&json!({ "cue": { "machine": "", "machines": ["", 3], "folders": {} } })).is_err());
         assert!(checked(&json!({ "cue": { "machine": "", "machines": ["", "box"], "folders": { "box": "/srv/cue" } } })).is_ok());
+        // Items at once on each machine (#711): 3 when not set, kept as set, and only 1 to 9.
+        assert_eq!(of_in(&c, "cue").at_once("box"), AT_ONCE_DEFAULT);
+        let c = json!({ "project": { "machine": { "cue": { "machine": "box", "at_once": { "box": 1 }, "folders": { "box": "/srv/cue" } } } } });
+        assert_eq!(of_in(&c, "cue").at_once("box"), 1);
+        assert!(checked(&json!({ "cue": { "machine": "box", "at_once": { "box": 0 }, "folders": {} } })).is_err());
+        assert!(checked(&json!({ "cue": { "machine": "box", "at_once": { "box": 2 }, "folders": {} } })).is_ok());
     }
 }

@@ -82,6 +82,13 @@ impl Hub {
         if !used.is_empty() {
             line.push_str(&format!("Machines this Desk has used: {}.\n", used.join(", ")));
         }
+        // How many at once on each (#711): a new session for a machine that has that many of the Desk's items at work
+        // waits for room there, or goes to another place ticked.
+        let mut caps: Vec<String> = spread.iter().filter(|m| !m.is_empty() && crate::machines::get(m).is_some()).map(|m| format!("{} {}", crate::machines::display_name(m), p.at_once(m))).collect();
+        caps.dedup();
+        if !caps.is_empty() {
+            line.push_str(&format!("Most of this Desk's items at work at once (the user's setting): {}. A new session for a machine at its number waits for room there, or starts on another place ticked; it starts by itself.\n", caps.join(", ")));
+        }
         line
     }
 

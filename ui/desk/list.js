@@ -528,6 +528,8 @@ function deskQueueLine(i) {
     const on = deskAfterName(i);
     return [on.startsWith("#") ? `after ${on}` : `Waits for ${on}`, nf && `then ${nf}`].filter(Boolean).join(" · ");
   }
+  // Its machine has its number of the Desk's items at work (#711): it starts there once one is done.
+  if (i.machine_wait) return `waits for room on ${i.machine || i.machine_wait}`;
   if (nf) return `next for ${nf}${i.fresh_at ? ` · goes to a fresh session at ${deskQHm(i.fresh_at)}` : ""}`;
   return "any free session";
 }

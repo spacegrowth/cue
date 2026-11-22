@@ -102,6 +102,7 @@ fn closed(st: &Store, h: &Holder) -> bool {
 /// Items in the queue for a session: each starts in that session once it's free (one item per freed session, in
 /// queue order), or in a fresh session once it has waited `WAIT_MS`. A paused Desk's wait.
 pub(crate) fn sweep(st: &mut Store, now: u64, fx: &mut Effects) {
+    machine_sweep(st, now, fx);
     let mut waiting: Vec<(u32, u64, String)> = st.desk.items.iter()
         .filter(|i| i.state == "queued" && i.holder.is_none() && i.after.is_none() && i.next_for.is_some())
         .map(|i| (i.queue_order.unwrap_or(u32::MAX), i.queued_at, i.id.clone())).collect();
@@ -131,6 +132,49 @@ pub(crate) fn sweep(st: &mut Store, now: u64, fx: &mut Effects) {
             let (by, by_sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
             fx.starts.push(NewStart { project, id, why, by: by.into(), by_sid: by_sid.into() });
         }
+    }
+}
+
+/// Items waiting for room on a machine (#711, `DeskItem::machine_wait`): each whose machine has fewer of its Desk's
+/// items at work than its number in Desk settings starts now, in your order then the one waiting longest. One taken
+/// by other means meanwhile (routed to a session) stops waiting. A paused Desk's wait.
+pub(crate) fn machine_sweep(st: &mut Store, now: u64, fx: &mut Effects) {
+    for it in st.desk.items.iter_mut().filter(|i| !i.machine_wait.is_empty() && (i.holder.is_some() || i.state != "queued" || i.next_for.is_some() || i.after.is_some())) {
+        it.machine_wait.clear();
+    }
+    let mut waiting: Vec<(u32, u64, String)> = st.desk.items.iter()
+        .filter(|i| !i.machine_wait.is_empty() && !st.desk.run.new_starts.contains(&i.id))
+        .map(|i| (i.queue_order.unwrap_or(u32::MAX), i.queued_at, i.id.clone())).collect();
+    if waiting.is_empty() {
+        return;
+    }
+    waiting.sort();
+    // Starts sent off in this sweep, by project and machine: each takes room there before its session claims it.
+    let mut sent: Vec<(String, String)> = Vec::new();
+    for (_, _, id) in waiting {
+        let Some(it) = st.desk.item(&id) else { continue };
+        let project = it.project.clone();
+        if crate::desk::hub::away::pause::is_paused(&project) {
+            continue;
+        }
+        let m = match crate::desk::hub::landing::remote_item::start_place(st, it) {
+            Ok(p) => p.map(|o| o.machine).unwrap_or_default(),
+            // It can't start there at all: its start says why.
+            Err(_) => it.machine_wait.clone(),
+        };
+        let mine = sent.iter().filter(|(p, x)| *p == project && *x == m).count();
+        let room = m.is_empty() || crate::desk::hub::landing::remote_item::machine_load(st, &project, &m) + mine < crate::desk::machine_pref::of(&project).at_once(&m) as usize;
+        if !room {
+            continue;
+        }
+        sent.push((project.clone(), m));
+        let lead = st.desk.lead.get(&project).cloned();
+        let Some(it) = st.desk.item_mut(&id) else { continue };
+        let why = it.after_why.clone();
+        (it.machine_wait, it.state, it.updated) = (String::new(), "new".into(), secs(now));
+        fx.items.push(id.clone());
+        let (by, by_sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
+        fx.starts.push(NewStart { project, id, why, by: by.into(), by_sid: by_sid.into() });
     }
 }
 

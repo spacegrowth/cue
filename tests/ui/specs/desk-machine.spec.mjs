@@ -191,3 +191,54 @@ test("the Desk's settings can tick two machines, each with its folder, and both 
   }
   await expect(dlg.locator("[title]")).toHaveCount(0);
 });
+
+// How many items at once on each machine (#711): a − n + on each ticked machine's row, 1 to 9, saved with the rest and
+// there when the settings open again.
+test("each ticked machine in the Desk's settings has how many items may work there at once", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = ms; }, machines);
+  await openDesk(page);
+  await deskAllSessions(page);
+  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  const sec = dlg.locator('[data-ld-sec="machine"]');
+  const n = sec.locator(".ld-mach-n .ld-n");
+  await expect(n).toHaveText(["3"]);
+  await expect(sec.locator(".ld-mach-at")).toHaveText(["at once"]);
+  await expect(sec.locator(".ld-hint").first()).toContainText("At once: the most of this Desk's items working on it together");
+  for (let k = 0; k < 2; k++) await sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]').click();
+  await expect(n).toHaveText(["1"]);
+  await expect(sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]')).toBeDisabled();
+  await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
+  // A second machine: its own number, and the hint says more go to another place ticked.
+  await sec.locator('[data-ld-mach="gpu-1"]').click();
+  await expect(n).toHaveText(["1", "3"]);
+  await expect(sec.locator(".ld-hint").nth(1)).toContainText("go to another place you ticked");
+  await sec.locator('[data-ld-folder="gpu-1"]').fill("/srv/cue");
+  await sec.locator('[data-ld-mach-n="gpu-1"][data-ld-by="1"]').click();
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
+  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  await expect(n).toHaveText(["1", "4"]);
+  await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
+  for (const c of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: c });
+    if (process.env.SHOT_DIR) await sec.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-machine-at-once-${c}.png` });
+  }
+  await expect(dlg.locator("[title]")).toHaveCount(0);
+});
+
+// An item waiting for room on its machine (#711): its row and page say so.
+test("an item waiting for room on a full machine says so on its row and page", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st, [ms, it]) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.machines = ms;
+    d.items.push({ ...it, id: "w711", title: "Waits for the box", state: "queued", machine_wait: "build-box" });
+  }, [machines, fresh]);
+  await openDesk(page);
+  const row = page.locator('.dk-it[data-desk-item="w711"]');
+  await expect(row.locator(".dk-who")).toContainText("waits for room on build-box");
+  await row.locator(".dk-t").click();
+  await expect(page.locator(".dk-right")).toContainText("Starts when build-box has room");
+});

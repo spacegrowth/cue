@@ -558,6 +558,7 @@ function deskItemNow(i) {
     : i.state === "working" ? ["work", "Working", `${who} is on it.${i.now_on && i.latest ? ` ${esc(firstLine(i.latest))}` : ""}${deskCrewNow(i) ? `<span class="dk-crewnow">Crew: ${esc(deskCrewNow(i))}</span>` : ""}`]
     : deskFinishing(i) ? ["work", "Finishing", `<span class="dk-fstep">${deskFinStep(i)}</span>`]
     : deskCopyWaits(i) ? ["stop", "Next", `${esc(deskCopyWaitLine(i))}. It starts by itself when one is free, or now with Start now.`]
+    : i.state === "queued" && !i.holder && i.machine_wait ? ["stop", "Next", `Starts when ${esc(i.machine || i.machine_wait)} has room: it already has as many of this Desk's items working as its number in Desk settings.`]
     : i.state === "queued" && i.tree_wait ? ["stop", "Next", `Starts when one of its repository's ${deskCopies(deskOf(i.project))} copies is free.`]
     : deskQueueLine(i) ? ["stop", "Next", `${esc(deskQueueLine(i).replace(/^./, (c) => c.toUpperCase()))}.`]
     : i.state === "queued" ? ["stop", "Next", first ? `Starts when ${esc(deskShort(first.title))} is done.` : i.holder ? `Next for ${who}.` : "Next up, not given to a session yet."]

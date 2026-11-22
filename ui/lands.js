@@ -40,12 +40,12 @@ function landsChange(desk) {
   const now = project && askBeforeKinds().length ? [...askBeforeNow(project)] : null;
   const ab = now ? { project, ticks: now.includes("main") ? now : [...now, "main"], more: false, stored: now } : null;
   // Where its new sessions start (#597): this Mac and the machines you ticked (#661, its new items spread over them),
-  // each machine with the folder of the Desk's clone there.
+  // each machine with the folder of the Desk's clone there and how many of its items may work there at once (#711).
   const ms = d.machines?.machines || [];
   const picked = (d.machines?.picked || [d.machines?.machine || ""]).filter((n) => !n || ms.some((m) => m.name === n));
-  const mach = ms.length ? { list: picked.length ? picked : [""], folders: Object.fromEntries(ms.map((m) => [m.name, m.folder || ""])) } : null;
+  const mach = ms.length ? { list: picked.length ? picked : [""], folders: Object.fromEntries(ms.map((m) => [m.name, m.folder || ""])), at: Object.fromEntries(ms.map((m) => [m.name, m.at_once || 3])) } : null;
   const model = d.model || "default";
-  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders } } : null, model } };
+  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders }, at: { ...mach.at } } : null, model } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -61,7 +61,7 @@ const landsSame = (x, y) => JSON.stringify(Object.keys({ ...x, ...y }).sort().ma
 const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.was.set, a.was.steps));
 const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
 const landsModelChanged = (a) => (a.model || "default") !== (a.was.model || "default");
-const landsMachChanged = (a) => !!a.mach && (a.mach.list.join("\n") !== a.was.mach.list.join("\n") || a.mach.list.some((n) => !!n && (a.mach.folders[n] || "").trim() !== (a.was.mach.folders[n] || "").trim()));
+const landsMachChanged = (a) => !!a.mach && (a.mach.list.join("\n") !== a.was.mach.list.join("\n") || a.mach.list.some((n) => !!n && ((a.mach.folders[n] || "").trim() !== (a.was.mach.folders[n] || "").trim() || a.mach.at[n] !== a.was.mach.at[n])));
 const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a) || landsModelChanged(a));
 /** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
  *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
@@ -163,7 +163,8 @@ function landsModel() {
   return `<div class="ld-row" data-ld-sec="model"><div class="ld-label">New sessions</div><div class="ld-body">${landsModelPick()}</div></div>`;
 }
 /** Where the Desk's new sessions start (#597): This Mac and your machines, as many as you tick (#661: its new items
- *  spread over them), and for each machine the folder of this repository's clone there. Only when Cue has a machine. */
+ *  spread over them), and for each machine the folder of this repository's clone there and how many of the Desk's
+ *  items may work there at once (#711). Only when Cue has a machine. */
 function landsMach() {
   const m = lands.mach;
   if (!m) return "";
@@ -172,10 +173,13 @@ function landsMach() {
   const seg = `<div class="seg ld-seg" role="group" aria-label="New sessions start on">${opt("", "This Mac")}${ms.map((x) => opt(x.name, x.label)).join("")}</div>`;
   const ons = ms.filter((x) => m.list.includes(x.name)), many = m.list.length > 1;
   const input = (x) => `<input class="ld-cmd ld-folder" type="text" spellcheck="false" aria-label="Folder of this repository's clone on ${esc(x.label)}" placeholder="Full path there, e.g. ~/code/project" data-ld-folder="${esc(x.name)}" value="${esc(m.folders[x.name] || "")}">`;
-  const folders = ons.length > 1 ? ons.map((x) => `<div class="ld-folder-on"><span class="ld-folder-name">${esc(x.label)}</span>${input(x)}</div>`).join("") : ons.map(input).join("");
+  const range = deskOf(lands.desk)?.machines?.at_once || {}, min = range.min ?? 1, max = range.max ?? 9;
+  const n = (x) => { const k = m.at[x.name] || 3; return `<div class="ld-step ld-mach-n"><button class="btn" data-ld-mach-n="${esc(x.name)}" data-ld-by="-1" aria-label="Fewer at once on ${esc(x.label)}"${k <= min ? " disabled" : ""}>−</button><b class="ld-n">${k}</b><button class="btn" data-ld-mach-n="${esc(x.name)}" data-ld-by="1" aria-label="More at once on ${esc(x.label)}"${k >= max ? " disabled" : ""}>+</button><span class="ld-mach-at">at once</span></div>`; };
+  const folders = ons.map((x) => `<div class="ld-folder-on">${ons.length > 1 ? `<span class="ld-folder-name">${esc(x.label)}</span>` : ""}${input(x)}${n(x)}</div>`).join("");
+  const cap = ons.length ? `<div class="ld-hint">At once: the most of this Desk's items working on ${ons.length > 1 ? "each machine" : "it"} together. More ${many ? "go to another place you ticked, or " : ""}wait until one there is done.</div>` : "";
   const where = ons.length ? `<div class="ld-hint">The folder of this repository's clone on ${ons.length > 1 ? "each machine" : esc(ons[0].label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : "";
   const spread = many ? `<div class="ld-hint">New items start on whichever of these has the fewest of this Desk's items at work. Each item says where it's working.</div>` : "";
-  const folder = `${folders}${spread}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
+  const folder = `${folders}${spread}${cap}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
   return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Where new sessions start</div>
     <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div></div></div>`;
 }
@@ -244,9 +248,10 @@ function landsSave() {
     ));
   }
   if (landsMachChanged(a)) {
-    const mach = { list: [...a.mach.list], folders: { ...a.mach.folders } };
+    const mach = { list: [...a.mach.list], folders: { ...a.mach.folders }, at: { ...a.mach.at } };
     const machine_folders = Object.fromEntries(mach.list.filter(Boolean).map((n) => [n, (mach.folders[n] || "").trim()]));
-    jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: { machines: mach.list, machine_folders } }).then(
+    const machine_at_once = Object.fromEntries(mach.list.filter(Boolean).map((n) => [n, mach.at[n] || 3]));
+    jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: { machines: mach.list, machine_folders, machine_at_once } }).then(
       () => { a.was.mach = mach; },
       (e) => { throw `${e}`; },
     ));
@@ -283,6 +288,15 @@ document.addEventListener("click", (e) => {
   landsChange(c.dataset.landsChange);
 }, true);
 document.addEventListener("click", (e) => {
+  // How many at once on a machine (#711), in the range the Desk allows.
+  const mn = e.target.closest?.("[data-ld-mach-n]");
+  if (lands?.mach && mn) {
+    e.stopPropagation();
+    const r = deskOf(lands.desk)?.machines?.at_once || {}, k = mn.dataset.ldMachN;
+    lands.mach.at[k] = Math.min(r.max ?? 9, Math.max(r.min ?? 1, (lands.mach.at[k] || 3) + Number(mn.dataset.ldBy)));
+    lands.leaving = false;
+    return renderMain();
+  }
   const mp = e.target.closest?.("[data-ld-mach]");
   if (lands?.mach && mp) {
     e.stopPropagation();

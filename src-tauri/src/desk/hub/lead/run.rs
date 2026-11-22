@@ -151,13 +151,26 @@ impl Hub {
         // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
         // Picked and claimed in one step (#661): two items starting at once on a Desk that spreads over several
         // machines count each other, so they go to different ones.
-        let place = self.write(|st| {
+        // A machine with its number of the Desk's items at work already (#711, Desk settings): it waits for room there.
+        let (place, full) = self.write(|st| {
             let place = st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None));
             if let Ok(p) = &place {
-                st.desk.run.start_machine.insert(s.id.clone(), p.as_ref().map(|o| o.machine.clone()).unwrap_or_default());
+                let m = p.as_ref().map(|o| o.machine.clone()).unwrap_or_default();
+                if !crate::desk::hub::landing::remote_item::has_room(st, &s.project, &m) {
+                    let mut fx = crate::desk::hub::core::desk::Effects::default();
+                    st.desk.run.new_starts.remove(&s.id);
+                    if ready(st) {
+                        machine_wait(st, s, &m, now_ms(), &mut fx);
+                    }
+                    return (place, Some(fx));
+                }
+                st.desk.run.start_machine.insert(s.id.clone(), m);
             }
-            place
+            (place, None)
         });
+        if let Some(fx) = full {
+            return self.desk_done(fx);
+        }
         let on = place.clone().ok().flatten();
         let dir = self.new_start_dir(s, &place, &on);
         // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,
@@ -363,6 +376,27 @@ pub(crate) fn folder_first(cwds: Vec<String>, project: &str) -> Option<String> {
 
 /// Cue couldn't start a session for item `s.id` (`e`, why): it shows "couldn't start" with a retry, and the Desk's
 /// lead is told now, not with your next message (it may be a while).
+/// New start `s` can't go to `machine` now: it has its number of the Desk's items at work (#711). The item waits
+/// queued with no holder, with the why it was started with, and starts by itself once there's room
+/// (desk/hub/turn/queue.rs `machine_sweep`).
+fn machine_wait(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, machine: &str, now: u64, fx: &mut crate::desk::hub::core::desk::Effects) {
+    let Some(it) = st.desk.item_mut(&s.id) else { return };
+    if it.holder.is_some() {
+        return;
+    }
+    let again = it.machine_wait == machine && it.state == "queued";
+    (it.state, it.machine_wait, it.next_for, it.after) = ("queued".into(), machine.to_string(), None, None);
+    if !s.why.trim().is_empty() {
+        it.after_why = s.why.clone();
+    }
+    it.start_failed.clear();
+    if !again {
+        it.queued_at = now;
+        it.updated = crate::desk::hub::core::desk::secs(now);
+    }
+    fx.items.push(s.id.clone());
+}
+
 pub(crate) fn start_failed(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, e: &str, now: u64, fx: &mut crate::desk::hub::core::desk::Effects) {
     let Some(it) = st.desk.item_mut(&s.id) else { return };
     it.start_failed = e.to_string();
@@ -543,7 +577,10 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
         out.push_str(&if why.is_empty() { " | RESUME it when it should go on".to_string() } else { format!(" | paused: {why}") });
     }
     // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
-    if it.state == "queued" && it.tree_wait {
+    if it.state == "queued" && it.holder.is_none() && !it.machine_wait.is_empty() {
+        let n = crate::desk::machine_pref::of(&it.project).at_once(&it.machine_wait);
+        out.push_str(&format!(" | waiting for room on {} (the user's setting: {n} of this Desk's items at once there): it starts by itself once one there is done", crate::machines::display_name(&it.machine_wait)));
+    } else if it.state == "queued" && it.tree_wait {
         out.push_str(&format!(" | {}", crate::desk::hub::landing::trees::copy_wait(st, &it.project, &it.tree_wait_repo)));
     } else if it.state == "working" && it.tree_wait && it.tree.is_none() {
         // At work without a copy (#566): in line for the next free one.
