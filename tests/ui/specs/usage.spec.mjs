@@ -75,14 +75,19 @@ test("merged usage and its details fit the smallest window", async ({ cue, page 
   await cue.open("board-waiting");
   await usage(cue);
   await page.emulateMedia({ colorScheme: "dark" });
+  // The bar redraws as the usage lands, so each box is read in one go from the element there then (a boundingBox()
+  // taken between redraws is null), once the merged button is in.
+  const rect = (loc) => loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, right: r.right }; });
+  await expect(page.getByRole('button', { name: 'Usage', exact: true })).toHaveText('Claude32%Codex64%5h');
   const settings = page.getByRole('button', { name: 'Settings', exact: true });
   await expect(settings).toBeVisible();
-  expect((await settings.boundingBox()).x + (await settings.boundingBox()).width).toBeLessThanOrEqual(901);
-  expect(await page.locator('.top > :last-child').evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(901);
+  expect((await rect(settings)).right).toBeLessThanOrEqual(901);
+  expect((await rect(page.locator('.top > :last-child'))).right).toBeLessThanOrEqual(901);
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
-  const pop = await page.locator('.usage-pop').boundingBox();
+  await expect(page.locator('.usage-pop')).toBeVisible();
+  const pop = await rect(page.locator('.usage-pop'));
   expect(pop.x).toBeGreaterThanOrEqual(0);
-  expect(pop.x + pop.width).toBeLessThanOrEqual(901);
+  expect(pop.right).toBeLessThanOrEqual(901);
 });
 
 /** The usage as each plan reports it: Pro and Max with both windows, Ultra with the weekly one only. */
