@@ -108,7 +108,7 @@ fn from_config(c: &Value) -> Value {
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true), "codex": b("/usage/codex", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
-        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "text": text_size_in(c), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
+        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "chat_text": chat_text_in(c), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
@@ -236,25 +236,23 @@ pub(crate) fn beta_updates_in(c: &Value) -> bool {
     c.pointer("/updates/beta").and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Text size (⌘+ / ⌘− / ⌘0, or Settings → Text size): the type scale's step (ui/styles/base.css data-text), so only
-/// the words grow and the layout stays. Compact is the scale as drawn; Default is a step up from it (#594).
-pub const TEXT_SIZES: [&str; 3] = ["compact", "default", "large"];
+/// Text size: the window's zoom, one of these steps (⌘+ / ⌘− / ⌘0, or Settings → Text size).
+pub const ZOOM_STEPS: [f64; 4] = [0.9, 1.0, 1.15, 1.3];
 
-/// The text size you picked: Default until you pick one. A size saved before #594 was the window's zoom
-/// (appearance.zoom: 0.9 Compact, 1 Default, 1.15 Large, 1.3 Larger) and reads as the nearest step now: Compact
-/// stays Compact, Default and Large (the old Large is the new Default's size) are Default, Larger is Large.
-pub fn text_size() -> &'static str {
-    text_size_in(&load())
+/// The text size you picked (1.0 until you pick one; anything not a step reads as 1.0).
+pub fn zoom() -> f64 {
+    load().pointer("/appearance/zoom").and_then(Value::as_f64).and_then(zoom_step).unwrap_or(1.0)
 }
-fn text_size_in(c: &Value) -> &'static str {
-    if let Some(t) = c.pointer("/appearance/text").and_then(Value::as_str).and_then(|t| TEXT_SIZES.into_iter().find(|s| *s == t)) {
-        return t;
-    }
-    match c.pointer("/appearance/zoom").and_then(Value::as_f64) {
-        Some(z) if z < 0.95 => "compact",
-        Some(z) if z > 1.2 => "large",
-        _ => "default",
-    }
+fn zoom_step(z: f64) -> Option<f64> {
+    ZOOM_STEPS.into_iter().find(|s| (s - z).abs() < 0.001)
+}
+
+/// A chat's words (A− / A+ on a chat's head, #594): the px its messages and the words in its box read at, on top of
+/// the window's zoom. Only the chat; everything around it stays on the type scale (ui/styles/base.css --type-chat).
+pub const CHAT_TEXT_STEPS: [u64; 5] = [13, 14, 15, 16, 18];
+pub const CHAT_TEXT_DEFAULT: u64 = 15;
+fn chat_text_in(c: &Value) -> u64 {
+    c.pointer("/appearance/chat_text").and_then(Value::as_u64).filter(|t| CHAT_TEXT_STEPS.contains(t)).unwrap_or(CHAT_TEXT_DEFAULT)
 }
 
 /// How many earlier exchanges each session keeps for context (Settings → Context; default 5).
@@ -343,7 +341,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.text", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.chat_text", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -373,7 +371,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
         return Err(format!("unknown setting {key}"));
     }
     match key {
-        "pi.gate" | "appearance.mode" | "appearance.text" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
+        "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
         "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.machine" | "project.model" | "project.asked" | "project.never" => checked_project(key, value),
         "insights.skills" | "quick.phrases" | "owner.names" => checked_list(key, value),
         _ => checked_plain(key, value),
@@ -390,10 +388,6 @@ fn checked_choice(key: &str, value: &Value) -> Result<Value, String> {
         "appearance.mode" => match value.as_str() {
             Some(m @ ("system" | "light" | "dark")) => json!(m),
             _ => return Err("appearance must be system, light or dark".into()),
-        },
-        "appearance.text" => match value.as_str() {
-            Some(t @ ("compact" | "default" | "large")) => json!(t),
-            _ => return Err("text size must be compact, default or large".into()),
         },
         // Settings → Mini window (mini/mod.rs): Cue at the screen's right edge, at the notch, or not at all.
         "mini.mode" => match value.as_str() {
@@ -543,6 +537,8 @@ fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
         "history.keep" => json!(value.as_u64().ok_or("keep must be a number")?.max(10)),
         "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
         "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
+        "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
+        "appearance.chat_text" => json!(value.as_u64().filter(|t| CHAT_TEXT_STEPS.contains(t)).ok_or("chat text must be 13, 14, 15, 16 or 18")?),
         // Your usage meters' CSV file (a path; ~ is your home folder). Empty: back to the default.
         "usage.file" => {
             let p = value.as_str().ok_or("the usage file must be a path")?.trim();
@@ -804,17 +800,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_size_is_a_step_and_an_old_zoom_reads_as_the_nearest() {
-        let size = |c: Value| text_size_in(&c);
-        assert_eq!(size(json!({})), "default", "unset: Default");
-        for t in TEXT_SIZES {
-            assert_eq!(size(json!({"appearance": {"text": t, "zoom": 0.9}})), t, "a size picked wins over an old zoom");
+    fn text_size_takes_only_its_steps() {
+        for z in ZOOM_STEPS {
+            assert_eq!(zoom_step(z), Some(z));
         }
-        // The window's zoom from before #594: Compact stays, Default and Large are Default now, Larger is Large.
-        for (z, t) in [(0.9, "compact"), (1.0, "default"), (1.15, "default"), (1.1500000001, "default"), (1.3, "large")] {
-            assert_eq!(size(json!({"appearance": {"zoom": z}})), t, "{z}");
+        // A number that's nearly a step (as JSON may round it) is that step; anything else isn't one.
+        assert_eq!(zoom_step(1.1500000001), Some(1.15));
+        for z in [0.0, 0.5, 1.2, 2.0, -1.0, f64::NAN] {
+            assert_eq!(zoom_step(z), None, "{z}");
         }
-        assert_eq!(size(json!({"appearance": {"text": "huge", "zoom": "big"}})), "default", "anything else: Default");
+    }
+
+    #[test]
+    fn chat_text_is_a_step_or_the_default() {
+        assert_eq!(chat_text_in(&json!({})), CHAT_TEXT_DEFAULT);
+        for t in CHAT_TEXT_STEPS {
+            assert_eq!(chat_text_in(&json!({"appearance": {"chat_text": t}})), t);
+        }
+        for bad in [json!(17), json!("16"), json!(-1), json!(15.5)] {
+            assert_eq!(chat_text_in(&json!({"appearance": {"chat_text": bad}})), CHAT_TEXT_DEFAULT, "{bad}");
+        }
     }
 
     #[test]

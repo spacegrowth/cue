@@ -17,6 +17,7 @@ pub(super) fn prepare(app: &tauri::App) {
     if let Some(w) = app.get_webview_window("main") {
         no_webrtc(&w);
     }
+    crate::apply_zoom(app.handle());
 }
 
 /// Hide the window (a quiet test instance).

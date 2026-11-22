@@ -15,7 +15,7 @@ function keyAnywhere(e) {
   // ⌘D: tell me when the open session's turn is done. Works while you type.
   if (cmdOnly(e) && k === "d") { e.preventDefault(); tipUsed("tell"); watchTurn(); return true; }
   // ⌘+ / ⌘− / ⌘0: text size, a step bigger or smaller, or back to Default (from anywhere in Cue).
-  if (e.metaKey && !e.altKey && !e.ctrlKey && ["=", "+", "-", "_", "0"].includes(e.key)) { e.preventDefault(); stepText(e.key === "0" ? 0 : e.key === "-" || e.key === "_" ? -1 : 1); return true; }
+  if (e.metaKey && !e.altKey && !e.ctrlKey && ["=", "+", "-", "_", "0"].includes(e.key)) { e.preventDefault(); stepZoom(e.key === "0" ? 0 : e.key === "-" || e.key === "_" ? -1 : 1); return true; }
   // ⌘T: a new shell tab in it (from inside it too).
   if (cmdOnly(e) && k === "t") { e.preventDefault(); newShellTab(); return true; }
   return false;

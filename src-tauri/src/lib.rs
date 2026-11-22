@@ -88,6 +88,13 @@ pub fn hook_main(args: &[String]) {
     hook::main(args)
 }
 
+/// Text size: the whole window zooms (text, cards and buttons together), as a browser's ⌘+ does.
+pub(crate) fn apply_zoom(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_zoom(config::zoom());
+    }
+}
+
 /// `cue connect <claude|codex|pi>…` from a terminal: the same as Settings → Connect. Prints what it
 /// did; exit code 1 if any failed. Pi's extension comes from the app bundle, else this checkout.
 pub fn connect_main(agents: &[String]) -> i32 {
@@ -137,7 +144,7 @@ fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
 pub fn run() {
     // Room for every session's files: macOS starts an app at 256 open files.
     cue_host::more_open_files();
-    // Settings into memory before anything reads one (the window's size, below).
+    // Settings into memory before anything reads one (the window's size and zoom, below).
     config::refresh();
     // Opened from the Finder or the Dock, an app gets no locale, and tmux without UTF-8 rewrites what it
     // prints (a tab in its answers as "_", "❯" as "_" in the terminal it draws). Cue and everything it

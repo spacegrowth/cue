@@ -11,9 +11,9 @@ function applyTheme() {
   if (mode === "system") root.removeAttribute("data-theme");
   else if (root.dataset.theme !== mode) root.dataset.theme = mode;
   root.classList.toggle("away-on", away);
-  // Text size: the chat's words (styles/base.css --type-chat).
-  const text = textSize();
-  if (root.dataset.text !== text) root.dataset.text = text;
+  // A chat's words (A− / A+, styles/base.css --type-chat).
+  const chat = `${chatText()}px`;
+  if (root.style.getPropertyValue("--type-chat") !== chat) root.style.setProperty("--type-chat", chat);
   retheme();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */

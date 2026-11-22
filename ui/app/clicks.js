@@ -5,6 +5,7 @@
 const ACTS = {
   next: () => goNext(),
   "set-tab": (el) => { setTab = el.dataset.tab; try { localStorage.setItem("cue.setTab", setTab); } catch {} const b = document.querySelector(".sheet-body"); if (b) b.scrollTop = 0; renderMain(); },
+  "chat-text": (el) => stepChatText(+el.dataset.dir),
   "test-notify": () => invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`)),
   "open-history": () => { view = "history"; sheet = null; renderMain(); },
   "shell-new": () => openShell(""),
