@@ -40,7 +40,7 @@
     await ready;
     const f = overrides[cmd] || handlers[cmd];
     if (!f) { call.error = `unknown command ${cmd}`; throw call.error; }
-    try { call.result = await f(args ?? {}); return call.result; }
+    try { call.result = await f(args ?? {}, handlers[cmd]); return call.result; }
     catch (e) { call.error = String(e); throw e; }
   }
 
@@ -52,7 +52,8 @@
     area(name, make) { makers.push([name, make]); },
     /** The names of every command some area fakes (for the coverage test). */
     commands: () => Object.keys(handlers),
-    /** A test's own answer for `cmd` (a function of its args), in front of the area's; null takes it away. */
+    /** A test's own answer for `cmd` (a function of its args, and of the area's own answer to call through to), in
+     *  front of the area's; null takes it away. */
     override(cmd, f) { if (f) overrides[cmd] = f; else delete overrides[cmd]; },
     emit: w.emit,
     /** Calls of `cmd` so far (all of them without one). */

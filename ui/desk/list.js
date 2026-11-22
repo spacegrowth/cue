@@ -379,7 +379,11 @@ async function deskDoneFetch(project) {
   } catch (e) { console.error(e); pg.end = true; }
   pg.loading = false;
   // Fetched ahead of what shows: nothing to draw till its end comes into view (each draw of a long Done list is slow).
-  if (deskSelection() === project && view === "desk" && deskDoneSeenNow(project) !== was && !deskDonePatch(project)) renderMain();
+  // Nothing new showing, its end is watched again (#735): reached while this was loading, the watch had let go and
+  // nothing would load more till some other draw; still in view, it loads the next 10 at once.
+  if (deskSelection() !== project || view !== "desk") return;
+  if (deskDoneSeenNow(project) === was) deskDoneWatch();
+  else if (!deskDonePatch(project)) renderMain();
 }
 /** What a project's Done shows: how many rows, and whether its end ("Loading older…") is there. */
 function deskDoneSeenNow(project) {
