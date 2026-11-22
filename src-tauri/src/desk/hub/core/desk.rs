@@ -390,6 +390,25 @@ impl Hub {
         Some(id)
     }
 
+    /// The lead's ASKs about an item that has since finished (done, landed, or dropped: gone from the Desk) close by
+    /// themselves (#613): the question no longer needs you, and nothing is sent to the lead (it finished the item).
+    pub(crate) fn desk_close_finished_asks(&self) {
+        let ids: Vec<String> = self.read(|st| {
+            st.items
+                .iter()
+                .filter(|i| i.desk && i.status == "pending")
+                .filter(|i| i.tool_input["desk_item"].as_str().is_some_and(|x| st.desk.items.iter().find(|d| d.id == x).is_none_or(|d| matches!(d.state.as_str(), "done" | "dropped"))))
+                .map(|i| i.id.clone())
+                .collect()
+        });
+        for id in &ids {
+            self.finish(id, "gone", "its item is done");
+        }
+        if !ids.is_empty() {
+            self.changed();
+        }
+    }
+
     /// Card `id` answered with `d`: a lead's ASK is filed and its answer sent to the lead. False for any other.
     pub(crate) fn desk_answered(&self, id: &str, d: &Decision) -> bool {
         let Some((sid, question, using, about, old, lands, push)) = self.read(|st| {

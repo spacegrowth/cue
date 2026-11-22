@@ -53,25 +53,38 @@ function deskPausedTill(sid) {
   return l.resets_ms || 1;
 }
 /** What waits on you on Desk `d`: { waits: its items that wait, asks: open asks (the lead's questions, Ask me before
- *  permissions) from its sessions not already on an item }, leaving out sessions paused on a usage limit. */
+ *  permissions) from its sessions not already on an item }, leaving out sessions paused on a usage limit, a lead's
+ *  question about another Desk (#613: a lead on two Desks asks each about its own), and a lead's question about an
+ *  item that has finished since (done, landed, dropped: the hub closes those too, desk_close_finished_asks). */
 function deskAwayNeeds(d, taskApprovals = deskTaskApprovals(d)) {
   const waits = deskWaitingItems(d, taskApprovals).filter((i) => !deskPausedTill(deskHolderSid(i)));
   const placed = new Set([...taskApprovals.values()].map((r) => r.id));
   for (const i of d.items) if (i.ask?.item_id) placed.add(i.ask.item_id);
   const asks = state.items.filter((it) => !placed.has(it.id) && deskHasSession(d, it.session_id) && it.status === "pending" && it.kind !== "waiting"
-    && !answering.has(it.id) && !deskPausedTill(it.session_id));
+    && !answering.has(it.id) && !deskPausedTill(it.session_id) && deskAskIsHere(it, d));
   return { waits, asks };
+}
+/** Whether open ask `it` is Desk `d`'s: a lead's question names its Desk (desk_id) and the item it's about (desk_item),
+ *  which must still be open on it. */
+function deskAskIsHere(it, d) {
+  if (!it.desk) return true;
+  const dk = it.tool_input?.desk_id, about = it.tool_input?.desk_item;
+  if (dk && dk !== d.project && dk !== d.id) return false;
+  if (!about) return true;
+  const i = d.items.find((x) => x.id === about);
+  return !!i && i.state !== "done" && i.state !== "dropped";
 }
 /** The same as one list for "Before you go" (#618): the lead's asks first, newest first, then the other sessions' asks,
  *  then the items that wait; each { key, desk, back (the lead's own ASK: it goes back to the lead once Away is on),
- *  stale (a session's ask whose items on this Desk have all finished: it no longer needs you), html }. */
+ *  stale (a session's ask whose items on this Desk have all finished: it no longer needs you), at (when asked, ms; 0 for
+ *  an item), html }. */
 function deskAwayFirstList(d) {
   const { waits, asks } = deskAwayNeeds(d), lead = deskLead(d)?.sid;
   const at = (it) => it.created_ms || it.at_ms || deskMs(it.created) || 0;
   const sorted = [...asks].sort((x, y) => (y.session_id === lead) - (x.session_id === lead) || at(y) - at(x));
   const stale = (sid) => { const its = sid && sid !== lead ? d.items.filter((i) => deskHolderSid(i) === sid) : []; return its.length > 0 && its.every((i) => i.state === "done" || i.state === "dropped"); };
-  return [...sorted.map((it) => ({ key: `a:${it.id}`, desk: d.project, back: !!it.desk && it.session_id === lead, stale: stale(it.session_id), html: () => deskAwayAsk(it, d) })),
-    ...[...waits].sort((x, y) => deskMs(y.updated) - deskMs(x.updated)).map((i) => ({ key: `i:${i.id}`, desk: d.project, html: () => deskItemRow(i, false) }))];
+  return [...sorted.map((it) => ({ key: `a:${it.id}`, desk: d.project, back: !!it.desk && it.session_id === lead, stale: stale(it.session_id), at: at(it), html: () => deskAwayAsk(it, d) })),
+    ...[...waits].sort((x, y) => deskMs(y.updated) - deskMs(x.updated)).map((i) => ({ key: `i:${i.id}`, desk: d.project, at: 0, html: () => deskItemRow(i, false) }))];
 }
 /** An open ask, answerable where it is: who asks and what, a single question's choices, then the controls its card
  *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
@@ -313,15 +326,24 @@ function deskAwayLeftLine(left) {
   const parts = [back ? `${back} ${back === 1 ? "goes back to its lead" : "go back to their leads"}` : "", rest ? `${rest} wait${rest === 1 ? "s" : ""} in Waiting on you` : ""].filter(Boolean);
   return `Left unanswered: ${parts.join(", ")}.`;
 }
+/** A question asked more than this long ago goes under "Older", folded (#613). */
+const DESK_AWAY_OLD_MS = 24 * 3600000;
 /** "Before you go" (#618, pick C): one question at a time, "1 of 5", with Skip; marks per Desk show where you are and
- *  which are answered, a click on one jumps there. Answering moves on by itself. Never holds Done. */
+ *  which are answered, a click on one jumps there. Answering moves on by itself. Never holds Done. Each says which
+ *  Desk it's from; this Desk's come first; questions older than a day wait under "Older", folded (#613). */
 function deskAwayFirstHtml(e, going, many) {
-  const seen = new Set(), all = going.flatMap((r) => { const d = deskOf(r.project); return d ? deskAwayFirstList(d) : []; }).filter((x) => !seen.has(x.key) && seen.add(x.key));
+  // This Desk's first, then the other Desks turned on with it.
+  const order = [...going].sort((x, y) => (y.project === e.project) - (x.project === e.project));
+  const seen = new Set(), all = order.flatMap((r) => { const d = deskOf(r.project); return d ? deskAwayFirstList(d) : []; }).filter((x) => !seen.has(x.key) && seen.add(x.key));
   const list = all.filter((x) => !x.stale), live = new Map(list.map((x) => [x.key, x]));
   if (!e.shown) {
-    e.shown = list.map(({ key, desk, back }) => ({ key, desk, back: !!back }));
+    const old = (x) => x.at > 0 && now() - x.at > DESK_AWAY_OLD_MS;
+    e.shown = list.filter((x) => !old(x)).map(({ key, desk, back }) => ({ key, desk, back: !!back }));
+    e.older = list.filter(old).map(({ key, desk, back, at }) => ({ key, desk, back: !!back, at }));
     e.step = 0; e.live = new Set(live.keys()); e.stale = all.length - list.length;
   }
+  const olderLive = (e.older || []).filter((x) => live.has(x.key));
+  const olderHtml = deskAwayOlderHtml(e, olderLive, live);
   // The one showing was answered since the last render (Send, Allow, No…): on to the next open one.
   const at = e.shown[e.step];
   if (at && !live.has(at.key) && e.live.has(at.key)) {
@@ -329,9 +351,9 @@ function deskAwayFirstHtml(e, going, many) {
     e.step = k < 0 ? e.shown.length : k;
   }
   e.live = new Set(live.keys());
-  const left = e.shown.filter((x) => live.has(x.key));
+  const left = [...e.shown.filter((x) => live.has(x.key)), ...olderLive];
   const staleLine = e.stale ? `<div class="dk-aw-more">Not shown: ${e.stale} that no longer need${e.stale === 1 ? "s" : ""} you</div>` : "";
-  if (!e.shown.length) return { html: staleLine, left };
+  if (!e.shown.length) return { html: olderLive.length ? `<div class="dk-aw-oneh"><div class="dk-aw-h">Before you go</div></div>${olderHtml}${staleLine}` : staleLine, left };
   const groups = [...new Set(e.shown.map((x) => x.desk))].map((p) => {
     const pips = e.shown.map((x, k) => {
       if (x.desk !== p) return "";
@@ -345,12 +367,23 @@ function deskAwayFirstHtml(e, going, many) {
   let body;
   if (open) {
     const ifLeft = cur.back ? "If you leave it, its lead decides" : "If you leave it, it waits for you";
-    body = `<div class="dk-aw-nav"><span>${e.step + 1} of ${e.shown.length}</span><span aria-hidden="true">·</span><span>${ifLeft}</span><span class="grow"></span><button class="btn dk-aw-skip" data-away-skip>Skip</button></div><div class="dk-aw-first">${open.html()}</div>`;
+    body = `<div class="dk-aw-nav"><span class="dk-aw-from">${esc(deskAwayFrom(cur.desk))}</span><span aria-hidden="true">·</span><span>${e.step + 1} of ${e.shown.length}</span><span aria-hidden="true">·</span><span>${ifLeft}</span><span class="grow"></span><button class="btn dk-aw-skip" data-away-skip>Skip</button></div><div class="dk-aw-first">${open.html()}</div>`;
   } else {
     const end = cur ? "Answered." : left.length ? `That's all of them. ${left.length} left for later.` : `All answered. ${e.on ? "Nothing waits on you." : "Turn on Away when you're ready."}`;
     body = `<div class="dk-aw-end">${esc(end)}</div>`;
   }
-  return { html: head + body + staleLine, left };
+  return { html: head + body + olderHtml + staleLine, left };
+}
+/** "Cue Desk": where a question comes from. */
+const deskAwayFrom = (project) => `${deskName(deskOf(project)) || project} Desk`;
+/** "Older · 3", folded: questions asked more than a day ago, each with its Desk and when, answerable in place. */
+function deskAwayOlderHtml(e, older, live) {
+  if (!older.length) return "";
+  const head = `<button class="dk-aw-fold dk-aw-older" data-away-older aria-expanded="${!!e.olderOpen}"><span class="dk-aw-chev${e.olderOpen ? " open" : ""}" aria-hidden="true">›</span><b>Older</b><span class="dk-aw-w">${older.length}</span></button>`;
+  if (!e.olderOpen) return head;
+  const day = (ms) => new Date(ms).toLocaleDateString([], { day: "numeric", month: "short" });
+  const rows = older.map((x) => `<div class="dk-aw-oldrow"><div class="dk-aw-nav"><span class="dk-aw-from">${esc(deskAwayFrom(x.desk))}</span><span aria-hidden="true">·</span><span>asked ${esc(day(x.at))}</span></div>${live.get(x.key).html()}</div>`).join("");
+  return `${head}<div class="dk-aw-first dk-aw-olderlist">${rows}</div>`;
 }
 function deskAwayHtml() {
   const e = deskAwayEdit;
@@ -446,12 +479,13 @@ document.addEventListener("click", (ev) => {
   }
   const r = ev.target.closest?.("[data-away-rule]"), b = ev.target.closest?.("[data-away]:not([data-away=scrim])") || (ev.target.dataset?.away === "scrim" ? ev.target : null);
   const dk = ev.target.closest?.("[data-away-desk]");
-  const nav = ev.target.closest?.(".dk-aw-dialog [data-away-step], .dk-aw-dialog [data-away-skip], .dk-aw-dialog [data-away-rules]");
+  const nav = ev.target.closest?.(".dk-aw-dialog [data-away-step], .dk-aw-dialog [data-away-skip], .dk-aw-dialog [data-away-rules], .dk-aw-dialog [data-away-older]");
   if (!r && !b && !dk && !nav) return;
   ev.stopPropagation();
   if (nav) {
     const e = deskAwayEdit;
     if ("awayRules" in nav.dataset) e.open = !e.open;
+    else if ("awayOlder" in nav.dataset) e.olderOpen = !e.olderOpen;
     else if ("awayStep" in nav.dataset) e.step = Number(nav.dataset.awayStep);
     // Skip: on to the next one still open after it, else the end.
     else { const k = e.shown.findIndex((x, n) => n > e.step && e.live.has(x.key)); e.step = k < 0 ? e.shown.length : k; }

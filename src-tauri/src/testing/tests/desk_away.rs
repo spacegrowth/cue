@@ -341,3 +341,29 @@ fn while_away_the_leads_ask_goes_back_to_it_to_decide() {
     ends(&w, &d, "ASK: Which color for the badge?");
     assert_eq!(asks(&d), 1);
 }
+
+#[test]
+fn a_lead_ask_about_an_item_closes_by_itself_once_the_item_is_done() {
+    // #613: a question about an item that has since finished no longer needs you; "Before you go" never shows it.
+    let w = World::new();
+    let (_h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    let asks = |sid: &str| w.snapshot().cards_of(sid).into_iter().filter(|c| c["kind"] == "question").count();
+    ends(&w, &d, "ITEM: Header\nITEM: Footer");
+    let head = item(&desk(&w, &project), "Header")["id"].as_str().unwrap().to_string();
+    let foot = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
+    ends(&w, &d, &format!("ASK: #{head} | Keep the old header? | choices: Yes / No\nASK: #{foot} | Blue footer? | choices: Yes / No\nASK: Ship today?"));
+    assert_eq!(asks(&d), 3);
+    // The tick leaves them while their items are open.
+    w.hub().desk_tick_now();
+    assert_eq!(asks(&d), 3);
+    // The header item is dropped: its question closes; the footer's and the one about no item stay.
+    w.hub().desk_item_act(&head, "drop", "").unwrap();
+    w.settle();
+    w.hub().desk_tick_now();
+    let left: Vec<String> = w.snapshot().cards_of(&d).into_iter().map(|c| c["tool_input"]["questions"][0]["question"].as_str().unwrap_or("").to_string()).collect();
+    assert_eq!(left.len(), 2, "{left:?}");
+    assert!(!left.iter().any(|q| q.contains("old header")), "{left:?}");
+    // Nothing was sent to the lead about it: it finished the item itself.
+    assert!(!sent_to(&w, &d).iter().any(|t| t.contains("Keep the old header")), "{:?}", sent_to(&w, &d));
+}

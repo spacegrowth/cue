@@ -678,6 +678,8 @@ impl Hub {
         self.desk_feed_tick();
         // Items queued for a session whose wait is up (desk/hub/turn/queue.rs), should its own timer have been lost.
         self.desk_queue_tick();
+        // The lead's questions about items that have finished since: closed (#613).
+        self.desk_close_finished_asks();
     }
 }
 

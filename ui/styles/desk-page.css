@@ -429,6 +429,11 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-aw-pip.cur { background: var(--accent); }
 .dk-aw-pip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dk-aw-nav { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--type-small); }
+.dk-aw-from { color: var(--ink); font-weight: 600; }
+/* Older (#613): questions asked more than a day ago, folded under one row. */
+.dk-aw-fold.dk-aw-older { padding: 6px 2px; font-size: var(--type-small); color: var(--muted); }
+.dk-aw-fold.dk-aw-older b { color: var(--ink); }
+.dk-aw-oldrow { display: flex; flex-direction: column; gap: 6px; }
 .btn.dk-aw-skip { border-color: transparent; box-shadow: none; background: none; color: var(--muted); }
 .dk-aw-end { display: flex; align-items: center; justify-content: center; min-height: 96px; border: 1px dashed var(--line); border-radius: var(--radius-tray); color: var(--muted); font-size: var(--type-body); }
 .dk-aw-sum { all: unset; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); font-size: var(--type-body); color: var(--ink); cursor: pointer; }

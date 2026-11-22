@@ -559,3 +559,66 @@ test("the Away switch shows in full, its until time with it, in the Items head a
     await expect(head.locator(".dk-prog-btn, .dk-pz, .dk-aw-sw")).toHaveCount(3);
   }
 });
+
+for (const mode of ["light", "dark"]) {
+  test(`Before you go says each question's Desk, this Desk's first; another Desk's and a finished item's never show; older ones fold under Older (#613, ${mode})`, async ({ page, cue }) => {
+    await cue.open("desk");
+    await cue.change((st, mode) => { st.settings = { ...(st.settings || {}), appearance: { ...(st.settings?.appearance || {}), mode } }; }, mode);
+    await keepAway(cue);
+    await cue.override("desk_away_sweep", () => null);
+    await openDesk(page);
+    await clear(cue);
+    await leadAsks(cue, 1);
+    await cue.change((st) => {
+      // The other Desk listed first, so this Desk coming first is the card's doing.
+      st.desk.projects.reverse();
+      const ask = st.items.find((i) => i.id === "n-lead1"), q = (text) => ({ questions: [{ question: text, header: "Q", multiSelect: false, options: [{ label: "Yes" }, { label: "No" }] }] });
+      ask.tool_input = { ...q("Question 1?"), desk_id: "cue" };
+      // The lead asked about another Desk, and about an item that has landed (d7 is done): neither is this card's.
+      st.items.push({ ...ask, id: "n-other", tool_input: { ...q("Other Desk's question?"), desk_id: "elsewhere" } });
+      st.items.push({ ...ask, id: "n-done", tool_input: { ...q("Finished item's question?"), desk_id: "cue", desk_item: "d7" } });
+      // Asked two days ago: under Older.
+      st.items.push({ ...ask, id: "n-old", created_ms: ask.created_ms - 2 * 86400000, tool_input: { ...q("Old question?"), desk_id: "cue" } });
+      // The website Desk's session asks too.
+      st.items.push({ ...ask, id: "n-site", session_id: "site", desk: false, created_ms: ask.created_ms + 5000, tool_input: q("Website question?") });
+    });
+    await page.locator(".dk-items .dk-aw-sw").click();
+    const card = page.locator(".dk-aw-dialog");
+    // The website Desk goes away too.
+    await card.locator(".dk-aw-sum").click();
+    await card.locator('[data-away-desk="website"]').click();
+    await sweepEnds(cue);
+    await expect(card.locator(".dk-aw-nav").first()).toContainText("1 of 2");
+    await expect(card.locator(".dk-aw-first .dk-aw-ask .qtext")).toHaveText("Question 1?");
+    await expect(card.locator(".dk-aw-nav .dk-aw-from").first()).toHaveText(/^cue Desk$/i);
+    await expect(card).not.toContainText("Other Desk's question?");
+    await expect(card).not.toContainText("Finished item's question?");
+    // Older: folded, one row.
+    const older = card.locator("[data-away-older]");
+    await expect(older).toHaveAttribute("aria-expanded", "false");
+    await expect(older).toContainText("Older");
+    await expect(older).toContainText("1");
+    await expect(card).not.toContainText("Old question?");
+    // The old one counts with the rest: the lead's two go back to it, the website session's waits for you.
+    await expect(card.locator(".dk-aw-left")).toHaveText("Left unanswered: 2 go back to their leads, 1 waits in Waiting on you.");
+    await expect(card.locator("[title]")).toHaveCount(0);
+    if (process.env.SHOT_DIR) await card.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-desks-${mode}.png` });
+    // Skip: the website Desk's, saying so.
+    await card.locator("[data-away-skip]").click();
+    await expect(card.locator(".dk-aw-first .dk-aw-ask .qtext")).toHaveText("Website question?");
+    await expect(card.locator(".dk-aw-nav .dk-aw-from").first()).toHaveText(/^website Desk$/i);
+    // Unfolded, the old one shows with its Desk and day, answerable there.
+    await older.click();
+    await expect(older).toHaveAttribute("aria-expanded", "true");
+    const row = card.locator(".dk-aw-oldrow");
+    await expect(row).toHaveCount(1);
+    await expect(row.locator(".dk-aw-from")).toHaveText(/^cue Desk$/i);
+    await expect(row).toContainText("asked ");
+    await expect(row.locator(".qtext")).toHaveText("Old question?");
+    if (process.env.SHOT_DIR) await card.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-older-${mode}.png` });
+    await row.locator('[data-pick="0:0"]').click();
+    await row.locator('[data-act="submit-answers"]').click();
+    await cue.called("respond", { id: "n-old" });
+    await expect(card.locator("[data-away-older]")).toHaveCount(0);
+  });
+}
