@@ -268,6 +268,7 @@ function replayMotion(was, kept) {
     const phase = `-${Date.now() % ms}ms`;
     document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el) && !inPlace(el)) { el.style.animationDelay = phase; el._phased = true; } });
   }
+  if (typeof deskB2Drift === "function") deskB2Drift();   // the Desk's moving steps keep time the same way (#729)
   markMore();   // lists end on whole cards before anything measures where cards landed
   if (view === "sessions") fitSvRest();
   flipPlay(was.flipFrom);

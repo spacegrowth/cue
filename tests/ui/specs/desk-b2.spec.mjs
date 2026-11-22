@@ -133,6 +133,36 @@ test("the list's tabs show only their groups; a long group shows 3 and Show all 
   await expect(list.locator('.dk-it[data-desk-item="d3"]')).toBeVisible();
 });
 
+test("the current step's dots move only while a session works on it right now (#729)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const p = st.desk.projects.find((x) => x.project === "cue"), d6 = p.items.find((i) => i.id === "d6");
+    p.items.push({ ...d6, id: "q1", title: "Queued for host", state: "queued", holder: null, steps: [Date.now() - 60000], next_for: { kind: "session", sid: "host", name: "host-lead" } });
+  });
+  await openDesk(page);
+  // The tests' page holds every animation still (load.js ?still=1): let this one move.
+  await page.evaluate(() => [...document.head.querySelectorAll("style")].find((s) => s.textContent.includes("animation:none!important"))?.remove());
+  for (const b of await page.locator("[data-desk2b-all]").all()) await b.click();
+  const cur = (id) => page.locator(`.dk-items .dk2b-row[data-desk-item="${id}"] .dk2b-trk i.cur`);
+  const anim = (loc) => loc.evaluate((el) => getComputedStyle(el).animationName);
+  // At work: its step dotted and drifting.
+  await expect(cur("d5")).toHaveClass(/\blive\b/);
+  expect(await anim(cur("d5"))).toBe("dk2b-drift");
+  // Ready to check, and waiting its turn: dotted, still.
+  for (const id of ["d2", "q1"]) {
+    await expect(cur(id)).toHaveCount(1);
+    await expect(cur(id)).not.toHaveClass(/\blive\b/);
+    expect(await anim(cur(id))).toBe("none");
+  }
+  // Its page's bar the same; a redraw keeps it in time with the clock rather than starting it over.
+  await page.locator('.dk-items [data-desk-item="d5"]').click();
+  const step = page.locator(".dk2b-open .dk2b-step.cur.live i");
+  await expect(step).toHaveCount(1);
+  expect(await anim(step)).toBe("dk2b-drift");
+  await cue.change(() => {});
+  await expect.poll(() => step.evaluate((el) => el.getAnimations()[0]?.startTime)).toBe(0);
+});
+
 test("a working session opens its item on the left with ‹ Items N back to the lead's chat", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

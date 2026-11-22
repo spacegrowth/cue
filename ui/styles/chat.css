@@ -173,7 +173,10 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-out div { white-space: pre; }
 .bg-view-out { flex: 1; min-height: 120px; margin-left: 0; }
 .bg-cmd { background: var(--panel-2); border-radius: var(--radius-btn); padding: 7px 10px; font: var(--type-small)/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
-.bg-view-steps .stx-say.small { font-size: var(--type-body); padding: 2px 4px; }
+/* An agent's chat (chat/helpers.js agentChatHtml), on the board's view of it and the Desk's crew page alike: what
+   it was asked, its words and its folded runs of steps, its answer, one under the other. */
+.ag-chat { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ag-chat .stx { margin: 0; }
 /* A background agent in full (chat/helpers.js helperPane): in place of the chat, its steps at full height. */
 /* The Back row sits above the chat area, not in it, so it stays put while a long agent's steps or a
    script's output scroll under it. */

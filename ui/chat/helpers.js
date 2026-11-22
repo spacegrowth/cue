@@ -111,29 +111,61 @@ function bgRow(sid, h, times = false) {
     : `started ${bgClock(h.started_ms)} · ${running ? `running ${span}` : `${endWord} ${bgClock(h.finished_ms || h.last_ms || h.started_ms)} · took ${span}`}`;
   return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times ? "" : "· script "}· ${when}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
 }
-/** One agent in full, in place of the chat: who it is, every step Cue has of it, and once it's finished
- *  its reply (its last words). Read-only: there's no messaging a background agent, so no box; the foot
- *  says whose turn it runs in, and ‹ Back (or Esc) returns to the chat. Patched in place while it runs
- *  (chatBox keeps the element; each part has a key). */
+/** The runs of an agent's steps opened from their fold line (agentChatHtml), each "sid|agent|its first step". */
+const agentRunOpen = new Set();
+/** A crew member of lead `sid` by its agent id, if the agent is one. */
+const crewMateById = (sid, id) => (sessionOf(sid)?.team || []).find((t) => t.agent_id === id) || null;
+/** An agent's chat: the one chat both the board's view of it (helperPane) and the Desk's crew page (desk/thread.js
+ *  deskCrewPane) draw, so the two read the same. What its lead asked it first (`ask`, under `by`'s name); then what it
+ *  did in order: its words as messages, and each run of steps between them folded into one line ("6 steps · 4
+ *  commands, 2 reads ▸") that opens them; the run it's on now with the live dot and its newest step under it; once it
+ *  finished, its last words as its answer at the end (else `answer`, what Cue kept of it). `h`: its helper from the
+ *  steps feed, or null when Cue has no feed of it (`steps` then: crewMateSteps' lines, one fold). `key`: its fold's. */
+function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key = h?.id || "" } = {}) {
+  const running = h ? helperRunning(h) : false, items = h?.items || [];
+  const end = h && !running ? helperTail(h) : items.length;
+  const reply = h ? items.slice(end).map((x) => x.text).join("\n\n").trim() || answer : answer;
+  const out = [];
+  if (ask) out.push(`<div class="bg-view-reply ag-ask" data-key="ask"><span class="bg-view-k">${esc(by || "Its lead")} asked it</span><div class="msg">${md(ask)}</div></div>`);
+  // Its steps and words, a run of steps at a time between its words.
+  const runs = [];
+  if (h) items.slice(0, end).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
+  else if (steps.length) runs.push({ lines: steps });
+  runs.forEach((r, n) => {
+    if (r.say) { out.push(`<div class="stx-say msg" data-key="${esc(r.say.id || `s:${r.say.at_ms}`)}">${md(r.say.text)}</div>`); return; }
+    const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = agentRunOpen.has(k);
+    const live = running && n === runs.length - 1;
+    const count = `${list.length}${!n && h?.more ? "+" : ""} step${list.length === 1 ? "" : "s"}`, sum = r.steps ? turnSummary(r.steps) : "";
+    const head = `<div class="stx-head"><button class="stx-fold" data-agent-run="${esc(k)}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : ""}<b>${live ? `Working · ${count}` : count}</b>${sum ? `<span class="stx-sum"> · ${esc(sum)}</span>` : ""}<span class="stx-tri">${open ? "▾" : "▸"}</span></button></div>`;
+    const line = (x) => (r.steps ? stepLine(sid, x, true) : `<div class="stx-line ${x.ask ? "bad" : ""}"><span class="stx-what">${x.html}</span></div>`);
+    // Folded, the run it's on now still says what it's doing: its newest step under the fold.
+    const body = open ? list.map(line).join("") : live ? line(list.at(-1)) : "";
+    out.push(`<div class="stx" data-key="run:${esc(first)}">${head}${body ? `<div class="stx-steps">${body}</div>` : ""}</div>`);
+  });
+  if (!runs.length && !reply) out.push(`<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`);
+  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div></div>`);
+  return `<div class="ag-chat">${out.join("")}</div>`;
+}
+/** One agent in full, in place of the chat: who it is, and its chat (agentChatHtml: what it was asked, what it did,
+ *  its answer). Read-only: there's no messaging a background agent, so no box; the foot says whose turn it runs in,
+ *  and ‹ Back (or Esc) returns to the chat. Patched in place while it runs (chatBox keeps the element; each part has
+ *  a key). */
 function helperPane(sid, h) {
   if (h.script) return scriptPane(sid, h);
   const running = helperRunning(h);
   const model = helperModel(h);
-  const steps = [], tail = [];
-  // Finished: its last words are its reply, shown apart from the steps.
-  const end = helperTail(h);
-  h.items.slice(0, end).forEach((x) => steps.push(x.t === "step" ? stepLine(sid, x, true) : `<div class="stx-say msg small" data-key="${esc(x.id || `s:${x.at_ms}`)}">${md(x.text)}</div>`));
-  h.items.slice(end).forEach((x) => tail.push(x.text));
   const tok = helperTokens(h.tokens);
+  // A crew member: what its lead asked it heads its chat, as on the Desk's crew page.
+  const t = crewMateById(sid, h.id);
+  const tail = !running && h.items.slice(helperTail(h)).length;
   // The head every agent's view has (agents.js agentHead): ‹ Back, its mark, name, kind, state, whose it is.
   const bar = agentHead(helperAgent(sid, h), helperBack(sid));
   const body = `<div class="bg-view-meta" data-key="meta">${h.teammate ? `<span>${esc(h.desc)}</span>` : ""}${model ? `<span>${esc(model)}</span>` : ""}${tok ? `<span>${tok}</span>` : ""}<span>${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far` : h.teammate ? "idle" : `${AGENT_WORDS[agentState(h)]} · ${helperSpan(h)}`}</span>${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${h.items.filter((x) => x.t === "step").length + (h.more || 0)} steps</span></div>
     ${h.more ? `<div class="stx-more dim" data-key="more">${h.more} earlier steps not shown</div>` : ""}
-    ${steps.length ? `<div class="stx-steps bg-view-steps" data-key="steps">${steps.join("")}</div>` : `<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`}
-    ${tail.length ? `<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its reply</span><div class="msg">${md(tail.join("\n\n"))}</div></div>` : ""}`;
+    ${agentChatHtml(sid, h, { ask: (t?.asked || "").trim(), by: nameOf(sid, sessionOf(sid)?.project), answer: t?.summary || "" })}`;
   // Finished with a reply: a button puts it in the session's message box (only there; you send it).
   if (h.teammate && h.name) return { bar, body, foot: teammateFoot(sid, h) };
-  const toBox = !running && tail.length ? `<button class="btn" data-helper-reply="${esc(`${sid}|${h.id}`)}">Put reply in the box</button>` : "";
+  const toBox = !running && tail ? `<button class="btn" data-helper-reply="${esc(`${sid}|${h.id}`)}">Put reply in the box</button>` : "";
   const foot = helperViewFoot(running, running ? `Running inside this session's turn. It reports to the session, not to you.` : `What it reported went into the session's next reply.`, toBox);
   return { bar, body, foot };
 }

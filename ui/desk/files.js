@@ -9,16 +9,17 @@ const deskBySize = (files) => [...files].sort((a, b) => (b.add || 0) + (b.del ||
 const deskPfiles = (head, files, attrs, more) => (files.length ? deskPsec(`${head} · ${files.length}`, fileListHtml(files, { attrs, more, max: DESK_PFILES }), "dk-pfiles") : "");
 
 /** Item `i`'s files, from the read its Files tab makes (deskFilesChanged, drawn first); till that's back, or while
- *  nothing in them has changed yet, the files it's on, "more" opening its Files tab. */
+ *  nothing in them has changed yet, the files it's on, "more" opening its Files tab. Always a section (#710), near the
+ *  panel's top: with nothing changed, it says so. */
 function deskItemFiles(i) {
   const checking = deskChecking(i), read = deskDiffs.get(deskDiffId(i))?.files, id = esc(i.id);
   if (read?.length) {
     const at = (n) => `data-desk-diff-file="${id}" data-n="${n}"`;
     return deskPfiles(checking ? "Files changed" : "Changed so far", read, at, at(DESK_PFILES));
   }
-  if (checking && read) return "";
-  const on = deskFilesOn(i), open = (n) => deskOpenFileAttrs(i, on[n]);
-  return deskPfiles("Files it's on", on.map((f) => ({ path: f.path })), open, `data-desk-itab="files" data-id="${id}"`);
+  const on = checking && read ? [] : deskFilesOn(i), open = (n) => deskOpenFileAttrs(i, on[n]);
+  if (!on.length) return deskPsec("Files changed", `<p class="dk-note">${checking ? "None: it changed no files." : "None yet."}</p>`, "dk-pfiles");
+  return deskPfiles(checking ? "Files changed" : "Files it's on", on.map((f) => ({ path: f.path })), open, `data-desk-itab="files" data-id="${id}"`);
 }
 
 /** The files item `i` is on, each with the folder its path is in (#677): a commit waiting on busy files says it per

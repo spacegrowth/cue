@@ -304,10 +304,11 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   // Its page took the Items list's place (#666): it names the item it's on, where the list's lit row did.
   await expect(pane.locator(".dk-ph")).toContainText("Search stays centred in the header");
   await expect(pane.locator('[data-mt-act="stop"]')).toBeVisible();
-  // Its page (#303, pick A): Doing, Why, Result; Open its session waits behind ⋯ and a click outside closes it.
-  await expect(pane.locator(".dk-crewpg .dk-sec h3")).toHaveText([/^Doing/, "Why", "Result"]);
-  await expect(pane.locator(".dk-crewpg .dk-sec").nth(1)).toContainText("Keep the search field centred unless it would cover a button.");
-  await expect(pane.locator(".dk-crewpg .dk-sec").nth(2)).toContainText("Not back yet.");
+  // Its page is its chat (#689): what web-lead asked it first; with no answer yet, none shown. Open its session waits
+  // behind ⋯ and a click outside closes it.
+  await expect(pane.locator(".dk-crewpg .ag-ask")).toContainText("web-lead asked it");
+  await expect(pane.locator(".dk-crewpg .ag-ask")).toContainText("Keep the search field centred unless it would cover a button.");
+  await expect(pane.locator(".dk-crewpg .bg-view-reply:not(.ag-ask)")).toHaveCount(0);
   await expect(pane.locator("[data-desk-crew-open]")).toHaveCount(0);
   await pane.locator("[data-desk-crew-more]").click();
   await expect(pane.locator('[data-desk-crew-open="id-search"]')).toBeVisible();
@@ -319,6 +320,44 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   // ‹ web-lead goes back to the lead.
   await page.locator(".dk-right .dk-back").click();
   await expect(pane.locator("h1 .dk-tname")).toHaveText("web-lead");
+});
+
+test("a crew member's page shows its whole chat, the same as the board's view of it: the ask, its words, its steps folded a run at a time, its answer (#689)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  // The lead's feed has search-centre's log: words, two runs of steps, and its answer once it finished.
+  await cue.override("session_steps", ({ sessionId }, now) => {
+    if (sessionId !== "lead") return { version: 0, turns: [] };
+    const step = (id, kind, verb, subject, m) => ({ t: "step", id, kind, verb, subject, mono: true, result: "", bad: false, done: true, at_ms: now - m * 60000 });
+    const say = (text, m) => ({ t: "say", text, at_ms: now - m * 60000 });
+    return { version: 7, turns: [], helpers: [{ id: "id-search", desc: "search-centre", kind: "general-purpose", model: "", teammate: true, name: "search-centre", step: "", started_ms: now - 9 * 60000, finished_ms: now - 60000, last_ms: now - 60000, tokens: 0, running: false, more: 0,
+      items: [say("Looking at how the header lays out its buttons.", 8), step("s1", "read", "Read", "ui/header.js", 7.5), step("s2", "search", "Searched", "search-box", 7), step("s3", "read", "Read", "ui/styles/header.css", 6.5),
+        say("The field is pushed left by the Inbox button.", 5), step("s4", "edit", "Edited", "ui/styles/header.css", 4), step("s5", "run", "Ran", "npm test", 3),
+        say("Done: the search field stays centred; it moves only when a button would sit under it.", 1)] }] };
+  }, Date.now());
+  await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
+  const pane = page.locator(".dk-right .dk-pg");
+  await pane.locator('[data-desk-crew="id-search"]').click();
+  const chat = pane.locator(".dk-crewpg .ag-chat");
+  await expect(chat.locator(".stx-fold")).toHaveCount(2);
+  // In order: the lead's ask, its words, a fold line per run of steps, its answer at the end.
+  const parts = () => chat.evaluate((el) => [...el.children].map((c) => c.classList.contains("ag-ask") ? "ask" : c.classList.contains("stx-say") ? "says" : c.classList.contains("stx") ? "steps" : c.classList.contains("bg-view-reply") ? "answer" : c.className));
+  expect(await parts()).toEqual(["ask", "says", "steps", "says", "steps", "answer"]);
+  await expect(chat.locator(".ag-ask")).toContainText("Keep the search field centred");
+  await expect(chat.locator(".stx-fold b")).toHaveText(["3 steps", "2 steps"]);
+  await expect(chat.locator(".stx-line")).toHaveCount(0);
+  await expect(chat.locator(".bg-view-reply").last()).toContainText("Its answer");
+  await expect(chat.locator(".bg-view-reply").last()).toContainText("the search field stays centred");
+  // A fold line opens its run, and closes it again.
+  await chat.locator(".stx-fold").first().click();
+  await expect(chat.locator(".stx-line")).toHaveCount(3);
+  await expect(chat.locator(".stx-line").first()).toContainText("ui/header.js");
+  await chat.locator(".stx-fold").first().click();
+  await expect(chat.locator(".stx-line")).toHaveCount(0);
+  // The board's view of it (its crew row's Its steps) draws the very same chat.
+  const desk = await chat.evaluate((el) => el.outerHTML);
+  const board = await page.evaluate(() => { const b = document.createElement("div"); b.innerHTML = helperPane("lead", helpersOf("lead").find((h) => h.id === "id-search")).body; return b.querySelector(".ag-chat").outerHTML; });
+  expect(board).toBe(desk);
 });
 
 test("a crew member's words show plain, its files without scratch or node_modules, once in its lead's list; a reply told again shows once (#197)", async ({ page, cue }) => {
