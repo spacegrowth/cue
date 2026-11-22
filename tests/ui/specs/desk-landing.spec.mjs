@@ -36,7 +36,7 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   await expect(pane).toContainText(`Checking before it lands · since ${since}`);
   // No commit wait any more: nothing to ask of another session, nothing to land without.
   await expect(pane.locator('[data-desk-act="ask_commit"], [data-desk-act="land_without"]')).toHaveCount(0);
-  await patchItem(cue, "d5", { finish: { step: "check_failed", at: Date.now(), question: "Its check failed", log: "test x failed" } });
+  await patchItem(cue, "d5", { finish: { step: "check_failed", at, question: "Its check failed", log: "test x failed" } });
   const box = pane.locator(".dk-wo");
   await expect(box).toContainText("Its check failed");
   await expect(box.locator('[data-desk-act="fix_back"]')).toHaveCount(1);
