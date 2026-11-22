@@ -109,6 +109,25 @@ CueBridge.area("settings", (w) => {
       if (!d) throw "no such Desk";
       // Where its new sessions start (#597, desk/machine_pref.rs save): a machine Cue has, with the folder of the
       // clone there (given, or the one it knows); "" for this Mac. Sent on its own.
+      // Several ticked (#661, machine_pref.rs save_many): its new items spread over them, each machine with its folder.
+      if ("machines" in lands) {
+        const ms = d.machines || { machine: "", machines: [] }, list = [...new Set(lands.machines)];
+        if (!list.length) throw "where new sessions start: tick at least one place for new sessions to start";
+        for (const n of list.filter(Boolean)) {
+          const m = ms.machines.find((x) => x.name === n);
+          if (!m) throw `where new sessions start: Cue has no machine called ${n}`;
+          const folder = (lands.machine_folders?.[n] || "").trim().replace(/(.)\/+$/, "$1") || m.folder || "";
+          if (!folder) throw `where new sessions start: give the folder of this repository's clone on ${m.label}`;
+          if (!/^[\/~]/.test(folder)) throw `where new sessions start: the folder needs its full path on the machine (${folder} isn't one)`;
+        }
+        for (const n of list.filter(Boolean)) {
+          const m = ms.machines.find((x) => x.name === n);
+          m.folder = (lands.machine_folders?.[n] || "").trim().replace(/(.)\/+$/, "$1") || m.folder;
+        }
+        d.machines = { ...ms, machine: list[0], picked: list };
+        w.changed(10);
+        return d.lands;
+      }
       if ("machine" in lands) {
         const ms = d.machines || { machine: "", machines: [] }, m = ms.machines.find((x) => x.name === lands.machine);
         if (lands.machine && !m) throw `where new sessions start: Cue has no machine called ${lands.machine}`;
@@ -116,7 +135,7 @@ CueBridge.area("settings", (w) => {
         if (m && !folder) throw `where new sessions start: give the folder of this repository's clone on ${m.label}`;
         if (m && !/^[\/~]/.test(folder)) throw `where new sessions start: the folder needs its full path on the machine (${folder} isn't one)`;
         if (m) m.folder = folder;
-        d.machines = { ...ms, machine: lands.machine };
+        d.machines = { ...ms, machine: lands.machine, picked: [lands.machine] };
         w.changed(10);
         return d.lands;
       }

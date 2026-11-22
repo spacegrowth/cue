@@ -71,7 +71,12 @@ impl Hub {
             all.dedup();
             all.iter().filter(|m| crate::machines::get(m).is_some()).map(|m| crate::desk::machine_pref::of(desk).folder(m).map_or_else(|| crate::machines::display_name(m), |f| format!("{} ({f})", crate::machines::display_name(m)))).collect()
         });
-        if !p.machine.is_empty() && crate::machines::get(&p.machine).is_some() {
+        let spread = p.spread();
+        if spread.len() > 1 {
+            // Several ticked (#661): Cue spreads new sessions over them.
+            let names: Vec<String> = spread.iter().map(|m| if m.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(m) }).collect();
+            line.push_str(&format!("New sessions start on whichever of {} has the fewest of this Desk's items at work (the user's setting): a ROUTE to new goes there unless you say on: <machine>.\n", names.join(", ")));
+        } else if !p.machine.is_empty() && crate::machines::get(&p.machine).is_some() {
             line.push_str(&format!("New sessions start on {} (the user's setting): a ROUTE to new goes there unless you say on: this Mac.\n", crate::desk::machine_pref::of(desk).folder(&p.machine).map_or_else(|| crate::machines::display_name(&p.machine), |f| format!("{} in {f}", crate::machines::display_name(&p.machine)))));
         }
         if !used.is_empty() {

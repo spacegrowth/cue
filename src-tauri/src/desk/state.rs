@@ -78,6 +78,10 @@ pub struct DeskRun {
     /// `desk_start_new`). A second start of the same item meanwhile is dropped, and a route of it to new is told
     /// one is starting. Not saved.
     pub new_starts: HashSet<String>,
+    /// The machine each item in `new_starts` is starting on, picked when its start began (#661, "" for this Mac): a
+    /// Desk spreading its items over several machines counts it there, so two starting at once go to different ones.
+    /// Not saved.
+    pub start_machine: HashMap<String, String>,
     /// Each item's session Cue started for it, until that session's first turn ends (#656): item → (session, when).
     /// The lead routing it to new in its first minutes (it read as waiting in a Desk block made before the session
     /// was up) is told it's in one already, and it isn't moved off the session that just began on it. Not saved.

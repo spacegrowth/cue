@@ -12,12 +12,20 @@ use std::collections::BTreeMap;
 pub struct Pref {
     pub machine: String,
     pub folders: BTreeMap<String, String>,
+    /// The machines you ticked for the Desk (#661, "" for this Mac): its new items spread over them, each to the one
+    /// with the fewest of its items at work. Empty: only `machine`.
+    pub machines: Vec<String>,
 }
 
 impl Pref {
     /// The folder of the Desk's clone on `machine`, if it has used it.
     pub fn folder(&self, machine: &str) -> Option<&str> {
         self.folders.get(machine).map(String::as_str)
+    }
+
+    /// Where the Desk's new sessions may start, in the order you ticked them: the ticked machines, else `machine`.
+    pub fn spread(&self) -> Vec<String> {
+        if self.machines.is_empty() { vec![self.machine.clone()] } else { self.machines.clone() }
     }
 }
 
@@ -26,7 +34,8 @@ pub fn of_in(c: &Value, desk: &str) -> Pref {
     let Some(v) = c.pointer("/project/machine").and_then(|m| m.get(desk)) else { return Pref::default() };
     let machine = v.get("machine").and_then(Value::as_str).unwrap_or("").to_string();
     let folders = v.get("folders").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, f)| Some((k.clone(), f.as_str()?.to_string()))).collect()).unwrap_or_default();
-    Pref { machine, folders }
+    let machines = v.get("machines").and_then(Value::as_array).map(|a| a.iter().filter_map(|m| m.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    Pref { machine, folders, machines }
 }
 
 /// Desk `desk`'s setting as saved.
@@ -58,6 +67,9 @@ pub fn checked(value: &Value) -> Result<Value, String> {
         if o.get("machine").is_some_and(|m| !m.is_string()) {
             return Err("a Desk's machine is its name".into());
         }
+        if o.get("machines").is_some_and(|m| !m.as_array().is_some_and(|a| a.iter().all(Value::is_string))) {
+            return Err("a Desk's machines are their names".into());
+        }
         if let Some(fs) = o.get("folders") {
             let fs = fs.as_object().ok_or("a Desk's folders are machine: folder")?;
             for f in fs.values() {
@@ -75,7 +87,7 @@ fn write(desk: &str, f: impl FnOnce(&mut Pref)) -> Result<Pref, String> {
         f(&mut p);
         let mut map = c.pointer("/project/machine").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
         let folders: Map<String, Value> = p.folders.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
-        map[desk] = json!({ "machine": p.machine, "folders": folders });
+        map[desk] = if p.machines.is_empty() { json!({ "machine": p.machine, "folders": folders }) } else { json!({ "machine": p.machine, "machines": p.machines, "folders": folders }) };
         out = Some(p);
         Some(map)
     })?;
@@ -87,7 +99,10 @@ fn write(desk: &str, f: impl FnOnce(&mut Pref)) -> Result<Pref, String> {
 pub fn save(desk: &str, machine: &str, folder: Option<&str>) -> Result<Pref, String> {
     let machine = machine.trim();
     if machine.is_empty() {
-        return write(desk, |p| p.machine.clear());
+        return write(desk, |p| {
+            p.machine.clear();
+            p.machines.clear();
+        });
     }
     if crate::machines::get(machine).is_none() {
         return Err(format!("Cue has no machine called {machine}"));
@@ -99,7 +114,42 @@ pub fn save(desk: &str, machine: &str, folder: Option<&str>) -> Result<Pref, Str
     };
     write(desk, |p| {
         p.machine = machine.to_string();
+        p.machines.clear();
         p.folders.insert(machine.to_string(), folder);
+    })
+}
+
+/// Set the machines Desk `desk`'s new items spread over (#661): `list` in your order ("" for this Mac), each of Cue's
+/// machines with the folder of the Desk's clone there (`folders`, needed for one the Desk hasn't used). One machine
+/// is the same as `save`.
+pub fn save_many(desk: &str, list: &[String], folders: &BTreeMap<String, String>) -> Result<Pref, String> {
+    let mut seen: Vec<String> = vec![];
+    for m in list.iter().map(|m| m.trim().to_string()) {
+        if !seen.contains(&m) {
+            seen.push(m);
+        }
+    }
+    match seen.as_slice() {
+        [] => return Err("tick at least one place for new sessions to start".into()),
+        [one] => return save(desk, one, folders.get(one).map(String::as_str)),
+        _ => {}
+    }
+    let known = of(desk);
+    let mut found = BTreeMap::new();
+    for m in seen.iter().filter(|m| !m.is_empty()) {
+        if crate::machines::get(m).is_none() {
+            return Err(format!("Cue has no machine called {m}"));
+        }
+        let given = folders.get(m).map(|f| f.trim()).filter(|f| !f.is_empty()).map(clean_folder).transpose()?;
+        let Some(f) = given.or_else(|| known.folder(m).map(str::to_string)) else {
+            return Err(format!("give the folder of this repository's clone on {}", crate::machines::display_name(m)));
+        };
+        found.insert(m.clone(), f);
+    }
+    write(desk, |p| {
+        p.machine = seen[0].clone();
+        p.machines = seen.clone();
+        p.folders.extend(found);
     })
 }
 
@@ -125,8 +175,10 @@ pub fn desk_view(desk: &str, extra: &BTreeMap<String, String>) -> Value {
             json!({ "name": m.name, "label": crate::machines::display_name(&m.name), "folder": folder })
         })
         .collect();
-    let machine = if machines.iter().any(|m| m["name"] == p.machine.as_str()) { p.machine } else { String::new() };
-    json!({ "machine": machine, "machines": machines })
+    let known = |m: &str| m.is_empty() || machines.iter().any(|x| x["name"] == m);
+    let picked: Vec<String> = p.spread().into_iter().filter(|m| known(m)).collect();
+    let machine = if known(&p.machine) { p.machine } else { String::new() };
+    json!({ "machine": machine, "picked": if picked.is_empty() { vec![String::new()] } else { picked }, "machines": machines })
 }
 
 #[cfg(test)]
@@ -146,5 +198,11 @@ mod tests {
         assert!(clean_folder("").is_err());
         assert!(checked(&json!({ "cue": { "machine": "box", "folders": { "box": "cue" } } })).is_err());
         assert!(checked(&json!({ "cue": { "machine": "box", "folders": { "box": "/srv/cue" } } })).is_ok());
+        // Several ticked (#661): spread over them in your order; a setting from before spreads over its one machine.
+        assert_eq!(p.spread(), vec!["box".to_string()]);
+        let c = json!({ "project": { "machine": { "cue": { "machine": "", "machines": ["", "box"], "folders": { "box": "/srv/cue" } } } } });
+        assert_eq!(of_in(&c, "cue").spread(), vec![String::new(), "box".to_string()]);
+        assert!(checked(&json!({ "cue": { "machine": "", "machines": ["", 3], "folders": {} } })).is_err());
+        assert!(checked(&json!({ "cue": { "machine": "", "machines": ["", "box"], "folders": { "box": "/srv/cue" } } })).is_ok());
     }
 }

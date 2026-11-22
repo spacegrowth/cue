@@ -149,7 +149,15 @@ impl Hub {
         let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
         // On a machine (the lead's `on:`, your choice on the item, or the Desk's setting: desk/hub/landing/remote_item.rs
         // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
-        let place = self.read(|st| st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None)));
+        // Picked and claimed in one step (#661): two items starting at once on a Desk that spreads over several
+        // machines count each other, so they go to different ones.
+        let place = self.write(|st| {
+            let place = st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None));
+            if let Ok(p) = &place {
+                st.desk.run.start_machine.insert(s.id.clone(), p.as_ref().map(|o| o.machine.clone()).unwrap_or_default());
+            }
+            place
+        });
         let on = place.clone().ok().flatten();
         let dir = self.new_start_dir(s, &place, &on);
         // Its folder is one a session of the project already works in, or the one the lead named on a machine: trusted,
@@ -176,6 +184,7 @@ impl Hub {
             // Held by its session from here (or not started): the claim goes in the same step, so the item never
             // reads as neither (#656).
             st.desk.run.new_starts.remove(&s.id);
+            st.desk.run.start_machine.remove(&s.id);
             if !ready(st) { return fx; }
             let handoff = st.desk.item(&s.id).map(|it| crate::desk::hub::core::desk::handoff_words(it, &note, &last)).unwrap_or_default();
             if let (Ok(_), Some(it)) = (&sid, st.desk.item_mut(&s.id)) {

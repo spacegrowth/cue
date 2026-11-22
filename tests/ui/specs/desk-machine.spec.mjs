@@ -98,8 +98,10 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("~/code/cue");
   await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
-  // A machine the Desk hasn't used: its folder to fill in, and Save comes on.
+  // A machine the Desk hasn't used, in build-box's place: its folder to fill in, and Save comes on.
   await sec.locator('[data-ld-mach="gpu-1"]').click();
+  await sec.locator('[data-ld-mach="build-box"]').click();
+  await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "false");
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("");
   await sec.locator("[data-ld-folder]").fill("/srv/cue");
   await expect(dlg.locator('[data-ld="save"]')).toBeEnabled();
@@ -115,9 +117,12 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await dlg.locator('[data-ld="save"]').click();
   await expect(page.locator(".toast")).toContainText("full path");
   await sec.locator("[data-ld-folder]").fill("/srv/cue");
-  // This Mac: no folder.
+  // This Mac alone: no folder. The last one ticked stays ticked.
   await sec.locator('[data-ld-mach=""]').click();
+  await sec.locator('[data-ld-mach="gpu-1"]').click();
   await expect(sec.locator("[data-ld-folder]")).toHaveCount(0);
+  await sec.locator('[data-ld-mach=""]').click();
+  await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator(".ld-hint")).toContainText("asks you before");
   await expect(dlg.locator("[title]")).toHaveCount(0);
 });
@@ -149,4 +154,40 @@ test("the new Desk page's settings drawer has where new sessions start, and a ma
     if (process.env.SHOT_DIR) await sec.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-v2-machine-${c}.png` });
   }
   await expect(dr.locator("[title]")).toHaveCount(0);
+});
+
+// Several machines ticked (#661): the Desk's new items spread over them. Each ticked machine has its folder, and both
+// are still ticked when the settings open again.
+test("the Desk's settings can tick two machines, each with its folder, and both stay ticked", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = ms; }, machines);
+  await openDesk(page);
+  await deskAllSessions(page);
+  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  const dlg = page.locator(".ld-dialog");
+  const sec = dlg.locator('[data-ld-sec="machine"]');
+  await expect(sec.locator("[data-ld-mach]").first()).toHaveAttribute("role", "checkbox");
+  await sec.locator('[data-ld-mach="gpu-1"]').click();
+  await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator(".ld-folder-name")).toHaveText(["build-box", "gpu-1"]);
+  await expect(sec.locator('[data-ld-folder="build-box"]')).toHaveValue("~/code/cue");
+  await expect(sec.locator(".ld-hint").first()).toContainText("fewest");
+  // gpu-1 has no folder yet: Save says so and nothing is saved.
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(page.locator(".toast")).toContainText("give the folder");
+  await sec.locator('[data-ld-folder="gpu-1"]').fill("/srv/cue");
+  await dlg.locator('[data-ld="save"]').click();
+  await expect(dlg).toHaveCount(0);
+  await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "false");
+  await expect(sec.locator('[data-ld-folder="gpu-1"]')).toHaveValue("/srv/cue");
+  await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
+  for (const c of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: c });
+    if (process.env.SHOT_DIR) await sec.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-two-machines-${c}.png` });
+  }
+  await expect(dlg.locator("[title]")).toHaveCount(0);
 });

@@ -354,7 +354,18 @@ impl Hub {
         if let Some(o) = lands.as_object_mut() {
             let machine = o.remove("machine");
             let at = o.remove("machine_folder");
-            if let Some(m) = machine {
+            // Several machines ticked (#661): its new items spread over them.
+            let many = o.remove("machines");
+            let folders = o.remove("machine_folders");
+            if let Some(list) = many {
+                let list: Vec<String> = list.as_array().ok_or("where new sessions start: machines is a list")?.iter().map(|m| m.as_str().unwrap_or("").to_string()).collect();
+                let folders: std::collections::BTreeMap<String, String> = folders.as_ref().and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
+                crate::desk::machine_pref::save_many(desk, &list, &folders).map_err(|e| format!("where new sessions start: {e}"))?;
+                if o.is_empty() {
+                    self.changed();
+                    return Ok(crate::desk::lands::desk_view(desk, &folder));
+                }
+            } else if let Some(m) = machine {
                 crate::desk::machine_pref::save(desk, m.as_str().unwrap_or(""), at.as_ref().and_then(Value::as_str)).map_err(|e| format!("where new sessions start: {e}"))?;
                 if o.is_empty() {
                     self.changed();

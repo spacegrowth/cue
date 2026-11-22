@@ -39,10 +39,13 @@ function landsChange(desk) {
   // themselves, so it stays asked; saving the screen keeps it so.
   const now = project && askBeforeKinds().length ? [...askBeforeNow(project)] : null;
   const ab = now ? { project, ticks: now.includes("main") ? now : [...now, "main"], more: false, stored: now } : null;
-  // Where its new sessions start (#597): this Mac or a machine, with the folder of the Desk's clone there.
-  const ms = d.machines?.machines || [], mach = ms.length ? { machine: d.machines.machine || "", folder: ms.find((m) => m.name === d.machines.machine)?.folder || "" } : null;
+  // Where its new sessions start (#597): this Mac and the machines you ticked (#661, its new items spread over them),
+  // each machine with the folder of the Desk's clone there.
+  const ms = d.machines?.machines || [];
+  const picked = (d.machines?.picked || [d.machines?.machine || ""]).filter((n) => !n || ms.some((m) => m.name === n));
+  const mach = ms.length ? { list: picked.length ? picked : [""], folders: Object.fromEntries(ms.map((m) => [m.name, m.folder || ""])) } : null;
   const model = d.model || "default";
-  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { ...mach } : null, model } };
+  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders } } : null, model } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -58,7 +61,7 @@ const landsSame = (x, y) => JSON.stringify(Object.keys({ ...x, ...y }).sort().ma
 const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.was.set, a.was.steps));
 const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
 const landsModelChanged = (a) => (a.model || "default") !== (a.was.model || "default");
-const landsMachChanged = (a) => !!a.mach && (a.mach.machine !== a.was.mach.machine || (!!a.mach.machine && a.mach.folder.trim() !== a.was.mach.folder.trim()));
+const landsMachChanged = (a) => !!a.mach && (a.mach.list.join("\n") !== a.was.mach.list.join("\n") || a.mach.list.some((n) => !!n && (a.mach.folders[n] || "").trim() !== (a.was.mach.folders[n] || "").trim()));
 const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a) || landsModelChanged(a));
 /** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
  *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
@@ -159,17 +162,20 @@ function landsModel() {
   if (lands.set.where === "copy") return "";
   return `<div class="ld-row" data-ld-sec="model"><div class="ld-label">New sessions</div><div class="ld-body">${landsModelPick()}</div></div>`;
 }
-/** Where the Desk's new sessions start (#597): This Mac or one of your machines, and for a machine the folder of this
- *  repository's clone there. Only when Cue has a machine. */
+/** Where the Desk's new sessions start (#597): This Mac and your machines, as many as you tick (#661: its new items
+ *  spread over them), and for each machine the folder of this repository's clone there. Only when Cue has a machine. */
 function landsMach() {
   const m = lands.mach;
   if (!m) return "";
   const ms = deskOf(lands.desk)?.machines?.machines || [];
-  const opt = (key, label) => `<button role="radio" aria-checked="${m.machine === key}" class="${m.machine === key ? "on" : ""}" data-ld-mach="${esc(key)}">${esc(label)}</button>`;
-  const seg = `<div class="seg ld-seg" role="radiogroup" aria-label="New sessions start on">${opt("", "This Mac")}${ms.map((x) => opt(x.name, x.label)).join("")}</div>`;
-  const on = ms.find((x) => x.name === m.machine);
-  const folder = on ? `<input class="ld-cmd ld-folder" type="text" spellcheck="false" aria-label="Folder of this repository's clone on ${esc(on.label)}" placeholder="Full path there, e.g. ~/code/project" data-ld-folder value="${esc(m.folder)}">
-    <div class="ld-hint">The folder of this repository's clone on ${esc(on.label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page.</div>`;
+  const opt = (key, label) => { const on = m.list.includes(key); return `<button role="checkbox" aria-checked="${on}" class="${on ? "on" : ""}" data-ld-mach="${esc(key)}">${esc(label)}</button>`; };
+  const seg = `<div class="seg ld-seg" role="group" aria-label="New sessions start on">${opt("", "This Mac")}${ms.map((x) => opt(x.name, x.label)).join("")}</div>`;
+  const ons = ms.filter((x) => m.list.includes(x.name)), many = m.list.length > 1;
+  const input = (x) => `<input class="ld-cmd ld-folder" type="text" spellcheck="false" aria-label="Folder of this repository's clone on ${esc(x.label)}" placeholder="Full path there, e.g. ~/code/project" data-ld-folder="${esc(x.name)}" value="${esc(m.folders[x.name] || "")}">`;
+  const folders = ons.length > 1 ? ons.map((x) => `<div class="ld-folder-on"><span class="ld-folder-name">${esc(x.label)}</span>${input(x)}</div>`).join("") : ons.map(input).join("");
+  const where = ons.length ? `<div class="ld-hint">The folder of this repository's clone on ${ons.length > 1 ? "each machine" : esc(ons[0].label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : "";
+  const spread = many ? `<div class="ld-hint">New items start on whichever of these has the fewest of this Desk's items at work. Each item says where it's working.</div>` : "";
+  const folder = `${folders}${spread}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
   return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Where new sessions start</div>
     <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div></div></div>`;
 }
@@ -238,8 +244,9 @@ function landsSave() {
     ));
   }
   if (landsMachChanged(a)) {
-    const mach = { ...a.mach };
-    jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: { machine: mach.machine, machine_folder: mach.folder.trim() } }).then(
+    const mach = { list: [...a.mach.list], folders: { ...a.mach.folders } };
+    const machine_folders = Object.fromEntries(mach.list.filter(Boolean).map((n) => [n, (mach.folders[n] || "").trim()]));
+    jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: { machines: mach.list, machine_folders } }).then(
       () => { a.was.mach = mach; },
       (e) => { throw `${e}`; },
     ));
@@ -279,8 +286,11 @@ document.addEventListener("click", (e) => {
   const mp = e.target.closest?.("[data-ld-mach]");
   if (lands?.mach && mp) {
     e.stopPropagation();
-    const name = mp.dataset.ldMach;
-    lands.mach = { machine: name, folder: (deskOf(lands.desk)?.machines?.machines || []).find((x) => x.name === name)?.folder || "" };
+    // Ticked or not (#661), kept in the screen's order; the last one ticked stays.
+    const name = mp.dataset.ldMach, m = lands.mach, order = ["", ...(deskOf(lands.desk)?.machines?.machines || []).map((x) => x.name)];
+    const list = m.list.includes(name) ? m.list.filter((n) => n !== name) : [...m.list, name];
+    if (!list.length) return;
+    m.list = order.filter((n) => list.includes(n));
     lands.leaving = false;
     return renderMain();
   }
@@ -331,7 +341,7 @@ document.addEventListener("input", (e) => {
   const f = e.target.closest?.("[data-ld-folder]");
   if (f && lands?.mach) {
     const was = landsChanged(lands);
-    lands.mach.folder = f.value;
+    lands.mach.folders[f.dataset.ldFolder] = f.value;
     if (was !== landsChanged(lands)) { const foot = document.querySelector(".ld-dialog .ld-foot"); if (foot) foot.outerHTML = landsFoot(); }
     return;
   }

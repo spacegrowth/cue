@@ -676,6 +676,42 @@ fn the_machine_picked_in_desk_settings_is_saved_to_disk_and_comes_back() {
     assert_eq!(item(&w, &project, "Footer jumps")["machine"].as_str(), Some("box"));
 }
 
+// A Desk set to several machines (#661): its new items spread over them, each to the one with the fewest at work.
+
+#[test]
+fn a_desk_with_two_machines_ticked_spreads_its_new_items_over_both() {
+    let w = World::new();
+    let ((_, _, _, project, _, _), ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    // As the window's Save sends it: this Mac and box ticked, box's folder given.
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["", "box"], "machine_folders": { "box": "~/code/app" } })).unwrap();
+    let c: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(crate::server::cue_dir().join("config.json")).unwrap()).unwrap();
+    assert_eq!(c.pointer(&format!("/project/machine/{project}/machines")), Some(&serde_json::json!(["", "box"])), "{c}");
+    let d = super::desk::desk(&w, &project);
+    assert_eq!(d["machines"]["picked"], serde_json::json!(["", "box"]), "{}", d["machines"]);
+    // Two routed at once, then two more: each goes where fewer are at work.
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    ends(&w, &lead, "ITEM: bug | Header jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Menu jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let on: Vec<String> = ["Footer jumps", "Sidebar jumps", "Header jumps", "Menu jumps"]
+        .iter()
+        .map(|t| {
+            let it = item(&w, &project, t);
+            assert!(it["holder"]["sid"].as_str().is_some(), "started: {it}");
+            it["machine"].as_str().unwrap_or("").to_string()
+        })
+        .collect();
+    assert_eq!(on.iter().filter(|m| *m == "box").count(), 2, "two on box, two here: {on:?}");
+    assert_eq!(on.iter().filter(|m| *m == "This Mac").count(), 2, "two on box, two here, each saying where: {on:?}");
+    assert!(ssh.home("box").join("code/app/.git").exists(), "box's items started in its folder there");
+    // One ticked again: all on it, the list gone.
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["box"], "machine_folders": {} })).unwrap();
+    assert_eq!(super::desk::desk(&w, &project)["machines"]["picked"], serde_json::json!(["box"]));
+    // None ticked is refused.
+    assert!(w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": [] })).is_err());
+}
+
 // A machine that never had the project (#664): Cue downloads it into the folder there from its online home, then
 // starts the session; when it can't, the item says why.
 

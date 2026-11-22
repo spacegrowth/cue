@@ -56,15 +56,34 @@ pub(crate) fn start_place(st: &Store, it: &DeskItem) -> Result<Option<OnMachine>
     if let Some(o) = &it.on_machine {
         return Ok((!o.machine.is_empty()).then(|| o.clone()));
     }
-    let m = match &it.start_on {
-        Some(m) => m.clone(),
-        None => crate::desk::machine_pref::of(&it.project).machine,
+    let m = match (&it.start_on, st.desk.run.start_machine.get(&it.id)) {
+        (Some(m), _) => m.clone(),
+        // Starting already: where its start went.
+        (None, Some(m)) => m.clone(),
+        (None, None) => spread_pick(st, &it.project, &crate::desk::machine_pref::of(&it.project).spread()),
     };
     if m.is_empty() {
         return Ok(None);
     }
     let folder = desk_folder_on(st, &it.project, &m).ok_or_else(|| format!("Cue doesn't know the folder of this repository's clone on {}", crate::machines::display_name(&m)))?;
     Ok(Some(OnMachine { machine: m, folder }))
+}
+
+/// Which of `list` (the machines Desk `project` spreads its new items over, #661, "" for this Mac) the next one starts
+/// on: the one with the fewest of the Desk's items at work there (held by a session on it, or starting on it), the
+/// first ticked on a tie.
+pub(crate) fn spread_pick(st: &Store, project: &str, list: &[String]) -> String {
+    if list.len() < 2 {
+        return list.first().cloned().unwrap_or_default();
+    }
+    let mut at: Vec<String> = st.desk.run.start_machine.iter().filter(|(id, _)| st.desk.item(id).is_some_and(|i| i.project == project && i.holder.is_none())).map(|(_, m)| m.clone()).collect();
+    for it in st.desk.items.iter().filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "dropped")) {
+        let Some(h) = &it.holder else { continue };
+        let Some(s) = st.sessions.get(h.to()) else { continue };
+        at.push(s.origin.machine.clone());
+    }
+    let load = |m: &String| at.iter().filter(|x| *x == m).count();
+    list.iter().min_by_key(|m| load(m)).cloned().unwrap_or_default()
 }
 
 /// Err when session `to` is on a machine, in a folder another open item's work is in (#679): both would commit in one
@@ -783,6 +802,10 @@ pub(crate) fn shown_machine(st: &Store, it: &mut DeskItem) {
     // Not started yet (#597): the machine its session will start on.
     let machine = machine.or_else(|| (it.holder.is_none() && !matches!(it.state.as_str(), "done" | "dropped")).then(|| start_place(st, it).ok().flatten().map(|o| o.machine)).flatten());
     it.machine = machine.as_deref().map(crate::machines::display_name).unwrap_or_default();
+    // A Desk spreading its items over several computers (#661): one on this Mac says so too, while it's open.
+    if it.machine.is_empty() && !matches!(it.state.as_str(), "done" | "dropped") && crate::desk::machine_pref::of(&it.project).spread().len() > 1 {
+        it.machine = "This Mac".into();
+    }
     if let Some(r) = it.remote.as_mut() {
         r.quiet_since = crate::hub::machine_quiet_since(st, &r.machine).unwrap_or(0);
     }
