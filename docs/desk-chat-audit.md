@@ -106,7 +106,7 @@ To match: draw the Listening bar, open Read the same way as the board, and fix t
 ## 6. Everything else
 
 - **No step chips.** The lead's chat hides the session's steps and its status line has none. Desk session chats still show them. That's probably right for a lead, which mostly talks, so the mocks keep steps hidden.
-- **Width.** The Desk chat has a 272-pixel side panel (Now, Waits on you, Just did, Working) with a Hide panel switch. The board has none. Waits on you repeats the item list's first group. The mocks drop the panel and give its "Now" line to the chat's status line, as on the board.
+- **Width.** The Desk chat has a 272-pixel side panel (Now, Waits on you, Just did, Working) with a Hide panel switch. The board has none. Waits on you repeats the item list's first group. Options A, B and C drop the panel and give its "Now" line to the chat's status line, as on the board. Option D keeps it and puts Activity at its bottom.
 - **Names.** Your messages on the Desk carry an item header saying which item they are about. The board has none. Keep it: it's useful, and it's plain text.
 - **Scrolling.** The Desk keeps you at the bottom. Opening a folded run keeps that row still. This goes away with the folds.
 - **The lead's ask** is cut out of its reply and shown as a lime card at the foot instead of the composer. The board shows an ask card under the chat. The mocks keep the ask above the box but without the lime fill and border.
@@ -145,7 +145,7 @@ They differ only in where the Desk lines go:
 - **A**: into an Activity tab, the renamed Dispatcher Actions.
 - **B**: the same tab, plus one plain line counting them between your turns.
 - **C**: into the item list, as a third view next to List and Progress.
-- **D**: B's count lines in the chat, and C's Activity list on the right cut to the last 3 rows, with "14 more in Activity ›" opening A's Activity tab. No "2 new" badge anywhere.
+- **D**: B's count lines in the chat. The side panel stays as today (Now, Waits on you), and Activity sits at its bottom: the last 3 rows, with "14 more in Activity ›" opening the Activity tab. It takes Just did's place. The item list on the right stays. No "2 new" badge anywhere.
 
 Activity holds Cue's own lines as well as the lead's: copies made, items finished or stuck, send-backs, and notes to sessions. A Cue line meant for you, such as Ready to check or Stopped, stays in the chat.
 
@@ -163,7 +163,7 @@ Each option treats them the way it treats the lead's chat:
 - **A**: each gets an Activity tab next to Chat. On the item page Activity takes Record's place.
 - **B**: plain count lines between your turns in each.
 - **C**: an Activity list on the right of each ("Crew activity" on the crew page), in place of the Now and Who panel.
-- **D**: count lines in each, and the last 3 Activity rows on the right with a link to its Activity tab.
+- **D**: count lines in each; their panel (Now and Who, or the crew) stays, with the last 3 Activity rows at its bottom and a link to the Activity tab.
 
 ## Seeing activity as it happens
 
@@ -172,7 +172,7 @@ Today nothing tells you that Desk or crew activity happened in a chat you are no
 - **A**: the Activity tab shows a dot and "2 new" while lines arrive; new rows are marked until you open it.
 - **B**: the newest count line has a dot and "just now" and grows as lines come in.
 - **C**: the Activity view's tab has a dot; new rows are bold until seen, and the item they touched shows "just now".
-- **D**: the newest count line has a dot and grows; new rows appear at the top of the last-3 list. No badge.
+- **D**: the newest count line has a dot and grows; new rows appear at the top of the panel's Activity. No badge.
 
 ## Your message, every state
 
