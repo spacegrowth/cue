@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 179 (3 sync) |
-| Lock declarations (static or field) | 119 |
-| Lock acquisitions | 283 |
+| Lock declarations (static or field) | 122 |
+| Lock acquisitions | 290 |
 | Lock-graph edges | 54 |
-| Spawn sites | 93 |
-| External calls: fs / db / process / notify / login / socket | 523 / 232 / 60 / 4 / 1 / 4 |
+| Spawn sites | 94 |
+| External calls: fs / db / process / notify / login / socket | 532 / 232 / 61 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -232,6 +232,9 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `desk/hub/landing/found_words.rs::WORKING` | `Mutex<()>` | "working out found words" (1 sites) |
 | `desk/hub/landing/found_words.rs::EVERYDAY` | `LazyLock<std::collections::HashSet<String>>` | — |
 | `desk/hub/landing/found_words.rs::SEEN` | `LazyLock<Mutex<HashMap<String,(Instant,Option<bool>)>>>` | "repo visibility" (2 sites) |
+| `desk/hub/landing/full_run_kit.rs::LOOKS` | `std::sync::Mutex<Vec<(String,u64,bool)>>` | "full run looks" (2 sites) |
+| `desk/hub/landing/full_run_script.rs::ScriptRunner.runs` | `Mutex<HashMap<String,Run>>` | "full runs" (5 sites) |
+| `desk/hub/landing/full_run_script.rs::ONE` | `std::sync::OnceLock<Arc<ScriptRunner>>` | — |
 | `desk/hub/theirs/theirs.rs::SAVED` | `std::sync::OnceLock<std::sync::Mutex<Option<(u64,Vec<Known>)>>>` | — |
 | `desk/hub/theirs/theirs_log.rs::SO_FAR` | `std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,SoFar>>>` | — |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
@@ -419,6 +422,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
 | `desk/hub/landing/found_words.rs::keep_warm` | thread::spawn | 1 |
 | `desk/hub/landing/found_words.rs::visibility` | thread::spawn | 1 |
+| `desk/hub/landing/full_run_script.rs::ScriptRunner::start` | thread::spawn | 1 |
 | `desk/hub/landing/remote_setup.rs::ensure` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
 | `hosted/conn.rs::machine` | thread::spawn | 2 |
@@ -498,7 +502,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (523)
+### fs (532)
 
 | In | Call | Times |
 |---|---|---|
@@ -555,6 +559,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/copy_guard.rs::canon` | canonicalize | 1 |
 | `desk/hub/landing/copy_guard.rs::existing` | Path::is_dir | 1 |
 | `desk/hub/landing/found_words.rs::claude_account` | read_to_string | 1 |
+| `desk/hub/landing/full_run_kit.rs::load_all` | read_to_string | 1 |
+| `desk/hub/landing/full_run_kit.rs::save` | rename | 1 |
+| `desk/hub/landing/full_run_kit.rs::save` | write | 1 |
+| `desk/hub/landing/full_run_script.rs::here` | read_to_string | 1 |
+| `desk/hub/landing/full_run_script.rs::last_of` | read_to_string | 1 |
+| `desk/hub/landing/full_run_script.rs::run` | File::create | 2 |
+| `desk/hub/landing/full_run_script.rs::there` | read_to_string | 1 |
+| `desk/hub/landing/full_run_script.rs::work_dir` | create_dir_all | 1 |
 | `desk/hub/landing/in_place.rs::maybe_recorded` | Path::is_dir | 1 |
 | `desk/hub/landing/in_place.rs::maybe_recorded` | canonicalize | 1 |
 | `desk/hub/landing/in_place.rs::maybe_recorded` | read_to_string | 1 |
@@ -1162,7 +1174,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (60)
+### process (61)
 
 | In | Call | Times |
 |---|---|---|
@@ -1174,6 +1186,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/landing/copies.rs::size_kb` | du | 1 |
 | `desk/hub/landing/found_words.rs::gh_public` | (program computed) | 1 |
 | `desk/hub/landing/found_words.rs::mac_full_name` | /usr/bin/id | 1 |
+| `desk/hub/landing/full_run_script.rs::here` | (program computed) | 1 |
 | `desk/hub/landing/pr.rs::Hub::gh` | (program computed) | 1 |
 | `desk/hub/landing/pr.rs::Hub::net_git` | (program computed) | 1 |
 | `desk/lands.rs::run_steps` | (program computed) | 1 |

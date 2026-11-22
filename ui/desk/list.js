@@ -425,6 +425,41 @@ function deskGroupFold(key) {
   setTimeout(() => { b.classList.remove("moving"); if (!shut) deskDoneWatch(); }, 240);
 }
 
+/** The end of the Items list: the copies kept from dropped items, then Done. `put` adds a group, `row` draws an item. */
+function deskListDone(project, g, put, row) {
+  const group = deskGroupHtml;
+  // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
+  // its place while the next ones load, so nothing jumps.
+  const pg = deskDonePages.get(project);
+  if (!pg) queueMicrotask(() => deskDoneFetch(project));
+  // On B2's Done today tab, only what was done today (desk/b2.js deskB2DoneToday, its count).
+  const done = deskB2On() && deskB2Tab === "done" ? deskB2DoneToday(g.d) : deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
+  const more = done.length > shown.length || !pg?.end;
+  // Dropped items' copies kept with their work, till you remove them (desk/hub/landing/trees.rs).
+  const kept = g.d?.kept || [];
+  if (kept.length) put("kept", group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
+  // Its "Loading older…" end goes in its fold, so a folded Done loads nothing more.
+  const doneMore = more && (shown.length || pg?.loading || !pg) ? `<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>` : "";
+  if (shown.length) put("done", group("done", "Done", shown.map(row).join("") + doneMore));
+  else if (doneMore) put("done", doneMore);
+}
+
+/** The Items list's tabs (today's page) and what shows under them: the groups in `parts` with `top` over them, a plain
+ *  line when there is nothing, or the new page's Progress rows. */
+function deskListBody(g, parts, top, taskApprovals) {
+  const n = parts.length + (top ? 1 : 0);
+  // B2: tabs by group over the list (All · Waits on you · Up next · Done today · Calls while away); one picked shows
+  // only its groups.
+  const tabs = deskB2On() ? deskB2Tabs(g, taskApprovals) : "";
+  const pick = deskB2On() ? deskB2Shown(parts, top) : { parts, top };
+  // A tab with nothing in it says so in a plain line, not an empty list.
+  const tabNone = deskB2On() && deskB2Tab !== "all" && !deskB2TabCounts(g, taskApprovals).find(([k]) => k === deskB2Tab)?.[2];
+  let body = tabNone ? `<div class="dk-empty">${DESK_B2_NONE[deskB2Tab] || "Nothing here."}</div>` : pick.top + pick.parts.map((x) => x[1]).join("") + (n > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
+  // The new Desk page: List or Progress in its head, one at a time; Progress is its rows in place of the list.
+  if (deskV2 && deskV2Mode === "progress") body = deskV2Progress(g);
+  return { tabs, body };
+}
+
 function deskList(project, taskApprovals) {
   const g = deskGroups(project, taskApprovals);
   const o = deskOpen;
@@ -463,31 +498,9 @@ function deskList(project, taskApprovals) {
   if (g.paused.length) put("paused", group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
   if (g.held.length) put("held", group("held", `Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span>`, `<div class="dk-held">${g.held.map(row).join("")}</div>`, "dk-heldh"));
   for (const h of g.extra) put("extra", deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
-  // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
-  // its place while the next ones load, so nothing jumps.
-  const pg = deskDonePages.get(project);
-  if (!pg) queueMicrotask(() => deskDoneFetch(project));
-  // On B2's Done today tab, only what was done today (desk/b2.js deskB2DoneToday, its count).
-  const done = deskB2On() && deskB2Tab === "done" ? deskB2DoneToday(g.d) : deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
-  const more = done.length > shown.length || !pg?.end;
-  // Dropped items' copies kept with their work, till you remove them (desk/hub/landing/trees.rs).
-  const kept = g.d?.kept || [];
-  if (kept.length) put("kept", group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
-  // Its "Loading older…" end goes in its fold, so a folded Done loads nothing more.
-  const doneMore = more && (shown.length || pg?.loading || !pg) ? `<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>` : "";
-  if (shown.length) put("done", group("done", "Done", shown.map(row).join("") + doneMore));
-  else if (doneMore) put("done", doneMore);
+  deskListDone(project, g, put, row);
   if (deskV2) parts.sort((a, b) => deskV2Order(a[0]) - deskV2Order(b[0]));
-  const n = parts.length + (top ? 1 : 0);
-  // B2: tabs by group over the list (All · Waits on you · Up next · Done today · Calls while away); one picked shows
-  // only its groups.
-  const tabs = deskB2On() ? deskB2Tabs(g, taskApprovals) : "";
-  const pick = deskB2On() ? deskB2Shown(parts, top) : { parts, top };
-  // A tab with nothing in it says so in a plain line, not an empty list.
-  const tabNone = deskB2On() && deskB2Tab !== "all" && !deskB2TabCounts(g, taskApprovals).find(([k]) => k === deskB2Tab)?.[2];
-  let body = tabNone ? `<div class="dk-empty">${DESK_B2_NONE[deskB2Tab] || "Nothing here."}</div>` : pick.top + pick.parts.map((x) => x[1]).join("") + (n > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
-  // The new Desk page: List or Progress in its head, one at a time; Progress is its rows in place of the list.
-  if (deskV2 && deskV2Mode === "progress") body = deskV2Progress(g);
+  const { tabs, body } = deskListBody(g, parts, top, taskApprovals);
   const head = deskV2 ? deskV2ListSwitch() : deskProgButtonHead();
   return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${head}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
     ${deskQuickAdd()}${tabs}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}${deskV2 && deskV2Mode === "progress" ? ":progress" : ""}">${body}</div></div>`;
