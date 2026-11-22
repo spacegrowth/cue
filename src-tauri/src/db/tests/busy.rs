@@ -16,9 +16,11 @@ fn a_write_waiting_on_another_programs_lock_holds_up_no_other_caller() {
     let outside = rusqlite::Connection::open(path()).unwrap();
     outside.execute_batch("BEGIN EXCLUSIVE").unwrap();
     let writer = std::thread::spawn(|| with(|c| c.execute("INSERT INTO busy_test VALUES (1)", [])));
-    // Reads all through the writer's wait (BUSY_WAIT): none waits on DB behind it.
+    // Reads all through the writer's wait: none waits on DB behind it. The other program lets go after a
+    // fifth of BUSY_WAIT (eight of the writer's retries), so a slow moment on a busy machine (a full test
+    // run) still lets go well before the writer gives up: held half of it, a stall of half a second was enough.
     let (t0, mut worst) = (Instant::now(), Duration::ZERO);
-    while t0.elapsed() < BUSY_WAIT / 2 {
+    while t0.elapsed() < BUSY_WAIT / 5 {
         let t = Instant::now();
         with(|c| c.query_row("SELECT count(*) FROM busy_test", [], |r| r.get::<_, i64>(0))).unwrap();
         worst = worst.max(t.elapsed());
