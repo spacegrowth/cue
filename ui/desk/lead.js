@@ -365,7 +365,7 @@ const deskCut = (key, cls, html, text) => reqCut(`dk:${key}`, `<div class="${cls
  *  block, so not here; ASK is left out of the text (#427): Cue files it as a question, which the chat shows once as a
  *  small card ("Asked: …", your answer beside it once you give it) and the pop-up answers. NOTE (#449) is a small card
  *  too: "Note to cue-387 · Feature #418", the message under it. */
-const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK|NOTE|TELL DESKS|TELL DESK)\**\s*:(.*)$/;
+const DESK_SAY = /^[-*+ ]*(ITEM|ROUTE|DONE|CONTEXT|DESIGNS|TITLE|SEE|MERGE|ASK|NOTE|TELL DESKS|TELL DESK|START|CLOSE|PARK|HOLD|UNPARK|DROP|PAUSE|RESUME|TAKE COPY|LAND FIRST|COPY FIRST)\**\s*:(.*)$/;
 const DESK_KINDS = ["bug", "feature", "task"];
 /** `line` of a Desk chat's reply as one short plain sentence at the left (md's `lines` hook; #157, #173): ROUTE "Gave
  *  Task #2 to who" (or "Task #2 waits on #1"); ITEM "Added Bug #2: title"; DONE "Bug #2 is done"; TITLE "Renamed Bug
@@ -381,6 +381,7 @@ function deskLineHtml(line, inline) {
   const k = deskLineKit(m, body, inline);
   const kinds = { ITEM: deskLineItem, SEE: deskLineSee, ROUTE: deskLineRoute, DONE: deskLineDone, TITLE: deskLineTitle,
     MERGE: deskLineMerge, NOTE: deskLineNote, DESIGNS: deskLineDesigns, "TELL DESK": deskLineTell, "TELL DESKS": deskLineTell };
+  if (DESK_ACTS[m[1]]) return deskLineAct(k);
   const run = kinds[m[1]] || deskLineContext;
   return run(k);
 }
@@ -495,6 +496,35 @@ function deskLineDesigns(k) {
   // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
   const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
   return url ? `<div class="mg-line dk-dsay">${deskDesignsA(url)}</div>` : "";
+}
+/** What the lead's lines that act on an item say (#622; desk/parse.rs unstick, hold, whole_desk): START "Started Bug
+ *  #612", the why under it. PAUSE and RESUME without an item are the whole Desk's. */
+const DESK_ACTS = { START: "Started", CLOSE: "Closed", PARK: "Parked", HOLD: "Parked", UNPARK: "Unparked", DROP: "Dropped",
+  PAUSE: "Paused", RESUME: "Resumed", "TAKE COPY": "Took back the copy of", "LAND FIRST": "Put first to land", "COPY FIRST": "Put first for a copy" };
+/** A START, CLOSE, PARK… line (deskLineHtml): "Started Bug #612", its why (and a CLOSE's commit) under it. */
+function deskLineAct(k) {
+  const { m, inline, lab, id, known, ref, titled, ln, dot } = k;
+  // UNPARK's why may follow a dash ("#12 — why: …", parse.rs dashed); the others have it after a "|", label or not.
+  const body = k.body.replace(/^(#\S+)\s+[—–-]\s*/, "$1 | ");
+  const p = body.split("|").map((x) => x.trim());
+  const verb = DESK_ACTS[m[1]];
+  const why = p.slice(1).map((s) => lab(s, "why")).find((v) => v !== null) ?? p.slice(1).find((s) => lab(s, "commit") === null && lab(s, "area") === null && lab(s, "till") === null) ?? "";
+  if (!p[0].startsWith("#") && !/^\S+\s*#\S+$/.test(p[0])) {
+    // The whole Desk (PAUSE: why: …), or a line Cue won't act on: its words alone, no capitals.
+    if (m[1] !== "PAUSE" && m[1] !== "RESUME") return "";
+    const w = lab(body, "why") ?? body;
+    return ln(`<span class="mg-v">${verb} this Desk</span>`, w ? inline(w) : "");
+  }
+  const at = p[0].startsWith("#") ? id(p[0]) : "", it = at && known(at);
+  // Once Cue did it, its own line says so at its time (desk/page.js deskActRows: "Started #612 now", the why under it):
+  // the lead's line isn't drawn twice.
+  const acts = (deskOf(it?.project)?.decisions || []).filter((x) => x.act && x.item_id === it?.id);
+  if (it && acts.some((x) => (x.why || "").trim() === why.trim())) return MD_DROP;
+  const what = at ? ref(at, it) : `<span class="mg-id">${esc(p[0].replace(/\s+/g, ""))}</span>`;
+  const area = m[1] === "HOLD" ? p.slice(1).map((s) => lab(s, "area")).find((v) => v !== null) : null;
+  const head = area ? `<span class="mg-v">Held</span> ${esc(area)} <span class="mg-v">for</span> ${what}` : `<span class="mg-v">${verb}</span> ${what}`;
+  const commit = m[1] === "CLOSE" ? (p.slice(1).map((s) => lab(s, "commit")).find((v) => v !== null) || "").replace(/`/g, "") : "";
+  return ln(head, dot([titled(it), commit ? `On main as ${esc(commit.slice(0, 9))}` : "", why ? inline(why) : ""]));
 }
 /** A CONTEXT line (deskLineHtml): "Kept who's context". */
 function deskLineContext(k) {
