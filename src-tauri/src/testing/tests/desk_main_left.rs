@@ -102,3 +102,27 @@ fn an_item_started_now_with_every_copy_in_use_gets_a_copy_of_its_own_never_the_m
     let origin = w.hub().session_origin(&h).unwrap();
     assert!(w.hub().copy_guard(&origin, "Edit", &edit).is_some(), "an edit in the main folder is stopped");
 }
+
+/// What Cue's own items are told of testing, after the words on their copy (tests/run.sh card, #678).
+const CARD_TESTS: &str = " Cue stops an edit or git command outside it. Before you say done, run tests/run.sh card: it runs the tests for what you changed. Don't run the full suite: it runs after landing.";
+
+#[test]
+fn an_item_in_this_cues_own_source_is_told_to_run_its_card_tests() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |_, _, dir| super::desk_finish::as_this_cue(dir), |_, _, _| {});
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["tree"]["card_tests"], true, "{it}");
+    let words = told(&w, &h, 0);
+    assert!(words.iter().any(|t| t.contains(&format!("Desk item #{id}")) && t.contains("Work in its own copy") && t.ends_with(CARD_TESTS)), "told to run them: {words:?}");
+}
+
+#[test]
+fn an_item_in_another_project_is_told_nothing_of_cues_tests() {
+    let w = World::new();
+    let (_, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["tree"].get("card_tests").is_none(), "{it}");
+    let words = told(&w, &h, 0);
+    assert!(words.iter().any(|t| t.contains(&format!("Desk item #{id}")) && t.ends_with("Cue stops an edit or git command outside it.")), "its copy's words as before: {words:?}");
+    assert!(!words.iter().any(|t| t.contains("tests/run.sh")), "{words:?}");
+}

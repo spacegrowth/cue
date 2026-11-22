@@ -82,9 +82,9 @@ building. The Desk says where it ran.
 
 ## Build order
 
-1. **Card tests.** Gives most of the speed. A few days of work.
-2. **The full run on the second Mac**, with the Desk line and reopening the card that broke it.
-3. **The install waits for a passed run.**
+1. **Card tests.** Gives most of the speed. A few days of work. (built)
+2. **The full run on the second Mac**, with the Desk line and reopening the card that broke it. (built)
+3. **The install waits for a passed run.** (built)
 
 Step 1 can ship first. But once cards stop running everything, something else must, so step 2 should
 follow within days.
@@ -109,10 +109,34 @@ install, not the tests. docs/desk-install-lane-plan.md covers it.
   already has. Nothing goes through GitHub. A plain script there (no AI) keeps one clean copy with a
   warm build folder and runs the build, the code check, the Rust tests, the node tests and the window
   tests. One run at a time.
-- Finding the card on a failure: run only the failing tests on each landed commit in the batch, oldest
-  first.
+- Finding the card on a failure: first run what failed once more. What passes that time fails only
+  sometimes: it is listed apart and no card is blamed for it. For the rest, search the batch's commits
+  by halving, running only the failing tests. A test file that is not in a commit does not fail there,
+  so a new failing test is blamed on the commit that added it.
+- A card is blamed only when the commit found is that card's own landed commit on this Desk. It is
+  reopened once per commit, and only when it has landed (to check, done, or waiting for its install).
+  A card already at work is not reopened: its session gets a note.
+- A run is never made twice. Asked again for the same two commits, the script waits for the run still
+  going, or reads the result already there, and answers with it. So after Cue restarts it asks for the
+  same run again, not for a new one. `--again` forces a new run.
 - Window-only changes served in place keep being served right after landing. If the full run fails on
   one, it is reopened and the served window goes back one step.
+- The 2-hour rule: if main has moved and no full run has finished on it (passed or failed) for 2 hours,
+  or nothing is kept of full runs and none is going, the install takes the newest version as it did
+  before, and one Desk line says the app was installed without a full run.
+- A failing run never blocks the app for good:
+  - The run failed and no card of the batch caused it (it failed before the batch, it fails only
+    sometimes, it was the first run, or the search could not finish). The app still updates to that
+    version. The Desk line names the failing tests and says so. Cue keeps a separate note that its
+    tests failed.
+  - The run failed and a card caused it. The app stays on the last version that passed, for at most
+    4 hours from that failure. After that it takes the newest version, and one Desk line says the app
+    was installed although the full run still fails, naming the card. A later passing run clears this.
+  - If the last version that passed is no longer on main, nothing counts as passed and the same rules
+    apply.
+- Install now is the owner's word: it takes the newest version without waiting for a run.
+- Not built: putting the served window back one step when the full run fails on a window-only change.
+  The card is reopened; the window keeps what was served until its fix lands.
 - First step of the build: time a full window-test run on both Macs. Nobody has recorded it.
 - Watch: if more than one card in ten is reopened by the full run, the map is too narrow.
 - Today's numbers: a full Rust run is about 7 minutes alone (docs/dev/test-speed.md); 786 window tests

@@ -344,6 +344,15 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
 }
 
 /// What you saved for `project` in config `c` (None: never set).
+/// The key, among a project's settings, of the machine its full run goes on (Cue's own project only).
+const FULL_RUN_ON: &str = "full_run_on";
+
+/// The machine (as Cue names it) every test of `project` runs on after landing; "": this machine
+/// (desk/hub/landing/full_run.rs).
+pub(crate) fn full_run_on(project: &str) -> String {
+    stored(&crate::config::load(), project).and_then(|s| s.get(FULL_RUN_ON)).and_then(Value::as_str).unwrap_or("").trim().to_string()
+}
+
 fn stored<'c>(c: &'c Value, project: &str) -> Option<&'c Value> {
     c.pointer("/project/lands").and_then(|m| m.get(project))
 }
@@ -483,6 +492,10 @@ pub fn save(project: &str, place: Place, value: &Value) -> Result<Lands, String>
     }
     crate::config::update("project.lands", |c| {
         let mut map = c.pointer("/project/lands").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
+        // Where its full run goes isn't on the screen: kept as it is unless given.
+        if let Some(on) = value.get(FULL_RUN_ON).or_else(|| map.get(project).and_then(|s| s.get(FULL_RUN_ON))).and_then(Value::as_str).map(str::trim).filter(|o| !o.is_empty()) {
+            out.insert(FULL_RUN_ON.into(), json!(on));
+        }
         map[project] = Value::Object(out);
         Some(map)
     })?;
@@ -570,6 +583,7 @@ pub fn checked(value: &Value) -> Result<Value, String> {
                     refused_steps(&steps)?;
                     true
                 }
+                "full_run_on" => v.is_string(),
                 "at_once" => v.as_u64().is_some_and(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(&n)),
                 part => PARTS.iter().find(|p| p.key == part).is_some_and(|p| p.choices.iter().any(|c| Some(c.key) == v.as_str())),
             };

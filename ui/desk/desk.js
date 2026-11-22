@@ -168,6 +168,8 @@ function deskFinStep(i) {
   if (f.step === "landing") return `Committed, not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${since}`;
   // Install now said while another install runs (#641): it starts the moment that one ends, and says so.
   if (f.step === "queued" && f.now) return `On main · Install now: ${esc(f.wait || "starting")}`;
+  // Landed after the last commit a full run passed: the install takes it once its run has (install_pick.rs).
+  if (f.step === "queued" && f.wait) return `On main · ${esc(f.wait)}`;
   if (f.step === "queued") {
     // Cue installs half an hour after the first item waits (desk/hub/landing/finish.rs), once no session is mid-turn.
     const due = state.desk?.install_at || 0;
@@ -226,7 +228,7 @@ function deskLaneStep(i, ahead) {
   if (f.step === "landing") return `Not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   if (f.step === "commit_wait") return `Waits to be committed${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
   const c = (f.commit || i.commit || "").slice(0, 7);
-  if (f.step === "queued") return `On main${c ? ` · ${esc(c)}` : ""}${f.now ? " · installs next" : ""}`;
+  if (f.step === "queued") return `On main${c ? ` · ${esc(c)}` : ""}${f.now ? " · installs next" : f.wait ? ` · ${esc(f.wait)}` : ""}`;
   return { building: "Building Cue", installing: "Installing Cue", starting: "Cue is restarting" }[f.step] || `Committing${age}`;
 }
 /** The Waiting to install lane's head, right side: when the next install is, counting down ("9:05pm · in 12m"), and

@@ -42,14 +42,14 @@ pub(crate) fn tree_line(t: &ItemTree) -> String {
              Change files only there, make no worktree or branch of your own, don't switch branches, and don't merge \
              or push: at your DONE, Cue lands everything on it on {line} as one commit and puts the folder back on {line}.",
             t.branch, t.path
-        );
+        ) + t.card_tests_line();
     }
     format!(
         "Work in its own copy of the repository: {} (branch {}). Change files only there, never in the main checkout \
          or another folder, make no worktree or branch of your own, and don't merge or push: at your DONE, Cue lands \
          everything in it on the main line as one commit. Cue stops an edit or git command outside it.",
         t.path, t.branch
-    )
+    ) + t.card_tests_line()
 }
 
 /// How a turn in the landing line went.
@@ -209,6 +209,7 @@ impl Hub {
     #[allow(clippy::too_many_arguments)]
     fn desk_tree_ready(&self, fx: &mut Effects, id: &str, to: &str, mut t: ItemTree, path: String, base: String, kept: bool, moved: Option<crate::desk::RemoteWork>) {
         t.path = path;
+        t.card_tests = crate::desk::hub::lead::checks::builds_this_cue(&t.repo);
         if t.in_place {
             t.main_line = crate::desk::hub::landing::in_place::recorded(&t.repo).map(|(_, m)| m).unwrap_or_default();
         }
@@ -223,7 +224,7 @@ impl Hub {
             let i = st.desk.item_mut(id)?;
             i.kept_copy = None;
             if let Some(it) = i.tree.as_mut() {
-                (it.base, it.path, it.branch, it.main_line) = (base.clone(), t.path.clone(), t.branch.clone(), t.main_line.clone());
+                (it.base, it.path, it.branch, it.main_line, it.card_tests) = (base.clone(), t.path.clone(), t.branch.clone(), t.main_line.clone(), t.card_tests);
             }
             Some(i.clone())
         });
@@ -904,7 +905,7 @@ fn claim_tree(st: &mut Store, id: &str, main: &str, at_once: u32, in_place: bool
         Some(n) => {
             let in_place = in_place && !keep;
             let (path, branch) = if in_place { (main.to_string(), format!("desk/{id}")) } else { (format!("{main}/{TREES}/desk-{n}"), branch) };
-            let t = ItemTree { repo: main.to_string(), path, branch, base: String::new(), slot: n, keep, addon_of, in_place, main_line: String::new(), landed: String::new(), landed_work: String::new() };
+            let t = ItemTree { repo: main.to_string(), path, branch, base: String::new(), slot: n, keep, addon_of, in_place, main_line: String::new(), landed: String::new(), landed_work: String::new(), card_tests: false };
             it.tree = Some(t.clone());
             it.copy_failed = false;
             // Started another way (Start it now, or freed by its `after`) while it waited for a copy: that wait is over.
@@ -929,7 +930,7 @@ impl Hub {
     pub(crate) fn desk_hold_copies(&self, repo: &str, slots: &[u32]) {
         self.write(|st| {
             for n in slots {
-                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false, addon_of: String::new(), in_place: false, main_line: String::new(), landed: String::new(), landed_work: String::new() };
+                let tree = ItemTree { repo: repo.to_string(), path: format!("{repo}/{TREES}/held-{n}"), branch: format!("held/{n}"), base: String::new(), slot: *n, keep: false, addon_of: String::new(), in_place: false, main_line: String::new(), landed: String::new(), landed_work: String::new(), card_tests: false };
                 st.desk.items.push(DeskItem { id: format!("held{n}"), project: "elsewhere".into(), state: "working".into(), tree: Some(tree), ..Default::default() });
             }
         });

@@ -98,6 +98,7 @@ pub(crate) fn under_way(st: &Store, id: &str) -> Option<String> {
         "commit" => "is being committed now".to_string(),
         "commit_wait" => format!("is waiting to be committed ({})", f.wait),
         "landing" => format!("is committed and waiting to be on main ({})", f.wait),
+        "queued" if f.wait == crate::desk::hub::landing::install_pick::FULL_RUN_WAIT => "is committed and waiting for the full run".to_string(),
         "queued" => "is committed and waiting for the next install".to_string(),
         s if installing(s) => "is being installed now".to_string(),
         _ => "is finishing".to_string(),
@@ -695,6 +696,8 @@ impl Hub {
         self.desk_queue_tick();
         // The lead's questions about items that have finished since: closed (#613).
         self.desk_close_finished_asks();
+        // Cue's own project: every test run once main has moved since the last full run (desk/hub/landing/full_run.rs).
+        self.full_run_tick();
     }
 }
 

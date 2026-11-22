@@ -144,8 +144,8 @@ pub(crate) fn unsaved(st: &mut Store) -> Vec<Change> {
 /// Whether row `r` still says something true of its item: a stop not settled since, a new item not routed yet.
 fn applies(st: &Store, r: &Change) -> bool {
     // Said once and true still: what you did, Away turned on or off (a later one folds it), your pick (its mocks item
-    // may have left memory since: it's done).
-    if matches!(r.kind, ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked) {
+    // may have left memory since: it's done), how a full run of the main line ended.
+    if matches!(r.kind, ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed) {
         return true;
     }
     let Some(it) = st.desk.item(&r.item) else { return false };
@@ -173,7 +173,7 @@ fn applies(st: &Store, r: &Change) -> bool {
         ChangeKind::Machine => it.remote.is_some() && matches!(it.state.as_str(), "working" | "finishing"),
         // Not sent back to work since.
         ChangeKind::Finished => matches!(it.state.as_str(), "finishing" | "to_check" | "done"),
-        ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked => true,
+        ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed => true,
     }
 }
 
@@ -340,13 +340,23 @@ impl Hub {
         if self.write(|st| finished(st, id, how, now)) {
             self.desk_done(crate::desk::hub::core::desk::Effects { items: vec![id.to_string()], ..Default::default() });
         }
+        if how == "landed" {
+            // Cue's own main line moved: its full run is due (desk/hub/landing/full_run.rs).
+            self.later(0, |h| h.full_run_now());
+        }
     }
 
     /// Away turned on or off on Desk `desk` (`words`, what its lead is to know): a row of the Desk's own, in order with
     /// the rest, while it has a lead.
     pub(crate) fn desk_feed_away(&self, desk: &str, words: &str) {
+        self.desk_feed_line(desk, ChangeKind::Away, words, &now_ms().to_string());
+    }
+
+    /// A row of Desk `desk`'s own (about no item), in order with the rest, while it has a lead; `key`: what makes a
+    /// repeat of it the same row.
+    pub(crate) fn desk_feed_line(&self, desk: &str, kind: ChangeKind, words: &str, key: &str) {
         let now = now_ms();
-        let added = self.write(|st| st.desk.lead_sid(desk).is_some() && feed::add(&mut st.desk.feed, desk, "", ChangeKind::Away, words.to_string(), &now.to_string(), now).is_some());
+        let added = self.write(|st| st.desk.lead_sid(desk).is_some() && feed::add(&mut st.desk.feed, desk, "", kind, words.to_string(), key, now).is_some());
         if added {
             self.desk_feed_flush();
             self.later(0, |h| h.desk_feed_send());

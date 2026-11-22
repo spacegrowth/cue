@@ -31,14 +31,27 @@ cp -cp "$bin" "$copy" 2>/dev/null || cp -p "$bin" "$copy"
 full=1
 case "$(basename "$bin")" in cue_lib-*) ;; *) full=0 ;; esac
 skip_value=0
+listing=0
 for a in "$@"; do
   if [ "$skip_value" = 1 ]; then skip_value=0; continue; fi
   case "$a" in
+    --list) listing=1 ;;
     --skip|--test-threads|--format|--logfile|--color|--shuffle-seed|-Z) skip_value=1 ;;
     -*) ;;
     *) full=0 ;;
   esac
 done
+# A Desk item's copy (.claude/worktrees/desk-<number>) doesn't make a full run at all: its session runs the tests for
+# what it changed (tests/run.sh card), and every test runs once after landing. CUE_FULL_RUN=1 goes ahead anyway
+# (tests/run.sh card sets it for a wide card). Naming the tests (--list) is no run.
+if [ "$full" = 1 ] && [ "$listing" = 0 ] && [ "${CUE_FULL_RUN:-}" != 1 ]; then
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || top="$PWD"
+  if [[ "$top" =~ /\.claude/worktrees/desk-[0-9]+$ ]]; then
+    echo "test-runner: not run. This is a Desk item's copy, and a full run of Cue's tests is left to the run after landing." >&2
+    echo "test-runner: run tests/run.sh card instead: it runs the tests for what you changed. (CUE_FULL_RUN=1 runs everything anyway.)" >&2
+    exit 1
+  fi
+fi
 if [ "$full" = 1 ]; then
   shared="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || shared=""
   [ -d "$shared" ] || shared="$dir"

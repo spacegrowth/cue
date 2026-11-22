@@ -64,3 +64,13 @@ Two lanes under In progress: **Landing**, the landing line itself, numbered in t
 - A failed check moves the row back to In progress with its holder; a wait on a person moves it to
   Waiting on you.
 - Window tests: both groups, their order, the numbers, the install head, and a failed check moving back.
+
+## The install takes the last commit that passed (#678)
+
+For Cue's own project the half-hourly install builds the newest commit on main that a full run has
+passed (docs/faster-checks-plan.md), not the tip. Items at or before that commit go into the install
+as before. An item landed after it stays in Waiting to install and its row says "On main · waiting
+for the full run"; it goes into the next install once its run passes. When the commit that passed is
+the one already running, no install starts. If no full run has finished for 2 hours after main moved,
+the install takes the tip as it used to, and the Desk's lead gets one line saying so. Install now
+takes the tip at once. Window-only changes are still served in place right after landing.

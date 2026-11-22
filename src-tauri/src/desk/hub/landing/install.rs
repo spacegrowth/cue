@@ -279,34 +279,7 @@ impl Hub {
                 return;
             }
         }
-        // The main line's tip, not the folder's HEAD: an item may work on its own branch there (in_place.rs). Built from
-        // a clean copy at that commit, so the folder's files don't matter.
-        let Some(head) = crate::desk::hub::landing::in_place::main_head(&repo) else {
-            // Said Install now: it says why nothing started, rather than nothing happening (#641).
-            if now_said {
-                for it in batch {
-                    self.finish_failed(it, &format!("{NOT_STARTED}: Cue couldn't read the latest commit in {repo}"), "failed", "");
-                }
-            }
-            return;
-        };
-        let tag = format!("desk-{now}");
-        let started = self.installer().start(&repo, &head, &tag);
-        for it in batch {
-            match &started {
-                Ok(()) => {
-                    let tag = tag.clone();
-                    let head = head.clone();
-                    // The commit built is the item's now: main as it is, a fix made since it last failed in it (#343).
-                    self.finish_set(&it.id, |i| {
-                        if let Some(f) = i.finish.as_mut() {
-                            (f.step, f.at, f.tag, f.now, f.commit, f.wait) = ("building".into(), now, tag, false, head, String::new());
-                        }
-                    });
-                }
-                Err(e) => self.finish_failed(it, &format!("{NOT_STARTED}: {e}"), "failed", e),
-            }
-        }
+        self.install_start(&repo, &batch, now, now_said);
     }
 
     /// Item `it`'s install failed (`step`): it stops on `question` with the log's end kept, and goes back to its

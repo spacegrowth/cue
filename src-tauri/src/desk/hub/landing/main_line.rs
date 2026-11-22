@@ -279,12 +279,18 @@ impl Hub {
     /// Item `id`'s work was taken back out by commit `by` ("<short> (<its subject>)"): sent back to its holder, as
     /// Send back does, saying so on its page and to its holder.
     fn desk_taken_out(&self, id: &str, by: &str) {
+        self.desk_open_again(id, &format!("Commit {by} took its work back out"), "Put it back", "");
+    }
+
+    /// Landed item `id` is open again because of `what`: sent back to its holder, as Send back does, saying so on its
+    /// page and to its holder, who is to `then` (`more`: what else its holder reads, the end of a failed run).
+    pub(crate) fn desk_open_again(&self, id: &str, what: &str, then: &str, more: &str) {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = crate::desk::hub::core::desk::Effects::default();
             let Some(i) = st.desk.item_mut(id) else { return fx };
             let h = i.holder.clone();
-            let what = format!("Commit {by} took its work back out");
+            let what = what.to_string();
             (i.state, i.done_at, i.finish, i.updated) = (if h.is_some() { "working" } else { "new" }.into(), None, None, crate::desk::hub::core::desk::secs(now));
             i.check = None;
             if let Some(c) = i.checks.last_mut() {
@@ -294,7 +300,7 @@ impl Hub {
             let whom = match &h {
                 Some(h) => {
                     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-                    fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) is open again: {what}. Put it back, then say DONE: #{id}.\nIts fixes stay in #{id}; don't add new items for them.")));
+                    fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) is open again: {what}. {then}, then say DONE: #{id}.\nIts fixes stay in #{id}; don't add new items for them.{more}")));
                     format!("sent back to {}", h.name)
                 }
                 None => "open again".to_string(),

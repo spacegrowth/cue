@@ -39,6 +39,10 @@ pub enum ChangeKind {
     /// Its work is on another machine (#500) and needs the user: main here isn't pushed for it to start from, or the
     /// machine hasn't answered for a while.
     Machine,
+    /// The full run of Cue's own main line passed (no item): never wakes the lead.
+    FullRunPassed,
+    /// The full run of Cue's own main line failed, or couldn't be made (no item).
+    FullRunFailed,
 }
 
 /// How a row reaches the lead.
@@ -62,7 +66,7 @@ pub const GROUPED_ALONE_MS: u64 = 5 * 60_000;
 pub const LANDING_STUCK_MS: u64 = 15 * 60_000;
 
 impl ChangeKind {
-    pub const ALL: [ChangeKind; 14] = [
+    pub const ALL: [ChangeKind; 16] = [
         ChangeKind::NewItem,
         ChangeKind::Stopped,
         ChangeKind::StuckLanding,
@@ -77,6 +81,8 @@ impl ChangeKind {
         ChangeKind::YouDid,
         ChangeKind::WordsWait,
         ChangeKind::Machine,
+        ChangeKind::FullRunPassed,
+        ChangeKind::FullRunFailed,
     ];
 
     pub fn wake(self) -> Wake {
@@ -89,9 +95,10 @@ impl ChangeKind {
             | ChangeKind::RouteFailed
             | ChangeKind::HolderGone
             | ChangeKind::WordsWait
-            | ChangeKind::Machine => Wake::AtOnce,
+            | ChangeKind::Machine
+            | ChangeKind::FullRunFailed => Wake::AtOnce,
             ChangeKind::NeedsYou | ChangeKind::Clash | ChangeKind::Finished | ChangeKind::Away => Wake::Grouped,
-            ChangeKind::YouDid => Wake::Silent,
+            ChangeKind::YouDid | ChangeKind::FullRunPassed => Wake::Silent,
         }
     }
 
@@ -117,6 +124,8 @@ impl ChangeKind {
             ChangeKind::YouDid => "you",
             ChangeKind::WordsWait => "words_wait",
             ChangeKind::Machine => "machine",
+            ChangeKind::FullRunPassed => "full_run_passed",
+            ChangeKind::FullRunFailed => "full_run_failed",
         }
     }
 

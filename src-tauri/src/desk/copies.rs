@@ -37,6 +37,22 @@ pub struct ItemTree {
     pub landed: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub landed_work: String,
+    /// A copy of this Cue's own source, noted as the copy is made (desk/hub/landing/trees.rs `desk_tree_ready`): its
+    /// holder is told to run the tests for what it changed. Saved, so the words never read a file while the Desk is held.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub card_tests: bool,
+}
+
+impl ItemTree {
+    /// What its holder is told of testing, after the words on its copy: in this Cue's own source, to run the tests
+    /// for what it changed (tests/run.sh card) and leave the full run to after landing; nothing in any other project.
+    pub(crate) fn card_tests_line(&self) -> &'static str {
+        if self.card_tests {
+            " Before you say done, run tests/run.sh card: it runs the tests for what you changed. Don't run the full suite: it runs after landing."
+        } else {
+            ""
+        }
+    }
 }
 
 /// An item's work on another machine (#500, docs/desk-remote-items-plan.md).

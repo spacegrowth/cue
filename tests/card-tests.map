@@ -1,0 +1,197 @@
+# Which tests a card runs for the files it changed (tests/run.sh card; read by tests/card-pick.js).
+#
+# One line per rule:   <path pattern>  <what>  [names…]
+# Every line whose pattern matches a changed file counts (they add up). A changed file no line matches makes
+# the card wide for its side, so nothing goes untested: found a gap? Add a line here.
+#
+# Patterns: * is anything but "/", ** is anything. A pattern with no "/" is matched against the file's name alone.
+#
+# What:
+#   skip          nothing to run for it (documents)
+#   rust  names…  files of src-tauri/src/testing/tests by name (no .rs; * allowed), or a raw cargo filter (has "::").
+#                 The unit tests inside the changed file itself always run too, so "rust" alone means only those.
+#   window names… specs of tests/ui/specs by name (.spec.mjs optional; * allowed). fits.spec.mjs, the node tests and
+#                 scripts/check-window.mjs always run with them.
+#   node          the node tests only (tests/*.test.js, tests/ui/*.test.js)
+#   self          the changed file is itself a test: run it
+#   run command…  a command, from the repository's top folder
+#   wide-rust / wide-window / wide   shared ground: the full suite for that side (both, for wide)
+#
+# A set is named once and used as @name:   set <name> = names…
+
+# ---- nothing to run
+docs/**        skip
+work/**        skip
+site/**        skip
+*.md           skip
+LICENSE        skip
+.gitignore     skip
+
+# ---- shared ground: no safe narrow set
+tests/run.sh                         wide
+package.json                         wide-window
+package-lock.json                    wide-window
+src-tauri/Cargo.toml                 wide-rust
+src-tauri/Cargo.lock                 wide-rust
+src-tauri/xtask/Cargo.toml           wide-rust
+src-tauri/.cargo/**                  wide-rust
+.cargo/**                            wide-rust
+scripts/test-runner.sh               wide-rust
+src-tauri/build.rs                   wide-rust
+src-tauri/src/lib.rs                 wide-rust
+src-tauri/src/main.rs                wide-rust
+src-tauri/src/model.rs               wide-rust
+src-tauri/src/safe_git.rs            wide-rust
+src-tauri/src/hub/**                 wide-rust
+src-tauri/src/db/**                  wide-rust
+src-tauri/src/locking/**             wide-rust
+src-tauri/src/testing/*.rs           wide-rust
+src-tauri/src/testing/tests/mod.rs   wide-rust
+src-tauri/src/desk/mod.rs            wide-rust
+src-tauri/src/desk/model.rs          wide-rust
+src-tauri/src/desk/state.rs          wide-rust
+src-tauri/src/desk/parse.rs          wide-rust
+src-tauri/src/desk/hub/mod.rs        wide-rust
+src-tauri/src/desk/hub/core/**       wide-rust
+tests/ui/bridge.js                   wide-window
+tests/ui/load.js                     wide-window
+tests/ui/app.html                    wide-window
+tests/ui/mini.html                   wide-window
+tests/ui/serve.mjs                   wide-window
+tests/ui/playwright.config.mjs       wide-window
+tests/ui/fakes/**                    wide-window
+tests/ui/scenarios/**                wide-window
+tests/ui/specs/cue.mjs               wide-window
+tests/ui/specs/clock.mjs             wide-window
+tests/ui/specs/layout.mjs            wide-window
+tests/ui/specs/pills.mjs             wide-window
+scripts/check-window.mjs             wide-window
+ui/index.html                        wide-window
+ui/app.js                            wide-window
+ui/window.js                         wide-window
+ui/app/**                            wide-window
+ui/core/**                           wide-window
+ui/chat/**                           wide-window
+ui/box/**                            wide-window
+ui/styles/base.css                   wide-window
+ui/styles/box.css                    wide-window
+ui/styles/chat.css                   wide-window
+ui/styles/messages.css               wide-window
+
+# ---- tests that changed run themselves
+src-tauri/src/testing/tests/*.rs     self
+tests/ui/specs/*.spec.mjs            self
+tests/*.test.js                      node
+tests/ui/*.test.js                   node
+tests/card-tests.map                 node
+tests/card-pick.js                   node
+src-tauri/src/testing/tests/typing_support.rs   rust typing typing_edges typing_failures
+src-tauri/tests/hook_asks.rs         run cd src-tauri && cargo test -q --test hook_asks
+src-tauri/tests/hook_events.rs       run cd src-tauri && cargo test -q --test hook_events
+src-tauri/xtask/src/**               run cd src-tauri && cargo test -q -p xtask
+src-tauri/xtask/tests/**             run cd src-tauri && cargo test -q -p xtask
+tests/release/**                     run tests/release/gates.test.sh
+tests/release/**                     run tests/release/debug_only.test.sh
+scripts/release.sh                   run tests/release/gates.test.sh
+scripts/full-run.sh                  run tests/release/full_run.test.sh
+tests/release/full_run.test.sh       run tests/release/full_run.test.sh
+
+# ---- the window, by area
+set desk-window = desk-* inbox-desk screens
+ui/desk/**                           window @desk-window
+ui/lands.js                          window @desk-window
+ui/styles/desk-*.css                 window @desk-window
+ui/styles/inbox_desk.css             window @desk-window
+tests/ui/specs/desk.mjs              window desk-*
+ui/inbox/**                          window inbox* screens
+ui/inbox_*.js                        window inbox* screens
+ui/styles/inbox.css                  window inbox* screens
+ui/mini.js                           window mini screens
+ui/mini.html                         window mini screens
+ui/styles/mini.css                   window mini screens
+ui/file_view.js                      window file-view desk-open-file
+ui/page_look.js                      window page-look text-size screens
+ui/diff.js                           window diff-colours screens
+ui/diff_overlay.js                   window diff-colours screens
+ui/styles/diff.css                   window diff-colours screens
+tests/ui/specs/fits.mjs              window fits
+tests/ui/specs/shots.mjs             window screens
+tests/ui/baseline/**                 window screens
+tests/ui/specs/term.mjs              window terminal*
+
+# ---- the Desk's Rust, by what it does (src-tauri/src/testing/tests/desk_*.rs)
+set land    = desk_land desk_land_moved desk_lands desk_finish desk_commit desk_spec_landing desk_clear_land desk_on_main desk_main_left desk_full_run
+set install = desk_install desk_install_passed desk_served
+set copies  = desk_copies desk_copy_guard desk_copy_wait desk_spec_copies desk_branch desk_main_left desk_cleanup
+set routing = desk_routing desk_routes desk_spec_routing desk_pick
+set queue   = desk_queue desk_spec_queue desk_start_after desk_wait_list desk_waits
+set asks    = desk_asked desk_spec_asks desk_approvals
+set away    = desk_away desk_pause desk_back_at_work
+set stall   = desk_stuck desk_unstick desk_stops desk_not_done
+set theirs  = desk_theirs desk_theirs_hunks
+set lead    = desk_lead desk_spec_lead_lines desk_to_lead desk_spec_handoff desk_check_line desk_spec_check desk_feed desk_lands desk_cleanup
+set holds   = desk_hold_check desk_code_holds desk_held
+
+# landing: what every landing goes through
+src-tauri/src/desk/hub/landing/mod.rs          rust @land @install @copies
+src-tauri/src/desk/hub/landing/git.rs          rust @land @install @copies
+src-tauri/src/desk/hub/landing/finish.rs       rust @land
+src-tauri/src/desk/hub/landing/full_run.rs     rust desk_full_run desk_install_passed
+src-tauri/src/desk/hub/landing/full_run_kit.rs rust desk_full_run desk_install_passed
+src-tauri/src/desk/hub/landing/full_run_script.rs rust
+src-tauri/src/desk/hub/landing/commit.rs       rust @land
+src-tauri/src/desk/hub/landing/land_keep.rs    rust @land
+src-tauri/src/desk/hub/landing/main_line.rs    rust @land
+src-tauri/src/desk/hub/landing/unlanded.rs     rust @land desk_reopen
+src-tauri/src/desk/hub/landing/diff.rs         rust @land
+src-tauri/src/desk/hub/landing/found_words.rs  rust @land
+src-tauri/src/desk/hub/landing/push_check.rs   rust @land
+src-tauri/src/desk/hub/landing/push_main.rs    rust @land
+src-tauri/src/desk/hub/landing/clear_land.rs   rust desk_clear_land desk_land
+src-tauri/src/desk/lands.rs                    rust @land
+# landing: the install after it
+src-tauri/src/desk/hub/landing/install.rs      rust @install
+src-tauri/src/desk/hub/landing/install_pick.rs rust @install desk_full_run
+src-tauri/src/desk/installer.rs                rust @install
+src-tauri/src/install/**                       rust @install
+# landing: each item's copy
+src-tauri/src/desk/hub/landing/trees.rs        rust @copies
+src-tauri/src/desk/hub/landing/tree_files.rs   rust @copies
+src-tauri/src/desk/hub/landing/copies.rs       rust @copies
+src-tauri/src/desk/hub/landing/copy_guard.rs   rust @copies
+src-tauri/src/desk/hub/landing/in_place.rs     rust @copies
+src-tauri/src/desk/copies.rs                   rust @copies
+src-tauri/src/desk/hub/landing/named_copy.rs   rust desk_named_copy desk_copies
+src-tauri/src/desk/hub/landing/other_repo.rs   rust desk_other_repo
+src-tauri/src/desk/hub/landing/own_work.rs     rust desk_own_work
+src-tauri/src/desk/hub/landing/pr.rs           rust desk_pr
+src-tauri/src/desk/hub/landing/remote_item.rs  rust desk_remote
+src-tauri/src/desk/hub/landing/remote_setup.rs rust desk_remote
+
+# a turn: who gets an item, and in what order (act.rs, heard.rs, said.rs and mod.rs have no line: wide)
+src-tauri/src/desk/hub/turn/route.rs           rust @routing
+src-tauri/src/desk/machine_pref.rs             rust @routing
+src-tauri/src/desk/model_pick.rs               rust @routing
+src-tauri/src/desk/hub/turn/pick.rs            rust desk_pick
+src-tauri/src/desk/hub/turn/queue.rs           rust @queue
+src-tauri/src/desk/hub/turn/asked.rs           rust @asks
+src-tauri/src/desk/hub/turn/features.rs        rust desk_features
+
+# the rest of the Desk
+src-tauri/src/desk/hub/away/**                 rust @away
+src-tauri/src/desk/hub/stall/**                rust @stall
+src-tauri/src/desk/hub/theirs/**               rust @theirs
+src-tauri/src/desk/hub/lead/**                 rust @lead
+src-tauri/src/desk/feed.rs                     rust desk_feed desk_full_run
+src-tauri/src/desk/across.rs                   rust desk_across
+src-tauri/src/desk/holds.rs                    rust @holds
+src-tauri/src/desk/hold_check.rs               rust @holds
+src-tauri/src/desk/move_desk.rs                rust desk_move_desk
+src-tauri/src/desk/tell.rs                     rust desk_tell
+
+# ---- other Rust
+src-tauri/src/terminal/**                      rust typing typing_edges typing_failures terminal_screens redraw
+src-tauri/src/machines/**                      rust machines machine_stream
+src-tauri/src/notify/**                        rust notifications
+src-tauri/src/uploads.rs                       rust uploads
+src-tauri/src/voice/**                         rust

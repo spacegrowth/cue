@@ -1,9 +1,19 @@
 #!/bin/bash
 # Cue's tests, headless, never touching your real Cue or stealing the window's focus.
-#   tests/run.sh [unit|ui|e2e|soak [minutes]|all]      (all when none is named)
+#   tests/run.sh [card|unit|ui|e2e|soak [minutes]|all]      (all when none is named)
+#   card  what a Desk item's session runs before it says done: only the tests for the files this checkout changed
+#         against main (its branch's commits, plus what isn't committed yet). It says first which sets it picked and
+#         why, by the map in tests/card-tests.map (tests/card-pick.js reads it; docs/dev/test-speed.md). Documents
+#         only: nothing runs. Shared ground, or a file no line of the map matches: a "wide card", the full suite for
+#         that side (unit for Rust, ui for the window).
+#           tests/run.sh card --list [file…]   says what it would run and runs nothing; with files, for those files
+#           tests/run.sh card file…            runs the tests for those files
+#         A full Rust run from a Desk item's copy (.claude/worktrees/desk-<n>) is refused (here and in
+#         scripts/test-runner.sh): it runs after landing. CUE_FULL_RUN=1 goes ahead anyway; a wide card sets it.
 #   unit  Rust tests (the app and src-tauri/xtask), then the protocol tests against a private, silent Cue: its own socket (CUE_HOME), no
 #         notifications, no windows (CUE_QUIET). Your real Cue keeps running untouched. Then scripts/release.sh's
 #         gates against stand-ins (tests/release/gates.test.sh): nothing built or published.
+#         And scripts/full-run.sh against stand-in steps (tests/release/full_run.test.sh).
 #   ui    every node test (tests/*.test.js, tests/ui/*.test.js), then the real UI in headless Chromium on the fake
 #         bridge (tests/ui: screens against their baselines, and interactions). Needs `npm ci` once.
 #   e2e   the real app driven over WebDriver, a private Cue per journey (tests/e2e/run.sh, docs/dev/e2e.md).
@@ -16,7 +26,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Nothing here may reach the tmux server you're in: a Cue or test started from a tmux pane would inherit it.
 unset TMUX TMUX_PANE
 
+# A Desk item's copy doesn't run every Rust test itself: its own tests go by `card`, the full run after landing.
+in_desk_copy() {
+  [[ "$ROOT" =~ /\.claude/worktrees/desk-[0-9]+$ ]]
+}
+
 unit() {
+  if in_desk_copy && [ "${CUE_FULL_RUN:-}" != 1 ]; then
+    echo "unit: this is a Desk item's copy, where the full Rust run is left to the run after landing. Run tests/run.sh card: it runs the tests for what you changed. (CUE_FULL_RUN=1 runs everything anyway.)" >&2
+    return 1
+  fi
   export CUE_HOME="$(mktemp -d /tmp/cue-test.XXXX)"
   export CUE_QUIET=1
   export CUE_BIN="$ROOT/src-tauri/target/debug/cue"
@@ -31,6 +50,7 @@ unit() {
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
   python3 "$ROOT/tests/test_protocol.py"
   "$ROOT/tests/release/gates.test.sh"
+  "$ROOT/tests/release/full_run.test.sh"
   "$ROOT/tests/release/debug_only.test.sh"
 }
 
@@ -52,6 +72,72 @@ ui() {
 
 e2e() {
   "$ROOT/tests/e2e/run.sh"
+}
+
+# One step of a card's tests: said, then run from `$1` (under the top folder); with --list only said. A step that
+# fails is said and counted (CARD_FAILED): the steps after it still run, so one run shows everything that is wrong.
+card_step() {
+  local dir="$1"
+  shift
+  if [ "$CARD_LIST" = 1 ]; then echo "would run: ${dir:+(in $dir) }$*"; return 0; fi
+  echo "card: ${dir:+(in $dir) }$*" >&2
+  (cd "$ROOT/$dir" && "$@") || { echo "card: FAILED: $*" >&2; CARD_FAILED=$((CARD_FAILED + 1)); return 1; }
+}
+
+card() {
+  CARD_LIST=0
+  CARD_FAILED=0
+  if [ "${1:-}" = "--list" ]; then CARD_LIST=1; shift; fi
+  local files=() f base
+  if [ $# -gt 0 ]; then
+    files=("$@")
+  else
+    base="$(git -C "$ROOT" merge-base HEAD main 2>/dev/null)" || { echo "card: no main branch to compare with here" >&2; return 2; }
+    while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(git -C "$ROOT" diff --no-renames --name-only "$base"; git -C "$ROOT" ls-files --others --exclude-standard)
+  fi
+  local plan
+  plan="$(mktemp "${TMPDIR:-/tmp}/cue-card-plan.XXXXXX")"
+  node "$ROOT/tests/card-pick.js" --plan "$plan" ${files[@]+"${files[@]}"} || { rm -f "$plan"; return 2; }
+  local filters=() specs=() runs=() rust=0 rust_wide=0 window_wide=0 node_tests=0 check_window=0 step rest
+  while IFS= read -r step; do
+    rest="${step#* }"
+    case "$step" in
+      rust-wide) rust_wide=1 ;;
+      window-wide) window_wide=1 ;;
+      rust) rust=1 ;;
+      rust-filter\ *) filters+=("$rest") ;;
+      spec\ *) specs+=("$rest") ;;
+      node-tests) node_tests=1 ;;
+      check-window) check_window=1 ;;
+      run\ *) runs+=("$rest") ;;
+    esac
+  done < "$plan"
+  rm -f "$plan"
+  local t
+  # The window first: it is the shorter side.
+  if [ "$window_wide" = 1 ]; then
+    if [ "$CARD_LIST" = 1 ]; then echo "would run: tests/run.sh ui"; else ui; fi
+  elif [ "$node_tests" = 1 ]; then
+    for t in "$ROOT"/tests/*.test.js "$ROOT"/tests/ui/*.test.js; do card_step "" node "${t#"$ROOT"/}" || true; done
+    if [ "$check_window" = 1 ] || [ ${#specs[@]} -gt 0 ]; then
+      [ "$CARD_LIST" = 1 ] || [ -d "$ROOT/node_modules/@playwright/test" ] || { echo "card: run npm ci first (Playwright isn't installed)"; return 1; }
+      card_step "" node scripts/check-window.mjs . || true
+      card_step "" npx playwright test -c tests/ui/playwright.config.mjs "${specs[@]}" || true
+    fi
+  fi
+  if [ "$rust_wide" = 1 ]; then
+    if [ "$CARD_LIST" = 1 ]; then echo "would run: CUE_FULL_RUN=1 tests/run.sh unit"; else export CUE_FULL_RUN=1; unit; fi
+  elif [ "$rust" = 1 ]; then
+    # Nothing to test when it doesn't build; a finding of the code check doesn't stop the tests.
+    if card_step src-tauri cargo build -q; then
+      card_step src-tauri cargo run -q -p xtask -- check || true
+      card_step src-tauri cargo test -q --lib -- "${filters[@]}" || true
+    fi
+  fi
+  for t in ${runs[@]+"${runs[@]}"}; do card_step "" bash -c "$t" || true; done
+  [ "$CARD_LIST" = 1 ] && return 0
+  if [ "$CARD_FAILED" -gt 0 ]; then echo "card: $CARD_FAILED step(s) failed (each said above as \"card: FAILED\")" >&2; return 1; fi
+  echo "card: all passed" >&2
 }
 
 # Process `$1` and everything it started, children first (so a parent's own trap still runs as it ends).
@@ -95,10 +181,11 @@ soak() {
 }
 
 case "${1:-all}" in
+  card) shift; card "$@" ;;
   unit) unit ;;
   ui) ui ;;
   e2e) e2e ;;
   soak) soak "$2" ;;
   all) ui; unit; e2e; soak ;;
-  *) echo "usage: tests/run.sh [unit|ui|e2e|soak [minutes]|all]"; exit 2 ;;
+  *) echo "usage: tests/run.sh [card|unit|ui|e2e|soak [minutes]|all]"; exit 2 ;;
 esac
