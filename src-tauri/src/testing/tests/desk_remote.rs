@@ -449,7 +449,10 @@ fn two_items_starting_together_share_one_push_card_and_a_yes_starts_both() {
     let w = World::new();
     let ((dir, bare, there, project, id, h), _ssh) = routed_there_with(&w, two_ahead);
     assert!(push_card(&w, &project).is_some(), "asked for the first");
-    // A second session of the Desk, on the same machine's clone, given another item.
+    // A second session of the Desk, on the same machine in a clone of its own (one folder per item, #679), given another
+    // item.
+    let there = dir.join("there-2");
+    git(&dir, &["clone", "-q", &bare.to_string_lossy(), &there.to_string_lossy()]);
     let opts = crate::ipc::StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = crate::ipc::start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "cue-footer", &opts).unwrap();
     let h2 = r["session_id"].as_str().unwrap().to_string();
@@ -715,4 +718,79 @@ fn a_folder_there_with_other_files_in_it_isnt_downloaded_over_and_the_item_says_
     assert!(it["start_failed"].as_str().unwrap_or("").contains("isn't a copy of the project"), "{it}");
     assert_eq!(std::fs::read_to_string(folder.join("todo.txt")).unwrap(), "mine\n", "left as it was");
     assert!(!folder.join(".git").exists());
+}
+
+// Two items on one machine (#679): each new session there starts in a copy of its own in the Desk's clone, on its own
+// branch, so neither's work lands under the other's name; a route to a session whose folder another item's work is in
+// is refused.
+
+/// Item `id`'s holder and the folder on "box" it works in.
+fn holder_there(w: &World, project: &str, title: &str) -> (String, String, PathBuf) {
+    let it = item(w, project, title);
+    let id = it["id"].as_str().unwrap().to_string();
+    let h = it["holder"]["sid"].as_str().unwrap_or_else(|| panic!("started: {it}")).to_string();
+    let cwd = PathBuf::from(w.hub().read(|st| st.sessions.get(&h).map(|s| s.origin.cwd.clone())).unwrap_or_default());
+    (id, h, cwd)
+}
+
+#[test]
+fn two_items_started_on_one_machine_each_work_in_a_copy_of_their_own_and_land_only_their_own_changes() {
+    let w = World::new();
+    let ((dir, _, there, project, _, _), _ssh) = routed_there(&w);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machine": "box", "machine_folder": there.to_string_lossy() })).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next\nITEM: bug | Sidebar jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let (a, ha, at) = holder_there(&w, &project, "Footer jumps");
+    let (b, hb, bt) = holder_there(&w, &project, "Sidebar jumps");
+    let there = there.canonicalize().unwrap();
+    assert_eq!(at.canonicalize().unwrap(), there.join(format!(".claude/worktrees/desk-{a}")), "a copy of its own");
+    assert_eq!(bt.canonicalize().unwrap(), there.join(format!(".claude/worktrees/desk-{b}")), "a copy of its own");
+    for (t, i, h) in [(&at, &a, &ha), (&bt, &b, &hb)] {
+        assert_eq!(git(t, &["symbolic-ref", "--short", "HEAD"]).trim(), format!("desk/{i}"), "on its branch already");
+        let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, x)| s == h && x.contains(&format!("Desk item #{i}"))).map(|(_, x)| x).collect();
+        assert!(told.iter().any(|x| x.contains("a copy of its own") && x.contains("don't switch branches") && !x.contains("switch -c")), "{told:?}");
+    }
+    assert!(git(&there, &["status", "--porcelain"]).trim().is_empty(), "the copies aren't loose files in the clone");
+    // Both at work at once, each in its own folder.
+    std::fs::write(at.join("footer.txt"), "footer\n").unwrap();
+    std::fs::write(bt.join("sidebar.txt"), "sidebar\n").unwrap();
+    for (t, f) in [(&at, "footer.txt"), (&bt, "sidebar.txt")] {
+        git(t, &["add", "-f", f]);
+        git(t, &["-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "fix"]);
+    }
+    let done = |t: &Path, i: &str| format!("Fixed.\nDONE: #{i} | branch: desk/{i} | commit: {}", git(t, &["rev-parse", "HEAD"]).trim());
+    ends(&w, &ha, &done(&at, &a));
+    w.advance(1000);
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Footer jumps (#{a})"));
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "footer.txt", "only its own change");
+    ends(&w, &hb, &done(&bt, &b));
+    w.advance(1000);
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).trim(), format!("Sidebar jumps (#{b})"));
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "sidebar.txt", "only its own change");
+}
+
+#[test]
+fn a_route_to_a_session_in_a_folder_another_items_work_is_in_is_refused() {
+    let w = World::new();
+    let ((_, _, there, project, id, _), _ssh) = routed_there(&w);
+    // A second session in the same clone there.
+    let opts = crate::ipc::StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+    let r = crate::ipc::start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "cue-footer", &opts).unwrap();
+    let h2 = r["session_id"].as_str().unwrap().to_string();
+    w.hosted_says(&h2, HostedEvent::Taken { text: "hi".into() });
+    ends(&w, &h2, "Hi.");
+    w.hub().desk_set_member(&project, &h2, true).unwrap();
+    let cwd = there.to_string_lossy().to_string();
+    w.hub().write(|st| {
+        if let Some(s) = st.sessions.get_mut(&h2) {
+            (s.origin.machine, s.origin.cwd) = ("box".into(), cwd);
+        }
+    });
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> cue-footer | why: it made the footer");
+    w.advance(1000);
+    assert!(item(&w, &project, "Footer jumps")["holder"].is_null(), "not routed");
+    let refused = told_lead(&w, &lead, "two items in one folder");
+    assert!(refused.contains(&format!("#{id} is being worked")) && refused.contains("Route it to new"), "{refused}");
 }
