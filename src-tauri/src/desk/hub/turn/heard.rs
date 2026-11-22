@@ -107,7 +107,7 @@ pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
                 format!("From {name} on #{} ({}):\n{words}\nAnswer it with NOTE: #{} | <your words>.", it.id, it.title, it.id),
             ),
             (Some(i), _) => {
-                back.push(format!("TO LEAD: not sent: no Desk has an item #{i}. Name one you're on, or leave the # out."));
+                back.push(format!("TO LEAD: not sent: #{i} isn't an item on any Desk. Name one you're on, or leave the # out."));
                 continue;
             }
             (None, _) if scopes.len() == 1 => (scopes[0].clone(), format!("From {name}:\n{words}\nIt holds no item here, so a NOTE can't reach it.")),

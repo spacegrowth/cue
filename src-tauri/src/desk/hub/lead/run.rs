@@ -142,7 +142,7 @@ impl Hub {
     /// named "<project>-<id>", that holds it and is sent it. If it can't start, the item says why (and the lead is told).
     pub(crate) fn desk_start_new(self: &Arc<Self>, s: crate::desk::hub::core::desk::NewStart) {
         let s = &s;
-        let ready = |st: &Store| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done" && i.after.is_none());
+        let ready = |st: &Store| start_ready(st, s);
         // Claimed as starting since it was sent off (`DeskRun::new_starts`, #656): let go here when it won't start,
         // else once its session has it or couldn't start.
         if !self.write(|st| ready(st) || { st.desk.run.new_starts.remove(&s.id); false }) { return; }
@@ -151,23 +151,7 @@ impl Hub {
         // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
         // Picked and claimed in one step (#661): two items starting at once on a Desk that spreads over several
         // machines count each other, so they go to different ones.
-        // A machine with its number of the Desk's items at work already (#711, Desk settings): it waits for room there.
-        let (place, full) = self.write(|st| {
-            let place = st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None));
-            if let Ok(p) = &place {
-                let m = p.as_ref().map(|o| o.machine.clone()).unwrap_or_default();
-                if !crate::desk::hub::landing::remote_item::has_room(st, &s.project, &m) {
-                    let mut fx = crate::desk::hub::core::desk::Effects::default();
-                    st.desk.run.new_starts.remove(&s.id);
-                    if ready(st) {
-                        machine_wait(st, s, &m, now_ms(), &mut fx);
-                    }
-                    return (place, Some(fx));
-                }
-                st.desk.run.start_machine.insert(s.id.clone(), m);
-            }
-            (place, None)
-        });
+        let (place, full) = self.write(|st| claim_place(st, s));
         if let Some(fx) = full {
             return self.desk_done(fx);
         }
@@ -374,8 +358,31 @@ pub(crate) fn folder_first(cwds: Vec<String>, project: &str) -> Option<String> {
     cwds.into_iter().nth(own)
 }
 
-/// Cue couldn't start a session for item `s.id` (`e`, why): it shows "couldn't start" with a retry, and the Desk's
-/// lead is told now, not with your next message (it may be a while).
+/// Whether new start `s` still goes: its item is on its Desk, not done, and waits on nothing.
+fn start_ready(st: &Store, s: &crate::desk::hub::core::desk::NewStart) -> bool {
+    st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done" && i.after.is_none())
+}
+
+/// Where new start `s` goes (`start_place`), claimed for it in the same step. A machine with its number of the Desk's
+/// items at work already (#711, Desk settings): it waits for room there, with the Effects of that wait (Some), and
+/// doesn't start now.
+fn claim_place(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart) -> (Result<Option<crate::desk::copies::OnMachine>, String>, Option<crate::desk::hub::core::desk::Effects>) {
+    let place = st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None));
+    if let Ok(p) = &place {
+        let m = p.as_ref().map(|o| o.machine.clone()).unwrap_or_default();
+        if !crate::desk::hub::landing::remote_item::has_room(st, &s.project, &m) {
+            let mut fx = crate::desk::hub::core::desk::Effects::default();
+            st.desk.run.new_starts.remove(&s.id);
+            if start_ready(st, s) {
+                machine_wait(st, s, &m, now_ms(), &mut fx);
+            }
+            return (place, Some(fx));
+        }
+        st.desk.run.start_machine.insert(s.id.clone(), m);
+    }
+    (place, None)
+}
+
 /// New start `s` can't go to `machine` now: it has its number of the Desk's items at work (#711). The item waits
 /// queued with no holder, with the why it was started with, and starts by itself once there's room
 /// (desk/hub/turn/queue.rs `machine_sweep`).
@@ -397,6 +404,8 @@ fn machine_wait(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, mach
     fx.items.push(s.id.clone());
 }
 
+/// Cue couldn't start a session for item `s.id` (`e`, why): it shows "couldn't start" with a retry, and the Desk's
+/// lead is told now, not with your next message (it may be a while).
 pub(crate) fn start_failed(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, e: &str, now: u64, fx: &mut crate::desk::hub::core::desk::Effects) {
     let Some(it) = st.desk.item_mut(&s.id) else { return };
     it.start_failed = e.to_string();
