@@ -1,7 +1,6 @@
 /* Cue's own shells (shells.js): the terminal button by the usage meter, and the peek it drops down under
    itself; the same terminal fills the Terminal view. */
 .shells-btn { position: relative; }
-.shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 .sh-live { font: 700 var(--type-tag) var(--sans); line-height: 1; }
 .shells-btn .sh-live { position: absolute; top: 3px; right: 2px; }
 /* The Terminal view: the shells fill it (the terminal over this place); this shows once the last one is closed. */

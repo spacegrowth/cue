@@ -34,8 +34,9 @@ function flipPlay(from) {
 }
 /** The top bar never pushes Settings off the edge (a usage file adds meters; chips come and go): when it
  *  doesn't fit, it gives up room step by step: the chips' extras ("· oldest 4m"), the meters' bars, the
- *  meters' labels, then the chips' words (the number and dot stay; the tooltip still says what they are). */
-const TOP_STEPS = ["tfit1", "tfit2", "tfit3", "tfit4"];
+ *  meters' labels, then the chips' words (the number and dot stay; the tooltip still says what they are), then the
+ *  room between the icon buttons and inside the view switch (the icon buttons themselves never shrink: #680). */
+const TOP_STEPS = ["tfit1", "tfit2", "tfit3", "tfit4", "tfit5"];
 function fitTop() {
   const h = document.querySelector(".app > .top");
   if (!h) return;

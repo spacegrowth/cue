@@ -217,10 +217,12 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .switch-view { display: flex; gap: 3px; padding: 3px; background: var(--panel); border-radius: var(--radius-btn); }
 .switch-view button { height: 26px; padding: 0 12px; border-radius: var(--radius-qp); font-size: var(--type-small); font-weight: 600; color: var(--muted); }
 .switch-view button.on { background: var(--accent); color: var(--on-accent); }
-/* Settings: just the gear, in the header's own colour (no box) until you point at it. */
-.top-btn.icon { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--on-bg); opacity: 0.75; }
+/* The header's icon buttons (Find, Terminal, Extensions, Insights, Settings): just the icon, in the header's own colour
+   (no box) until you point at it, then one soft rounded square, the same for each. flex: none keeps that square when
+   the header is crowded (squeezed, they became tall narrow pills: #680); an open one's square stays, a shade stronger. */
+.top-btn.icon { flex: none; width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--on-bg); opacity: 0.75; }
 .top-btn.icon:hover { opacity: 1; filter: none; background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
-.insights-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
+.top-btn.icon[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 
 .col-head { font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
 .col-head span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
