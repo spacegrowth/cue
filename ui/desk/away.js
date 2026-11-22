@@ -421,7 +421,7 @@ function deskAwayHtml() {
   return `<div class="move-scrim dk-aw-scrim" data-away="scrim"><div class="move-dialog dk-aw-dialog" role="dialog" aria-labelledby="dk-aw-title">
     <div class="move-title" id="dk-aw-title">Away</div>
     <div class="end-text">${lead}</div>
-    <div class="dk-aw-flds"><label>Until<input type="time" data-away-field="until" value="${esc(e.until)}"/></label><label>Budget ($)<input type="number" min="0" step="1" data-away-field="budget" value="${esc(e.budget)}" placeholder="No limit"/></label>${deskFld}</div>
+    <div class="dk-aw-flds"><label>Until<input type="time" data-away-field="until" value="${esc(e.until)}"/></label><label>Budget ($)<input type="text" inputmode="decimal" data-away-field="budget" value="${esc(e.budget)}" placeholder="No limit"/></label>${deskFld}</div>
     ${first}
     <button class="dk-aw-sum" data-away-rules aria-expanded="${e.open}"><span class="grow">${esc(deskAwayRulesLine(e.rules))}</span><span class="dk-aw-sum-m">${e.open ? "Hide" : "Change"}</span></button>
     ${rules}

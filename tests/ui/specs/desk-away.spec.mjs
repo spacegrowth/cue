@@ -622,3 +622,36 @@ for (const mode of ["light", "dark"]) {
     await expect(card.locator("[data-away-older]")).toHaveCount(0);
   });
 }
+
+test("the budget box takes any number you type, 0 and 100 too, with a question on the card: digits pick an answer only outside a text box (#614)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await keepAway(cue);
+  await cue.override("desk_away_sweep", () => false);
+  await openDesk(page);
+  await clear(cue);
+  await leadAsks(cue, 2);
+  await page.locator(".dk-items .dk-aw-sw").click();
+  const card = page.locator(".dk-aw-dialog");
+  await expect(card.locator(".dk-aw-ask")).toHaveCount(1);
+  const budget = card.locator('[data-away-field="budget"]');
+  for (const n of ["100", "0", "25"]) {
+    await budget.click();
+    await budget.fill("");
+    await page.keyboard.type(n);
+    await expect(budget).toHaveValue(n);
+    await expect(budget).toBeFocused();
+  }
+  // Typing in the box picked nothing on the question under it.
+  await expect(card.locator(".dk-aw-ask .picked, .dk-aw-ask [aria-pressed=\"true\"], .dk-aw-ask [aria-checked=\"true\"]")).toHaveCount(0);
+  // A redraw between keys (the Desk changes all the time) keeps the cursor in the box and what you typed.
+  await budget.fill("");
+  await page.keyboard.type("1");
+  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.spent = 0.5; });
+  await expect(budget).toBeFocused();
+  await page.keyboard.type("00");
+  await expect(budget).toHaveValue("100");
+  // Done saves the budget typed.
+  await card.locator('[data-away="done"]').click();
+  await expect(card).toHaveCount(0);
+  expect((await cue.calls("desk_away_set")).at(-1).args.away.budget).toBe(100);
+});
