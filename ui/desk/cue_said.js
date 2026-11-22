@@ -63,6 +63,11 @@ const CUE_MSGS = [
   [cueRe(String.raw`^.+? said yes, but Cue couldn't route #ID to (.+?)\. ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `not routed to ${m[2]}: ${cueQ(m[3], 70)}` }), "Not routed"],
   [/^(?:Not asked: LANDS: .+|.+? said (?:no to changing how|yes: how|yes, but how) work lands on .+)/, (m, t) => ({ verb: "Told", what: cueCut(t.split("\n")[0], 90) }), "Landing"],
   [/^The owner is away: Cue didn't show them (this ASK|these ASKs)|^.+? is away: Cue didn't show them (this ASK|these ASKs)/, (m, t) => ({ verb: "Asked", what: "decide the open ASKs yourself (away)", more: cueMore(cueLines(t).filter((l) => l.startsWith("- ")).length, "ASK"), said: cueLines(t).filter((l) => l.startsWith("- ")).map((l) => l.slice(2)).join("\n"), label: "Its ASKs", next: "The lead decides them itself while you're away" }), "Away"],
+  // A later pass before Away (#612): only what changed since the last one.
+  [/^(?:The owner|.+?) is about to go away\. Since your last pass, only these changed:\n/, (m, t) => {
+    const ch = cueLines(t).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+    return { verb: "Asked", what: `settle ${cueMore(ch.length, "change")} before Away`, said: ch.join("\n"), label: "What changed", next: "The lead settles only these; the rest stays as it left it" };
+  }, "Away"],
   [/^(?:The owner|.+?) is about to go away\. Go through every open item/, () => ({ verb: "Asked", what: "settle what you can before Away", next: "The lead settles what it can; at most 5 questions wait for you" }), "Away"],
   // Back from Away (desk/hub/away/away.rs back_words, #612): how long and what moved, one line with the way to the Away tab.
   [/^Away mode is off: the owner is back(?: \(([^)\n]+)\))?/, (m) => {
