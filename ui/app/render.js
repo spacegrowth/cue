@@ -106,11 +106,13 @@ function beforeDraw() {
   const focused = document.activeElement;
   const focusKey = focused?.dataset?.text;
   const focusId = !focusKey && focused?.matches?.("input[id], select[id]") ? focused.id : null;   // e.g. a quick phrase field, the Model pick
-  // A button that has the keyboard (Esc closed its menu, Tab reached it) is built afresh too: found again by what it
-  // does, its data-* attributes, so the keyboard stays on it rather than falling to nothing at every redraw.
-  const focusBtn = !focusKey && !focusId && focused?.matches?.("button, [role=button], a[href]") && focused.attributes ? `${focused.localName}${[...focused.attributes].filter((a) => a.name.startsWith("data-")).map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join("")}` : null;
+  // A button that has the keyboard (Esc closed its menu, Tab reached it), or a field with neither (the Away card's Until
+  // and Budget), is built afresh too: found again by what it does, its data-* attributes, so the keyboard stays on it
+  // rather than falling to nothing at every redraw, and the next keys to the page's own (a question's 1–9, #614).
+  const focusBtn = !focusKey && !focusId && focused?.matches?.("button, [role=button], a[href], input, select, textarea") && focused.attributes ? `${focused.localName}${[...focused.attributes].filter((a) => a.name.startsWith("data-")).map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join("")}` : null;
   const was = { focused, flipFrom: flipRects(), focusKey, focusId, focusBtn };
-  was.caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
+  // Not every field has a caret (a number or a time field's is null): those get the cursor back without one.
+  was.caret = (focusKey || focusId || focusBtn) && focused.selectionStart != null ? [focused.selectionStart, focused.selectionEnd] : null;
   // Each text box is built afresh too, scrolled to its top: a long message would jump there on every redraw.
   was.boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
   // A one-line box is scrolled sideways once its words run past its end: built afresh it shows their start (#308).
@@ -333,7 +335,7 @@ function restoreFocus(was) {
   // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
-  if (target !== focusedTarget && !sheet && !focusKey && focusComposer()) focusedTarget = target;
+  if (target !== focusedTarget && !sheet && !focusKey && !(focusBtn && was.focused.matches("input, select, textarea")) && focusComposer()) focusedTarget = target;
   if (view !== "desk" && typeof deskBoxShown !== "undefined") deskBoxShown = null;   // back on the Desk later, its open chat's box takes the cursor again (desk.js)
   saveDrafts();
   // preventScroll: the box is redrawn where it was, so nothing needs scrolling to show it. Without it
@@ -342,12 +344,12 @@ function restoreFocus(was) {
   if (focusKey) {
     const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`);
     // Gone: on the Inbox (Allow moved it on to the next row), the box on screen now takes it.
-    if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...caret); } else if (view === "inbox") focusComposer(undefined, { home: "inbox", end: false });
+    if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } else if (view === "inbox") focusComposer(undefined, { home: "inbox", end: false });
   }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } }
   else if (focusBtn && !was.focused.isConnected && document.activeElement === document.body) {
     const els = document.querySelectorAll(focusBtn);   // only one just like it: two would be a guess
-    if (els.length === 1) els[0].focus({ preventScroll: true });
+    if (els.length === 1) { els[0].focus({ preventScroll: true }); if (caret && els[0].setSelectionRange) els[0].setSelectionRange(...caret); }
   }
   // Where each box was scrolled, after the cursor is back (putting it back can scroll the box itself).
   document.querySelectorAll("textarea[data-text]").forEach((el) => { const top = was.boxTops.get(el.dataset.text); if (top != null) el.scrollTop = top; });
