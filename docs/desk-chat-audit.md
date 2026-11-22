@@ -176,20 +176,13 @@ Today nothing tells you that Desk or crew activity happened in a chat you are no
 
 ## Your message, every state
 
-The canvas has a grid of every state your message can be in, with the board, the Desk lead's chat and the Desk item chat side by side, and how it looks in every chat after #688. Today:
+The canvas grid is screenshots of the real app, not drawings: the same message set up in each state and shot in the board's session chat, the Desk lead's chat and the Desk item chat, light and dark. All three draw your bubble with the board's code (the same small bottom-right corner, the dashed outline while it waits, the red outline when it fails), so the differences are in the words and in a few messages that aren't drawn as yours at all:
 
-- **Sending.** All three say "Sending…". After half a minute the board adds "Cue hasn't seen it take this yet"; the Desk doesn't, and its lead chat drops the row after 10 minutes with no word.
-- **Kept by Cue** (sent while it works). Board and lead chat: "Not sent yet · Cue sends it when its turn ends" with Edit, Send now, Cancel. The item chat says "Waiting: cue-12 is finishing something, your note goes in next".
-- **Kept a long time.** The board and lead chat offer "Ask it now, by the way" after a while. The item chat doesn't.
-- **Queued in it.** "Queued for cue-12 · it reads this after its current step" with Send now, the same everywhere.
-- **Typed in its terminal.** "Queued · goes in when it's free" everywhere.
-- **Delivered.** "✓ Delivered to cue-12 · 14:02", plus "via iTerm" or "went with your message above, as one" where that happened. The item chat adds "sent back".
-- **Couldn't send.** Red outline. The board offers Send again; the Desk offers Retry and Edit.
-- **Waiting for a folder.** Only the item chat: "Sent back · waiting for a free working folder (in use by #654)".
-- **Sent at a time / after the usage limit.** Only the board; the Desk box has no clock.
-- **Said by voice.** Mic beside the bubble everywhere except while the item chat is still sending.
-- **By the way.** Only the board, with a panel headed in capitals.
-- **To another Desk.** Only the lead chat: a band that goes Sending…, Not answered yet, Answered by its lead.
-- **Cue's own message.** The board folds it into one short line; the lead chat shows a capital-tagged card.
+- **Delivered, via iTerm, joined to the one above, sending, sending for 30 seconds, typed while it works, couldn't send, kept then couldn't send.** The same on all three. The item chat adds the item's head ("Feature #d2 · its title") inside the bubble.
+- **Kept by Cue till its turn ends.** Board and lead chat: "Not sent yet · Cue sends it when its turn ends" with Edit, Send now, Cancel, and the "Ask it now, by the way" offer (with "It's been at this 1h 10m" after 45 minutes). The item chat says "Waiting: web-lead is finishing something, your note goes in next", drops the item head and never offers the by-the-way question.
+- **Queued in its box.** Board and lead chat: "Queued for web-lead · it reads this after its current step · Send now". The item chat uses the same "Waiting: …" words.
+- **Sends at a time, or when the usage limit resets.** Board and lead chat alike. The item chat shows the raw "About #d2 (…)" text, without the item head.
+- **Sent from the Desk box.** Only the lead chat. "Sending…" never turns into "Cue hasn't seen it take this yet", and a failed one offers Retry and Edit where the board offers Send again.
+- **"Not done" from an item.** Never drawn as your message. The lead chat shows a Cue line ("+ Cue · Not done") with the board's status line under it while it waits, and no Delivered line once it went. The item chat shows "Waiting: …" while it waits (its "Not done" and the item head dropped) and a Cue card "Cue → web-lead" once delivered.
 
-After #688 every chat uses the board's set: the same words, the same buttons, Retry and Edit when a send fails, the by-the-way button and the clock on the Desk too, the folder wait shown as "Not sent yet", and Cue's own messages never as bubbles.
+After #688 both Desk chats draw every one of these with the board's code: the board's words and buttons, the by-the-way offer in the item chat too, the item head on every message about an item (timed ones included), Send again when a Desk-box send fails, and "Not done" as your own bubble with the board's line under it.
