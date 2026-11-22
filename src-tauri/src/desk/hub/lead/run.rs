@@ -141,8 +141,11 @@ impl Hub {
     /// An item the lead gave to a new session (`ROUTE: #id -> new`): a hosted Claude started in the project's folder,
     /// named "<project>-<id>", that holds it and is sent it. If it can't start, the item says why (and the lead is told).
     pub(crate) fn desk_start_new(self: &Arc<Self>, s: crate::desk::hub::core::desk::NewStart) {
+        let s = &s;
         let ready = |st: &Store| st.desk.item(&s.id).is_some_and(|i| i.project == s.project && i.state != "done" && i.after.is_none());
-        if !self.read(ready) { return; }
+        // Claimed as starting since it was sent off (`DeskRun::new_starts`, #656): let go here when it won't start,
+        // else once its session has it or couldn't start.
+        if !self.write(|st| ready(st) || { st.desk.run.new_starts.remove(&s.id); false }) { return; }
         let name = self.free_name(&format!("{}-{}", self.read(|st| st.desk.name_of(&s.project).to_string()), s.id));
         // On a machine (the lead's `on:`, your choice on the item, or the Desk's setting: desk/hub/landing/remote_item.rs
         // `start_place`, #597): it starts in the Desk's clone there, from the latest main (`desk_remote_starts`).
@@ -177,14 +180,19 @@ impl Hub {
         let now = now_ms();
         let fx = self.write(|st| {
             let mut fx = crate::desk::hub::core::desk::Effects::default();
+            // Held by its session from here (or not started): the claim goes in the same step, so the item never
+            // reads as neither (#656).
+            st.desk.run.new_starts.remove(&s.id);
             if !ready(st) { return fx; }
             let handoff = st.desk.item(&s.id).map(|it| crate::desk::hub::core::desk::handoff_words(it, &note, &last)).unwrap_or_default();
             if let (Ok(_), Some(it)) = (&sid, st.desk.item_mut(&s.id)) {
                 it.model = if model.is_empty() { crate::desk::model_pick::DEFAULT.into() } else { model.clone() };
             }
-            let given = sid.and_then(|sid| crate::desk::hub::core::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), &handoff, now, &mut fx));
-            if let Err(e) = given {
-                start_failed(st, &s, &e, now, &mut fx);
+            let given = sid.and_then(|sid| crate::desk::hub::core::desk::give_started(st, &s.id, &sid, (&s.by, &s.by_sid, &s.why), &handoff, now, &mut fx).map(|_| sid));
+            match given {
+                // Until its first turn ends, a route of the item to new finds it in this one (#656).
+                Ok(sid) => _ = st.desk.run.started_for.insert(s.id.clone(), (sid, now)),
+                Err(e) => start_failed(st, s, &e, now, &mut fx),
             }
             fx
         });
@@ -342,7 +350,7 @@ fn summary_items(st: &Store, project: &str, out: &mut String, failed: &mut Vec<(
     let (mut ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
         .filter(|i| i.project == project && i.state != "done")
         .map(|i| shown(st, i))
-        .partition(|i| i.state == "new" && i.holder.is_none());
+        .partition(|i| i.state == "new" && i.holder.is_none() && !st.desk.run.new_starts.contains(&i.id));
     // In your order (#387): the one you dragged to the top first.
     ready.sort_by_key(crate::desk::hub::turn::act::queue_key);
     out.push_str("Needs routing:\n");
@@ -473,6 +481,10 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
     }
     if let Some(n) = it.next_for.as_ref().filter(|_| it.holder.is_none()) {
         out.push_str(&format!(" | next for {}", n.name));
+    }
+    // Cue is starting a new session for it (#656): taken, not waiting for a route.
+    if it.holder.is_none() && st.desk.run.new_starts.contains(&it.id) {
+        out.push_str(" | a new session is starting for it");
     }
     if let Some(a) = &it.after {
         out.push_str(&format!(" | after #{a}"));

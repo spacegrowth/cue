@@ -404,3 +404,79 @@ fn undo_of_looks_right_leaves_an_item_that_started() {
     let it = item(&desk(&w, &project), "Footer").clone();
     assert_eq!((it["state"].as_str(), it["after"].is_null()), (Some("working"), true), "{it}");
 }
+
+/// #656: the lead routed a new item to a busy session and STARTed it in the same reply (a fresh session, as that one is
+/// busy), then, told it was queued and shown it as needing a route, routed it to new: #655 ended up at work in two
+/// sessions. Now it's told it went to a new session, and the route to new starts nothing and moves nothing.
+#[test]
+fn a_start_then_a_route_to_new_of_a_queued_item_starts_one_session() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let d = new_lead(&w, &project);
+    ends(&w, &d, "ITEM: Header\nROUTE: #new -> cue-teams | why: first");
+    ends(&w, &h, "On it.");
+    let launches = w.hosted.launched().len();
+    ends(&w, &d, "ITEM: Footer\nROUTE: #new -> cue-teams | why: knows the page\nSTART: #new | why: urgent");
+    let b = item(&desk(&w, &project), "Footer")["id"].as_str().unwrap().to_string();
+    assert_eq!(w.hosted.launched().len(), launches + 1, "START sent it to a fresh session");
+    let it = item(&desk(&w, &project), "Footer").clone();
+    let first = it["holder"]["sid"].as_str().unwrap_or_default().to_string();
+    assert!(!first.is_empty() && first != h, "{it}");
+    let told = sent_to(&w, &d);
+    assert!(told.iter().any(|t| t.contains(&format!("Taken: #{b} to a new session now, as your START said"))), "{told:?}");
+    assert!(!told.iter().any(|t| t.contains(&format!("Queued: #{b} "))), "not told it waits for cue-teams: {told:?}");
+    // The lead routes it to new anyway, before the fresh session's first turn ends.
+    ends(&w, &d, &format!("ROUTE: #{b} -> new | why: no warm session is free"));
+    w.advance(25 * 60_000);
+    let it = item(&desk(&w, &project), "Footer").clone();
+    assert_eq!(w.hosted.launched().len(), launches + 1, "one session only: {it}");
+    assert_eq!((it["state"].as_str(), it["holder"]["sid"].as_str()), (Some("working"), Some(first.as_str())), "{it}");
+    assert!(!sent_to(&w, &first).iter().any(|t| t.contains("stop work")), "{:?}", sent_to(&w, &first));
+    let told = sent_to(&w, &d);
+    assert!(told.iter().any(|t| t.contains(&format!("Refused: #{b} is in a new session already"))), "{told:?}");
+    // Its first turn over, a route to new moves it on, as before (#364).
+    ends(&w, &first, "Looked around.");
+    ends(&w, &d, &format!("ROUTE: #{b} -> new | why: start over"));
+    assert_eq!(w.hosted.launched().len(), launches + 2);
+}
+
+/// #656: a queued item the lead routes to new starts in one session; the wait for the busy session running out later
+/// starts no second one. START and a route to new in one reply start one too.
+#[test]
+fn a_queued_item_routed_to_new_starts_in_one_session() {
+    let w = World::new();
+    let (h, project, d, _, b) = busy_route(&w);
+    let launches = w.hosted.launched().len();
+    ends(&w, &d, &format!("START: #{b} | why: urgent\nROUTE: #{b} -> new | why: no warm session is free"));
+    let it = item(&desk(&w, &project), "Footer").clone();
+    assert_eq!(w.hosted.launched().len(), launches + 1, "{it}");
+    let to = it["holder"]["sid"].as_str().unwrap_or_default().to_string();
+    assert!(!to.is_empty() && to != h, "{it}");
+    w.advance(25 * 60_000);
+    w.hub().desk_tick_now();
+    w.settle();
+    assert_eq!(w.hosted.launched().len(), launches + 1, "the queue's fallback started none: {}", item(&desk(&w, &project), "Footer"));
+    assert_eq!(item(&desk(&w, &project), "Footer")["holder"]["sid"], to.as_str());
+}
+
+/// #656: an item Cue is starting a new session for isn't shown to the lead as needing a route, and a second start of
+/// it meanwhile (the lead's route to new) is answered, not started.
+#[test]
+fn an_item_whose_new_session_is_starting_isnt_shown_as_needing_a_route() {
+    let w = World::new();
+    let (_, project, d, _, b) = busy_route(&w);
+    // As between its start being sent off and the session coming up.
+    w.hub().write(|st| {
+        let it = st.desk.item_mut(&b).unwrap();
+        (it.next_for, it.state) = (None, "new".into());
+        st.desk.run.new_starts.insert(b.clone());
+    });
+    let block = summary(&w, &project);
+    let (routing, rest) = block.split_once("Other open items:").unwrap();
+    assert!(!routing.contains(&format!("#{b} ")), "{block}");
+    assert!(rest.lines().any(|l| l.starts_with(&format!("- #{b} ")) && l.contains("a new session is starting for it")), "{block}");
+    let launches = w.hosted.launched().len();
+    ends(&w, &d, &format!("ROUTE: #{b} -> new | why: fresh"));
+    assert_eq!(w.hosted.launched().len(), launches);
+    assert!(sent_to(&w, &d).iter().any(|t| t.contains(&format!("Refused: #{b} has a new session starting for it already"))), "{:?}", sent_to(&w, &d));
+}

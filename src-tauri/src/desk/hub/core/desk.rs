@@ -551,6 +551,13 @@ impl Hub {
         // Items going to work get their own copies (or wait for one), before their messages are saved and sent.
         // A paused Desk's sessions are sent nothing, and its items start no sessions, till it resumes (#366).
         self.desk_pause_hold(&mut fx);
+        // One start of an item at a time (#656): one sent off while another for it is still on its way (from another
+        // line, Start now, or the queue's wait running out) is dropped. Claimed before anything is sent, so a Desk
+        // block made from here on shows it starting; desk_start_new lets the claim go.
+        if !fx.starts.is_empty() {
+            let starts = std::mem::take(&mut fx.starts);
+            fx.starts = self.write(|st| starts.into_iter().filter(|s| st.desk.run.new_starts.insert(s.id.clone())).collect());
+        }
         self.desk_trees(&mut fx);
         let (went_with, kept_back) = went_with(&mut fx);
         // Rows on a Desk's feed: its lead is sent them once it's free (desk/hub/lead/feed.rs).

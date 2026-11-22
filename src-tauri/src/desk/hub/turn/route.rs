@@ -157,6 +157,9 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
     }
     if to_new {
+        if let Some(taken) = fresh_already(st, id, now, fx) {
+            return Some(taken);
+        }
         if to.eq_ignore_ascii_case("new") {
             move_off(st, by, id, why, now, fx);
         }
@@ -364,6 +367,24 @@ fn unfinish(st: &mut Store, id: &str, h: Option<&Holder>, why: &str, now: u64) -
     }
     it.updated = secs(now);
     Ok(())
+}
+
+/// How long after Cue started a session for an item a route of it to new still finds it there (unless that
+/// session's first turn has ended): past it, the lead may move it on (one stuck in its first turn, say).
+const JUST_STARTED_MS: u64 = 10 * 60_000;
+
+/// Item `id` has a new session already, or one on its way (#656): Cue is starting one for it (from this turn's
+/// lines, or one before), or the session it holds is the one Cue started for it, in its first turn and its first `JUST_STARTED_MS`. A
+/// route to new then starts no second session and moves nothing: what the lead is told. (It read as waiting in a Desk
+/// block made while the session was starting, and #655 ended up at work in two.)
+fn fresh_already(st: &Store, id: &str, now: u64, fx: &Effects) -> Option<String> {
+    if st.desk.run.new_starts.contains(id) || fx.starts.iter().any(|s| s.id == id) {
+        return Some(format!("Refused: #{id} has a new session starting for it already; Cue starts no second one. Nothing to do: it is on its way."));
+    }
+    let it = st.desk.item(id)?;
+    let just = st.desk.run.started_for.get(id).filter(|(_, at)| now.saturating_sub(*at) < JUST_STARTED_MS);
+    let h = it.holder.as_ref().filter(|h| just.is_some_and(|(sid, _)| *sid == h.sid) && it.state == "working")?;
+    Some(format!("Refused: #{id} is in a new session already: {}, which Cue started for it just now; it stays there. Route it to new again once that session has had its first turn, if it still should move.", h.name))
 }
 
 /// The lead routed item `id` to a new session while another session (or a teammate) holds it, at work or queued

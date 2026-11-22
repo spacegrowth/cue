@@ -73,4 +73,13 @@ pub struct DeskRun {
     /// Each repository's copies whose work is already on its main line, found once a launch for you to remove
     /// (desk/hub/landing/copies.rs, #376). Not saved.
     pub old_copies: HashMap<String, crate::hub::OldCopies>,
+    /// Items Cue is starting a new session for right now (#656): from the moment the start is sent off
+    /// (desk/hub/lead/checks.rs `desk_later`) until that session has it or couldn't start (desk/hub/lead/run.rs
+    /// `desk_start_new`). A second start of the same item meanwhile is dropped, and a route of it to new is told
+    /// one is starting. Not saved.
+    pub new_starts: HashSet<String>,
+    /// Each item's session Cue started for it, until that session's first turn ends (#656): item → (session, when).
+    /// The lead routing it to new in its first minutes (it read as waiting in a Desk block made before the session
+    /// was up) is told it's in one already, and it isn't moved off the session that just began on it. Not saved.
+    pub started_for: HashMap<String, (String, u64)>,
 }

@@ -128,7 +128,20 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
         }
     }
+    started_after_queued(st, &mut answers, fx);
     lead_said_end(st, project, &by, text, (answers, back), now, fx);
+}
+
+/// A route's "Queued: #id is next for …" answer for an item a later line of the same turn sent to a new session (its
+/// START, with the session it was next for still busy): said as it ended up (#656). Told it was queued, the lead took
+/// its route as not taken and routed it to new again.
+fn started_after_queued(st: &Store, answers: &mut [String], fx: &Effects) {
+    for a in answers.iter_mut() {
+        let Some(id) = a.strip_prefix("Queued: #").and_then(|r| r.split([' ', ',']).next()).map(str::to_string) else { continue };
+        if fx.starts.iter().any(|s| s.id == id) && st.desk.item(&id).is_some_and(|i| i.next_for.is_none()) {
+            *a = format!("Taken: #{id} to a new session now, as your START said (the session it was next for is busy); Cue is starting it.");
+        }
+    }
 }
 
 /// What the lead is told once its lines are read: `answers` to them, any route it wrote that couldn't be read, and
@@ -695,6 +708,10 @@ impl Hub {
     /// `desk_turn_ended`'s work: the turn's lines acted on.
     fn desk_turn_ended_said(&self, sid: &str, text: &str, turn: &[crate::model::TurnPart]) {
         self.keep_from_now(sid);
+        // A session Cue started for an item has ended its first turn: a route of the item to new moves it on (#656).
+        if self.read(|st| st.desk.run.started_for.values().any(|(s, _)| s == sid)) {
+            self.write(|st| st.desk.run.started_for.retain(|_, (s, _)| s != sid));
+        }
         self.desk_feed_turn_ended(sid);
         // Away mode ends by itself (its end time, its budget): noticed as a Desk session's turn ends.
         self.desk_away_check(sid);
