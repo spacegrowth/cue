@@ -34,6 +34,9 @@ async function deskSendBox(key, sendNow = false) {
   if (!to || (!text && !images.length)) return;
   // Sent from Away's "Before you go": that one is answered there (#618).
   deskAwayNoteSent(to);
+  // From the lead's own box, however it goes (words, a "/" command, a "!" line): its chat goes to its end, to show
+  // what you sent and follow the answer (#704).
+  if (deskLeadBoxTo(to)) deskChatEnd = true;
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
   if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
@@ -639,5 +642,14 @@ if (typeof document !== "undefined") {
     }, 0);
   }, true);
   // The lead's chat scrolled: whether it's at its end (new messages keep it there).
-  document.addEventListener("scroll", (e) => { const c = e.target; if (c?.matches?.(".dk-chat")) deskChatEnd = boxAtEnd(c); }, true);
+  // A scroll that comes just after Cue put it at its end, with no wheel, touch, key or click of yours in it (the page
+  // settling under it: a box shrinking, a picture or a line coming in) leaves it following (#704).
+  document.addEventListener("scroll", (e) => {
+    const c = e.target;
+    if (!c?.matches?.(".dk-chat")) return;
+    const at = Date.now(), end = boxAtEnd(c);
+    if (!end && at - (c._pinAt || 0) < 400 && at - (c._youAt || 0) > 800) return;
+    deskChatEnd = end;
+  }, true);
+  for (const type of ["wheel", "touchmove", "pointerdown", "keydown"]) document.addEventListener(type, (e) => { const c = e.target?.closest?.(".dk-chat"); if (c) c._youAt = Date.now(); }, { capture: true, passive: true });
 }

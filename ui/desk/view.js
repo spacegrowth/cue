@@ -329,5 +329,7 @@ function deskSettle() {
     deskTurnLead = false;
     if (hit) { tc.scrollTop += hit.getBoundingClientRect().top - tc.getBoundingClientRect().top - 12; if (tc === c) deskChatEnd = false; } else tc.scrollTop = tc.scrollHeight;
   }
-  else if (c && deskChatEnd) c.scrollTop = c.scrollHeight;
+  // Again a frame and a moment later (ui/box/end.js): what comes in late (a picture, the Working line) mustn't leave
+  // your message or the reply just under the edge (#704).
+  else if (c && deskChatEnd) boxStickToEnd(c);
 }

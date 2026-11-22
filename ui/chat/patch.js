@@ -209,7 +209,8 @@ function grow(el) {
   }
   // Growing the box shrinks the chat above it. If you were reading the end of the chat, keep the
   // end in view (the conversation moves up with the box) instead of letting the box cover it.
-  const chat = el.closest(".active-pane, .crew-page")?.querySelector("[data-chat]");
+  // The Desk's chats too (the lead's, a session's on the Desk): its box sits under it in the same card (#704).
+  const chat = el.closest(".active-pane, .crew-page")?.querySelector("[data-chat]") || el.closest(".dk-card")?.querySelector(".dk-chat");
   const pinned = boxAtEnd(chat);
   const top = el.scrollTop, atEnd = el.selectionEnd >= el.value.length;
   el.style.height = "auto";
