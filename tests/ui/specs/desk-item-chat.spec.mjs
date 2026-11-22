@@ -55,7 +55,9 @@ test("an item's page is its holder's chat, other items' turns folded, the item o
   await page.screenshot({ path: test.info().outputPath("item-chat-wide.png") });
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(side.locator(".dk-pnow .dk-psh")).toHaveText("This item");
-  await expect(side).toContainText("What to try");
+  // Not done yet: whether it's ready to check, not an empty What to try (#710).
+  await expect(side.locator(".dk-pready")).toContainText("Not ready to check");
+  await expect(side).not.toContainText("What to try");
   await expect(side.locator(".dk-sfoot")).toContainText("Open host-lead");
   await expect(side.locator(".dk-sfoot")).toContainText("Drop this item");
   // No hover text on any of it.
