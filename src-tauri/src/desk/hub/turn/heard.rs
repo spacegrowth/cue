@@ -204,6 +204,7 @@ pub(crate) fn held_done(st: &mut Store, sid: &str, now: u64, fx: &mut Effects) {
 /// The items holder `sid`'s DONE lines in `text` name go to you to check: the last one, if any.
 fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> Option<String> {
     let mut finished: Option<String> = None;
+    let mut said_done: Vec<String> = Vec::new();
     let here = st.sessions.get(sid).is_some_and(|s| s.origin.machine.is_empty());
     for line in parse::lines(text) {
         let Line::Done { ids } = line else { continue };
@@ -225,27 +226,42 @@ fn dones(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) -> O
             fx.checked.push(id.clone());
             it.state = "finishing".into();
             // A new DONE: last round's CHECK line is gone; this turn's (`checks`, after) is the one shown (#526).
-            (it.paused, it.asks, it.check) = (None, None, None);
+            (it.paused, it.asks, it.check, it.check_back) = (None, None, None, false);
             it.finish = Some(crate::desk::hub::landing::finish::begun(now, it.finish.as_ref()));
             it.after = None;
             it.updated = secs(now);
             fx.items.push(id.clone());
             crate::desk::hub::lead::feed::finished(st, &id, "said", now);
+            said_done.push(id.clone());
             finished = Some(id);
         }
     }
     checks(st, sid, text, now, fx);
+    for id in said_done {
+        check_back(st, sid, &id, fx);
+    }
     finished
+}
+
+/// Item `id`'s holder `sid` just said DONE (#668): its check line comes back to it once when it gave no steps, or its
+/// words aren't plain (Desk words, code names); else nothing. A CHECK said after that is kept as it is.
+fn check_back(st: &mut Store, sid: &str, id: &str, fx: &mut Effects) {
+    let Some(it) = st.desk.item_mut(id).filter(|i| !i.check_back) else { return };
+    let Some(words) = crate::desk::check_back_words(id, it.check.as_ref()) else { return };
+    it.check_back = true;
+    fx.items.push(id.to_string());
+    fx.sends.push((sid.to_string(), words));
 }
 
 /// Holder `sid`'s CHECK lines in `text` (#526): what you check on an item it said DONE for, in this turn or before,
 /// kept on it (the last one said wins). One for an item it doesn't hold, or that isn't done by it yet, does nothing.
 fn checks(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
     for line in parse::lines(text) {
-        let Line::Check { id, kind, text } = line else { continue };
+        let Line::Check { id, kind, text, steps } = line else { continue };
         let id = st.desk.canon(&id);
         let Some(it) = st.desk.item_mut(&id).filter(|i| i.holder.as_ref().is_some_and(|h| h.is(sid)) && matches!(i.state.as_str(), "finishing" | "to_check")) else { continue };
-        let check = Some(crate::desk::model::Check { kind, text });
+        let [at, act, expect] = <[String; 3]>::try_from(steps).unwrap_or_default();
+        let check = Some(crate::desk::model::Check { kind, text, at, act, expect });
         if it.check != check {
             it.check = check;
             it.updated = secs(now);

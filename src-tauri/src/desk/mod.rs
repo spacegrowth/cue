@@ -256,15 +256,73 @@ pub fn next_number<'a>(ids: impl Iterator<Item = &'a str>, high: u64) -> u64 {
     ids.filter_map(|id| id.parse::<u64>().ok()).fold(high, u64::max) + 1
 }
 
-/// What a holder writes next to its DONE for item `id` (#526): the one line shown on the item while it waits for your
-/// check (parse.rs `Line::Check`). It never says "the owner": the screen shows that phrase as your name or "you"
-/// (owner.rs `on_screen`), and a send back's words must read the same on the item as in the session.
+/// What a holder writes next to its DONE for item `id` (#526, three steps since #668): what's shown to whoever checks
+/// it, as steps someone who has never used the app can follow. It never says "the owner": the screen shows that phrase
+/// as your name or "you" (owner.rs `on_screen`), and a send back's words must read the same on the item as in the session.
 pub fn check_words(id: &str) -> String {
     format!(
-        "With your DONE, on a line of its own, write the one line shown to whoever checks it, built from its you'll-see (if \
-         it has one) and what you changed: CHECK: #{id} | Try: <one concrete thing to do in the app> when there's something to see, or \
-         CHECK: #{id} | Nothing to see: <why, e.g. tests passed, or a change nobody can see>, close it."
+        "With your DONE, on a line of its own, write what whoever checks it does, from what you actually built, as three \
+         steps someone who has never used the app can follow: CHECK: #{id} | Where: <the screen, page or settings pane, by \
+         the name it shows> | Do: <what to click or type there, with the button's real name> | Expect: <what they should \
+         see happen>. Say what works now, not what the bug was (\"the header stays at the top as you scroll\", not \"fixed the \
+         header jumping\"), in plain words: no code names and no words like branch, commit, worktree, hook, landing or copy. \
+         When there's nothing anyone can try: CHECK: #{id} | Nothing to try: <why, e.g. a change nobody can see; tests show it works>."
     )
+}
+
+/// Desk and git words that mean nothing to whoever checks an item (#668), found as whole words in its check line.
+const CHECK_JARGON: &[&str] = &["copy", "landing", "landed", "holder", "spec", "branch", "worktree", "commit", "committed", "hook", "the owner"];
+
+/// What in check line `c` isn't plain (#668): the Desk words it uses, and whether it names code (backticks, a file, a
+/// `path::name`, a snake_case or camelCase name). Empty when it's plain.
+pub fn check_unplain(c: &crate::desk::model::Check) -> (Vec<&'static str>, bool) {
+    let all = format!("{} {} {} {}", c.text, c.at, c.act, c.expect);
+    let low = all.to_lowercase();
+    let whole = |w: &str| low.match_indices(w).any(|(n, _)| {
+        let before = low[..n].chars().next_back().map_or(true, |c| !c.is_alphanumeric());
+        let after = low[n + w.len()..].chars().next().map_or(true, |c| !c.is_alphanumeric());
+        before && after
+    });
+    let words = CHECK_JARGON.iter().copied().filter(|w| whole(w)).collect();
+    let code = all.contains('`') || all.contains("::") || all.split(|c: char| c.is_whitespace() || "(),;\"'".contains(c)).any(|t| {
+        let t = t.trim_end_matches(['.', ':', '!', '?']);
+        let file = t.rsplit_once('.').is_some_and(|(a, ext)| !a.is_empty() && ["rs", "js", "mjs", "ts", "css", "html", "json", "swift", "py", "md", "toml"].contains(&ext));
+        let snake = t.contains('_') && t.split('_').filter(|p| !p.is_empty()).count() > 1 && t.chars().all(|c| c.is_alphanumeric() || c == '_');
+        // camelCase: a capital between small letters, past the second letter ("deskItemSide", not "eBay" or "macOS").
+        let ch: Vec<char> = t.chars().collect();
+        let camel = ch.first().is_some_and(|c| c.is_lowercase()) && ch.iter().all(|c| c.is_alphanumeric()) && (2..ch.len().saturating_sub(1)).any(|k| ch[k - 1].is_lowercase() && ch[k].is_uppercase() && ch[k + 1].is_lowercase());
+        file || snake || camel
+    });
+    (words, code)
+}
+
+/// What Cue sends item `id`'s holder about its check line `c` once it's said DONE (#668): none given, a one-line Try
+/// with no steps, or words that aren't plain; None when it's fine (three plain steps, or nothing to try and why).
+pub fn check_back_words(id: &str, c: Option<&crate::desk::model::Check>) -> Option<String> {
+    let fix = match c {
+        None => "it has no check line".to_string(),
+        Some(c) if c.kind == "try" && c.at.is_empty() => "it's one line, not the three steps".to_string(),
+        Some(c) => {
+            let (words, code) = check_unplain(c);
+            let mut why = Vec::new();
+            if !words.is_empty() {
+                why.push(format!("it uses {} (Desk words someone checking won't know: say what they see on screen instead)", words.iter().map(|w| format!("\"{w}\"")).collect::<Vec<_>>().join(", ")));
+            }
+            if code {
+                why.push("it names code (say the button, page or setting by the name the app shows)".to_string());
+            }
+            if why.is_empty() {
+                return None;
+            }
+            why.join(", and ")
+        }
+    };
+    Some(format!(
+        "Your DONE for #{id} is in, but its check line needs another go: {fix}. Write it again on a line of its own (it \
+         replaces the one before; nothing else to redo): CHECK: #{id} | Where: <the screen or page, by the name it shows> | \
+         Do: <what to click or type> | Expect: <what they should see happen>, or CHECK: #{id} | Nothing to try: <why>. Plain \
+         words someone who has never used the app can follow, saying what works now rather than what was wrong."
+    ))
 }
 
 /// How the holder of item `id`, with the user to check, says it isn't done after all (#627).

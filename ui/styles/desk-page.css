@@ -625,6 +625,12 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-ckl { margin: 0; font-size: var(--type-title); line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
 .dk-ckl .dk-vb { font-weight: 750; }
 .dk-cks { margin: 4px 0 0; font-size: var(--type-pill); line-height: 1.4; color: var(--muted); }
+/* Its three steps (#668): Where, Do, Expect, numbered, each label bold on a line of its own with its words beside it;
+   Show me under them when there's a page to open. */
+.dk-steps { margin: 0; padding: 0 0 0 1.4em; display: grid; gap: 4px; font-size: var(--type-title); line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.dk-steps li::marker { color: var(--muted); font-weight: 600; }
+.dk-steps .dk-vb { font-weight: 750; margin-right: 4px; }
+.dk-show { display: inline-flex; margin-top: 8px; text-decoration: none; }
 /* "Cue's words" on a row: quiet, after the line. */
 .dk-cw { color: var(--muted); }
 .dk-it.on .dk-cw { color: var(--on-sel); opacity: .8; }
