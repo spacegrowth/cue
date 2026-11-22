@@ -192,7 +192,8 @@ impl Hub {
     }
 
     /// Whether reopened item `id` landed nothing new on main (in its repositories) since it was reopened: no new commit Cue made
-    /// or merged for it, none on main since then changing a file its holder edited, and none made on its own branch
+    /// or merged for it, none on main since then changing a file its holder edited (its Edit and Write calls, and what
+    /// its shell commands write), none made on its own branch since then on main, and none its holder committed itself
     /// since then on main. Something new: no longer reopened.
     pub(crate) fn desk_nothing_new(&self, id: &str) -> bool {
         let Ok((it, _, sources)) = self.desk_change_sources(id) else { return false };
@@ -220,11 +221,32 @@ impl Hub {
             || merged
             || self.item_repos(&it).iter().any(|top| committed_since(top, at, &own(top), &known) || branch_landed_since(top, id, at))
             || landed_elsewhere(&self.desk_edits_elsewhere(id), at, &known)
+            || self.holder_landed_since(&it, at, &known)
         {
             self.finish_set(id, |i| i.reopened = None);
             return false;
         }
         true
+    }
+
+    /// Whether item `it`'s holder made a commit itself since it was reopened at `at` (ms), as its log says (git's
+    /// "[main 1a2b3c4] …" line for a shell `git commit`), that's on main now: merged, or main has all its changes
+    /// (#654: a fix made with terminal commands, which its log can't always tell file by file, and committed by its
+    /// holder straight on main). Its commits Cue knew of (`known`) aren't new.
+    fn holder_landed_since(&self, it: &DeskItem, at: u64, known: &[String]) -> bool {
+        let Some(own) = self.read(|st| crate::desk::hub::landing::commit::own_log(st, it)) else { return false };
+        let worked = crate::logs::steps::worked_between(&own.log, own.from.max(at), own.until);
+        let old = |c: &str| known.iter().any(|k| !k.is_empty() && (c.starts_with(k.as_str()) || k.starts_with(c)));
+        worked.commits.iter().any(|(cwd, _, sha)| {
+            let folder = if std::path::Path::new(cwd).is_dir() { cwd.as_str() } else { own.folder.as_str() };
+            let Some((top, _)) = main_checkout(folder) else { return false };
+            let Some(main) = main_ref(&top) else { return false };
+            let Some(full) = git("", &top, &[], &["rev-parse", "-q", "--verify", &format!("{sha}^{{commit}}")]).map(|s| s.trim().to_string()) else { return false };
+            if old(&full) {
+                return false;
+            }
+            matches!(crate::safe_git::run("", &top, &[], &["merge-base", "--is-ancestor", &full, &main]), Ok((_, 0))) || rev_left(&top, &full) == 0
+        })
     }
 
     /// Whether item `it` has no code to land (#549): nothing ever committed or merged for it, nothing on its own

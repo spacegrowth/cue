@@ -1,6 +1,6 @@
 //! The files a shell command writes, as far as a quick read of its words can tell (docs/dev/cue-teams.md §7): for a
 //! teammate working in its lead's own folder, where no worktree of its own says what changed. Redirects (`> f`,
-//! `>> f`, `&> f`), `tee`, `sed -i`, `mv` (both ends), `cp` (its target), `touch`, `rm` (not `-r`), `dd of=`,
+//! `>> f`, `&> f`), `tee`, `sed -i`, `perl -i`, `mv` (both ends), `cp` (its target), `touch`, `rm` (not `-r`), `dd of=`,
 //! `git checkout … -- f`, `git restore`, `git mv` and `git rm`, through `cd` and `&&`, `;`, `|`, `||`. A word with
 //! `$`, a glob or `~` in it, or anything a command substitution or a heredoc's body says, is left out: best effort,
 //! never a guess.
@@ -290,6 +290,7 @@ fn files_of(name: &str, args: &[(&str, bool)]) -> Vec<String> {
         "rm" if !recursive => plain(operands(args, &[])),
         "dd" => args.iter().filter(|(_, p)| *p).filter_map(|(w, _)| w.strip_prefix("of=").map(String::from)).collect(),
         "sed" | "gsed" => sed_files(args),
+        "perl" => perl_files(args),
         "mv" => {
             // Both ends: each source is gone from where it was, and lands at the target.
             let ops = operands(args, &["-t", "-S", "--suffix", "--target-directory"]);
@@ -356,6 +357,37 @@ fn sed_files(args: &[(&str, bool)]) -> Vec<String> {
     let kept: Vec<(&str, bool)> = args.iter().enumerate().filter(|(n, a)| !(a.0.is_empty() && *n > 0 && args[n - 1].0 == "-i")).map(|(_, a)| *a).collect();
     let script_given = kept.iter().any(|(w, _)| matches!(*w, "-e" | "-f" | "--expression" | "--file") || w.starts_with("--expression=") || w.starts_with("--file="));
     let ops = operands(&kept, &["-e", "-f", "-l", "--expression", "--file"]);
+    plain(ops.into_iter().skip(if script_given { 0 } else { 1 }).collect())
+}
+
+/// `perl`'s files when it edits them in place (`-i`, `-pi`, `-i.bak`, `-0pi`): its operands after the script, which
+/// is `-e`'s (or `-E`'s) value, else its first operand.
+fn perl_files(args: &[(&str, bool)]) -> Vec<String> {
+    let short = |w: &str| w.starts_with('-') && !w.starts_with("--") && w.len() > 1;
+    // A cluster such as `-pi` or `-0pi`, up to its first `e`/`E` (whose value is the script, the next word).
+    let in_place = |w: &str| short(w) && w[1..].split(['e', 'E']).next().is_some_and(|s| s.contains('i'));
+    if !args.iter().any(|(w, _)| in_place(w)) {
+        return vec![];
+    }
+    let script_given = args.iter().any(|(w, _)| short(w) && w[1..].contains(['e', 'E']));
+    let mut ops: Vec<(String, bool)> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let (w, p) = args[i];
+        if w == "--" {
+            ops.extend(args[i + 1..].iter().map(|(w, p)| (w.to_string(), *p)));
+            break;
+        }
+        if short(w) {
+            // `-e`/`-E` (or a cluster ending in one) takes the next word as its script.
+            if w.ends_with(['e', 'E']) && !w.starts_with("-i") {
+                i += 1;
+            }
+        } else {
+            ops.push((w.to_string(), p));
+        }
+        i += 1;
+    }
     plain(ops.into_iter().skip(if script_given { 0 } else { 1 }).collect())
 }
 
@@ -457,6 +489,10 @@ mod tests {
         assert_eq!(w("sed -i.bak -e 's/a/b/' -e 's/c/d/' a.rs"), ["a.rs"]);
         assert_eq!(w("sed -Ei 's/a/b/' a.rs"), ["a.rs"]);
         assert_eq!(w("sed 's/a/b/' a.rs"), Vec::<String>::new(), "not in place");
+        assert_eq!(w("perl -pi -e 's/a/b/' src/a.rs src/b.rs"), ["src/a.rs", "src/b.rs"]);
+        assert_eq!(w("perl -0pi -e 's/a/b/' a.rs"), ["a.rs"]);
+        assert_eq!(w("perl -i.bak -pe 's/a/b/' a.rs"), ["a.rs"]);
+        assert_eq!(w("perl -pe 's/a/b/' a.rs"), Vec::<String>::new(), "not in place");
         assert_eq!(w("mv old.txt new.txt"), ["old.txt", "new.txt"], "a move changes both ends");
         assert_eq!(w("mv a.txt b.txt dest/"), ["a.txt", "b.txt", "dest/a.txt", "dest/b.txt"]);
         assert_eq!(w("cp -r tmpl.txt copy.txt"), ["copy.txt"]);
