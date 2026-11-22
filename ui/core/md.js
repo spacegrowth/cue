@@ -144,8 +144,9 @@ function runCode(btn) {
  *  card is in the chat already). */
 const MD_DROP = "<!--drop-->";
 /** `lines`: a hook for lines of a page's own (the Desk's lead lines, desk/lead.js deskLineHtml): (line, inline) → its
- *  html, MD_DROP to leave it out, or "" for an ordinary line. Lines in code blocks never reach it; a run of them is one block. */
-function md(text, { runIn = null, pathsOf = null, doc = false, lines = null } = {}) {
+ *  html, MD_DROP to leave it out, or "" for an ordinary line. Lines in code blocks never reach it; a run of them is one block.
+ *  `run`: a hook for each such block drawn (and, with `lines`, each block of decisions): its html → what goes in its place. */
+function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run = null } = {}) {
   const out = [];
   // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
   // whose paths these are, with no Run on its commands (the mini window).
@@ -182,9 +183,12 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null } = 
       }
       for (const r of runs) {
         if (r.kind === "own") {
-          out.push(`<div class="own-lines">${r.lines.join("")}</div>`);
+          const h = `<div class="own-lines">${r.lines.join("")}</div>`;
+          out.push(run ? run(h) : h);
         } else if (r.kind === "decided") {
-          out.push(decidedHtml(r.lines, inline));
+          // With `lines` (a page's own), its decisions are its own lines too (`run`: a page's way to fold them).
+          const h = decidedHtml(r.lines, inline, !!lines);
+          out.push(run && lines ? run(h) : h);
         } else if (r.kind === "quote") {
           out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"))}</blockquote>`);
         } else if (r.kind === "table") {
@@ -209,13 +213,13 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null } = 
 const DECIDED_LINE = /^\s*(?:[-*•]\s+)?DECIDED:\s*/;
 /** A run of DECIDED lines as one small block: "Decided on its own" and how many, then each call, its reason under it
  *  in grey (what follows its first " — ", " – " or " -- "). */
-function decidedHtml(lines, inline) {
+function decidedHtml(lines, inline, own = false) {
   const item = (l) => {
     const t = l.replace(DECIDED_LINE, ""), m = /\s+(?:—|–|--)\s+/.exec(t);
     const what = m ? t.slice(0, m.index) : t, why = m ? t.slice(m.index + m[0].length) : "";
-    return `<li><span class="dec-what">${inline(what.replace(/[.;:]\s*$/, ""))}</span>${why ? `<span class="dec-why">${inline(why)}</span>` : ""}</li>`;
+    return `<li${own ? " data-dk-li" : ""}><span class="dec-what">${inline(what.replace(/[.;:]\s*$/, ""))}</span>${why ? `<span class="dec-why">${inline(why)}</span>` : ""}</li>`;
   };
-  return `<div class="decided"><div class="dec-head">Decided on its own${lines.length > 1 ? ` · ${lines.length}` : ""}</div><ul>${lines.map(item).join("")}</ul></div>`;
+  return `<div class="decided"${own ? ' data-dk="decided"' : ""}><div class="dec-head">Decided on its own${lines.length > 1 ? ` · ${lines.length}` : ""}</div><ul>${lines.map(item).join("")}</ul></div>`;
 }
 
 /** List lines as a list: numbered from its first item's number when that's numbered. A line indented further

@@ -201,8 +201,10 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await expect(route.locator(".mg-lh")).toHaveText("#d7k2 waits on #a1");
   await expect(said.locator(".own-lines")).not.toContainText("→");
   await expect(said.locator(".own-lines")).not.toContainText("⌄");
-  const lay = await route.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector(".mg-lh").getBoundingClientRect(), m = el.closest(".cv-text").getBoundingClientRect(); return { left: t.left - m.left, h: r.height }; });
-  expect(lay.left).toBeLessThan(4);
+  // Its kind's sign at the chat's left edge (#685, option A of #676), its words right after it.
+  const lay = await route.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector(".mg-lh").getBoundingClientRect(), g = el.querySelector(".dk-sg").getBoundingClientRect(), m = el.closest(".cv-text").getBoundingClientRect(); return { sign: g.left - m.left, left: t.left - g.right, h: r.height }; });
+  expect(lay.sign).toBeLessThan(4);
+  expect(lay.left).toBeLessThan(12);
   expect(lay.h).toBeLessThan(26); // one line at the chat's Default size (#594: 15px/1.5) and 1px above and below
   await expect(route.locator(".mg-full")).toHaveCount(0);
   await expect(route.locator(".mg-line")).toHaveAttribute("aria-expanded", "false");
@@ -282,8 +284,9 @@ test("a reply of only routing lines is short lines at the left: TITLE and ROUTE,
   expect(b.y - (a.y + a.height)).toBeLessThan(2);
   // One body line at the chat's Default size (#594: 15px/1.5) and the row's 1px above and below.
   expect(a.height).toBeLessThan(26);
-  // Only the item numbers carry an icon, their kind's (#292); the lines themselves have none.
-  await expect(last.locator(".dk-ln svg")).toHaveCount(2);
+  // In the words, only the item numbers carry an icon, their kind's (#292); each line's sign sits before them (#685).
+  await expect(last.locator(".dk-ln .mg-line svg")).toHaveCount(2);
+  await expect(last.locator(".dk-ln > .dk-sg")).toHaveCount(2);
   await expect(last.locator(".dk-ln button.mg-id > svg.dk-kic")).toHaveCount(2);
   await expect(last.locator(".cv-text")).not.toContainText("TITLE:");
   for (const l of await ln.all()) expect(await l.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(26);

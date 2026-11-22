@@ -252,3 +252,34 @@
 .dk-band-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
 /* The lead's own TELL DESK sits in its reply's words: the band still runs the chat's width. */
 .dk-chat .mg-text .dk-band { margin-block: 6px; }
+
+/* #685 (option A of #676): each of the Desk's lines with its kind's sign at its left: a small round tile on panel-2, a
+   done one filled in the accent. The line's words, its box and what opens under it sit in the column beside it. */
+.dk-ln.dk-sgl { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 8px; align-items: start; }
+.dk-ln.dk-sgl > :not(.dk-sg) { grid-column: 2; }
+.dk-sg { grid-column: 1; grid-row: 1 / span 3; align-self: start; margin-top: 1px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); color: var(--muted); }
+.dk-sg[data-sg="done"], .dk-sg[data-sg="close"] { background: var(--accent); color: var(--on-accent); }
+.dk-sg[data-sg="check"], .dk-sg[data-sg="user-verify"] { background: var(--sel); color: var(--on-sel); }
+.dk-ln-w { color: var(--ink); }
+/* What shows under a CHECK or an IF PICKED line: its parts in a quiet box. */
+.dk-opt { margin: 4px 0 2px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel); font: var(--mg-body); color: var(--ink); display: grid; gap: 3px; }
+.dk-opt-r b { font-weight: 650; margin-right: 4px; }
+
+/* Conversation only | Everything (#685), as #665's switch: two options in a small track in the chat's head. */
+.seg2 { user-select: none; -webkit-user-select: none; display: inline-flex; align-items: center; flex: none; align-self: center; padding: 2px; gap: 2px; border-radius: var(--radius-btn); background: var(--panel-2); margin-right: 6px; }
+.seg2-b { font: 650 var(--type-small) / 1.2 var(--sans); color: var(--muted); background: none; border: 0; border-radius: var(--radius-qp); padding: 4px 11px; cursor: pointer; white-space: nowrap; }
+.seg2-b:hover:not(.on) { color: var(--ink); }
+.seg2-b.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px color-mix(in srgb, var(--shade) 15%, transparent); cursor: default; }
+.seg2-b em { font: normal var(--type-tag) var(--mono); color: var(--muted); margin-left: 3px; }
+.seg2-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* A run of the Desk's lines folded to one row: a thin line above and below, +/−, how many, and what they were. It opens
+   in place, the lines under it as Everything draws them. */
+.dk-run { margin: 6px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dk-run-b { all: unset; user-select: none; -webkit-user-select: none; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 6px 2px; cursor: pointer; font-size: var(--type-body); color: var(--muted); min-width: 0; }
+.dk-run-b b { color: var(--ink); font-weight: 650; white-space: nowrap; }
+.dk-run-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dk-run-pm { width: 12px; flex: none; text-align: center; font-weight: 650; }
+.dk-run-b:hover b { text-decoration: underline; }
+.dk-run-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
+.dk-run-in { padding: 2px 0 8px; display: grid; gap: 4px; }
+.mg-text .dk-run { margin: 8px 0; }

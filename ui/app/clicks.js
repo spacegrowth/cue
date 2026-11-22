@@ -6,6 +6,9 @@ const ACTS = {
   next: () => goNext(),
   "set-tab": (el) => { setTab = el.dataset.tab; try { localStorage.setItem("cue.setTab", setTab); } catch {} const b = document.querySelector(".sheet-body"); if (b) b.scrollTop = 0; renderMain(); },
   "text-size": (el) => stepZoom(+el.dataset.dir),
+  // A Desk chat's Conversation only | Everything (desk/runs.js), and a run of its lines opened or folded in place.
+  "chat-mode": (el) => setChatMode(el.dataset.sid, el.dataset.mode),
+  "desk-run": (el) => dkRunFlip(el),
   "test-notify": () => invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`)),
   "open-history": () => { view = "history"; sheet = null; renderMain(); },
   "shell-new": () => openShell(""),

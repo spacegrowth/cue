@@ -110,7 +110,7 @@ function deskBackNote(c) {
 }
 /** Project `d`'s Ready to check lines for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
 function deskCheckRows(d) {
-  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(deskCheckLine(c, d), `chk:${c.id}:${c.at}`) }));
+  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(dkMark(deskCheckLine(c, d), "ready", c.id), `chk:${c.id}:${c.at}`) }));
 }
 /** A DONE as the family's card (#501) while it's the one to check: "Cue READY TO CHECK Task #125 12m", its title,
  *  Check it ›; the item and Check it › opening its page (what to test, Looks right and Send back are there). Once

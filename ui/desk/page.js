@@ -112,7 +112,8 @@ function deskChatRows(s, page) {
   const sid = s.session_id;
   if (!older.has(sid)) queueMicrotask(() => loadOlder(sid));
   const any = (s.thread || []).length || older.get(sid)?.msgs.length;
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
+  // Conversation only or Everything, as you set it for this chat (desk/runs.js, #685).
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: deskCueNote, youHead: deskAboutHead, noActs: true, talk: chatTalkOnly(sid), ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -201,7 +202,7 @@ function deskActLine(x, d, bare, chip) {
 const deskActRows = (d) => deskActs(d).filter((x) => x.act !== "call").map((x) => {
   const key = `act:${x.id}`;
   const head = `<div class="mg-line"><span class="mg-lh">${deskActLine(x, d, true, true)}</span><span class="mg-age">${ago(x.at * 1000)}</span></div>`;
-  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-ln">${head}${x.why ? deskCut(key, "mg-full", esc(x.why), x.why) : ""}${deskLoopCard(d, x)}</div>`, key) };
+  return { at: x.at * 1000, html: keyed(`<div class="dk-act dk-ln dk-sgl" data-dk="${esc(x.act || "act")}" data-dk-id="${esc(x.item_id || "")}">${deskSign(x.act === "start" ? "start" : "act")}${head}${x.why ? deskCut(key, "mg-full", esc(x.why), x.why) : ""}${deskLoopCard(d, x)}</div>`, key) };
 });
 /** A loop the lead drafted (#583, its LOOP: line): the add-on's loop card for it (Start loop, Edit, Not now), as a
  *  chat's drafted loop shows; "" without the add-on. Drawn as the Desk's own, not the lead's chat's: Start gives the
@@ -357,7 +358,7 @@ function deskSessChat(sid, from, d, foot = "") {
   const stop = dot === "work" ? `<button class="btn small" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : "";
   // The new Desk page (#628): back to the lead's chat, and the item it's on a click away.
   const v2 = deskV2 ? deskV2ChatBack(sid, from, d) : null;
-  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: textSizeBtns() + (v2 ? v2.its : "") + open,
+  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: chatModeSwitch(sid, rows) + textSizeBtns() + (v2 ? v2.its : "") + open,
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),

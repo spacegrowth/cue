@@ -530,7 +530,8 @@ test("each item shows what you'll see in plain words under its title; its Done w
   const ln = page.locator(".dk-chat .cv-agent").last().locator(".own-lines .dk-ln");
   await expect(ln).toHaveCount(1);
   await expect(ln.locator(".mg-lh")).toContainText("Said what you'll see for");
-  await ln.locator(".mg-line").click();
+  // Its words (the middle of the line can be its item's chip, which opens the item instead).
+  await ln.locator(".mg-line .mg-v").click();
   await expect(ln.locator(".mg-full")).toHaveText("You'll see the dot blinks only for you");
   await expect(ln).not.toContainText("rail.spec");
 });

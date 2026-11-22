@@ -246,7 +246,9 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const counts = replyCounts(stepsOf, s, ex, asks);
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, counts };
-  const rows = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+  const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+  // Conversation only (#685, desk/runs.js): each run of the Desk's own rows folded to one that opens in place.
+  const rows = page?.talk ? dkFoldRows(drawn) : drawn;
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`)));
   if (s?.send_at) rows.push(sendAtRow(s));
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
@@ -265,18 +267,20 @@ function chatRowHtml(c, e, n) {
   const told = e.role === "you" && typeof deskToldBand === "function" && deskToldBand(sid, e);
   if (told) return told;
   // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js). A page's own drawing first.
+  // Each of these is the Desk's own (data-dk, desk/runs.js): Conversation only folds it into a run.
+  const dk = (h) => (page?.lines && typeof dkMark === "function" ? dkMark(h, "cue") : h);
   const own = e.role === "you" && page?.you?.(e, n);
-  if (own) return own;
+  if (own) return dk(own);
   // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk/lead.js).
   const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
-  if (hand) return hand;
+  if (hand) return dk(hand);
   const cue = e.role === "you" && cueSaid(e.text);
   if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n));
   if (reviews.has(n)) return "";
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
   // folded under it (desk/cue_said.js).
   const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
-  if (cm) return cm;
+  if (cm) return dk(cm);
   const fwd = e.role === "you" && FORWARDED.exec(e.text);
   if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
   if (e.role === "you") return chatYouHtml(c, e, n);
@@ -318,8 +322,12 @@ function chatAgentHtml(c, e, n) {
   // The steps that led to it (replyCounts): at its last words, or with its buttons while it's folded to its first lines.
   const cnt = counts?.get(n) || "";
   const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
-  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}" data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg mg-text cv-text">${withCount(md(said.text, { runIn: s?.session_id, lines: page?.lines }), folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
+  // Conversation only (#685): its Desk lines folded in place; a reply of nothing but those joins the runs around it.
+  const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, run });
+  const talk = page?.talk && page?.lines ? dkReplyRuns(draw, key) : null;
+  const body = talk ? talk.html : draw(null);
+  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${talk?.all && !split?.after && !said.after && !e.images?.length ? " data-dkr" : ""} data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
+      <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
 }
 /** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */

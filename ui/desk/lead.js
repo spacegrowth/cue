@@ -373,17 +373,66 @@ const DESK_KINDS = ["bug", "feature", "task"];
  *  link that opens it; a click on the rest of the line opens what's longer under it (deskLnOpen: the title, why, done
  *  when). No arrow, no chevron. "" for any other line, or one parse.rs wouldn't act on (an empty or "<…>" body). */
 function deskLineHtml(line, inline) {
-  const m = DESK_SAY.exec(line.trim());
+  const m = DESK_SAY.exec(line.trim()) || DESK_SESS.exec(line.trim());
   if (!m) return "";
   const body = m[2].trim().replace(/^\*\*/, "").trim().replace(/\*+$/, "").trim();
   if (!body || body.startsWith("<")) return "";
   if (m[1] === "ASK") return MD_DROP;
   const k = deskLineKit(m, body, inline);
   const kinds = { ITEM: deskLineItem, SEE: deskLineSee, ROUTE: deskLineRoute, DONE: deskLineDone, TITLE: deskLineTitle,
-    MERGE: deskLineMerge, NOTE: deskLineNote, DESIGNS: deskLineDesigns, "TELL DESK": deskLineTell, "TELL DESKS": deskLineTell };
-  if (DESK_ACTS[m[1]]) return deskLineAct(k);
-  const run = kinds[m[1]] || deskLineContext;
-  return run(k);
+    MERGE: deskLineMerge, NOTE: deskLineNote, DESIGNS: deskLineDesigns, "TELL DESK": deskLineTell, "TELL DESKS": deskLineTell,
+    CHECK: deskLineCheck, "IF PICKED": deskLinePicked, "TO LEAD": deskLineSaid, "USER VERIFY": deskLineSaid, "NOT DONE": deskLineSaid,
+    "DECIDED (minor)": deskLineMinor };
+  const run = DESK_ACTS[m[1]] ? deskLineAct : kinds[m[1]] || deskLineContext;
+  const html = run(k);
+  // Marked as the Desk's own (desk/runs.js): Conversation only folds it, a run's row counts it.
+  return html && html !== MD_DROP ? dkMark(html, deskSignOf(m[1])) : html;
+}
+/** A session's own Desk lines (#685: CHECK, IF PICKED, TO LEAD…), drawn as the lead's are, each with its sign. */
+const DESK_SESS = /^[-*+ ]*(CHECK|IF PICKED|TO LEAD|USER VERIFY|NOT DONE|DECIDED \(minor\))\**\s*:(.*)$/;
+/** A Desk line's kind as its sign and mark name it: "TAKE COPY" → "take-copy", "DECIDED (minor)" → "minor". */
+const deskSignOf = (word) => (word === "DECIDED (minor)" ? "minor" : word.toLowerCase().replace(/ /g, "-"));
+/** Each kind's sign (option A of #676): a 14px stroke drawing in a small round tile. */
+const DESK_SIGNS = {
+  route: "M4 12h15M13 6l6 6-6 6", item: "M12 5v14M5 12h14", merge: "M6 4v6a6 6 0 0 0 6 6h6M14 12l4 4-4 4", note: "M4 5h16v11H9l-5 4z",
+  minor: "M12 8v8M8 12h8", "to-lead": "M12 19V5M6 11l6-6 6 6", check: "M6 4l14 8-14 8z", done: "M5 12.5l4.5 4.5L19 7",
+  "if-picked": "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  designs: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+  title: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4", see: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+  context: "M5 7h14M5 12h14M5 17h9", "user-verify": "M6 4l14 8-14 8z", "not-done": "M7 7l10 10M17 7L7 17",
+  start: "M7 5l11 7-11 7z", close: "M5 12.5l4.5 4.5L19 7", act: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
+};
+/** Kind `kind`'s sign: its tile and drawing (the done ones filled in the accent, desk-lead.css .dk-sg). */
+function deskSign(kind) {
+  const d = DESK_SIGNS[kind] || DESK_SIGNS.act, w = kind === "done" || kind === "close" ? 2.6 : kind === "minor" ? 1.8 : 2;
+  return `<span class="dk-sg" data-sg="${esc(kind)}" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg></span>`;
+}
+/** A CHECK line (a session's, deskLineHtml): "How to check Feature #685", its parts (Where, Do, Expect…) in a box under it. */
+function deskLineCheck(k) {
+  const { inline, p, id, known, ref, ln } = k;
+  const at = p[0].startsWith("#") && id(p[0]);
+  if (!at) return "";
+  const rows = p.slice(1).filter(Boolean).map((s) => { const l = /^([A-Za-z][A-Za-z' ]{1,18}):\s*([\s\S]*)$/.exec(s); return `<div class="dk-opt-r">${l ? `<b>${esc(l[1])}</b> ${inline(l[2])}` : inline(s)}</div>`; });
+  return ln(`<span class="mg-v">How to check</span> ${ref(at, known(at))}`, "", rows.length ? `<div class="dk-opt">${rows.join("")}</div>` : "");
+}
+/** An IF PICKED line (deskLineHtml): "If you pick B", what follows it in a box under it. */
+function deskLinePicked(k) {
+  const { inline, p, ln } = k;
+  const rest = p.slice(1).filter(Boolean);
+  return ln(`<span class="mg-v">If you pick</span> <b>${inline(p[0])}</b>`, "", rest.length ? `<div class="dk-opt">${rest.map((s) => `<div class="dk-opt-r">${inline(s)}</div>`).join("")}</div>` : "");
+}
+/** A TO LEAD, USER VERIFY or NOT DONE line (deskLineHtml): its words after a quiet "To the lead:", "For you to try:",
+ *  "Not done:". */
+function deskLineSaid(k) {
+  const { m, body, inline, ln } = k;
+  const say = { "TO LEAD": "To the lead:", "USER VERIFY": "For you to try:", "NOT DONE": "Not done:" }[m[1]];
+  return ln(`<span class="mg-v">${say}</span> <span class="dk-ln-w">${inline(body)}</span>`);
+}
+/** A DECIDED (minor) line (deskLineHtml): "Small call: what", why under it once opened. */
+function deskLineMinor(k) {
+  const { body, inline, ln } = k;
+  const d = /\s+(?:—|–|--)\s+/.exec(body), what = d ? body.slice(0, d.index) : body, why = d ? body.slice(d.index + d[0].length) : "";
+  return ln(`<span class="mg-v">Small call:</span> <span class="dk-ln-w">${inline(what)}</span>`, why ? inline(why) : "");
 }
 /** What deskLineHtml's kinds share: the line's match `m`, its `body` and parts `p`, and the helpers that read and draw
  *  them. */
@@ -405,10 +454,11 @@ function deskLineKit(m, body, inline) {
   const titled = (it, t = it?.title) => (!t ? "" : it ? `<button class="dk-ln-it" data-desk-chk-item="${esc(it.id)}">${esc(t)}</button>` : `<span>${esc(t)}</span>`);
   // The line (messages.css .mg-line, its verbs quiet in .mg-v), and what opens under it as .mg-full (none: a plain
   // line). A click on the line opens it; its item's chip opens the item.
-  const ln = (head, more) => {
+  // Its kind's sign at its left (#685, option A of #676); `box`: what shows under it always (a CHECK's parts).
+  const ln = (head, more, box = "") => {
     const key = `${m[1]}:${body}`, open = !!more && deskLnOpen.has(key);
     const row = more ? `<div class="mg-line" role="button" tabindex="0" data-desk-why="${esc(key)}" aria-expanded="${open}"><span class="mg-lh">${head}</span></div>` : `<div class="mg-line"><span class="mg-lh">${head}</span></div>`;
-    return `<div class="dk-ln${open ? " open" : ""}">${row}${open ? deskCut(key, "mg-full", more, more) : ""}</div>`;
+    return `<div class="dk-ln dk-sgl${open ? " open" : ""}">${deskSign(deskSignOf(m[1]))}${row}${box}${open ? deskCut(key, "mg-full", more, more) : ""}</div>`;
   };
   const who = (s) => `<b class="mg-who">${esc(s)}</b>`;
   const dot = (xs) => xs.filter(Boolean).join(" · ");
@@ -495,7 +545,7 @@ function deskLineDesigns(k) {
   const { body } = k;
   // "#135 https://…" (as parse.rs designs): the link alone, under the words, as the item page has it.
   const url = /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "");
-  return url ? `<div class="mg-line dk-dsay">${deskDesignsA(url)}</div>` : "";
+  return url ? `<div class="dk-ln dk-sgl">${deskSign("designs")}<div class="mg-line dk-dsay">${deskDesignsA(url)}</div></div>` : "";
 }
 /** What the lead's lines that act on an item say (#622; desk/parse.rs unstick, hold, whole_desk): START "Started Bug
  *  #612", the why under it. PAUSE and RESUME without an item are the whole Desk's. */
