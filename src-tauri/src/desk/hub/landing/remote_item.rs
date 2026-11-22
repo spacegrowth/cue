@@ -76,6 +76,21 @@ pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option
     let fresh = to.eq_ignore_ascii_case("new");
     let pick = it.start_on.as_deref();
     let pick_shown = |p: &str| if p.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(p) };
+    // To a session on a machine whose folder another open item's work is in (#679): both would commit in one folder,
+    // and one's work would land under the other's name.
+    if !fresh {
+        if let Some((m, cwd)) = st.sessions.iter().find(|s| crate::desk::hub::core::desk::shown_name(s).eq_ignore_ascii_case(to)).map(|s| (s.origin.machine.clone(), s.origin.cwd.clone())).filter(|(m, _)| !m.is_empty()) {
+            let other = st.desk.items.iter().find(|i| i.id != id && matches!(i.state.as_str(), "working" | "finishing") && i.remote.as_ref().is_some_and(|r| r.machine == m && r.folder == cwd));
+            if let Some(o) = other {
+                return Err(format!(
+                    "Refused: {to} works in {cwd} on {}, where #{} is being worked, so #{id} wasn't routed: two items in one folder mix their work. Route it to new (it gets a copy of its own there), or wait until #{} is done.",
+                    crate::machines::display_name(&m),
+                    o.id,
+                    o.id
+                ));
+            }
+        }
+    }
     let Some(on) = on else {
         // To a session already at work: it has to be where you chose.
         if let (false, Some(p)) = (fresh, pick) {
@@ -121,6 +136,9 @@ pub(crate) fn route_on(st: &Store, project: &str, id: &str, to: &str, on: Option
 /// What a holder on another machine is told of its item's branch. `from`: the work last pushed from the machine its
 /// last holder was on (#598), which it starts from.
 pub(crate) fn remote_line(r: &RemoteWork, id: &str, from: Option<&RemoteWork>) -> String {
+    if is_own_copy_there(&r.folder, id) {
+        return own_copy_line(r, id, from);
+    }
     let line = format!(
         "You work on another machine: in {folder}, fetch {onto} from {remote} and make the branch {branch} from it \
          (git fetch {remote} && git switch -c {branch} {remote}/{onto}; if it's there already, switch to it and merge \
@@ -146,6 +164,42 @@ pub(crate) fn remote_line(r: &RemoteWork, id: &str, from: Option<&RemoteWork>) -
         onto = r.onto,
         remote = r.remote,
         branch = r.branch,
+    )
+}
+
+/// Whether `folder` on a machine is item `id`'s own copy there (#679, remote_setup.rs `own_copy`), not a clone that
+/// other sessions work in too.
+fn is_own_copy_there(folder: &str, id: &str) -> bool {
+    folder.trim_end_matches('/').ends_with(&format!("/{TREES}/desk-{id}"))
+}
+
+/// `remote_line` for a holder in its item's own copy on the machine (#679): the branch is made there already.
+fn own_copy_line(r: &RemoteWork, id: &str, from: Option<&RemoteWork>) -> String {
+    let start = match from {
+        Some(f) => format!(
+            "It moved here from {shown}: its work there was last pushed {when}, as {fb} (commit {sha}). Start from it: \
+             git fetch {remote} && git merge {remote}/{fb} && git merge {remote}/{onto}. Anything not pushed stays on {shown}.",
+            shown = crate::machines::display_name(&f.machine),
+            when = pushed_when(f.pushed_at),
+            fb = f.branch,
+            sha = short(&f.sha),
+            remote = r.remote,
+            onto = r.onto,
+        ),
+        None => format!("Bring it up to date first: git fetch {remote} && git merge {remote}/{onto}.", remote = r.remote, onto = r.onto),
+    };
+    format!(
+        "You work on another machine, in {folder}: a copy of its own for #{id}, on the branch {branch}, made from \
+         {remote}/{onto}. Other items' sessions work in other copies on that machine, so keep all your work in this \
+         folder and on {branch}; don't switch branches. {start} Commit all your work on {branch}. Don't push, and don't \
+         change {onto}: at your DONE, Cue checks it for words that must not go public, pushes {branch} from there, and \
+         lands it on {onto} like any item. Say in your DONE which checks you ran and which you couldn't run there, and \
+         name your branch and its last commit in it: {done}. Your fixes for #{id} go on {branch} too.",
+        folder = r.folder,
+        branch = r.branch,
+        remote = r.remote,
+        onto = r.onto,
+        done = done_form(r, id),
     )
 }
 
@@ -230,13 +284,7 @@ impl Hub {
         }
         let asked = self.read(|st| remote_starts_of(st, &fx.items));
         for (id, project, machine, folder, to) in asked {
-            let Some(local) = self.desk_folder(&project) else { continue };
-            let Some((repo, onto)) = main_checkout(&local).filter(|(_, b)| !b.is_empty()) else { continue };
-            let l = crate::desk::lands::lands_of(&project, &repo);
-            if l.at != "copy" || l.how == "owner" || l.how == "pr" {
-                continue;
-            }
-            let Some(remote) = remote_of("", &repo, &onto) else { continue };
+            let Some((repo, onto, remote, l)) = self.remote_branch_of(&project) else { continue };
             let r = RemoteWork { machine: machine.clone(), folder, branch: format!("desk/{id}"), remote: remote.clone(), onto: onto.clone(), ..Default::default() };
             // Moved from a machine that pushed its work (#598): it starts from that, taken off the item.
             let set = self.write(|st| {
@@ -264,6 +312,30 @@ impl Hub {
                 None => fx.sends.push((to, format!("Desk item #{id}: {line}"))),
             }
         }
+    }
+
+    /// Whether Desk `project`'s items on another machine work on a branch of their own there, landed from here at their
+    /// DONE (its items land from copies): its main checkout here, the main line's branch, the remote it's pushed to,
+    /// and how it lands.
+    pub(crate) fn remote_branch_of(&self, project: &str) -> Option<(String, String, String, crate::desk::lands::Lands)> {
+        let local = self.desk_folder(project)?;
+        let (repo, onto) = main_checkout(&local).filter(|(_, b)| !b.is_empty())?;
+        let l = crate::desk::lands::lands_of(project, &repo);
+        if l.at != "copy" || l.how == "owner" || l.how == "pr" {
+            return None;
+        }
+        let remote = remote_of("", &repo, &onto)?;
+        Some((repo, onto, remote, l))
+    }
+
+    /// The folder a new session for item `id` starts in on a machine (#679): a copy of its own in the Desk's clone
+    /// `folder` there, on its branch, when its work lands from a branch; else the clone. Two items on one machine never
+    /// share a folder, so one's work can't land under the other's name. Err: why it can't start, as the item says.
+    pub(crate) fn remote_start_dir(&self, project: &str, id: &str, machine: &str, folder: &str) -> Result<String, String> {
+        let code = self.read(|st| st.desk.item(id).is_some_and(|i| !crate::desk::hub::landing::unlanded::rules_out_code(&i.done_when)));
+        let Some((_, onto, remote, _)) = code.then(|| self.remote_branch_of(project)).flatten() else { return Ok(folder.to_string()) };
+        let there = remote_of(machine, folder, &onto).unwrap_or(remote);
+        crate::desk::hub::landing::remote_setup::own_copy(machine, folder, id, &format!("desk/{id}"), &there, &onto)
     }
 
     /// Item `id`'s DONE, when its work is on another machine: pushed from there, fetched here and put in the landing

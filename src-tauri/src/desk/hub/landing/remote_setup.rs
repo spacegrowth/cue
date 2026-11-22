@@ -90,6 +90,48 @@ pub(crate) fn ensure(machine: &str, folder: &str, local: &str) -> Result<bool, S
     }
 }
 
+/// Where item copies are kept in a clone on a machine (as here: desk/hub/landing/trees.rs `TREES`).
+const TREES: &str = crate::desk::hub::landing::trees::TREES;
+
+/// The script that gives item `id` a copy of its own in the clone `folder` there (#679): a git worktree on the branch
+/// `branch`, made from `remote`/`onto` (fetched first) or kept when it's there already, kept out of the clone's
+/// `git status`. Says on its first line what happened, then the copy's full path, or git's words when it failed.
+fn own_copy_script(folder: &str, id: &str, branch: &str, remote: &str, onto: &str) -> String {
+    let d = crate::machines::remote_dir(folder);
+    let q = crate::safe_git::sh_quote;
+    let t = q(&format!("{TREES}/desk-{id}"));
+    let (b, r, from) = (q(branch), q(remote), q(&format!("{remote}/{onto}")));
+    let skip = q(&format!("/{TREES}/"));
+    format!(
+        r#"cd {d} 2>/dev/null || {{ echo failed; echo "the folder isn't there"; exit 0; }}
+if [ -d {t} ] && git -C {t} rev-parse --git-dir >/dev/null 2>&1; then echo there; (cd {t} && pwd); exit 0; fi
+x=$(git rev-parse --git-common-dir 2>/dev/null) || {{ echo failed; echo "it isn't a copy of the project"; exit 0; }}
+mkdir -p "$x/info" 2>/dev/null
+grep -qxF {skip} "$x/info/exclude" 2>/dev/null || printf '%s\n' {skip} >> "$x/info/exclude"
+GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${{GIT_SSH_COMMAND:-ssh -o BatchMode=yes}}" git fetch -q {r} </dev/null >/dev/null 2>&1
+git worktree prune >/dev/null 2>&1
+if git show-ref -q --verify "refs/heads/"{b}; then out=$(git worktree add -q {t} {b} 2>&1 </dev/null); else out=$(git worktree add -q -b {b} {t} {from} 2>&1 </dev/null); fi
+if [ $? -eq 0 ]; then echo made; (cd {t} && pwd); else echo failed; printf '%s\n' "$out"; fi
+exit 0"#
+    )
+}
+
+/// Item `id`'s own copy in the clone `folder` on `machine` (#679), on its branch `branch` from `remote`/`onto`: two
+/// items on one machine never share a folder, so neither's work lands under the other's name. Ok: the copy's full path
+/// there, where its session starts. Err: why not, in plain words, as the item says.
+pub(crate) fn own_copy(machine: &str, folder: &str, id: &str, branch: &str, remote: &str, onto: &str) -> Result<String, String> {
+    let shown = crate::machines::display_name(machine);
+    let said = crate::safe_git::on_machine(machine, &own_copy_script(folder, id, branch, remote, onto)).map_err(|e| format!("{shown} didn't answer ({e})"))?;
+    let mut lines = said.lines().map(str::trim);
+    match lines.next() {
+        Some("made" | "there") => lines.next().filter(|p| p.starts_with('/')).map(str::to_string).ok_or_else(|| format!("Cue couldn't read where #{id}'s copy is on {shown}")),
+        _ => {
+            let why = crate::safe_git::last_words(&lines.collect::<Vec<_>>().join("\n"));
+            Err(format!("Cue couldn't make a copy of its own for #{id} in {folder} on {shown}: {}", if why.is_empty() { "git said nothing".into() } else { why }))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -156,7 +156,9 @@ impl Hub {
         let dir = match (&place, &on, in_repo) {
             (Err(e), _, _) => Err(e.clone()),
             // Its folder there not made yet (#664): the project downloaded into it first, from its online home.
-            (_, Some(o), _) => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)).and_then(|local| crate::desk::hub::landing::remote_setup::ensure(&o.machine, &o.folder, &local)).map(|_| o.folder.clone()),
+            (_, Some(o), _) => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)).and_then(|local| crate::desk::hub::landing::remote_setup::ensure(&o.machine, &o.folder, &local))
+                // A copy of its own there (#679), so items on one machine never mix their work.
+                .and_then(|_| self.remote_start_dir(&s.project, &s.id, &o.machine, &o.folder)),
             (_, _, Some(repo)) => Ok(repo),
             _ => self.desk_folder(&s.project).ok_or_else(|| format!("no folder known for {}", s.project)),
         };
