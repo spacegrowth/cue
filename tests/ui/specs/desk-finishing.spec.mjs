@@ -1,7 +1,7 @@
 // The Desk: an item finishing (Landing, install, a failed build), waiting rows, the panel, and the list's look.
 import { test, expect, pick, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
-import { listOrder, boxOf, groupOf, statusOf, openDone } from "./desk.mjs";
+import { listOrder, boxOf, groupOf, statusOf, openDone, openMore } from "./desk.mjs";
 
 // Done means it's in your app (#181): a DONE is committed, built and installed before it's yours to check.
 /** Item `id` of the cue Desk changed by `patch` (merged in). */
@@ -46,6 +46,9 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   const pane = page.locator(".dk-right .dk2b-ipage");
   await expect(pane.locator(".dk2b-ititle")).toHaveText(await page.evaluate(() => deskItem("cue", "d5").title));
   await expect(pane.locator(".dk2b-kv")).toContainText(`On main · installs at ${clock} · in 30m`);
+  // In its ⋯ menu (#669), not a row of buttons.
+  await expect(pane.locator('[data-desk-act="install_now"]')).toHaveCount(0);
+  await openMore(pane);
   await expect(pane.locator('[data-desk-act="install_now"]')).toHaveText("Install now");
   await expect(pane.locator('[data-desk-act="skip_install"]')).toHaveText("Skip");   // #621
   await expect(pane.locator("[title]")).toHaveCount(0);
@@ -53,6 +56,9 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   await cue.override("desk_item_act", () => null);
   await pane.locator('[data-desk-act="install_now"]').click();
   await cue.called("desk_item_act", { id: "d5", act: "install_now" });
+  // A choice shuts the menu.
+  await expect(pane.locator(".dk-moremenu")).toHaveCount(0);
+  await openMore(pane);
   await pane.locator('[data-desk-act="skip_install"]').click();
   await cue.called("desk_item_act", { id: "d5", act: "skip_install" });
   // Clicking it doesn't close the page it's on.
@@ -60,6 +66,7 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   // Said while another install runs (#641): Install now gives way to what it waits on, on its page and its row.
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now(), now: true, wait: "starts the moment the install under way ends" } });
   await expect(pane.locator(".dk2b-kv")).toContainText("On main · Install now: starts the moment the install under way ends");
+  await openMore(pane);
   await expect(page.locator('[data-desk-act="install_now"]')).toHaveCount(0);
   await expect(pane.locator('[data-desk-act="skip_install"]')).toHaveText("Skip");
   await expect(st).toHaveText("On main · Install now: starts the moment the install under way ends");

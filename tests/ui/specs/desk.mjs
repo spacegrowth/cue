@@ -1,5 +1,5 @@
 // The Desk specs' shared helpers (desk-*.spec.mjs that were one desk.spec.mjs).
-import { deskSessionsSettled } from "./cue.mjs";
+import { deskSessionsSettled, expect } from "./cue.mjs";
 
 /** The list as it reads, top to bottom: group heads as "# …" (B2's WAITS ON YOU, WORKING, UP NEXT, and the folded
  *  DONE TODAY and CALLS WHILE AWAY lines), holder heads by name, items by id. */
@@ -43,4 +43,10 @@ export async function openSessions(page) {
   }
   await page.locator(".dk-sessions").waitFor();
   await deskSessionsSettled(page);
+}
+/** Opens the ⋯ menu inside `scope` (an item's page) unless it's open already (#669): Start, Park and the rest are in it. */
+export async function openMore(scope) {
+  const b = scope.locator(".dk-more").first();
+  if ((await b.getAttribute("aria-expanded")) !== "true") await b.click();
+  await expect(b).toHaveAttribute("aria-expanded", "true");
 }

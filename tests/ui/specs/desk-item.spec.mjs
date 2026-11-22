@@ -2,7 +2,7 @@
 // questions, approvals, mocks), and the Desk's marks on the Board.
 import { test, expect, pick, openDesk, deskShowPanel } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
-import { listOrder, openSessions, statusOf } from "./desk.mjs";
+import { listOrder, openSessions, statusOf, openMore } from "./desk.mjs";
 
 /** A session of cue's that isn't on its Desk ("spare", holding nothing). */
 const spare = (cue) => cue.change((st) => st.sessions.push({ ...st.sessions.find((x) => x.session_id === "site"), session_id: "spare", project: "cue", name: "spare", thread: [] }));
@@ -1237,6 +1237,7 @@ test("an item whose new session couldn't start says so, with why and Retry, not 
   const pane = page.locator(".dk-right .dk-pg");   // the item's page, its panel beside its chat (#418)
   await expect(pane).toContainText("Couldn't start");
   await expect(pane).toContainText("Cue couldn't start a new session for it: the folder is gone");
+  await openMore(pane);
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Retry");
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-start-failed.png` });
   await pane.locator('[data-desk-act="start_now"]').click();

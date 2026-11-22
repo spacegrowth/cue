@@ -233,7 +233,8 @@ function deskView() {
   if (deskOpen && deskOpen.project !== deskSelection()) { deskOpen = null; deskChatEnd = true; }
   if (deskPick && deskPick !== deskSelection()) deskPick = null;
   const given = deskGiveFor && deskItem(deskSelection(), deskGiveFor.id);
-  if (deskGiveFor && (!given || given.holder)) deskGiveFor = null;
+  // Give to… goes once it has a holder; its ⋯ menu (#669) stays open with one.
+  if (deskGiveFor && (!given || (given.holder && deskGiveFor.at !== "more"))) deskGiveFor = null;
   if (deskDropArm && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
   // An item's page at its end as this draw starts: it stays there as its chat grows (deskThreadFollow).

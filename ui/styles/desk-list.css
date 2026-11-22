@@ -272,3 +272,8 @@
 .dk-fresh { font-size: var(--type-body); }
 .dk-keep { margin-top: 14px; color: var(--muted); font-size: var(--type-body); }
 
+
+/* An item's ⋯ menu (#669): Start, Park and the rest, out of sight till asked for. Its choices are alike: no line over the last. */
+.dk-more { min-width: 30px; padding-left: 8px; padding-right: 8px; font-weight: 700; letter-spacing: 1px; }
+.dk-moremenu { min-width: 180px; }
+.dk-givemenu.dk-moremenu button:last-child { margin-top: 0; border-top: 0; border-radius: var(--radius-qp); }

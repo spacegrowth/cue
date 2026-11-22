@@ -746,6 +746,9 @@ const deskCanRestart = (i) => (i.state === "needs_resume" || i.stopped) && !!ses
 
 function deskItemActs(i) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
+  // Start, Park and the rest (#669): in its ⋯ menu, not a row of buttons always on show.
+  const m = (act, label) => `<button role="menuitem" data-desk-act="${act}" data-id="${esc(i.id)}"><span>${esc(label)}</span></button>`;
+  const mi = (html) => html.replace("<button ", '<button role="menuitem" ');
   const first = i.after && deskItem(i.project, i.after);
   if (deskBackFor === i.id) return deskBackHtml(i.id);
   // A feature nobody holds is only its pieces (#282): they're given out, not it.
@@ -754,23 +757,35 @@ function deskItemActs(i) {
   const wo = deskWaitsOn(i);
   if (wo) return wo;
   // Waiting for install: nothing to try yet, so no Looks right (Send back stays: what it says can be wrong already).
+  // On show: what answers its check (Send back) or reopens it. In its ⋯ menu: starting, parking, installing.
   const acts = deskInstallWait(i) ? (i.state === "to_check" ? b("send_back", "Send back") : "") : i.state === "to_check" ? (deskLooksSoon.has(i.id) ? "" : b("send_back", "Send back"))
-    : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? b("start_now", "Retry")
-    // Parked (#385): Start queues it as a new item, for the lead to give out.
-    : i.state === "held" ? b("start_now", "Start", "primary")
-    // Waiting for a free working folder (#401): its session starts on it now, without one.
-    : deskCopyWaits(i) ? b("start_now", "Start now", "primary") + b("park", "Park")
-    : i.state === "queued" ? b("start_now", i.holder ? "Start it now" : "Start it now in a new session") + (first ? b("put_before", `Put it before ${deskShort(first.title)}`) : "") + b("park", "Park")
-    : i.state === "new" ? b("start_now", "Start it now in a new session") + b("park", "Park")
-    // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
-    // session where it left off (#375).
-    : deskCanRestart(i) ? b("start_now", "Resume")
-    : deskFinishing(i) ? deskInstallNow(i, "btn small") + deskSkipInstall(i, "btn small")
     // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
     // Reopen (#577): your words back to the session that did it, or a fresh one when it's closed or on other work.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>${i.holder ? b("send_back", "Reopen") : ""}` : "";
+  const more = i.state === "to_check" || i.state === "done" ? ""
+    : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? m("start_now", "Retry")
+    // Parked (#385): Start queues it as a new item, for the lead to give out.
+    : i.state === "held" ? m("start_now", "Start")
+    // Waiting for a free working folder (#401): its session starts on it now, without one.
+    : deskCopyWaits(i) ? m("start_now", "Start now") + m("park", "Park")
+    : i.state === "queued" ? m("start_now", i.holder ? "Start it now" : "Start it now in a new session") + (first ? m("put_before", `Put it before ${deskShort(first.title)}`) : "") + m("park", "Park")
+    : i.state === "new" ? m("start_now", "Start it now in a new session") + m("park", "Park")
+    // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
+    // session where it left off (#375).
+    : deskCanRestart(i) ? m("start_now", "Resume")
+    : deskFinishing(i) ? mi(deskInstallNow(i, "")) + mi(deskSkipInstall(i, "")) : "";
   const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
-  return acts || give ? `<div class="dk-acts">${give}${acts}</div>` : "";
+  const dots = deskMore(i, more);
+  return acts || give || dots ? `<div class="dk-acts">${give}${acts}${dots}</div>` : "";
+}
+/** An item's ⋯ button and, open, its menu of `items` (#669): placed as Give to…'s is (lead.js deskGivePlace), shut by
+ *  Esc, a click outside it or any of its choices. "" with nothing in it. */
+function deskMore(i, items) {
+  if (!items) return "";
+  const open = deskGiveFor?.id === i.id && deskGiveFor.at === "more";
+  if (open) queueMicrotask(deskGivePlace);
+  const menu = open ? `<span class="dk-givemenu dk-moremenu" role="menu">${items}</span>` : "";
+  return `<span class="dk-givewrap dk-morewrap"><button class="btn small dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}">⋯</button>${menu}</span>`;
 }
 /** Looks right on an item's page: in its title area, always in reach however far its page is scrolled (#163); its
  *  few seconds to take it back there too. None while it waits for an install or you're writing why to send it back. */

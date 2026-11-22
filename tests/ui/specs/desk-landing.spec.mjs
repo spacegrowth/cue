@@ -3,7 +3,7 @@
 // "in its own copy desk/<id>", "In the landing line · waits: … · since 8:31pm", "Checking before it lands · since …", "Check failed · since …", "landed, not checked".
 // A dropped item's copy that had work in it is listed under Kept copies, with a Remove that takes two clicks.
 import { test, expect, openDesk } from "./cue.mjs";
-import { statusOf } from "./desk.mjs";
+import { statusOf, openMore } from "./desk.mjs";
 
 const patchDesk = (cue, patch) => cue.change((st, p) => { Object.assign(st.desk.projects.find((x) => x.project === "cue"), p); }, patch);
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
@@ -102,12 +102,14 @@ test("an item in its own copy says so with its branch; one queued for a copy wai
   await expect(pane.locator(".dk-panel[data-side-for] .dk-pmeta")).not.toContainText("in its own copy");
   // Sent back while none is free: it says so; Start now starts it at once, and the line goes.
   await patchItem(cue, "d4", { back_waiting: "Desk item #d4 isn't done: the dot is too big" });
+  await openMore(pane.locator(".dk-panel[data-side-for]"));
   await expect(pane.locator('.dk-panel[data-side-for] [data-desk-act="start_now"]')).toHaveText("Start now");
   await backToItems(page);
   await expect(statusOf(page, "d4")).toHaveText("Sent back · waiting for a free working folder (in use by #d3, #d5, #d7)");
   // Start now is on its page, not its row (B2, #666).
   await expect(row.locator("button")).toHaveCount(0);
   pane = await openItem(page, "d4");
+  await openMore(pane.locator(".dk-panel[data-side-for]"));
   await pane.locator('.dk-panel[data-side-for] [data-desk-act="start_now"]').click();
   await cue.called("desk_item_act", { id: "d4", act: "start_now" });
   await backToItems(page);

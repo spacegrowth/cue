@@ -2,7 +2,7 @@
 // and Decisions, Desk home and the Desk switcher, + New, who runs the Desk, and Give to….
 import { test, expect, pick, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
-import { listOrder, openSessions } from "./desk.mjs";
+import { listOrder, openSessions, openMore } from "./desk.mjs";
 
 test("the Desk is in the header after Board, and lists Waiting on you, then a group a holder", async ({ page, cue }) => {
   await cue.open("desk");
@@ -115,6 +115,7 @@ test("an item opens in the middle, its panel beside its chat, its row lit in pla
   await expect(pre).toHaveText("To cue-117 · Bug #d4");
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "queued", holder: { kind: "lead", sid: "lead", name: "web-lead" } }));
   // Put it before the one it waits on.
+  await openMore(side);
   await side.locator('[data-desk-act="put_before"]').click();
   await cue.called("desk_item_act", { id: "d4", act: "put_before" });
   // Back to the lead.

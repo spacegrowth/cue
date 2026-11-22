@@ -7,7 +7,7 @@ const deskActivityOpen = async (page) => {
   await page.locator(".dk-chat .dk-cnt-b").last().click();
   return page.locator(".dk-moves");
 };
-import { listOrder, groupOf, statusOf } from "./desk.mjs";
+import { listOrder, groupOf, statusOf, openMore } from "./desk.mjs";
 
 // ---------- the quick-add line ----------
 
@@ -705,6 +705,7 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item needs to resume.");
   await expect(page.locator('[data-desk-page="dispatcher"] .dk-pfc')).toContainText("1 to resume");
   await rows.locator('[data-desk-item="d5"]').click();
+  await openMore(pane);
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Resume");
   await expect(pane).toContainText("Resume wakes its session where it left off.");
   await pane.locator('[data-desk-act="start_now"]').click();
@@ -713,10 +714,12 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await page.locator(".dk-right .dk-back").click();
   await page.locator('[data-desk-item="d3"]').click();
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
+  await expect(pane.locator(".dk-more")).toHaveCount(0);
   await cue.change((st) => {
     st.sessions.find((s) => s.session_id === "lead").team.find((m) => m.agent_id === "id-search").state = "done";
     st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d3").state = "needs_resume";
   });
+  await openMore(pane);
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Resume");
 });
 
@@ -766,15 +769,58 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane).toContainText("Parked");
   await expect(pane).toContainText("You parked it. Nothing starts it until you press Start.");
+  await openMore(pane);
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Start");
   await expect(pane.locator('[data-desk-act="park"]')).toHaveCount(0);
   // A queued item's page has Park too.
   await page.locator(".dk-right .dk-back").click();
   await rows.locator('[data-desk-item="q7"] .dk2b-tt').click();
+  await openMore(page.locator(".dk-panel[data-side-for]"));
   await expect(page.locator('.dk-panel[data-side-for] [data-desk-act="park"]')).toHaveText("Park");
   // A press parks it.
   await page.locator('.dk-right [data-desk-act="park"]').first().click();
   await cue.called("desk_item_act", { id: "q7", act: "park" });
+});
+
+test("an item's page has no row of Start and Park buttons, only a ⋯ that opens them; Esc, a click outside or a choice shuts it (#669)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => {
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.items.push({ id: "q8", project: "cue", kind: "task", title: "Tidy the header", state: "queued", created: Date.now() / 1000, updated: Date.now() / 1000, holder: null, from: "you" });
+  });
+  await page.locator('.dk-items [data-desk-item="q8"] .dk2b-tt').click();
+  const side = page.locator(".dk-panel[data-side-for]");
+  const more = side.locator(".dk-more");
+  // Shut: the ⋯ alone, none of what's in it on show.
+  await expect(more).toHaveCount(1);
+  await expect(more).toHaveText("⋯");
+  await expect(more).toHaveAttribute("aria-label", "More");
+  await expect(side.locator('[data-desk-act="start_now"], [data-desk-act="park"]')).toHaveCount(0);
+  // Open: Start it now and Park, as a menu, whole inside the window.
+  await more.click();
+  const menu = side.locator(".dk-moremenu");
+  await expect(menu).toHaveAttribute("role", "menu");
+  await expect(menu.locator('[role="menuitem"]')).toHaveText(["Start it now in a new session", "Park"]);
+  const box = await menu.boundingBox(), vp = page.viewportSize();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+  expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
+  await expect(side.locator("[title]")).toHaveCount(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-item-more.png` });
+  // Esc shuts it; so does a click outside it.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await more.click();
+  await expect(menu).toHaveCount(1);
+  await page.locator(".dk-right .dk2b-ititle").click();
+  await expect(menu).toHaveCount(0);
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  // A choice does what it says and shuts it.
+  await more.click();
+  await menu.locator('[data-desk-act="park"]').click();
+  await cue.called("desk_item_act", { id: "q8", act: "park" });
+  await expect(menu).toHaveCount(0);
 });
 
 test("an item back to check stands out until you open it; its pane links to what was made", async ({ page, cue }) => {

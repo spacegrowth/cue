@@ -508,6 +508,8 @@ function deskClick(e) {
   if (deskProgShown && !e.target.closest?.(".dk-prog, [data-desk-prog-toggle]")) { deskProgShown = false; queueMicrotask(renderMain); }
   // A crew member's ⋯ menu closes on a click outside it.
   if (deskCrewMenu && !e.target.closest?.(".dk-cmore")) { deskCrewMenu = ""; queueMicrotask(renderMain); }
+  // An item's ⋯ menu (#669) closes on a click outside it too.
+  if (deskGiveFor?.at === "more" && !e.target.closest?.(".dk-morewrap")) { deskGiveFor = null; queueMicrotask(renderMain); }
   // The header's Desks menu (app/head_view.js) too: a Desk click stops here, before the window's own clicks see it.
   if (hvMenu && !e.target.closest?.(".hv-wrap")) { hvMenu = ""; delete drafts["hv-desk-find"]; queueMicrotask(renderMain); }
   // In a session's name box (✎ on its row): the click stays in the box, it doesn't open the row.

@@ -330,6 +330,8 @@ deskClicks({
   // The picker takes the chat card: whatever's open there closes.
   deskChange: () => { deskPick = deskSelection(); deskGiveFor = null; deskOpen = null; deskDropArm = null; renderMain(); },
   deskKeep: () => { deskPick = null; renderMain(); },
+  // An item's ⋯ menu (#669): open and shut as Give to…'s, under the same one-open-at-a-time note.
+  deskMore: (el) => { deskGiveFor = deskGiveFor?.id === el.dataset.deskMore && deskGiveFor.at === "more" ? null : { id: el.dataset.deskMore, at: "more" }; renderMain(); },
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
   deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskLnOpen.delete(k)) deskLnOpen.add(k); renderMain(); },
