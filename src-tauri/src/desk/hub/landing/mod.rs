@@ -21,3 +21,4 @@ pub(crate) mod push_check;
 pub(crate) mod push_main;
 pub(crate) mod found_words;
 pub(crate) mod in_place;
+pub(crate) mod clear_land;
