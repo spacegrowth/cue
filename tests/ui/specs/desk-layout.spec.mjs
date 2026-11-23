@@ -1,7 +1,7 @@
 // The new Desk layout (#738, desk/c.js): "Try the new Desk layout" in Desk settings, off by default and remembered. On:
 // the Desk's sessions at the left on the green (the lead on top, a heading per machine), the lead's chat with a panel of
 // only Now and Activity, Items as one card (Waiting on you and Working, six steps a row) with Up next and Done today side
-// by side under it, each folding to its heading; the header's count the Desk's own. Off: today's Desk, untouched.
+// by side under it, each folding to its heading; no count of its own in the header. Off: today's Desk, untouched.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 import { stampSteps } from "./desk-steps.mjs";
 
@@ -76,17 +76,16 @@ test("the sessions column: the lead on top under a line, a heading per machine, 
   await expect(page.locator(".dk-c > .dk2b-chat")).toHaveCount(1);
 });
 
-test("one count: the header, the lead's strip and Waiting on you say the same; the lead's panel is Now and Activity", async ({ page, cue }) => {
+test("one count: the lead's strip and Waiting on you say the same, with no count in the header; the lead's panel is Now and Activity", async ({ page, cue }) => {
   await open(page, cue);
-  const head = page.locator(".top [data-desk-c-head]");
-  await expect(head).toHaveText(/^\d+ wait on you$/);
-  const n = (await head.textContent()).match(/^\d+/)[0];
-  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText(n);
+  await expect(page.locator(".top")).not.toContainText("wait on you");
+  const n = (await page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)').textContent()).trim();
+  expect(n).toMatch(/^\d+$/);
   const panel = page.locator(".dk-c .dk2b-chat .dk-panel");
   await expect(panel.locator(".dk-pnow")).toHaveCount(1);
   await expect(panel.locator(".dk-psh")).not.toContainText([/Waits on you/, /^Working/]);
-  // The header's count opens the first that waits on you: #d1, whose session's chat it is (#744).
-  await head.click();
+  // The first that waits on you, #d1, opens its session's chat (#744).
+  await page.locator('.dkn-card .dkn-row[data-desk-item="d1"] .dkn-tt').click();
   await expect(page.locator('.dkn-card .dkn-row.on[data-desk-item="d1"]')).toHaveCount(1);
   await expect(page.locator('.dk-c > .dk-right .dkn-sp[data-desk-page="session"] .dkn-ib')).toHaveCount(1);
   // Hidden panel: the strip says the same number.
@@ -398,7 +397,8 @@ test("progress: Strip unless you switch; each piece as long as its step took, it
   await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item", "Now"]);
   await expect(page.locator(".dkn-card .dkn-ks")).toHaveCount(0);
   await expect(d3.locator(".dkn-tline .dkn-tp")).toHaveCount(6);
-  await expect(d3.locator(".dkn-tl")).toHaveText(["2m", "21m", "12m", "", "", ""]);
+  // Each piece says its step by name with its time where it has room.
+  await expect(d3.locator(".dkn-tl")).toHaveText(["Picked up 2m", "Building 21m", "Tests 12m", "", "", ""]);
   await expect(d3.locator(".dkn-sofar")).toHaveText("Tests 12m · 35m in all");
   // Along the foot: as wide as the row, less its sides, under the title and Now.
   const [row, line, now] = await Promise.all([d3.boundingBox(), d3.locator(".dkn-tline").boundingBox(), d3.locator(".dkn-now").boundingBox()]);
@@ -406,7 +406,7 @@ test("progress: Strip unless you switch; each piece as long as its step took, it
   expect(line.y).toBeGreaterThanOrEqual(now.y + now.height);
   // A step too short to say its time on its sliver leaves it off; the one it's at always says its own.
   const d2 = page.locator('.dkn-card .dkn-row[data-desk-item="d2"]');
-  await expect(d2.locator(".dkn-tl")).toHaveText(["", "", "20m", "", "5m", "9h"]);
+  await expect(d2.locator(".dkn-tl")).toHaveText(["", "", "Tests 20m", "", "Landing 5m", "To check 9h"]);
   // Remembered across a reload; Strip brings the strip back.
   await page.reload();
   await page.locator('#app [data-view="board"]').waitFor();
@@ -430,11 +430,12 @@ test("no tooltips and no stripes down a row's left edge, in Strip or Line", asyn
   await expect(page.locator(".dk-c [title]")).toHaveCount(0);
   await page.locator('.dkn-ih [data-desk-c-line="strip"]').click();
   await expect(page.locator(".dk-c [title]")).toHaveCount(0);
-  await expect(page.locator(".top [data-desk-c-head][title]")).toHaveCount(0);
 });
 
-test("the lead's own ask is in Waiting on you, and the header counts the same", async ({ page, cue }) => {
+test("the lead's own ask is in Waiting on you, and its count takes it in", async ({ page, cue }) => {
   await open(page, cue);
+  const count = page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)');
+  const n0 = Number((await count.textContent()).trim());
   // The lead asks something of its own (not a crew member's ask).
   await cue.change((st) => {
     const a = st.items.find((i) => i.id === "n-focus-ask");
@@ -442,9 +443,7 @@ test("the lead's own ask is in Waiting on you, and the header counts the same", 
   });
   const row = page.locator(".dkn-card .dkn-row[data-desk-c-lead]");
   await expect(row).toContainText("web-lead");
-  const head = page.locator(".top [data-desk-c-head]");
-  const n = (await head.textContent()).match(/^\d+/)[0];
-  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText(n);
+  await expect(count).toHaveText(String(n0 + 1));
 });
 
 test("the lead's block brings its chat back from All sessions", async ({ page, cue }) => {

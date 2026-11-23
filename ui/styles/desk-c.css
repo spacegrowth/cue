@@ -66,7 +66,7 @@
 /* A session's dot: filled and breathing at work; a ring when it waits on you; faint when it's free. */
 .dkn-d { width: 8px; height: 8px; border-radius: 50%; flex: none; background: currentColor; }
 .dkn-d.work { animation: dkn-pulse 1.6s ease-in-out infinite; }
-.dkn-d.ask, .dkn-d.check { background: transparent; box-shadow: inset 0 0 0 2px currentColor; }
+.dkn-d.ask { background: transparent; box-shadow: inset 0 0 0 2px currentColor; }
 .dkn-d.idle { opacity: .45; }
 .dkn-cr { display: flex; flex-direction: column; gap: 2px; padding: 5px 10px 6px 30px; border-radius: var(--radius-btn); font-size: var(--type-pill); }
 .dkn-cr .dkn-n { gap: 7px; font-weight: 600; }
@@ -161,6 +161,15 @@
 .dkn-tp.cur i { height: 4px; }
 .dkn-tl { font: var(--type-tag) var(--mono); line-height: 12px; height: 12px; color: var(--muted); white-space: nowrap; }
 .dkn-tp.cur .dkn-tl { color: var(--ink); font-weight: 700; }
+.dkn-tn { font-family: var(--sans); font-weight: 600; }
+.dkn-tl.short .dkn-tn { display: none; }
+/* Strip: the piece under the pointer grows a little, and a small card over the page says its step and time
+   (desk/c.js deskCStepPop). */
+.dkn-kp i { transition: transform .12s ease; }
+.dkn-kp:hover i { transform: scaleY(1.5); }
+.dkn-kp:hover .dkn-kt { color: var(--ink); }
+.dkn-steps-pop { position: fixed; z-index: 60; padding: 5px 10px; border-radius: var(--radius-btn); background: var(--panel); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / 0.16); font-size: var(--type-small); white-space: nowrap; pointer-events: none; }
+.dkn-steps-pop b { color: var(--ink); font-weight: 600; }
 .dkn-line .dkn-now { flex-direction: column; align-items: flex-end; justify-content: center; gap: 3px; }
 .dkn-nl { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
 .dkn-sofar { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
