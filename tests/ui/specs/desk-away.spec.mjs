@@ -8,6 +8,9 @@ import { test, expect, openDesk } from "./cue.mjs";
 const SINCE = 1793984100 * 1000;   // between the scenario's two calls: c1 after it, c2 before
 
 
+/** Items' WAITING ON YOU head (desk/c.js deskCList): its words and its count, without the fold's arrow. */
+const youHead = (items) => items.locator('.dkn-gh[data-desk2b-group="you"]').evaluate((el) => [...el.childNodes].filter((n) => !n.classList?.contains("dkn-fa")).map((n) => n.textContent).join("").trim());
+
 /** CALLS WHILE AWAY, folded to a line after the list's groups (B2, #666), opened; it says `n`. */
 async function openCalls(page, n) {
   const line = page.locator('.dk-items [data-desk2b-fold="away"]');
@@ -22,6 +25,7 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
   await expect(page.locator(".dk-items .dk-aw-sw")).toHaveAttribute("aria-pressed", "false");
   const order = await page.locator(".dk-items .dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
+  const columns = await page.locator(".dk-board > :not(.col-grip)").count();
   await cue.change((st, since) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.2,
@@ -36,13 +40,13 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   }, SINCE);
   const sw = page.locator(".dk-items .dk-aw-sw");
   await expect(sw).toHaveAttribute("aria-pressed", "true");
-  // No column of its own: the lead's chat card and the item list (B2, #666).
-  await expect(page.locator(".dk-board > :not(.col-grip)")).toHaveCount(2);
+  // No column of its own: the Desk's columns as they were (sessions, the lead's chat, Items).
+  await expect(page.locator(".dk-board > :not(.col-grip)")).toHaveCount(columns);
   // The switch says until when and what it spent of the budget.
   await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
   // Waiting on you counts the waiting item, the one ready to check and the asker's ask, not the session on a usage limit.
   const items = page.locator(".dk-items");
-  await expect(items.locator('.dk2b-gh[data-desk2b-group="you"]')).toHaveText("WAITS ON YOU 3");
+  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 3");
   await expect(items.locator('.dk-aw-asks [data-desk-chat-of="asker"]')).toHaveCount(1);
   await expect(items.locator('[data-desk-chat-of="capped"]')).toHaveCount(0);
   await expect(items.locator(".dk-aw-quiet")).toHaveText(/^capped paused till \d\d:\d\d · Cue carries on then$/);
@@ -66,7 +70,7 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").away.on = false; });
   await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
   await expect(page.locator(".dk-aw-calls")).toHaveCount(0);
-  await expect(page.locator('.dk-items .dk2b-gh[data-desk2b-group="you"]')).toHaveText("WAITS ON YOU 2");
+  await expect.poll(() => youHead(page.locator(".dk-items"))).toBe("WAITING ON YOU 2");
   await expect(page.locator('.dk-items [data-desk2b-fold="away"]')).toHaveCount(0);
 });
 
@@ -101,9 +105,8 @@ test("the calls line folds to one line and stays folded for that Desk; a call wi
   await expect(fold).toHaveText(/^›2 calls while awaysince \d\d:\d\d$/);
   await expect(fold.locator(".dk-aw-meter")).toHaveCount(0);
   expect(await items.locator(".dk-aw-mark").evaluateAll((els) => els.map((e) => e.dataset.deskCall))).toEqual(["c9", "c1"]);
-  // Nothing waiting: no WAITS ON YOU group, its tab says 0, and opened it says so in words.
-  await expect(items.locator('.dk2b-gh[data-desk2b-group="you"]')).toHaveCount(0);
-  await expect(items.locator('[data-desk2b-tab="you"] .n')).toHaveText("0");
+  // Nothing waiting: no WAITING ON YOU group.
+  await expect(items.locator('.dkn-gh[data-desk2b-group="you"]')).toHaveCount(0);
   if (process.env.SHOT_DIR) await page.locator(".dk-items").screenshot({ path: `${process.env.SHOT_DIR}/cue-away-calls.png` });
   // Folded: one line, the Undos gone with the list; it stays folded through a redraw and a reload.
   const order = await items.locator(".dk-it").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
@@ -130,6 +133,12 @@ for (const mode of ["light", "dark"]) {
     await expect(root).toHaveAttribute("data-theme", mode);
     const before = await bg();
     await expect(page.locator(".top .top-away")).toHaveCount(0);
+    // The Board's ground before Away (the Desk's page has a ground of its own, desk-c.css).
+    await page.locator('.switch-view [data-view="board"]').click();
+    await expect.poll(bg).not.toBe("");
+    const beforeBoard = await bg();
+    await page.locator('.switch-view [data-view="desk"]').click();
+    await page.locator(".dk-items .dk-aw-sw").waitFor();
     await cue.change((st, since) => {
       st.desk.projects.find((x) => x.project === "cue").away = { on: true, active: true, ended: "", since, until: since + 9 * 3600000, budget: 10, spent: 3.4, rules: {} };
     }, SINCE);
@@ -143,7 +152,7 @@ for (const mode of ["light", "dark"]) {
     // The window's own theme stays: same theme, same ground.
     await expect(root).toHaveAttribute("data-theme", mode);
     await expect(root).toHaveClass(/away-on/);
-    expect(await bg()).toBe(before);
+    expect(await bg()).toBe(beforeBoard);
     // The mark stands out from the head's ground and its words from the mark: lime capsule, dark words.
     // Read off the mark on the page at that moment: the head is drawn again as Cue's state comes in, and a handle taken
     // before that is a detached element whose computed colours are empty.
@@ -535,14 +544,13 @@ test("steps held while you were away list under Waiting on you in plain words wi
   await cue.open("desk");
   await openDesk(page);
   const items = page.locator(".dk-items");
-  const you = items.locator('.dk2b-gh[data-desk2b-group="you"]');
-  await expect(you).toHaveText("WAITS ON YOU 2");
+  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 2");
   await cue.change((st) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     d.held = [{ id: "held-1", sid: "site", who: "site", what: "delete files", command: "rm -rf build", at: 1 },
       { id: "held-2", sid: "site", who: "site", what: "push", command: "git push origin main", at: 2 }];
   });
-  await expect(you).toHaveText("WAITS ON YOU 4");
+  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 4");
   const rows = items.locator(".dk-held");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator(".dk-request-who")).toHaveText("site wants to delete files · held while you were away");

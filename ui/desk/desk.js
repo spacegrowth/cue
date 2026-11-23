@@ -154,8 +154,6 @@ function deskFinStep(i) {
   const what = { checking: "Checking before it lands", check_failed: "Check failed", building: "On main · building Cue", installing: "On main · installing Cue", starting: "Installed · Cue is restarting" }[f.step] || "Committing";
   return `${what}${since}`;
 }
-/** How many copies of one repository Desk `d`'s items work in at once (its How work lands, desk/lands.rs). */
-const deskCopies = (d) => d?.lands?.set?.at_once || 3;
 /** A dropped item's copy that had work in it (`k`: { id, title, path, branch, at, item }), kept on disk until you
  *  Remove it. A click on it opens its item's page (#608); what it changed, with Diff, sits by Pick up again (the item
  *  back on the Desk with this copy, for the lead to route) and Remove, which takes two clicks: it deletes the copy and
@@ -191,32 +189,6 @@ function deskLane(i) {
 const deskLandRank = (i) => ({ checking: 0, landing: 2 })[i.finish?.step] ?? 1;
 const deskLandOrder = (a, b) => deskLandRank(a) - deskLandRank(b) || (!a.finish?.first) - (!b.finish?.first)
   || (b.finish?.first || 0) - (a.finish?.first || 0) || (a.finish?.at || 0) - (b.finish?.at || 0);
-/** A lane row's step, short, after its holder (HTML): "Checking · 6m", "Waits on #301", "Next to land", "On main ·
- *  c71e0b4". `ahead`: the item before it in the landing line. The item page keeps the long line (deskFinStep). */
-function deskLaneStep(i, ahead) {
-  const f = i.finish || {};
-  const age = f.at ? ` · <span data-ago="${f.at}">${ago(f.at)}</span>` : "";
-  if (deskInstallWait(i)) return "waiting for install";
-  if (f.step === "checking") return `Checking${age}`;
-  if (f.step === "line") return f.wait ? `${deskHoldWait(f.wait) ? "" : "Waits: "}${esc(f.wait)}${age}` : ahead ? `Waits on #${esc(ahead.id)}${age}` : `Next to land${age}`;
-  if (f.step === "review") return `In review${age}`;
-  if (f.step === "landing") return `Not on main yet${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
-  if (f.step === "commit_wait") return `Waits to be committed${f.wait ? ` · ${esc(f.wait)}` : ""}${age}`;
-  const c = (f.commit || i.commit || "").slice(0, 7);
-  if (f.step === "queued") return `On main${c ? ` · ${esc(c)}` : ""}${f.now ? " · installs next" : f.wait ? ` · ${esc(f.wait)}` : ""}`;
-  return { building: "Building Cue", installing: "Installing Cue", starting: "Cue is restarting" }[f.step] || `Committing${age}`;
-}
-/** The Waiting to install lane's head, right side: when the next install is, counting down ("9:05pm · in 12m"), and
- *  Install now while anything waits for it. Cue installs on its own half an hour after the first of them, once no
- *  session is mid-turn (desk/hub/landing/finish.rs). The install is Cue's, one for every Desk. */
-function deskInstallHead(items) {
-  const waiting = items.find((i) => deskFinishing(i) && i.finish?.step === "queued");
-  if (!waiting) return "";
-  const due = state.desk?.install_at || 0, said = items.find((i) => deskFinishing(i) && i.finish?.step === "queued" && i.finish.now);
-  if (said) return `<span class="dk-next">next · ${esc(said.finish.wait || "starting")}</span>`;
-  const when = !due ? "at the next install" : due > now() ? `${clockAt(due)} · <span data-until="${due}">${untilIn(due)}</span>` : "once no session is mid-turn";
-  return `<span class="dk-next">${when}</span>${deskInstallNow(waiting, "dk-instnow")}`;
-}
 const deskItemRequest = (i) => i?.ask?.item_id && state.items.find((it) => it.id === i.ask.item_id && actionableRequest(it));
 const deskReadyToReview = (i) => i.state === "to_check" && !deskInstallWait(i);
 /** The managed finish flow released a Cue change with a user-facing check. Older review cards can still be optional. */
@@ -239,8 +211,6 @@ const deskWaitingItems = (d, taskApprovals) => deskItemsWithRequests(d, taskAppr
  *  SHORTCUT: kept in this window only, so another window or device still shows them as landed; move to a `seen`
  *  stamp on the item (desk/hub/core/desk.rs, a desk_seen command) when the Desk is shown anywhere else. */
 const deskSeen = (() => { try { return JSON.parse(localStorage.getItem("cue.deskSeen") || "{}"); } catch { return {}; } })();
-/** Just landed: back to check and not opened since (it stands out till you open it). */
-const deskLanded = (i) => i.state === "to_check" && !deskInstallWait(i) && deskSeen[i.id] !== i.updated;
 /** Item `id` opened: it no longer stands out (only the items still to check are kept). */
 function deskSeeItem(id) {
   const i = (state.desk?.projects || []).flatMap((d) => d.items).find((x) => x.id === id);
@@ -249,20 +219,6 @@ function deskSeeItem(id) {
   const open = new Set((state.desk?.projects || []).flatMap((d) => d.items).filter((x) => x.state === "to_check").map((x) => x.id));
   for (const k of Object.keys(deskSeen)) if (!open.has(k)) delete deskSeen[k];
   try { localStorage.setItem("cue.deskSeen", JSON.stringify(deskSeen)); } catch {}
-}
-/** A thing an item's holder made, as a link's words: a page, a file by its name. */
-function deskMadeLabel(m) {
-  if (/^https?:\/\//.test(m)) {
-    if (/claude\.ai\/(code\/)?artifact\//.test(m)) return "Open the page";
-    try { return new URL(m).host.replace(/^www\./, ""); } catch { return "Open the link"; }
-  }
-  return m.split("/").pop();
-}
-/** Links to what an item's holder made (its pages and files, from the turn that said DONE), and its changes when it
- *  has files: in its pane. */
-function deskMadeLinks(i) {
-  const links = (i.made || []).map((m) => `<button class="dk-made" data-desk-made="${esc(m)}">${esc(deskMadeLabel(m))} ↗</button>`);
-  return links.length ? `<div class="dk-mades">${links.join("")}</div>` : "";
 }
 /** A to-check or done item's Files changed, as Looks right commits them (or committed them): item id → { key, files }
  *  (files null while it's read). `key` is what it was read for, so a new check or commit reads it again; `page` the
@@ -275,7 +231,6 @@ const deskDiffKey = (i) => (i.kept ? `kept|${i.kept.path}|${i.kept.at}` : null) 
 /** Item `i`'s place in deskDiffs: a kept copy's apart from a live item of the same number, or the two would each read
  *  theirs over the other's on every draw, and never stop drawing. */
 const deskDiffId = (i) => (i.kept ? `kept:${i.id}` : i.id);
-const deskChecking = (i) => i.state === "to_check" || i.state === "done" || !!i.kept;
 /** Item `i`'s files as read (desk_item_diff), asked for when not read yet for what it is now: null while it's read.
  *  Read again each time a page is opened too: its files can change on disk with nothing else about it changing. */
 function deskDiffRead(i) {
@@ -287,17 +242,6 @@ function deskDiffRead(i) {
     invoke("desk_item_diff", { id: i.id }).then((r) => keep(diffParse(r?.diff || "").files), () => keep([]));
   }
   return deskDiffs.get(at).files;
-}
-function deskFilesChanged(i) {
-  // Still being worked on: what's changed in its files so far (#149), once it's on some.
-  const checking = deskChecking(i);
-  if (!checking && !(i.files || []).length) return "";
-  const files = deskDiffRead(i);
-  // While its first read is on the way: the same rows from the files it says it changed, counts to come. Without them
-  // the page drew "Files" as a line, then swapped it for these rows a moment later: it flickered as it turned to check.
-  // Being worked on with nothing changed in them yet (or not in git): the files it's on, as they are.
-  if (!files || (!checking && !files.length)) return deskFilesOn(i).map((f) => `<button class="dk-fc" ${deskOpenFileAttrs(i, f)}><span class="dk-fc-p">${esc(f.path)}</span></button>`).join("");
-  return files.map((f, n) => `<button class="dk-fc" data-desk-diff-file="${esc(i.id)}" data-n="${n}"><span class="dk-fc-p">${esc(f.path)}</span>${f.isNew ? `<span class="dk-fc-new">new</span>` : ""}<span class="dv-n dv-add">+${f.add}</span><span class="dv-n dv-del">−${f.del}</span></button>`).join("");
 }
 /** Item `id`'s file `n`, over the Desk (diff_overlay.js): its Files changed on the left, that file's diff on the right.
  *  You stay on the Desk; Esc closes it. */
@@ -313,13 +257,5 @@ const deskMoving = (i) => (i.state === "working" && !i.stopped) || deskFinishing
 /** Its holder, at work on it, has done nothing for a while (#285): past the time the hub gave (`act.stalls_at`, 0 while
  *  its helpers are at it). Waiting on you, stopped or waiting on something isn't stalled: those carry no `act`. */
 const deskStalled = (i) => !!i.act && i.act.stalls_at > 0 && now() >= i.act.stalls_at;
-/** "6 moving · 3 stalled" beside In progress (#285), so a count of items at work can't hide that none is moving. Only
- *  the items whose holder is at work on them count; "" when there are none. */
-function deskSplitHtml(items) {
-  const at = items.filter((i) => i.state === "working" && i.act);
-  if (!at.length) return "";
-  const stalled = at.filter(deskStalled).length;
-  return `<span class="dk-split"><span class="n">${at.length - stalled}</span> moving · <span class="n">${stalled}</span> stalled</span>`;
-}
 /** A title cut short for a button or a line ("Search stays centred"): its first few words. */
 const deskShort = (t) => { const w = String(t || "").split(/\s+/); return w.length > 3 ? w.slice(0, 3).join(" ") : t; };

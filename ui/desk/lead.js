@@ -145,8 +145,6 @@ function deskLeadSession(d) {
   const p = (state.parked || []).find((x) => x.session_id === l.sid);
   return p ? { session_id: l.sid, project: p.project, harness: p.harness || "claude", thread: p.thread || [] } : null;
 }
-/** Who wrote an item: "you", the lead (old rows say "dispatch"), or a session by name. */
-const deskFrom = (i, d) => (i.from === "you" ? "you" : !i.from || i.from === "dispatch" ? deskLeadName(d) || "the Desk" : i.from);
 
 /** The project's sessions to run its Desk or take an item, leads first: [{ sid, name, sub, lead }]. */
 function deskSessionsOf(project, d = deskOf(project)) {
@@ -206,7 +204,7 @@ function deskPicker(d) {
     body = `<div class="dk-whos">${warm.map(row).join("")}${fold}</div>${fresh(false)}`;
   }
   const keep = cur ? `<button class="dk-link dk-keep" data-desk-keep>Keep ${esc(deskLeadName(d))}</button>` : "";
-  return `<div class="dk-card ${deskB2Side() ? "dk2b-chat" : "dk-right"}"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A lead takes what you bring here, hands each item to a session, and tells you why.</p>${body}${keep}</div></div>`;
+  return `<div class="dk-card dk-right"><div class="dk-pick"><h2>Who runs this Desk?</h2><p>A lead takes what you bring here, hands each item to a session, and tells you why.</p>${body}${keep}</div></div>`;
 }
 /** The chat pane of a lead that has ended: one line, Resume it and Pick another. */
 const deskEndedLine = (d) => `<div class="dk-endlead"><p><b>${esc(deskLeadName(d))}</b> has ended. Items stay here.</p><div class="dk-acts"><button class="btn small primary" data-desk-lead="${esc(deskLead(d).sid)}" ${deskLeadBusy !== null ? "disabled" : ""}>${deskLeadBusy === deskLead(d).sid ? "Resuming…" : "Resume it"}</button><button class="btn small" data-desk-change>Pick another</button></div></div>`;

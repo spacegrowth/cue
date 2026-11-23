@@ -173,7 +173,7 @@ try {
 function saveDeskCols() { try { localStorage.setItem("cue.deskCols", JSON.stringify(deskColFr)); } catch {} }
 /** The Desk board's own style (its chat's share) and its grip, for deskView. */
 const deskColStyle = () => `--dk-fr:${deskColFr}`;
-const deskColGrip = () => colGrip({ name: "items", left: typeof deskCOn === "function" && deskCOn() ? "calc(var(--dkn-s) + var(--dkn-gap) + var(--dk-chat))" : "var(--dk-chat)" });
+const deskColGrip = () => colGrip({ name: "items", left: "calc(var(--dkn-s) + var(--dkn-gap) + var(--dk-chat))" });
 /** Drag the Desk's grip: the chat and Items trade width, between their mins; near the usual width it clicks onto it. */
 function deskColDrag(e, board) {
   // The new layout (desk/c.js): the sessions column at the left takes its share first.

@@ -20,7 +20,7 @@ test("a note kept for the item's busy holder reads as on the board: its head, th
   await cue.open("desk");
   await busyHost(cue, "held", "About #d5 (TITLE): make the button bigger");
   await openItem(page, "d5");
-  const held = page.locator(".dk-right .dk-ichat .cv-you.msg-held");
+  const held = page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"] .cv-you.msg-held');
   await expect(held).toHaveCount(1);
   await expect(held.locator(".dk-about")).toContainText("#d5");
   await expect(held.locator(".cv-you-text")).toContainText("make the button bigger");
@@ -35,7 +35,7 @@ test("Not done is your own bubble in the item's chat, in every state, never Cue'
   await cue.open("desk");
   await busyHost(cue, "held", backText("d5", "TITLE", "the colour is off"));
   await openItem(page, "d5");
-  const ichat = page.locator(".dk-right .dk-ichat");
+  const ichat = page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"]');
   const mine = ichat.locator(".cv-you.mg-you", { hasText: "the colour is off" });
   // Kept in Cue.
   await expect(mine).toHaveCount(1);
@@ -84,17 +84,17 @@ test("a timed send on the item's chat has the item's head, not Cue's About line"
     s.send_at = { text: `About #d5 (${st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").title}): check it again`, at_ms: Date.now() + 3600000 };
   });
   await openItem(page, "d5");
-  const row = page.locator('.dk-right .dk-ichat [data-key="send-at"]');
+  const row = page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"] [data-key="send-at"]');
   await expect(row.locator(".dk-about")).toContainText("#d5");
   await expect(row.locator(".cv-you-text")).toContainText("check it again");
   await expect(row).not.toContainText("About #d5");
 });
 
-test("a send from the Desk box that didn't go offers the board's Send again, in the lead's chat and on the item", async ({ page, cue }) => {
+test("a send from the Desk box that didn't go offers the board's Send again in the lead's chat", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.override("desk_send", () => { throw "offline"; });
-  // The Desk's own box, whichever look it has (the lead's and an item's both write to a "desk:" key).
+  // The Desk's own box (the lead's writes to a "desk:" key).
   const box = page.locator('.dk-right textarea[data-text^="desk:"]');
   await box.fill("Footer too");
   await box.press("Enter");
@@ -104,33 +104,6 @@ test("a send from the Desk box that didn't go offers the board's Send again, in 
   await bad.getByRole("button", { name: "Send again" }).click();
   await cue.called("desk_send", { project: "cue", text: "Footer too" });
   await expect(page.locator(".dk-chat .msg-failed")).toHaveCount(0);
-  // On an item's page: a note the hub didn't take, Send again sends it as it first went.
-  await page.locator('[data-desk-item="d5"]').first().click();
-  await cue.override("desk_item_act", () => { throw "offline"; });
-  await box.fill("Check the narrow window");
-  await box.press("Enter");
-  const note = page.locator(".dk-right .dk-ichat .cv-you.msg-failed", { hasText: "Check the narrow window" });
-  await expect(note.locator(".msg-line")).toContainText("Couldn't send · offline · Send again");
-  await expect(note.locator(".dk-about")).toContainText("#d5");
-  await expect(note).not.toContainText("Edit");
-  await cue.override("desk_item_act", () => ({}));
-  await note.getByRole("button", { name: "Send again" }).click();
-  await cue.called("desk_item_act", { id: "d5", text: "Check the narrow window" });
-});
-
-test("a note of yours the hub says didn't reach the holder has Send again, not the step's Retry", async ({ page, cue }) => {
-  await cue.open("desk");
-  await cue.change((st) => {
-    const d = st.desk.projects.find((x) => x.project === "cue"), it = d.items.find((i) => i.id === "d5");
-    Object.assign(it, { state: "working" });
-    d.decisions.unshift({ id: "lost1", project: "cue", item_id: "d5", by: "You", sid: "", text: "Check the narrow window too", why: `to ${it.holder.name}`, at: Date.now() / 1000, undo: "none", call: false, delivery: { session_id: it.holder.sid, text: "About #d5 (x): Check the narrow window too", at_ms: Date.now(), went: "failed: Cue stopped before it went" } });
-  });
-  await openItem(page, "d5");
-  const fail = page.locator(".dk-right .dk-ichat .cv-you.msg-failed");
-  await expect(fail.locator(".msg-line")).toContainText("Couldn't send · Cue stopped before it went · Send again");
-  await expect(fail.locator("[data-desk-retry]")).toHaveCount(0);
-  await fail.getByRole("button", { name: "Send again" }).click();
-  await cue.called("desk_item_act", { id: "d5", act: "retry", text: "lost1" });
 });
 
 test("what you sent from the Desk box sits among the chat's own rows, once, drawn as the board's outbox", async ({ page, cue }) => {

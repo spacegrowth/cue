@@ -199,8 +199,7 @@ function landsAskBefore() {
     <div class="ld-hint ld-sub">The lead and its sessions stop and ask you first.</div>${askBeforeRows(lands.ab, ["main"])}</div>`;
 }
 function landsHtml() {
-  // Opened from the new Desk page's Desk settings: its drawer shows them (desk/v2.js).
-  if (!lands || lands.inDrawer) return "";
+  if (!lands) return "";
   const d = deskOf(lands.desk), l = d?.lands;
   if (!l) { lands = null; return ""; }
   // Named as the Desk is: its settings are its own (#460).
@@ -209,7 +208,7 @@ function landsHtml() {
   // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, groups under it; a click
   // outside or Esc closes it (#447).
   return `<div class="scrim ld-scrim" data-ld="scrim"><div class="sheet ld-dialog" role="dialog" aria-labelledby="ld-title">
-    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span>${typeof deskCToggle === "function" ? deskCToggle() : ""}${typeof deskV2Toggle === "function" ? deskV2Toggle() : ""}<kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
+    <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span><kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
     <div class="sheet-body">
     <div class="ld-hint ld-intro">Kept in Cue, not in the project. Changes apply when you press Save; you can also tell the lead, and it asks you first.</div>
     ${landsMach()}

@@ -106,7 +106,7 @@ tests/ui/specs/desk.mjs              window desk-*
 ui/mini.js                           window mini screens
 ui/mini.html                         window mini screens
 ui/styles/mini.css                   window mini screens
-ui/file_view.js                      window file-view desk-open-file
+ui/file_view.js                      window file-view
 ui/page_look.js                      window page-look text-size screens
 ui/diff.js                           window diff-colours screens
 ui/diff_overlay.js                   window diff-colours screens

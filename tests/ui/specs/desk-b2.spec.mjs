@@ -1,9 +1,8 @@
-// The Desk page as option B2 (#666): the lead's chat card and the item list side by side, the chat as wide as the
-// Board's (878px at 1800×1095); Now and Waits on you in one strip over the chat (the Working pill unfolds the sessions
-// at work, a chip per item that waits, Check); the list's tabs by group and its long groups showing their first 3; an
-// item opening on the right in the list's place with ‹ Items N back, the chat staying the lead's; Show panel; dark.
+// The Desk's lead's chat card and what opens in its place (B2 #666, kept on the one layout #738/#748): Now and Waits
+// on you in one strip over the chat (the Working pill unfolds the sessions at work, a chip per item that waits, Check);
+// an item opening in the chat's place with back to the lead's chat, Items staying beside it; the lead's panel; dark.
 import { test, expect, openDesk, deskShowStrip } from "./cue.mjs";
-import { listOrder } from "./desk.mjs";
+import { listOrder, statusOf, openDone } from "./desk.mjs";
 
 const chat = (page) => page.locator(".dk-card.dk2b-chat");
 const strip = (page) => chat(page).locator(".dk2b-strip");
@@ -14,12 +13,11 @@ const noWaits = (cue) => cue.change((st) => {
   st.items = st.items.filter((r) => !(r.kind === "question" || r.kind === "permission"));
 });
 
-test("the lead's chat card is as wide as the Board's at 1800×1095, the list beside it", async ({ page, cue }) => {
+test("the lead's chat card in the middle, the list beside it; no Desk-switching row on the page", async ({ page, cue }) => {
   await page.setViewportSize({ width: 1800, height: 1095 });
   await cue.open("desk");
   await openDesk(page);
-  const [c, l] = await Promise.all([chat(page).boundingBox(), page.locator(".dk-card.dk-items").boundingBox()]);
-  expect(Math.round(c.width)).toBe(878);
+  const [c, l] = await Promise.all([chat(page).boundingBox(), page.locator(".dk-c > .dkn-items").boundingBox()]);
   expect(l.x).toBeGreaterThan(c.x + c.width);
   // No Desk-switching row or pills on the page itself.
   await expect(page.locator(".dk-board .dk-strip, .dk-board .dk2-desks")).toHaveCount(0);
@@ -47,7 +45,7 @@ test("the Working pill unfolds the sessions at work and folds them again", async
   await expect(strip(page).locator("[data-desk2b-work]")).toHaveAttribute("aria-expanded", "false");
 });
 
-test("the strip says how many wait on you, a chip each, and Check opens the first on the left in the chat's place", async ({ page, cue }) => {
+test("the strip says how many wait on you, a chip each, and Check opens the first in the chat's place", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await deskShowStrip(page);
@@ -62,108 +60,53 @@ test("the strip says how many wait on you, a chip each, and Check opens the firs
   const last = await chips.last().getAttribute("data-desk-chk-item");
   await check.click();
   const open = page.locator(".dk-card.dk-right.dk2b-open");
-  await expect(open.locator(`[data-desk-page="item"]`)).toHaveCount(1);
-  await expect(open.locator(".dk-ph")).toContainText(`#${id}`);
-  // The list stays beside it, the lead's chat gone till ‹ Items N.
-  await expect(page.locator(".dk-card.dk-items")).toHaveCount(1);
+  await expect(open.locator("[data-desk-page] .dkn-ib")).toHaveCount(1);
+  // The list stays beside it, its row lit, the lead's chat gone till back.
+  await expect(page.locator(".dk-c > .dkn-items")).toHaveCount(1);
   await expect(chat(page)).toHaveCount(0);
-  await expect(page.locator(`.dk-items .dk2b-row.on[data-desk-item="${id}"]`)).toHaveCount(1);
+  await expect(page.locator(`.dkn-items .dkn-row.on[data-desk-item="${id}"]`)).toHaveCount(1);
   // A chip opens its own item (back to the chat first, where the strip is).
-  await open.locator(".dk2b-items").click();
+  await open.locator(".dk-back").first().click();
   await strip(page).locator(`.dk2b-chip[data-desk-chk-item="${last}"]`).click();
-  await expect(open.locator(".dk-ph")).toContainText(`#${last}`);
+  await expect(page.locator(`.dkn-items .dkn-row.on[data-desk-item="${last}"]`)).toHaveCount(1);
+  await expect(open.locator("[data-desk-page] .dkn-ib")).toHaveCount(1);
 });
 
-test("a row is four columns: #id, its title and where it stands, six steps with n/6, Check or its tests", async ({ page, cue }) => {
+test("an item queued for a session says so in Up next", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => {
     const p = st.desk.projects.find((x) => x.project === "cue"), d6 = p.items.find((i) => i.id === "d6");
     p.items.push({ ...d6, id: "q1", title: "Queued for host", state: "queued", holder: null, next_for: { kind: "session", sid: "host", name: "host-lead" } });
   });
   await openDesk(page);
-  for (const b of await page.locator("[data-desk2b-all]").all()) await b.click();
-  const row = (id) => page.locator(`.dk-items .dk2b-row[data-desk-item="${id}"]`);
-  // No kind icons, STUCK badges, Park buttons or You'll see lines left on a row.
-  await expect(page.locator(".dk-items .dk2b-row :is(.dk-kind, .dk-stuck, [data-desk-park], .dk-see)")).toHaveCount(0);
-  await expect(row("d2").locator(".dk2b-n")).toHaveText("#d2");
-  await expect(row("d2").locator(".dk2b-ts")).toHaveText(/^Ready to check · since \d+:\d\d$/);
-  await expect(row("d2").locator(".dk2b-st")).toContainText("5/6 · Ready to check");
-  await expect(row("d2").locator(".dk2b-chk[data-desk-chk-item]")).toHaveText("Check");
-  await expect(row("d5").locator(".dk2b-trk i")).toHaveCount(6);
-  await expect(row("d5").locator(".dk2b-st")).toContainText(/\d\/6 · /);
-  await expect(row("d5").locator(".dk2b-ok")).toHaveText(/^(not run yet|running|all pass|still fail)$/);
-  await expect(row("q1").locator(".dk2b-ts")).toHaveText("Next for host-lead");
-  await expect(row("q1").locator(".dk2b-st")).toContainText("not started");
-  // The groups in order, Done today folded to a line.
-  await expect(page.locator(".dk-items .dk2b-gh")).toHaveText([/^WAITS ON YOU \d+$/, /^WORKING \d+$/, /^UP NEXT \d+$/]);
-  const fold = page.locator('.dk-items [data-desk2b-fold="done"]');
-  await expect(fold).toHaveAttribute("aria-expanded", "false");
-  await fold.click();
-  await expect(page.locator('.dk-items [data-desk2b-fold="done"]')).toHaveAttribute("aria-expanded", "true");
-});
-
-test("the list's tabs show only their groups; a long group shows 3 and Show all N", async ({ page, cue }) => {
-  await cue.open("desk");
-  await cue.change((st) => {
-    const d = st.desk.projects.find((x) => x.project === "cue");
-    for (const n of [1, 2, 3, 4]) d.items.push({ id: `q${n}`, title: `Queued thing ${n}`, state: "queued", kind: "feature", created_ms: st.now_ms - n * 60000 });
-  });
-  await openDesk(page);
-  const tabs = page.locator(".dk-items .dk2b-tabs .dk2b-tab");
-  await expect(tabs.first()).toHaveText(/^All \d+$/);
-  await expect(tabs.first()).toHaveClass(/\bon\b/);
-  const list = page.locator(".dk-items .dk-scroll");
-  // The queue (d4, d6 and the four added) shows its first 3 and Show all 6.
-  const all = list.locator('[data-desk2b-all="queued"]');
-  await expect(all).toHaveText("Show all 6");
-  const rowsIn = () => list.locator(".dk-it:visible").evaluateAll((els) => els.map((e) => e.dataset.deskItem).filter((x) => /^(d4|d6|q\d)$/.test(x)));
-  expect((await rowsIn()).length).toBe(3);
-  await all.click();
-  await expect(list.locator('[data-desk2b-all="queued"]')).toHaveCount(0);
-  expect((await rowsIn()).length).toBe(6);
-  // Up next: only the queue, whole; Waits on you: no queue.
-  await tabs.filter({ hasText: "Up next" }).click();
-  await expect(tabs.filter({ hasText: "Up next" })).toHaveClass(/\bon\b/);
-  await expect(list.locator('.dk-it[data-desk-item="q4"]')).toBeVisible();
-  await expect(list.locator('.dk-it[data-desk-item="d3"]')).toHaveCount(0);
-  await tabs.filter({ hasText: "Waits on you" }).click();
-  await expect(list.locator('.dk-it[data-desk-item="q1"]')).toHaveCount(0);
-  await expect(list.locator('.dk-it[data-desk-item="d1"]')).toBeVisible();
-  await tabs.filter({ hasText: /^All/ }).click();
-  await expect(list.locator('.dk-it[data-desk-item="d3"]')).toBeVisible();
+  await expect(page.locator('[data-dkn-drawer="next"] .dkn-nx[data-desk-item="q1"]')).toHaveCount(1);
+  await expect(statusOf(page, "q1")).toHaveText("Next for host-lead");
 });
 
 test("the current step's dots move only while a session works on it right now (#729)", async ({ page, cue }) => {
   await cue.open("desk");
-  await cue.change((st) => {
-    const p = st.desk.projects.find((x) => x.project === "cue"), d6 = p.items.find((i) => i.id === "d6");
-    p.items.push({ ...d6, id: "q1", title: "Queued for host", state: "queued", holder: null, steps: [Date.now() - 60000], next_for: { kind: "session", sid: "host", name: "host-lead" } });
-  });
   await openDesk(page);
   // The tests' page holds every animation still (load.js ?still=1): let this one move.
   await page.evaluate(() => [...document.head.querySelectorAll("style")].find((s) => s.textContent.includes("animation:none!important"))?.remove());
-  for (const b of await page.locator("[data-desk2b-all]").all()) await b.click();
-  const cur = (id) => page.locator(`.dk-items .dk2b-row[data-desk-item="${id}"] .dk2b-trk i.cur`);
+  const cur = (id) => page.locator(`.dkn-items .dkn-row[data-desk-item="${id}"] .dkn-kp.cur`);
   const anim = (loc) => loc.evaluate((el) => getComputedStyle(el).animationName);
-  // At work: its step dotted and drifting.
+  // At work: its step striped and marching.
   await expect(cur("d5")).toHaveClass(/\blive\b/);
-  expect(await anim(cur("d5"))).toBe("dk2b-drift");
-  // Ready to check, and waiting its turn: dotted, still.
-  for (const id of ["d2", "q1"]) {
-    await expect(cur(id)).toHaveCount(1);
-    await expect(cur(id)).not.toHaveClass(/\blive\b/);
-    expect(await anim(cur(id))).toBe("none");
-  }
-  // Its page's bar the same; a redraw keeps it in time with the clock rather than starting it over.
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
-  const step = page.locator(".dk2b-open .dk2b-step.cur.live i");
+  expect(await anim(cur("d5").locator("i"))).toBe("dkn-march");
+  // Ready to check: striped, still.
+  await expect(cur("d2")).toHaveCount(1);
+  await expect(cur("d2")).not.toHaveClass(/\blive\b/);
+  expect(await anim(cur("d2").locator("i"))).toBe("none");
+  // Its bar the same; a redraw keeps it in time with the clock rather than starting it over.
+  await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
+  const step = page.locator(".dk2b-open .dkn-ib .dkn-kp.cur.live i");
   await expect(step).toHaveCount(1);
-  expect(await anim(step)).toBe("dk2b-drift");
+  expect(await anim(step)).toBe("dkn-march");
   await cue.change(() => {});
   await expect.poll(() => step.evaluate((el) => el.getAnimations()[0]?.startTime)).toBe(0);
 });
 
-test("a working session opens its item on the left with ‹ Items N back to the lead's chat", async ({ page, cue }) => {
+test("a working session opens its item in the chat's place, with back to the lead's chat", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await noWaits(cue);
@@ -172,30 +115,22 @@ test("a working session opens its item on the left with ‹ Items N back to the 
   await strip(page).locator("[data-desk2b-work]").click();
   await strip(page).locator(".dk2b-wrow", { hasText: "host-lead" }).click();
   const open = page.locator(".dk-card.dk-right.dk2b-open");
-  await expect(open.locator(".dk-ph")).toContainText("#d5");
-  await expect(page.locator('.dk-items .dk2b-row.on[data-desk-item="d5"]')).toHaveCount(1);
-  // Its progress, who has it and Changes (Open its chat is the panel's Open <name> while the panel shows, #727); under
-  // them its chat in place (its last messages of before).
-  await expect(open.locator(".dk2b-step")).toHaveCount(6);
-  await expect(open.locator(".dk2b-sec")).toHaveText(["PROGRESS", "ITS CHAT"]);
-  await expect(open.locator(".dk-ichat")).toHaveCount(1);
-  await expect(open.locator(".dk2b-ik")).toHaveText(["Who", "Doing now", "Tests", "Next"]);
-  await expect(open.locator(".dk2b-iacts")).not.toContainText("Open its chat");
-  await expect(open.locator(".dk2b-ipanel .dk-sfoot")).toContainText("Open host-lead");
-  await expect(open.locator(".dk2b-iacts")).toContainText("Changes");
-  const back = open.locator(".dk2b-items");
-  await expect(back).toHaveText(/^‹ Items \d+$/);
-  await back.click();
+  await expect(page.locator('.dkn-items .dkn-row.on[data-desk-item="d5"]')).toHaveCount(1);
+  // Its chat with its bar of steps over it.
+  await expect(open.locator(".dkn-ib .dkn-kp")).toHaveCount(6);
+  await expect(open.locator('.dk-chat[data-desk-chat="host"]')).toHaveCount(1);
+  await open.locator(".dkn-sback .dk-back").click();
   await expect(page.locator(".dk2b-open")).toHaveCount(0);
   await expect(chat(page).locator(".dk-ph")).toHaveText(lead);
-  await expect(page.locator(".dk-card.dk-items")).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dkn-items")).toHaveCount(1);
 });
 
 test("opening the lead's chat (⌘K) with an item open goes back to the lead's chat, never a second copy", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('[data-desk-item="d2"]').click();
-  await expect(page.locator(".dk-card.dk2b-open .dk-ph")).toContainText("#d2");
+  await page.locator('.dkn-items [data-desk-item="d2"] .dkn-tt').click();
+  await expect(page.locator('.dkn-items .dkn-row.on[data-desk-item="d2"]')).toHaveCount(1);
+  await expect(page.locator(".dk-card.dk2b-open")).toHaveCount(1);
   await page.keyboard.press("Meta+k");
   await page.locator('[data-text="find-live"]').pressSequentially("web-lead");
   await page.locator('.lv-pop .lv-row[data-sid="lead"]').click();
@@ -203,7 +138,7 @@ test("opening the lead's chat (⌘K) with an item open goes back to the lead's c
   await expect(page.locator(".dk2b-open")).toHaveCount(0);
   await expect(page.locator(".dk-chat[data-desk-chat]")).toHaveCount(1);
   await expect(chat(page).locator(".dk-chat[data-desk-chat]")).toHaveCount(1);
-  await expect(page.locator(".dk-card.dk-items")).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dkn-items")).toHaveCount(1);
 });
 
 test("the lead's panel shows as the page opens; Hide panel puts the strip in its place, Show panel brings it back", async ({ page, cue }) => {
@@ -237,8 +172,8 @@ test("dark theme draws the page in its own colors", async ({ page, cue }) => {
   const css = (sel, prop) => page.evaluate(([sel, prop]) => getComputedStyle(document.querySelector(sel))[prop], [sel, prop]);
   const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number); return (r + g + b) / 3; };
   expect(lum(await css(".dk-card.dk2b-chat", "backgroundColor"))).toBeLessThan(90);
-  expect(lum(await css(".dk-card.dk-items", "backgroundColor"))).toBeLessThan(90);
-  expect(lum(await css(".dk-items .dk2b-tab:not(.on)", "color"))).toBeGreaterThan(150);
+  expect(lum(await css(".dkn-items .dk-card", "backgroundColor"))).toBeLessThan(90);
+  expect(lum(await css(".dkn-items .dkn-row .dkn-tt", "color"))).toBeGreaterThan(150);
 });
 
 test("opening an item and going back leaves every row where it was", async ({ page, cue }) => {
@@ -246,14 +181,15 @@ test("opening an item and going back leaves every row where it was", async ({ pa
   await openDesk(page);
   const before = await listOrder(page);
   for (const id of ["d4", "d2", "d3"]) {
-    const row = page.locator(`.dk-items [data-desk-item="${id}"]`);
+    const row = page.locator(`.dkn-items [data-desk-item="${id}"]`);
     await row.scrollIntoViewIfNeeded();
     const top = (await row.boundingBox()).y;
     await row.click();
-    await expect(page.locator(".dk-right.dk2b-open .dk-ph")).toContainText(`#${id}`);
+    await expect(page.locator(`.dkn-items [data-desk-item="${id}"].on`)).toHaveCount(1);
+    await expect(page.locator(".dk-right.dk2b-open [data-desk-page]")).toHaveCount(1);
     expect(await listOrder(page)).toEqual(before);
-    expect((await page.locator(`.dk-items [data-desk-item="${id}"]`).boundingBox()).y).toBe(top);
-    await page.locator(".dk-right .dk2b-items").click();
+    expect((await page.locator(`.dkn-items [data-desk-item="${id}"]`).boundingBox()).y).toBe(top);
+    await page.locator(".dk-right .dkn-sback .dk-back").click();
     await expect(page.locator(".dk2b-open")).toHaveCount(0);
     expect(await listOrder(page)).toEqual(before);
   }
@@ -303,7 +239,7 @@ test("a session's chat opens in the lead's chat's place, the list beside it", as
   await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
   await expect(page.locator('.dk-right.dk2b-open .dk-chat[data-desk-chat="host"]')).toHaveCount(1);
   await expect(chat(page)).toHaveCount(0);
-  await expect(page.locator(".dk-card.dk-items")).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dkn-items")).toHaveCount(1);
 });
 
 test("Esc on an open item goes back to the lead's chat; Esc twice in the lead's box stops the lead", async ({ page, cue }) => {
@@ -314,9 +250,11 @@ test("Esc on an open item goes back to the lead's chat; Esc twice in the lead's 
     st.sessions.find((s) => s.session_id === "host").state = "waiting";
   });
   await openDesk(page);
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
-  await expect(page.locator(".dk-card.dk2b-open .dk-ph")).toContainText("#d5");
-  await page.locator(".dk-card.dk2b-open .dk2b-ipb").click({ position: { x: 5, y: 5 } });
+  await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
+  await expect(page.locator('.dkn-items .dkn-row.on[data-desk-item="d5"]')).toHaveCount(1);
+  await expect(page.locator(".dk-card.dk2b-open")).toHaveCount(1);
+  // Out of its box, so Esc is the Desk's.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press("Escape");
   await expect(page.locator(".dk2b-open")).toHaveCount(0);
   await chat(page).locator("textarea[data-text]").focus();
@@ -332,8 +270,9 @@ test("a reply's This turn in … on the lead brings that turn into view in the l
   await openDesk(page);
   const lead = chat(page).locator(".dk-chat");
   const first = await lead.evaluate((c) => Number(c.querySelector(".cv-agent[data-at]").dataset.at));
-  await page.locator('.dk-items [data-desk-item="d2"]').click();
-  await expect(page.locator(".dk-card.dk2b-open .dk-ph")).toContainText("#d2");
+  await page.locator('.dkn-items [data-desk-item="d2"] .dkn-tt').click();
+  await expect(page.locator('.dkn-items .dkn-row.on[data-desk-item="d2"]')).toHaveCount(1);
+  await expect(page.locator(".dk-card.dk2b-open")).toHaveCount(1);
   await page.evaluate((at) => { deskTurnAt = at; deskChatEnd = false; deskShow({ kind: "chat", sid: "lead", from: deskChatFrom("lead") }); }, first);
   await expect.poll(() => page.evaluate(() => deskTurnAt)).toBe(0);
   await expect(page.locator(".dk2b-open")).toHaveCount(0);
@@ -373,7 +312,7 @@ test("a part kept through a draw is drawn afresh when a box or tick in it went i
   expect(out).toEqual({ a: "drawn", b: false, keptSame: true });
 });
 
-test("the tabs: an empty one says so; Done today counts only today's; Waits on you counts what the strip says", async ({ page, cue }) => {
+test("Done today counts only today's, and says so when there are none; Waiting on you counts what the strip says", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
@@ -381,51 +320,18 @@ test("the tabs: an empty one says so; Done today counts only today's; Waits on y
   });
   await openDesk(page);
   await deskShowStrip(page);
-  const tabs = page.locator(".dk-items .dk2b-tabs .dk2b-tab"), list = page.locator(".dk-items .dk-scroll");
+  await openDone(page);
+  const done = page.locator('.dkn-items [data-dkn-drawer="done"]');
   const waits = Number((await strip(page).locator(".dk2b-wn").textContent()).match(/^\d+/)[0]);
-  await expect(tabs.filter({ hasText: "Waits on you" }).locator(".n")).toHaveText(String(waits));
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText(String(waits));
   const today = await page.evaluate(() => deskDoneList(deskOf("cue")).filter(deskDoneToday).map((i) => i.id));
   expect(today).not.toContain("y1");
   if (today.length) {
-    await expect(tabs.filter({ hasText: "Done today" }).locator(".n")).toHaveText(String(today.length));
-    await tabs.filter({ hasText: "Done today" }).click();
-    await expect(list.locator('.dk-it[data-desk-item="y1"]')).toHaveCount(0);
+    await expect(done.locator(".dkn-dh .dkn-dn")).toHaveText(String(today.length));
+    await expect(done.locator('.dk-it[data-desk-item="y1"]')).toHaveCount(0);
   }
-  // None done today: the tab, picked, says so in a line.
+  // None done today: it says so in a line.
   await cue.change((st) => { const d = st.desk.projects.find((x) => x.project === "cue"); for (const i of d.items) if (i.state === "done") i.done_at = i.updated = new Date(st.now_ms - 2 * 86400000).toISOString(); });
-  await page.evaluate(() => { deskB2Tab = "done"; renderMain(); });
-  await expect(list.locator(".dk-empty")).toHaveText("Nothing done today.");
-  await expect(list.locator(".dk-it")).toHaveCount(0);
-});
-
-test("on a laptop window an item's panel sits beside its chat, the chat keeping its room (#727)", async ({ page, cue }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await cue.open("desk");
-  await openDesk(page);
-  await page.locator('[data-desk-item="d5"]').click();
-  const pg = page.locator(".dk-card.dk2b-open .dk2b-ipage");
-  await expect(pg).not.toHaveClass(/\bhid\b/);
-  // (Polled: a redraw can catch a box between draws.)
-  let pane;
-  await expect(async () => {
-    const [p, panel, foot, head, list] = await Promise.all([...[".dk2b-ipb", ".dk2b-ipanel", ".dk-box", ".dk2b-iph"].map((s) => pg.locator(`:scope > ${s}`).boundingBox()), page.locator(".dk-card.dk-items").boundingBox()]);
-    // The panel at the right of the chat and its box, from under the head to the card's foot.
-    expect(panel.x).toBeGreaterThanOrEqual(p.x + p.width - 1);
-    expect(Math.abs(panel.y - p.y)).toBeLessThan(2);
-    expect(panel.y + panel.height).toBeGreaterThanOrEqual(foot.y + foot.height - 1);
-    expect(foot.y).toBeGreaterThanOrEqual(p.y + p.height - 1);
-    expect(p.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
-    // The chat keeps room to read, and the list stays beside it.
-    expect(p.width).toBeGreaterThanOrEqual(420);
-    expect(list.x).toBeGreaterThan(panel.x + panel.width);
-    pane = p;
-  }).toPass();
-  // Its summary at the top of the page, and the panel's parts once each.
-  await expect(pg.locator(".dk2b-sec").first()).toHaveText("PROGRESS");
-  await expect(pg.locator(".dk2b-ipanel")).toHaveCount(1);
-  // Hide panel: the chat takes the card's whole width again.
-  await pg.locator(".dk-ptog").click();
-  await expect(pg).toHaveClass(/\bhid\b/);
-  const wide = await pg.locator(":scope > .dk2b-ipb").boundingBox();
-  expect(wide.width).toBeGreaterThan(pane.width);
+  await expect(done.locator(".dkn-dnone")).toHaveText("Nothing done today.");
+  await expect(done.locator(".dk-it")).toHaveCount(0);
 });

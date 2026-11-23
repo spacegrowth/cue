@@ -27,7 +27,7 @@ for (const kind of ["task", "bug", "feature"]) {
     const word = kind[0].toUpperCase() + kind.slice(1);
     // The lead's line about it, and the hand-off card in the session's chat: the Desk's own (#688), in Activity.
     await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
-    await expect(page.locator('.dk-right [data-desk-chat="host"] .dk-cnt')).toHaveCount(1);
+    await expect(page.locator('.dk-right [data-desk-chat="host"]')).toBeVisible();
     await page.evaluate(() => deskOpenActivity());
     // "[icon] Task #d3 is done".
     const say = page.locator(".dk-moves .own-lines button.mg-id").first();

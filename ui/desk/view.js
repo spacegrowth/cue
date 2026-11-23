@@ -19,7 +19,7 @@ function deskBox(d, o = deskOpen) {
   const lead = deskLeadName(d);
   // No lead, or one that has ended: no box to it (a holder's own box stays).
   if ((!deskLead(d) || deskLeadEnded(d)) && (!o || o.kind === "item" || o.kind === "addon")) return "";
-  let to = { project: d.project }, ph = `Tell ${lead}: a bug, a feature, or a question…`, pre = "";
+  let to = { project: d.project }, ph = `Tell ${lead}: a bug, a feature, or a question…`, pre = "", sugItem = "";
   if (o?.kind === "item") {
     to = { project: d.project, item: o.id };
     // Who gets it, as deskSendBox sends it: ready to check, it goes back to its holder; begun by a live session, straight
@@ -35,11 +35,15 @@ function deskBox(d, o = deskOpen) {
     else if (it?.kept) { to = { project: d.project, kept: o.id }; ({ pre, ph } = deskToLine(lead, null)); }
     else if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
       to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
+      // Its chat is its holder's (#744), and this goes to it: the suggested reply is that session's.
+      sugItem = hs;
       pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
       ph = "Write to it here…";
     }
     else {
       ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
+      // Ready to check, it goes back to its holder: that session's suggested reply.
+      if (it?.state === "to_check" && hs && sessionOf(hs)) sugItem = hs;
       // Options to pick from: the chat is for what you think of them; a pick is its Pick button (#445, #543).
       if (deskPickOptions(it || {}).length) ph = "Comments… (Pick an option above to go ahead)";
     }
@@ -67,12 +71,10 @@ function deskBox(d, o = deskOpen) {
   }
   // Pictures pasted, dropped or added, and the mic, as in a session's chat box (app/inputs.js, chat/compose.js); its
   // quick phrases over the text, and Claude's suggested reply in the empty box (Tab types it in) from the session it
-  // talks to: the lead, or the open holder (not about an item, or a crew member: those words are Cue's, not its).
-  const sugSid = to.item ? `item:${d.project}|${to.item}` : to.mate ? "" : to.sid || deskLead(d)?.sid || "";
+  // talks to: the lead, the open holder, or the holder of the open item (not a crew member: those words are Cue's).
+  const sugSid = to.mate ? "" : to.item ? sugItem : to.sid || deskLead(d)?.sid || "";
   // The new layout: the same box as the lead's (a session's chat box), who it goes to at its left (deskCBox).
-  if (deskCOn()) return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, !to.mate);
-  // An item's page shows its recipient and item above the input; quick phrases use its normal send flow.
-  return boxHtml({ key, top: quickRow(`data-quick="${esc(key)}"`) + deskPreHtml(pre), wrap: true, sug: suggestionFor(sugSid), sugSid, placeholder: ph, send: { attrs: `data-desk-send="${esc(key)}"` } });
+  return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, !to.mate);
 }
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
@@ -94,8 +96,8 @@ function deskItemFoot(i, d) {
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
   const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
   const key = deskBoxKey(to), line = deskToLine(i.holder.name, i);
-  if (deskCOn()) return deskCBox(key, line.pre, line.ph);
-  return boxHtml({ key, top: deskPreHtml(line.pre), placeholder: line.ph, send: { attrs: `data-desk-send="${esc(key)}"` } });
+  // No quick phrases to a crew member, as on its own box.
+  return deskCBox(key, line.pre, line.ph, "", "", !to.mate);
 }
 function deskRight(project, taskApprovals) {
   return deskOpenCard(project, taskApprovals) || deskRightChat(deskOf(project), taskApprovals);
@@ -107,7 +109,7 @@ function deskOpenCard(project, taskApprovals) {
   const d = deskOf(project);
   const o = deskOpen;
   // B2's All N sessions: the Desk's sessions, as the old left column listed them (desk/sessions.js).
-  if (o?.kind === "sessions") return deskB2On() ? deskSessions(project) : ((deskOpen = null), null);
+  if (o?.kind === "sessions") return deskSessions(project);
   let body;
   // Each page takes its foot, the box under its own column (#200); the add-on's pane has it under the whole card.
   const item = o?.kind === "item" ? deskItemsWithRequests(d, taskApprovals).find((i) => deskIdIs(i, o.id)) || deskItem(project, o.id) : null;
@@ -115,14 +117,14 @@ function deskOpenCard(project, taskApprovals) {
   let tail = "";
   if (o?.kind === "item") {
     const i = item;
-    // The new layout (desk/c.js): an item with a session is that session's chat, its bar on top (#744).
-    if (i) { delete o.fresh; body = (deskCOn() && deskCItemChat(i, d, foot())) || (deskB2On() ? deskB2ItemFull(i, d, foot()) : deskItemPane(i, d, foot())); }
+    // An item is its session's chat, its bar on top (#744); one no session has yet, its bar over what it's about (#748).
+    if (i) { delete o.fresh; body = deskCItemChat(i, d, foot()) || deskCItemBare(i, d, foot()); }
     // Just added: it opens once Cue's state has it (the chat shows till then); not there in a few seconds, it won't.
     else if (o.fresh && now() - o.fresh < 5000) return null;
   }
   else if (o?.kind === "holder") body = deskHolderPane(o.sid, d, foot());
   // A reply open in Read: read-only, as in a session's chat, so no box under it (Reply brings it back).
-  else if (o?.kind === "chat") { const rd = deskReader(sessionOf(o.sid)); body = rd || (deskCOn() && deskCSessChat(o.sid, o.from, d, foot())) || deskSessChat(o.sid, o.from, d, foot()); }
+  else if (o?.kind === "chat") { const rd = deskReader(sessionOf(o.sid)); body = rd || deskCSessChat(o.sid, o.from, d, foot()) || deskSessChat(o.sid, o.from, d, foot()); }
   else if (o?.kind === "crew") body = deskCrewPane(o.lead, o.agent, d, foot());
   else if (o?.kind === "addon") {
     const h = deskGroups(project).extra.find((x) => (x.key || x.name) === o.key);
@@ -132,50 +134,8 @@ function deskOpenCard(project, taskApprovals) {
     if (body) tail = foot();
   }
   if (o && !body) deskOpen = null;
-  if (deskOpen) return `<div class="dk-card dk-right${deskB2On() ? " dk2b-open" : ""}">${body}${tail}</div>`;
+  if (deskOpen) return `<div class="dk-card dk-right dk2b-open">${body}${tail}</div>`;
   return null;
-}
-/** Item `i`'s page on B2 (#666), on the left in the lead's chat's place: ‹ Items N, its number and title; its summary
- *  (progress in six steps; Who, Doing now, Tests, Next; Open its chat and Changes); then what the page does: its panel
- *  (where it stands, Looks right, Close, Send back, Reopen, Starts on, what to try) and its chat in place (its holder's,
- *  else its Thread; your words, notes that wait, the live line), the build log and landing line under it, and its
- *  question's card or the box at the foot. */
-function deskB2ItemFull(i, d, foot) {
-  const at = deskB2At(i);
-  const bar = DESK_B2_STEPS.map((n, k) => `<div class="dk2b-step ${deskB2StepCls(i, at, k)}"><i></i><span>${esc(n)}</span></div>`).join("");
-  const sid = deskHolderSid(i), s = sid ? sessionOf(sid) : null;
-  const since = s && i.state === "working" ? deskProgStamps(i)[0] || s.since_ms || 0 : 0;
-  // The model its new session was started on, when not Claude Code's own pick (#620): the old row's tag.
-  const model = i.state !== "held" ? deskModelTag(i) : "";
-  const who = (i.holder ? `<b>${esc(deskHolderOf(i))}</b>${since ? ` · working for <span data-ago="${since}">${ago(since)}</span>` : ""}` : "Nobody has it yet") + model;
-  const [now, mono] = deskB2Status(i);
-  const tests = i.finish?.check_failed ? "Still fail" : at >= 3 ? "All pass" : at === 2 ? "Running" : "Not run yet";
-  const next = i.state === "done" ? "Nothing: it's done." : i.state === "to_check" ? "Waits on you to check it." : i.state === "needs_you" ? "Waits on your answer."
-    : i.state === "held" ? "Starts when you press Start." : at < 0 ? esc(deskQueueLine(i) || "Starts when a session is free.")
-    : at < 3 ? "Lands when the tests pass, then waits on you to check." : "Waits on you to check once it has landed.";
-  const kv = (k, v, cls = "") => `<span class="dk2b-ik">${k}</span><div class="dk2b-iv${cls}">${v}</div>`;
-  // Its chat's tabs, as the old page's (deskItemTabbed): Chat, Record, Decisions (Pieces first for a feature). Changes
-  // (the old Files tab) shows its files under these buttons instead, over its chat, pressed again to fold.
-  const chat = deskItemChatOf(i), { tab, tabs, body } = deskItemTabbed(i, d, chat, false);
-  const files = deskItemTabs.get(i.id) === "files", ft = deskItemFilesTab(i);
-  // Open its chat only with the panel hidden: shown, the panel's own Open <name> is the same button (#727).
-  const hid = deskPanelHidden("item");
-  const btns = `<div class="dk2b-iacts">${s && hid ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : ""}<button class="btn small dk2b-chg" data-desk-itab="${files ? "thread" : "files"}" data-id="${esc(i.id)}" aria-pressed="${files}">Changes<span class="n">${ft.n}</span></button></div>`;
-  // Its panel, as the old page had it (deskItemSide; a dropped item's kept copy, deskKeptSide): beside its chat and box
-  // (#727), so its buttons stay in reach however far the chat is scrolled; on a card too narrow for both, under the
-  // page that scrolls, over the box.
-  const panel = `<aside class="dk-panel dk2b-ipanel" data-side-for="${esc(i.id)}">${i.kept ? deskKeptSide(i, d) : deskItemSide(i, d)}${deskPageActivity()}</aside>`;
-  const live = chat && tab === "thread";
-  // Its head, as the old page's (deskPage): back on its own line with Hide panel, which folds the panel to its one line
-  // (where it stands and its buttons), remembered for every item's page; then its kind's icon, kind and number, and its
-  // name.
-  const tog = `<button class="btn small dk-ptog" data-desk-panel="item" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
-  const kind = deskNum(i).slice(0, -`#${i.id}`.length);
-  return `<div class="dk-pg dk2b-ipage${hid ? " hid" : ""}" data-desk-page="item"><div class="dk-ph dk2b-iph"><div class="dk-ph1">${deskBack("")}<span class="grow"></span>${tog}</div><h1 class="dk-ph2"><span class="dk-hk">${deskKindIcon(i)}${esc(kind)}<span class="dk2b-in">#${esc(i.id)}</span></span><span class="dk-hsep"> · </span><span class="dk-tname dk2b-ititle">${esc(i.title)}</span></h1></div>
-    <div class="dk-pane dk-ipane dk2b-ipb${live ? " chat" : ""}" data-scroll-key="item:${esc(i.id)}"><div><div class="dk2b-sec">PROGRESS</div><div class="dk2b-steps">${bar}</div></div>
-    <div class="dk2b-kv">${kv("Who", who)}${kv("Doing now", now, mono ? " mono" : "")}${kv("Tests", tests)}${kv("Next", next)}</div>
-    ${btns}${files ? `<div class="dk2b-files">${ft.html}</div>` : ""}
-    <div class="dk2b-ichat"><div class="dk2b-ichd"><span class="dk2b-sec">${chat ? "ITS CHAT" : "ITS THREAD"}</span><div class="dk-itabs" role="tablist">${tabs}</div></div><div class="dk2b-ichsub">${deskItemSub(i, d, chat)}</div><div class="dk-ibody dk-itab-${tab}">${body}</div></div></div>${panel}${foot}</div>`;
 }
 /** The chat card with nothing open: who runs the Desk (no lead yet, or Change), else the lead's chat (or the line
  *  saying it ended), or Decisions. */
@@ -185,33 +145,25 @@ function deskRightChat(d, taskApprovals) {
   const ask = deskLeadEnded(d) ? null : deskLeadAsk(d);
   const rd = deskTab === "lead" && !deskLeadEnded(d) ? deskReader(deskLeadSession(d), ask) : null;
   // B2 (desk/b2.js): the chat card, its place taken by what's open (deskOpenCard).
-  const card = deskB2On() ? "dk-card dk2b-chat dk-right" : "dk-card dk-right";
+  const card = "dk-card dk2b-chat dk-right";
   if (rd) return `<div class="${card}">${rd}</div>`;
   const ended = deskLeadEnded(d);
   const main = deskTab === "decisions" ? deskDecisions(d) : deskTab === "moves" ? deskMoves(d) : deskTab === "away" ? deskAwayLog(d) : ended ? deskEndedLine(d) : deskChat(d);
   // One page (#200): the Desk's name for back (it's where you are), "Dispatcher · " and its lead's name; its chat and
-  // Decisions at the left, the box (or the lead's ask) under them; in the panel its state, what waits on you and
-  // the sessions at work for it.
+  // Decisions at the left, the box (or the lead's ask) under them; in the panel its state and Activity (the columns
+  // either side show what waits and who works).
   const open = d.items.filter((i) => i.state !== "done" && i.state !== "dropped").length;
   const working = deskWorkingFor(d);
-  const meta = ["The Desk lead", `${open} ${open === 1 ? "item" : "items"}`, working.length ? (deskB2On() ? `${working.length} working` : `${working.length} ${working.length === 1 ? "session" : "sessions"} working for it`) : ""].filter(Boolean).join(" · ");
-  // B2: what the list's WAITS ON YOU holds (questions, then what's ready to check), so the panel and the strip match it.
-  const waits = deskB2On() ? (({ asks, check }) => [...asks, ...check])(deskGroups(d.project, taskApprovals)) : deskWaitingItems(d, taskApprovals);
-  const why = (i) => (i.state === "needs_you" ? (i.ask?.kind === "permission" ? "Asks to use a tool" : "Asks you something") : "Ready to check");
-  const waitRows = waits.map((i) => `<button class="dk-prow" data-desk-chk-item="${esc(i.id)}"><i class="dk-pdot ${i.state === "needs_you" ? "ask" : "check"}" aria-hidden="true"></i><span class="dk-prt">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b></span><span class="dk-prs">${esc(why(i))} · ${ago(deskMs(i.updated))}</span></button>`).join("");
-  const workRows = working.map(({ sid, name, on }) => `<button class="dk-prow" ${deskChatAttrs(sid, d)}><i class="dk-pdot work" aria-hidden="true"></i><span class="dk-prt"><b>${esc(name)}</b>${on ? ` <span class="dk-prs">on ${deskKindIcon(on)}#${esc(on.id)}</span>` : ""}</span></button>`).join("");
-  // The lead's own ask waits on you too, at the top, until it's answered (its card is under its chat).
-  const leadAsk = ask ? `<button class="dk-prow" data-desk-tab="lead"><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskLeadName(d))}</b></span><span class="dk-prs">${esc(summary(ask) || "Asks you something")} · ${ago(ask.created_ms || now())}</span></button>` : "";
-  // The new layout (desk/c.js): only Now and Activity, the columns either side showing what waits and who works.
-  const panel = deskCOn() ? "" : deskPsec(`Waits on you · ${waits.length + (ask ? 1 : 0)}`, leadAsk || waitRows ? `<div class="dk-prows">${leadAsk}${waitRows}</div>` : "")
-    + deskPsec(`Working · ${working.length}`, workRows ? `<div class="dk-prows">${workRows}</div>` : "");
-  const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d, deskB2On() ? null : deskOpen);
+  const meta = ["The Desk lead", `${open} ${open === 1 ? "item" : "items"}`, working.length ? `${working.length} working` : ""].filter(Boolean).join(" · ");
+  // What Items' WAITING ON YOU holds (questions, then what's ready to check), so the strip matches it.
+  const waits = (({ asks, check }) => [...asks, ...check])(deskGroups(d.project, taskApprovals));
+  const foot = ended || deskTab !== "lead" ? "" : ask ? `<div class="dk-ask">${askFoot(ask, ask.session_id, ask.harness || "claude", deskBoxKey({ project: d.project }))}</div>` : deskBox(d, null);
   // B2: with the panel hidden (Hide panel; it opens shown), Now and Waits on you are the strip over the chat (deskB2Strip).
-  const strip = deskB2On() && deskPanelHidden("dispatcher");
+  const strip = deskPanelHidden("dispatcher");
   // Activity at the panel's foot (#688): its last 3 rows, the rest a click away.
   const activity = deskPanelActivity(deskActivity(d), d);
-  return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", activity, back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, acts: deskV2 ? deskV2ChatsMenu(d) : "", mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
-    now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel, main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Activity", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
+  return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", activity, back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
+    now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel: "", main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Activity", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. */
 const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && deskSessBusy(sessionOf(r.sid))).map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
@@ -255,9 +207,6 @@ function deskView() {
   if (deskGiveFor && (!given || (given.holder && deskGiveFor.at !== "more"))) deskGiveFor = null;
   if (deskDropArm && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
-  // An item's page at its end as this draw starts: it stays there as its chat grows (deskThreadFollow).
-  const ip = document.querySelector(".dk-ipane");
-  deskThreadPinned = !ip || boxAtEnd(ip);
   if (!deskSelection()) return deskAll();
   deskLastSet(deskSelection());
   queueMicrotask(deskSettle);
@@ -265,43 +214,10 @@ function deskView() {
   const taskApprovals = deskTaskApprovals(deskOf(project));
   // Progress (#409): over the Desk while open, the table of every item under way.
   const prog = deskProgShown ? deskProgress(project, taskApprovals) : "";
-  // The new Desk page (#628, desk/v2.js): no sessions column, Desks in its head, Progress in the list.
-  if (deskV2) return `<div class="board dk-board dk-v2">${deskV2Head(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskList(project, taskApprovals)}${deskV2Drawer(project)}</div>${deskAwayHtml()}`;
-  // Today's page, B2 (#666, desk/b2.js): at the left the lead's chat, or in its place what's open (‹ Items N or Esc goes
-  // back); at the right the item list, always.
-  // The grip between the two trades their width (board/columns.js deskColDrag, styles/desk-cols.css).
-  // The new Desk layout (#738, desk/c.js): today's page with the Desk's sessions at the left, Items as one white card
-  // with Up next and Done today under it on the green.
-  if (deskCOn()) return `<div class="board dk-board dk-b2 dk-cols dk-c" style="${deskColStyle()}">${deskCSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskCList(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
-  return `<div class="board dk-board dk-b2 dk-cols" style="${deskColStyle()}">${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskB2List(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
-}
-/** How many messages each item's Thread showed when last drawn, and for which opening of its page, by item. The page
- *  opens at its newest message, as a chat does (#145). After that it follows its chat only while you're at its end,
- *  as a session's chat does (#395): the reply being written stays in view as it grows, and a page you'd scrolled up
- *  stays where you were. */
-const deskThreadSeen = new Map();
-/** The open item page was at its end when this draw began (deskView). */
-let deskThreadPinned = true;
-/** You just wrote on an item's page (deskPend): it goes to its end to show what you sent. */
-let deskThreadToEnd = false;
-function deskThreadFollow() {
-  const pane = document.querySelector(".dk-ipane"), th = pane?.querySelector("[data-thread-for]");
-  if (!th) return;
-  const rows = th.querySelectorAll(":scope > [data-key]"), key = pane.dataset.scrollKey, was = deskThreadSeen.get(key);
-  deskThreadSeen.set(key, { n: rows.length, open: deskOpen });
-  const toEnd = () => { pane.scrollTop = pane.scrollHeight; };
-  // Just opened: at its end, the newest message and where it stands (what to check) in view.
-  if (was?.open !== deskOpen || deskThreadToEnd) { deskThreadToEnd = false; return toEnd(); }
-  if (!deskThreadPinned) return;
-  // At its end, it stays there; but a whole new message taller than the page shows from its top, under the pinned
-  // header (one written as you watched has grown in view already).
-  let down = pane.scrollHeight - pane.clientHeight - pane.scrollTop;
-  const last = rows[rows.length - 1];
-  if (rows.length > was.n && last && !last.classList.contains("live") && last.dataset.key !== "where") {
-    const head = pane.querySelector(".dk-ihead")?.getBoundingClientRect().bottom ?? pane.getBoundingClientRect().top;
-    down = Math.min(down, last.getBoundingClientRect().top - head - 12);
-  }
-  if (down > 0) pane.scrollTop += down;
+  // Three columns (#738, desk/c.js): the Desk's sessions at the left, the lead's chat (or what's open in its place) in
+  // the middle, Items as one white card with Up next and Done today under it on the green.
+  // The grip between the chat and Items trades their width (board/columns.js deskColDrag, styles/desk-cols.css).
+  return `<div class="board dk-board dk-b2 dk-cols dk-c" style="${deskColStyle()}">${deskCSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskCList(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
 }
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it); an item's Thread at
  *  a message that just came. */
@@ -319,23 +235,20 @@ function deskFocusOpened() {
   if (k === deskBoxShown) return;
   deskBoxShown = k;
   const a = document.activeElement;
-  // B2 (desk/b2.js): the lead's box stays on screen as something opens beside it; what opened takes the cursor still.
-  const lead = deskB2Side() && a?.closest?.(".dk2b-chat");
-  if (!k || sheet || (a?.matches?.("input, textarea, select, [contenteditable]") && !lead)) return;
-  // Keys, not a click: a row, or the way back B2's item page gives the keyboard (desk/act.js deskKey).
+  if (!k || sheet || a?.matches?.("input, textarea, select, [contenteditable]")) return;
+  // Keys, not a click: a row, or the way back an open chat gives the keyboard (desk/act.js deskKey).
   if (a?.closest?.(".dk-board") && a.matches('[role="button"], [data-desk-back]') && deskKeyAt > pointedAt) return;
   focusComposer(undefined, { home: "desk", scroll: false });
 }
 function deskSettle() {
   deskDoneWatch();
   deskMovesWatch();
-  deskThreadFollow();
   deskFocusOpened();
-  // The chat or item page of the card that shows what's open (B2: the right one while something is, desk/b2.js).
-  const c = document.querySelector(".dk-right .dk-chat") || (!deskB2On() && document.querySelector(".dk-chat")), ip = !c && document.querySelector(".dk-ipane");
+  // The chat of the card that shows what's open.
+  const c = document.querySelector(".dk-right .dk-chat");
   // Earlier messages just went in above (chat/thread.js loadOlder): what you were reading stays put, in the chat
-  // they went into (the lead's on the left or what's open on the right). An item's page too.
-  const held = holdChat != null ? olderChat(holdChatSid, ".dk-chat, .dk-ipane") : null;
+  // they went into.
+  const held = holdChat != null ? olderChat(holdChatSid, ".dk-chat") : null;
   if (held) held.scrollTop = held.scrollHeight - holdChat;
   if (holdChat != null) { holdChat = null; holdChatSid = null; }
   if (c && c === held) return;

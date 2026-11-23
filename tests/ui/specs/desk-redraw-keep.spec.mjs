@@ -26,7 +26,7 @@ test("the Add an item line keeps its words in view, not their start, through upd
   expect(await line.evaluate((el) => el.scrollLeft)).toBeGreaterThanOrEqual(left);
 });
 
-test("the Items list and Give to…'s menu stay where you scrolled them through updates", async ({ cue, page }) => {
+test("Up next's list and Give to…'s menu stay where you scrolled them through updates", async ({ cue, page }) => {
   await cue.open("desk");
   await cue.change((st) => {
     for (let n = 0; n < 30; n++) st.sessions.push({ ...st.sessions[0], session_id: `extra${n}`, name: `extra-${n}` });
@@ -34,16 +34,16 @@ test("the Items list and Give to…'s menu stay where you scrolled them through 
     for (let n = 0; n < 30; n++) p.items.push({ ...fresh, id: `n${n}`, title: `New thing ${n}` });
   });
   await openDesk(page);
-  // B2 (#666) shows a long group's first 3 rows: show them all, so the list is long enough to scroll.
-  for (const b of await page.locator("[data-desk2b-all]").all()) await b.click();
-  const list = page.locator('.dk-scroll[data-scroll-key^="desk-items"]');
+  // New items wait in Up next (#738), a list of its own that scrolls.
+  const list = page.locator('.dkn-items [data-dkn-list="next"]');
+  await expect(list.locator('[data-desk-item="n29"]')).toHaveCount(1);
   await list.evaluate((el) => { el.scrollTop = 400; });
   await tick(cue, 1);
   await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(400);
 
-  // Give to… is on the item's page (B2, #666), not its row: the row opened, the list stays where it was.
-  await expect(page.locator('.dk-items [data-desk-item="n0"] [data-desk-give]')).toHaveCount(0);
-  await page.locator('.dk-items [data-desk-item="n0"]').click();
+  // Give to… is on the item's page (#748), not its row: the row opened, the list stays where it was.
+  await expect(page.locator('.dkn-items [data-desk-item="n0"] [data-desk-give]')).toHaveCount(0);
+  await page.locator('.dkn-items [data-desk-item="n0"]').click();
   const at = await list.evaluate((el) => el.scrollTop);
   await page.locator('[data-desk-give="n0"]').first().click();
   const menu = page.locator(".dk-givemenu");

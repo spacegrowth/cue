@@ -75,7 +75,7 @@ ctx.dictating = null; ctx.sendAtFor = null; ctx.suggestionFor = () => "";
 // moved onto boxHtml, word for word.
 const OLD_DESK = {
   item: "<div class=\"dk-box\" data-drop=\"desk:[&quot;P&quot;,7]\"><quick data-quick=\"desk:[&quot;P&quot;,7]\"><span class=\"dk-pre\" data-desk-pre=\"\">To lead-1 · Task #7</span><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk:[&quot;P&quot;,7]\" placeholder=\"Remove the actions…\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">why &amp; how</textarea><div class=\"sug-line\"  aria-hidden=\"true\"></div></div><button class=\"icon-btn mic \" data-mic=\"desk:[&quot;P&quot;,7]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk:[&quot;P&quot;,7]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk:[&quot;P&quot;,7]\">Send</button></div></div>",
-  itemSug: "<div class=\"dk-box\" data-drop=\"desk:[&quot;P&quot;,7]\"><quick data-quick=\"desk:[&quot;P&quot;,7]\"><span class=\"dk-pre\" data-desk-pre=\"\">To lead-1 · Task #7</span><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk:[&quot;P&quot;,7]\" class=\"sug\" data-sug-sid=\"item:P|7\" aria-label=\"Suggested: Looks good. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\"  aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Looks good</span><kbd>Tab</kbd></div></div><button class=\"icon-btn mic \" data-mic=\"desk:[&quot;P&quot;,7]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk:[&quot;P&quot;,7]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk:[&quot;P&quot;,7]\">Send</button></div></div>",
+  itemSug: "<div class=\"dk-box\" data-drop=\"desk:[&quot;P&quot;,7]\"><quick data-quick=\"desk:[&quot;P&quot;,7]\"><span class=\"dk-pre\" data-desk-pre=\"\">To lead-1 · Task #7</span><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk:[&quot;P&quot;,7]\" class=\"sug\" data-sug-sid=\"H\" aria-label=\"Suggested: Looks good. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\"  aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Looks good</span><kbd>Tab</kbd></div></div><button class=\"icon-btn mic \" data-mic=\"desk:[&quot;P&quot;,7]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk:[&quot;P&quot;,7]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk:[&quot;P&quot;,7]\">Send</button></div></div>",
   itemCrew: "<div class=\"dk-box\" data-drop=\"desk:[&quot;P&quot;,8]\"><quick data-quick=\"desk:[&quot;P&quot;,8]\"><span class=\"dk-pre\" data-desk-pre=\"\">To mate-1, through holder · sent as #8</span><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk:[&quot;P&quot;,8]\" placeholder=\"Write to it here…\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\"  aria-hidden=\"true\"></div></div><button class=\"icon-btn mic \" data-mic=\"desk:[&quot;P&quot;,8]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk:[&quot;P&quot;,8]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk:[&quot;P&quot;,8]\">Send</button></div></div>",
   holder: "<div class=\"dk-box\" data-drop=\"desk-to:[&quot;H&quot;,&quot;&quot;]\"><quick data-quick=\"desk-to:[&quot;H&quot;,&quot;&quot;]\"><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk-to:[&quot;H&quot;,&quot;&quot;]\" class=\"sug\" data-sug-sid=\"H\" aria-label=\"Suggested: Yes. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\"  aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Yes</span><kbd>Tab</kbd></div></div><button class=\"icon-btn mic \" data-mic=\"desk-to:[&quot;H&quot;,&quot;&quot;]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk-to:[&quot;H&quot;,&quot;&quot;]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk-to:[&quot;H&quot;,&quot;&quot;]\">Send</button></div></div>",
   itemMocks: "<div class=\"dk-box\" data-drop=\"desk:[&quot;P&quot;,9]\"><quick data-quick=\"desk:[&quot;P&quot;,9]\"><span class=\"dk-pre\" data-desk-pre=\"\">To cue-9 · Task #9</span><div class=\"dk-box-row\"><div class=\"ta-wrap\"><textarea rows=\"1\" data-text=\"desk:[&quot;P&quot;,9]\" placeholder=\"Comments… (Pick an option above to go ahead)\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\"  aria-hidden=\"true\"></div></div><button class=\"icon-btn mic \" data-mic=\"desk:[&quot;P&quot;,9]\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"desk:[&quot;P&quot;,9]\" aria-label=\"Add an image\"><img/></button><button class=\"btn primary small\" data-desk-send=\"desk:[&quot;P&quot;,9]\">Send</button></div></div>",
@@ -88,6 +88,22 @@ const OLD_DESK = {
 };
 const deskD = { project: "P", items: [] };
 const same = (name, html) => assert.strictEqual(html, OLD_DESK[name], name);
+// The Desk has one layout since #748: a box to anyone but the lead is the lead's own composer (desk/view.js deskCBox),
+// who it goes to in a tag at its left. Checked against what the old box said: the same "To …" words, text, suggestion
+// and quick phrases, in the composer, sent the same way.
+const unq = (h) => h.replace(/&quot;/g, '"');
+const sameC = (name, html, quick) => {
+  const was = OLD_DESK[name], m = (re, h) => (h.match(re) || [])[1];
+  assert.ok(html.startsWith('<div class="foot">') && html.includes('<div class="composer">'), `${name}: the composer`);
+  const pre = m(/data-desk-pre="">([^<]*)</, was);
+  if (pre) assert.ok(unq(html).includes(unq(pre).split(" · ")[0]), `${name}: says who it goes to`);
+  assert.strictEqual(m(/data-text="([^"]*)"/, html), m(/data-text="([^"]*)"/, was), `${name}: the same draft`);
+  assert.strictEqual(m(/<textarea[^>]*>([^<]*)</, html), m(/<textarea[^>]*>([^<]*)</, was), `${name}: its words`);
+  assert.strictEqual(m(/data-sug-sid="([^"]*)"/, html), m(/data-sug-sid="([^"]*)"/, was), `${name}: its suggestion`);
+  assert.strictEqual(html.includes("<quick"), quick ?? was.includes("<quick"), `${name}: quick phrases`);
+  assert.strictEqual(m(/data-desk-send="([^"]*)"/, html), m(/data-desk-send="([^"]*)"/, was), `${name}: sent the same way`);
+  assert.doesNotMatch(html, /title=/, `${name}: no hover text`);
+};
 // The lead's box: a suggestion and a picture; then words, dictating.
 ctx.deskOpen = null;
 ctx.suggestionFor = (sid) => (sid === "L" ? "Ship it" : "");
@@ -109,31 +125,38 @@ ctx.items[7] = { id: 7, title: "Remove the actions row", state: "doing" };
 ctx.deskOpen = { kind: "item", id: 7 };
 key = ctx.deskBoxKey({ project: "P", item: 7 });
 D(key, "why & how");
-same("item", ctx.deskBox(deskD));
-ctx.suggestionFor = (sid) => (sid === "item:P|7" ? "Looks good" : ""); D(key, "");
-same("itemSug", ctx.deskBox(deskD));
+sameC("item", ctx.deskBox(deskD));
+// Its chat is its holder's session (#744, #748): the suggestion is that session's, none while nobody holds it.
+ctx.suggestionFor = (sid) => (sid === "H" ? "Looks good" : ""); D(key, "");
+assert.ok(!ctx.deskBox(deskD).includes("data-sug-sid"), "an item nobody holds: no suggestion");
+ctx.sessions.H = { session_id: "H" };
+ctx.items[7] = { ...ctx.items[7], state: "to_check", holder: { kind: "session", sid: "H", name: "lead-1" } };
+sameC("itemSug", ctx.deskBox(deskD));
+delete ctx.sessions.H;
+ctx.items[7] = { id: 7, title: "Remove the actions row", state: "doing" };
 ctx.suggestionFor = () => "";
 // An item a live crew member holds: to it, through its lead.
 ctx.sessions.H = { session_id: "H" };
 ctx.items[8] = { id: 8, title: "Fix the thing now", state: "doing", holder: { kind: "crew", sid: "H", lead_sid: "H", name: "mate-1" } };
 ctx.deskOpen = { kind: "item", id: 8 };
-same("itemCrew", ctx.deskBox(deskD));
+// No quick phrases on a crew member's box: there's nothing quick to say to one.
+sameC("itemCrew", ctx.deskBox(deskD), false);
 // A holder's chat open, its suggestion.
 ctx.deskOpen = { kind: "holder", sid: "H" }; ctx.suggestionFor = (sid) => (sid === "H" ? "Yes" : "");
-same("holder", ctx.deskBox(deskD));
+sameC("holder", ctx.deskBox(deskD));
 ctx.suggestionFor = () => "";
 // An item to check with mocks to pick from.
 ctx.items[9] = { id: 9, title: "Make the new mocks", state: "to_check", holder: { kind: "session", sid: "H", name: "cue-9" } };
 ctx.deskOpen = { kind: "item", id: 9 }; ctx.deskPickOptions = () => [1];
-same("itemMocks", ctx.deskBox(deskD));
+sameC("itemMocks", ctx.deskBox(deskD));
 ctx.deskPickOptions = () => [];
 // An item that asks you, its holder's box (deskItemFoot): dictating, a picture; a crew member's, empty.
 const ask = { id: 7, title: "Remove the actions row", state: "needs_you", holder: { kind: "session", sid: "H", name: "cue-7" } };
 key = ctx.deskBoxKey({ project: "P", sid: "H", item: 7 });
 ctx.dictating = { key }; D(key, "yes", [PIC]);
-same("foot", ctx.deskItemFoot(ask, { project: "P" }));
+sameC("foot", ctx.deskItemFoot(ask, { project: "P" }), true);
 ctx.dictating = null;
-same("footCrew", ctx.deskItemFoot({ id: 8, title: "Fix the thing now", state: "needs_you", holder: { kind: "crew", lead_sid: "H", sid: "H", name: "mate-1" } }, { project: "P" }));
+sameC("footCrew", ctx.deskItemFoot({ id: 8, title: "Fix the thing now", state: "needs_you", holder: { kind: "crew", lead_sid: "H", sid: "H", name: "mate-1" } }, { project: "P" }), false);
 // Send back's box (deskBackHtml): a picture; empty, dictating.
 D("back:7", "not yet", [PIC]);
 same("back", ctx.deskBackHtml(7));

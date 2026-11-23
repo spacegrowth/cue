@@ -1,17 +1,17 @@
 // A session whose turn is over while its tests, build, install or landing run in the background is at work (#556):
-// it counts in the head's "N working", the Working group, the Dispatcher's Working list, and its row says what runs;
+// it counts in the head's "N working", the Working group, the sessions column's "N working", and its row says what runs;
 // its item reads as working, never waiting.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 import { groupOf } from "./desk.mjs";
 
 for (const running of ["Running tests…", "Building…", "Landing…"]) {
   test(`a session ${running.toLowerCase()} in the background counts as working everywhere the Desk shows it (#556)`, async ({ page, cue }) => {
-    // Wide enough for the lead's panel beside its chat (B2 shows it by default, #666).
     await page.setViewportSize({ width: 1800, height: 900 });
     await cue.open("desk");
     await openDesk(page);
-    const panel = page.locator(".dk-psec", { hasText: "Working ·" });
-    const panelCount = async () => Number(((await panel.textContent()).match(/Working · (\d+)/) || [0, 0])[1]);
+    // The sessions column's head: "N working" (desk/c.js deskCSessions).
+    const panel = page.locator(".dkn-side .dkn-cnt");
+    const panelCount = async () => Number(((await panel.textContent()).match(/(\d+) working/) || [0, 0])[1]);
     await expect(panel).toBeVisible();
     const beforePanel = await panelCount();
     // The sessions list (All N sessions), in the lead's chat's place (B2, #666).
@@ -33,7 +33,7 @@ for (const running of ["Running tests…", "Building…", "Landing…"]) {
     const st = page.locator('.dk-sessions [data-desk-chat-of="s-run"] .dk-st').first();
     await expect(st.locator("b")).toHaveText(`working · ${running.charAt(0).toLowerCase()}${running.slice(1)}`);
     await expect(st.locator("i")).not.toHaveClass(/idle/);
-    // Back to the lead's chat: its panel's Working counts it; its item, in the Items list, is at work, not waiting.
+    // Back to the lead's chat: the sessions column counts it; its item, in the Items list, is at work, not waiting.
     await page.locator(".dk-sessions .dk-back").first().click();
     await expect.poll(panelCount).toBe(beforePanel + 1);
     await expect(page.locator('.dk-items [data-desk-item="d556"]')).toHaveCount(1);

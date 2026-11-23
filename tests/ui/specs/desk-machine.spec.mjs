@@ -1,4 +1,4 @@
-// Sessions and items on another machine: the machine's label beside the holder's name (on an item's row, its page and
+// Sessions and items on another machine: the machine's label beside the holder's name (on an item's row and
 // the Desk's sessions list; nothing for this Mac), and an item worked there says how that machine is doing in one quiet
 // line: not answering for how long, what it waits for, when it last pushed.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
@@ -14,79 +14,31 @@ test("a holder on another machine shows the machine, and its item says how that 
     });
   });
   await openDesk(page);
-  const row = page.locator('.dk-it[data-desk-item="d5"]');
-  // B2 (#666): the label by the row's title, the machine's line its status line.
-  await expect(row.locator(".dk2b-tt .mach")).toHaveText("remote-1");
+  const row = page.locator('.dkn-row[data-desk-item="d5"]');
+  // The label at the end of the line under the row's title, the machine's line its Now.
+  await expect(row.locator(".dkn-sub .mach")).toHaveText("remote-1");
   await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
   // This Mac's: no label, no line.
-  const mine = page.locator('.dk-it[data-desk-item="d2"]');
+  const mine = page.locator('.dkn-row[data-desk-item="d2"]');
   await expect(mine.locator(".mach")).toHaveCount(0);
   await expect(statusOf(page, "d2")).not.toContainText("machine");
-  // The sessions list (All N sessions, on the right in the list's place): the label on the session there, none on
-  // the lead's card here.
+  // The sessions list (All N sessions, in the chat's place): the label on the session there, none on the lead's card.
   await deskAllSessions(page);
   await expect(page.locator('.dk-sessions [data-desk-chat-of="host"] .dk-s1 .mach')).toHaveText("remote-1");
   await expect(page.locator(".dk-sessions .dk-lcard .mach")).toHaveCount(0);
-  await page.locator(".dk-sessions .dk2b-items").click();
-  // Its page: the label by its holder's name, the machine's line under it.
-  await row.click();
-  const right = page.locator(".dk-right");
-  await expect(right.locator(".dk-pmeta .mach").first()).toHaveText("remote-1");
-  await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
-  // The machine answers again and nothing waits: only when it last pushed.
+  // The machine answers again and nothing waits (its row's Now goes back to its step; when it last pushed was on the
+  // old item page, lost with it).
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: 0, wait: "" }));
-  await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("last pushed 5 min ago");
+  await expect(statusOf(page, "d5")).not.toContainText("not answering");
   // Quiet, and nothing of it was ever pushed (#598): its work is only there, and the item says so.
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: Date.now() - 31 * 60000, pushed_at: 0, sha: "" }));
-  await expect(right.locator(".dk-pmeta.dk-rmt")).toHaveText("machine not answering for 31 min · its work is on the machine, not pushed");
-  // Its row, back in the list (‹ Items N: the item opens in the list's place).
-  await right.locator(".dk2b-items").click();
   await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 31 min · its work is on the machine, not pushed");
-  await expect(page.locator(".dk-rmt[title], .dk-rmt [title], .dk-items [title]")).toHaveCount(0);
+  await expect(page.locator(".dkn-items [title]")).toHaveCount(0);
 });
 
-// Where an item's session starts (#597): the Desk's machine on an unstarted item's card, a "Starts on" choice on its
-// page (only machines the Desk has a folder on), and the Desk's own setting on its settings screen.
+// Where an item's session starts (#597): the Desk's own setting on its settings screen.
 const machines = { machine: "build-box", machines: [{ name: "build-box", label: "build-box", folder: "~/code/cue" }, { name: "gpu-1", label: "gpu-1", folder: "" }] };
 const fresh = { id: "n597", project: "cue", kind: "bug", title: "Runs on the box", see: "", done_when: "", state: "new", holder: null, after: null, ask: null, files: [], created: 1, updated: 1, done_at: null, from: "you", machine: "build-box" };
-
-test("an item nobody has yet shows where it will start, and you can choose another place on its page", async ({ page, cue }) => {
-  await cue.open("desk");
-  await cue.change((st, [ms, it]) => {
-    const d = st.desk.projects.find((x) => x.project === "cue");
-    d.machines = ms;
-    d.items.push(it);
-  }, [machines, fresh]);
-  await openDesk(page);
-  const row = page.locator('.dk-it[data-desk-item="n597"]');
-  // Its row has no machine (#776): that's picked as it starts. Its page says where it will start.
-  await expect(row.locator(".mach")).toHaveCount(0);
-  await row.locator(".dk2b-tt").click();
-  const right = page.locator(".dk-right");
-  const seg = right.locator(".dk-starts");
-  await expect(seg.locator("[data-desk-start-on]")).toHaveText(["This Mac", "build-box"]);
-  await expect(seg.locator('[data-desk-start-on="build-box"]')).toHaveAttribute("aria-checked", "true");
-  await expect(right.locator(".dk-on-hint")).toContainText("Other machines need this repository's folder there");
-  await expect(right.locator("[title]")).toHaveCount(0);
-  // This Mac: chosen, and the card's machine goes.
-  await seg.locator('[data-desk-start-on=""]').click();
-  await expect(seg.locator('[data-desk-start-on=""]')).toHaveAttribute("aria-checked", "true");
-  // Back in the list (the item opens in its place): the card's machine has gone.
-  await right.locator(".dk2b-items").click();
-  await expect(row.locator(".mach")).toHaveCount(0);
-  // An item someone has: no choice, it stays where it is.
-  await page.locator('.dk-it[data-desk-item="d5"] .dk2b-tt').click();
-  await expect(right.locator(".dk-pmeta").first()).toBeVisible();
-  await expect(right.locator(".dk-starts")).toHaveCount(0);
-  await right.locator(".dk2b-items").click();
-  await row.locator(".dk2b-tt").click();
-  await expect(page.locator(".dk-right .dk-pg")).toContainText("Runs on the box");
-  await expect(seg).toBeVisible();
-  for (const c of ["light", "dark"]) {
-    await page.emulateMedia({ colorScheme: c });
-    if (process.env.SHOT_DIR) await right.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-starts-on-${c}.png` });
-  }
-});
 
 test("the Desk's settings say where its new sessions start, with the folder there for a machine", async ({ page, cue }) => {
   await cue.open("desk");
@@ -128,36 +80,6 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator(".ld-hint", { hasText: "asks you before" })).toHaveCount(1);
   await expect(dlg.locator("[title]")).toHaveCount(0);
-});
-
-// The new Desk page's Desk settings drawer (#663): it had no "Where new sessions start", so a machine picked there
-// went nowhere. The same section, saved by the same Save, and still picked when the drawer opens again.
-test("the new Desk page's settings drawer has where new sessions start, and a machine picked there stays picked", async ({ page, cue }) => {
-  await cue.open("desk");
-  await page.evaluate(() => localStorage.setItem("cue.deskV2", "1"));
-  await page.reload();
-  await page.locator('#app [data-view="board"]').waitFor();
-  await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = { ...ms, machine: "" }; }, machines);
-  await openDesk(page);
-  await page.locator("[data-desk2-set]").click();
-  const dr = page.locator(".dk2-drawer");
-  const sec = dr.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-h")).toHaveText("Machines");
-  await expect(sec.locator('[data-ld-mach=""]')).toHaveAttribute("aria-checked", "true");
-  await sec.locator('[data-ld-mach="gpu-1"]').click();
-  await sec.locator("[data-ld-folder]").fill("/srv/cue");
-  await dr.locator('[data-ld="save"]').click();
-  await expect(dr).toHaveCount(0);
-  await page.locator("[data-desk2-set]").click();
-  await expect(sec.locator('[data-ld-mach="gpu-1"]')).toHaveAttribute("aria-checked", "true");
-  await expect(sec.locator("[data-ld-folder]")).toHaveValue("/srv/cue");
-  // The model row too, as on today's dialog.
-  await expect(dr.locator("[data-ld-model]")).toHaveCount(1);
-  for (const c of ["light", "dark"]) {
-    await page.emulateMedia({ colorScheme: c });
-    if (process.env.SHOT_DIR) await sec.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-v2-machine-${c}.png` });
-  }
-  await expect(dr.locator("[title]")).toHaveCount(0);
 });
 
 // Several machines ticked (#661): the Desk's new items spread over them. Each ticked machine has its folder, and both
@@ -241,7 +163,7 @@ test("Desk settings open on Machines, where every machine has how many items may
 });
 
 // An item waiting for room on its machine (#711): its row and page say so.
-test("an item waiting for room on a full machine says so on its row and page", async ({ page, cue }) => {
+test("an item waiting for room on a full machine says so on its row", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st, [ms, it]) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
@@ -249,43 +171,34 @@ test("an item waiting for room on a full machine says so on its row and page", a
     d.items.push({ ...it, id: "w711", title: "Waits for the box", state: "queued", machine_wait: "build-box" });
   }, [machines, fresh]);
   await openDesk(page);
-  const row = page.locator('.dk-it[data-desk-item="w711"]');
-  // B2's row (#666): its status line under the title.
-  await expect(row.locator(".dk2b-ts")).toHaveText("Waits for room on build-box");
-  await row.click();
-  await expect(page.locator(".dk-right")).toContainText("Starts when build-box has room");
+  // Its row in Up next: the line under its title.
+  await expect(statusOf(page, "w711")).toHaveText("Waits for room on build-box");
 });
 
 // Up next has no machine on a row nobody has yet (#776): where it starts is picked as it leaves the queue, so the row
-// says only why it waits. At a laptop window and at the smallest, in today's Desk and the new layout.
+// says only why it waits. At a laptop window and at the smallest.
 for (const [name, size] of [["a laptop window", { width: 1440, height: 900 }], ["the smallest window", { width: 900, height: 600 }]]) {
-  for (const layout of ["today's Desk", "the new layout"]) {
-    test(`at ${name}, in ${layout}, an Up next row nobody has shows why it waits and no machine`, async ({ page, cue }) => {
-      if (layout === "the new layout") await page.addInitScript(() => { try { localStorage.setItem("cue.deskC", "1"); } catch {} });
-      await page.setViewportSize(size);
-      await cue.open("desk");
-      await cue.change((st, [ms, it]) => {
-        const d = st.desk.projects.find((x) => x.project === "cue");
-        d.machines = { ...ms, machines: [...ms.machines, { name: "", label: "This Mac", folder: "" }] };
-        // As an older Cue might send it: a machine on it too. The row still shows none.
-        d.items.push({ ...it, id: "w776", title: "Waits for any free place", state: "queued", room_wait: true, machine_wait: "build-box or This Mac", machine: "build-box" });
-        d.items.push({ ...it, id: "n776", title: "Not given out yet", state: "new" });
-      }, [machines, fresh]);
-      await openDesk(page);
-      const row = page.locator('.dk-it[data-desk-item="w776"]');
-      await row.scrollIntoViewIfNeeded();
-      await expect(row).toBeVisible();
-      await expect(row).toContainText("Waits for room on build-box or This Mac");
-      await expect(row.locator(".mach")).toHaveCount(0);
-      await expect(page.locator('.dk-it[data-desk-item="n776"] .mach')).toHaveCount(0);
-      // Its text fits its row: nothing runs past the right edge.
-      const [r, box] = await Promise.all([row.boundingBox(), page.locator(".dk-items").first().boundingBox()]);
-      expect(r.x + r.width).toBeLessThanOrEqual(box.x + box.width + 1);
-      if (process.env.SHOT_DIR) await row.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-up-next-${size.width}-${layout === "the new layout" ? "c" : "b2"}.png` });
-      // Its page says where it may start.
-      await row.click();
-      await expect(page.locator(".dk-right")).toContainText("Starts on whichever of build-box or This Mac has room first");
-      await expect(page.locator(".dk-items [title], .dk-right [title]")).toHaveCount(0);
-    });
-  }
+  test(`at ${name}, an Up next row nobody has shows why it waits and no machine`, async ({ page, cue }) => {
+    await page.setViewportSize(size);
+    await cue.open("desk");
+    await cue.change((st, [ms, it]) => {
+      const d = st.desk.projects.find((x) => x.project === "cue");
+      d.machines = { ...ms, machines: [...ms.machines, { name: "", label: "This Mac", folder: "" }] };
+      // As an older Cue might send it: a machine on it too. The row still shows none.
+      d.items.push({ ...it, id: "w776", title: "Waits for any free place", state: "queued", room_wait: true, machine_wait: "build-box or This Mac", machine: "build-box" });
+      d.items.push({ ...it, id: "n776", title: "Not given out yet", state: "new" });
+    }, [machines, fresh]);
+    await openDesk(page);
+    const row = page.locator('.dk-it[data-desk-item="w776"]');
+    await row.scrollIntoViewIfNeeded();
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("Waits for room on build-box or This Mac");
+    await expect(row.locator(".mach")).toHaveCount(0);
+    await expect(page.locator('.dk-it[data-desk-item="n776"] .mach')).toHaveCount(0);
+    // Its text fits its row: nothing runs past the right edge.
+    const [r, box] = await Promise.all([row.boundingBox(), page.locator(".dkn-items").first().boundingBox()]);
+    expect(r.x + r.width).toBeLessThanOrEqual(box.x + box.width + 1);
+    if (process.env.SHOT_DIR) await row.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-up-next-${size.width}.png` });
+    await expect(page.locator(".dkn-items [title], .dk-right [title]")).toHaveCount(0);
+  });
 }

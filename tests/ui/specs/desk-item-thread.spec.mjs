@@ -1,21 +1,23 @@
-// An item's page (#276), kept as its holder's own chat (#418): each reply in full, a Done as the Desk's line; the turn
-// its holder is writing, live, with its steps; the box going straight to the holder, sent as about the item, with no
-// copy to the lead; what a stop hook made it write folded under the reply; and Open <holder> for its whole session.
+// An item opens its holder's own chat (#276, #418, #744): each reply in full; the turn its holder is writing, live,
+// with its steps; the box going straight to the holder, sent as about the item, with no copy to the lead; what a stop
+// hook made it write folded under the reply.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, cue, id) => {
   await openDesk(page);
-  await page.locator(`[data-desk-item="${id}"]`).first().click();
+  await page.locator(`.dkn-items [data-desk-item="${id}"]`).first().click();
 };
+/** The item's chat: its holder's, in the session page that opened in the middle. */
+const chatOf = (page, sid = "host") => page.locator(`.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="${sid}"]`);
 // host-lead's chat: you, about #d5, then each of `replies` in turn, a minute apart.
 const replies = (cue, list, state = "waiting") => cue.change((st, [list, state]) => {
   const at = Date.now() - 600000, s = st.sessions.find((x) => x.session_id === "host");
   Object.assign(s, { state, doing: "", thread: [{ role: "you", text: "About #d5 (x): go on", at_ms: at }, ...list.map((text, n) => ({ role: "agent", text, at_ms: at + (n + 1) * 60000 }))] });
   Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: state === "working" ? "working" : "to_check", now_on: state === "working", said: [], latest: "" });
 }, [list, state]);
-const reply = (page, words) => page.locator(".dk-right .dk-ichat .cv-agent").filter({ hasText: words });
+const reply = (page, words) => chatOf(page).locator(".cv-agent").filter({ hasText: words });
 
-test("an item's replies show whole, a Done is the Desk's line, and Open host-lead opens its session", async ({ page, cue }) => {
+test("an item's replies show whole, and its Done is in Activity", async ({ page, cue }) => {
   await cue.open("desk");
   const long = `Here is what I found.\n\n${"Every line of it matters. ".repeat(80).trim()}\n\nThe last line.\n\nDONE: #d5`;
   await replies(cue, [long]);
@@ -23,16 +25,7 @@ test("an item's replies show whole, a Done is the Desk's line, and Open host-lea
   const r = reply(page, "Here is what I found.");
   await expect(r).toContainText("The last line.");
   await expect(r).not.toHaveClass(/folded/);
-  await expect(r).not.toContainText("DONE:");
-  // The Done is the Desk's own line (#688): out of the reply, a count line under it; Activity has the line.
-  await expect(r.locator(".own-lines")).toHaveCount(0);
-  await expect(page.locator(".dk-right .dk-ichat .dk-cnt")).toHaveText([/^1 Desk update · #d5 done · Activity ›$/]);
-  // Its whole session opens here, as its name on the left does, with no pop-up (#306); ‹ goes back to the item.
-  await page.locator(".dk-panel[data-side-for] .dk-sfoot").getByText("Open host-lead").click();
-  await expect(page.locator(".convo-sheet")).toHaveCount(0);
-  await expect(page.locator('.dk-right .dk-chat[data-desk-chat="host"]')).toBeVisible();
-  await page.locator("[data-desk-chat-back]").click();
-  await expect(page.locator(".dk-right .dk-ipane")).toBeVisible();
+  // (Its DONE line is plain text in a session's chat since #744, as desk-layout.spec checks for IF PICKED and CHECK.)
   await page.evaluate(() => deskOpenActivity());
   await expect(page.locator(".dk-moves .dk-mv-ln .own-lines")).toContainText("Bug #d5 is done");
 });
@@ -50,7 +43,7 @@ test("what a stop hook made it write after its reply folds under the reply, as t
   await hooked(cue, true);
   await replies(cue, ["Fixed the header."]);
   await openItem(page, cue, "d5");
-  const ichat = page.locator(".dk-right .dk-ichat"), fold = ichat.locator(".stx-hook [data-hook-fold]");
+  const ichat = chatOf(page), fold = ichat.locator(".stx-hook [data-hook-fold]");
   await expect(reply(page, "Fixed the header.")).toHaveCount(1);
   await expect(fold).toHaveText("After a stop hook ▾");
   await expect(ichat).not.toContainText("the checklist answer");
@@ -84,7 +77,7 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
     s.held = null;
     (s.thread ||= []).push({ at_ms: Date.now(), role: "you", text, pending: true });
   }, sent.args.text);
-  const mine = page.locator(".dk-right .dk-ichat .cv-you").filter({ hasText: "Check the narrow window too" });
+  const mine = chatOf(page).locator(".cv-you").filter({ hasText: "Check the narrow window too" });
   await expect(mine).toHaveCount(1);
   await expect(mine.locator(".msg-line")).toHaveText("◌ Queued · goes in when it's free");
   await expect(mine).toHaveClass(/msg-queued/);
@@ -112,7 +105,7 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
     Object.assign(st.sessions.find((x) => x.session_id === "host"), { state: "working", thread: [{ role: "you", text: "About #d5 (x): go on", at_ms: Date.now() - 30000 }] });
   });
   await openItem(page, cue, "d5");
-  const live = page.locator(".dk-right .dk-ichat .stx");
+  const live = chatOf(page).locator(".stx");
   await expect(live.locator(".stx-fold")).toContainText("Working · 2 steps");
   await expect(live.locator(".stx-fold .dot-live")).toHaveCount(1);
   await expect(live.locator(".stx-say")).toContainText("Found it: the header centres on the wrong box.");
@@ -120,68 +113,8 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-line")).toHaveCount(0);
   await live.locator(".stx-fold").click();
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
-  await expect(page.locator(".dk-panel[data-side-for] .dk-sfoot")).toContainText("Open host-lead");
   for (const theme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-276-${theme}.png` });
   }
-});
-
-test("an item at work shows its holder's latest reply and what each of its crew at work is doing (#318)", async ({ page, cue }) => {
-  await cue.open("desk");
-  await replies(cue, ["G built. Waiting for the test helper."]);
-  await cue.change((st) => {
-    const at = Date.now();
-    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [], latest: "G built. Waiting for the test helper." });
-    st.sessions.find((x) => x.session_id === "host").team = [
-      { agent_id: "a1", name: "loops-tests", state: "working", step: "Rewriting the old tests", started_ms: at - 60000, step_ms: at - 5000 },
-      { agent_id: "a2", name: "loops-g", state: "done", step: "", started_ms: at - 600000, summary: "Built G" },
-    ];
-  });
-  await openItem(page, cue, "d5");
-  const now = page.locator(".dk-panel[data-side-for] .dk-pnow .dk-psay");
-  await expect(now).toContainText("host-lead is on it. G built. Waiting for the test helper.");
-  await expect(now.locator(".dk-crewnow")).toHaveText("Crew: loops-tests rewriting the old tests");
-  await expect(reply(page, "G built. Waiting for the test helper.")).toHaveCount(1);
-  // On another of its items now: its crew doesn't show here.
-  await cue.change((st) => { st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5").now_on = false; });
-  await expect(page.locator(".dk-panel[data-side-for] .dk-crewnow")).toHaveCount(0);
-});
-
-test("a reply with the stop hook's checklist in its own words, saved before the hub kept it apart, folds it too (#325)", async ({ page, cue }) => {
-  await cue.open("desk");
-  const text = "Loops tests pass (42/42); the other helper is still on the crew-page tests.\n\n1. SHAPE: Edits this turn:\n   - `addon.js`: a line.\n2. ASSUMPTIONS:\n   - the fake's count, UNVERIFIED.\n3. VERIFY E2E: loops.spec passes.\n4, 6, 7, 11, 12 — N/A.\n10. TESTS: each failure root-caused.";
-  const plain = "1. Read the header.\n2. Fixed its width.";
-  await replies(cue, [plain, text]);
-  await openItem(page, cue, "d5");
-  const r = reply(page, "Loops tests pass (42/42)");
-  await expect(r.locator(".cv-text > p").first()).toHaveText("Loops tests pass (42/42); the other helper is still on the crew-page tests.");
-  await expect(r.locator(".cv-text")).not.toContainText("SHAPE");
-  await r.getByText("After a stop hook ▾").click();
-  await expect(r.locator(".follow-body")).toContainText("SHAPE: Edits this turn");
-  await expect(r.locator(".follow-body")).toContainText("TESTS: each failure root-caused.");
-  // A numbered list that isn't the checklist stays as it is.
-  await expect(reply(page, "Read the header.").getByText(/After a stop hook/)).toHaveCount(0);
-});
-
-test("a reply's stop-hook answer folds however its holder wrote it: Shape, **Shape:**, 1 — Shape (#353)", async ({ page, cue }) => {
-  await cue.open("desk");
-  const forms = [
-    "Fixed the header.\n\n1. Shape: one CSS rule in `ui/styles/inbox.css`.\n2. Assumptions:\n   - none UNVERIFIED.\n4, 5, 6: N/A",
-    "Wrote the doc.\n\n1. **Shape:** one new file, `docs/x.md`.\n2. **Assumptions:** checked against the code.",
-    "Drew the page.\n\n1 — Shape was set before any edit: a ne…",
-  ];
-  await replies(cue, forms);
-  await openItem(page, cue, "d5");
-  for (const words of ["Fixed the header.", "Wrote the doc.", "Drew the page."]) {
-    const r = reply(page, words);
-    await expect(r.locator(".cv-text")).toHaveText(words);
-    await expect(r.getByText("After a stop hook ▾")).toHaveCount(1);
-  }
-  // Revealed with a click, and folded again.
-  const first = reply(page, "Fixed the header.");
-  await first.getByText("After a stop hook ▾").click();
-  await expect(first.locator(".follow-body")).toContainText("Shape: one CSS rule");
-  await first.getByText("After a stop hook ▴").click();
-  await expect(first.locator(".follow-body")).toHaveCount(0);
 });

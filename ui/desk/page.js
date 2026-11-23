@@ -121,7 +121,7 @@ function deskChatRows(s, page) {
   // session's chat shows its replies as it wrote them (#744): IF PICKED:, CHECK: and its other lines for Cue as plain
   // text, not dressed up as cards.
   const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead || !deskCOn() ? deskLineHtml : undefined, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -137,9 +137,8 @@ function deskRecall(key) {
 function deskShownChat(sid) {
   if (!deskSelection()) return null;
   if (deskOpen?.kind === "chat") return deskOpen.project === deskSelection() && deskOpen.sid === sid ? sessionOf(sid) : null;
-  // An item's page shows its holder's chat from when it took the item (#575): that chat loads earlier messages till
-  // that time is in (thread.js deskLoadStint).
-  if (deskOpen?.kind === "item") { const i = deskItem(deskSelection(), deskOpen.id); return i && deskHolderSid(i) === sid && (i.stints || []).some((t) => t.sid === sid) ? sessionOf(sid) : null; }
+  // An item opened shows its holder's chat (#744).
+  if (deskOpen?.kind === "item") { const i = deskItem(deskSelection(), deskOpen.id); return i && deskHolderSid(i) === sid ? sessionOf(sid) : null; }
   if (deskOpen || deskTab !== "lead" || deskPick === deskSelection()) return null;
   const d = deskOf(deskSelection());
   return deskLead(d)?.sid === sid && !deskLeadEnded(d) ? deskLeadSession(d) : null;
@@ -346,10 +345,10 @@ const DESK_MARKS = { desk: "Dispatcher", session: "Session", crew: "Crew", lead:
 const DESK_PANEL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg>`;
 /** Kinds of page whose panel you hid ("item", "session", "crew", "lead", "dispatcher"), kept across restarts. */
 const deskPanelHid = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskPanelHidden") || "[]")); } catch { return new Set(); } })();
-/** On today's Desk page (B2, desk/b2.js) the lead's panel starts shown (#666); Hide panel puts its Now and Waits on you
- *  in the strip over the chat, remembered as "dispatcher-hidden". Every other page as before. */
-const deskPanelKey = (page) => (page === "dispatcher" && deskB2On() ? "dispatcher-hidden" : page);
-const deskPanelHidden = (page) => deskPanelHid.has(deskPanelKey(page)) || (page === "dispatcher" && deskB2On() && deskB2Narrow());
+/** The lead's panel starts shown (#666); Hide panel puts its Now and Waits on you in the strip over the chat,
+ *  remembered as "dispatcher-hidden". Every other page as before. */
+const deskPanelKey = (page) => (page === "dispatcher" ? "dispatcher-hidden" : page);
+const deskPanelHidden = (page) => deskPanelHid.has(deskPanelKey(page)) || (page === "dispatcher" && deskB2Narrow());
 /** B2: the lead's chat card is too narrow for its panel (under 641px, desk-page.css's own rule), so the panel can't show
  *  and the strip takes its place, as with Hide panel. Read off the card in the chat's place as drawn last (else the
  *  board's width at the chat's share); a watcher on that card redraws when its width crosses the line. */
@@ -395,7 +394,7 @@ const deskChatLink = (sid, name, d) => (sessionOf(sid) ? `<button class="dk-pwa"
  *  quiet words before its name ("Bug #197 · "), `title` its name's html, `meta` its quiet line, `now` and `panel` the
  *  panel's sections, `main` its own column and `foot` the box under it. */
 function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", aside = "", activity = null }) {
-  // `aside`: more attributes on its panel (an item's names the item, deskItemSide). `activity`: the panel's Activity at
+  // `aside`: more attributes on its panel. `activity`: the panel's Activity at
   // its foot (#688); left out, the open page's own chat's (deskPageActivity).
   panel += activity ?? deskPageActivity();
   const hid = deskPanelHidden(page);
@@ -414,7 +413,7 @@ const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid ? "desk" : deskIsLead
 /** The way back from a session's chat: to what opened it (an item's page, a holder's), else to the lead's chat. */
 function deskChatBack(from, d) {
   const i = from?.kind === "item" && deskItem(d.project, from.id);
-  const label = i ? deskNum(i) : from?.kind === "sessions" ? "All sessions" : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskB2On() ? deskB2ItemsWord(d) : deskLeadName(d) || "Back";
+  const label = i ? deskNum(i) : from?.kind === "sessions" ? "All sessions" : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskB2ItemsWord(d);
   return `<button class="dk-back" data-desk-chat-back>‹ ${esc(label)}</button>`;
 }
 function deskSessChat(sid, from, d, foot = "", top = "") {
@@ -433,9 +432,7 @@ function deskSessChat(sid, from, d, foot = "", top = "") {
   const [dot, word] = deskPstate(s);
   const say = dot === "ask" ? "It asks you something: answer under its chat." : dot === "work" ? (s.doing ? esc(s.doing) : "At work.") : "At its prompt: tell it what's next under its chat.";
   const stop = dot === "work" ? `<button class="btn small" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : "";
-  // The new Desk page (#628): back to the lead's chat, and the item it's on a click away.
-  const v2 = deskV2 ? deskV2ChatBack(sid, from, d) : null;
-  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: v2 ? v2.back : deskChatBack(from, d), acts: (v2 ? v2.its : "") + open,
+  return deskPage({ page: kind === "desk" ? "dispatcher" : kind === "lead" ? "lead" : "session", kind, back: deskChatBack(from, d), acts: open,
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),
@@ -444,10 +441,9 @@ function deskSessChat(sid, from, d, foot = "", top = "") {
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */
 function deskFollowSid() {
-  // An item's page: its holder's steps, for its chat (deskItemChat).
+  // An item opened: its holder's steps, for its chat (desk/c.js deskCItemChat).
   if (deskOpen?.kind === "item" && deskOpen.project === deskSelection()) {
     const i = deskItem(deskOpen.project, deskOpen.id), sid = deskHolderSid(i), s = sid && sessionOf(sid);
-    // Its holder's chat shows on it (#418): that chat's steps, as on the holder's own page.
     if (s) return sid;
   }
   if (deskOpen?.kind === "chat" && deskOpen.project === deskSelection()) return sessionOf(deskOpen.sid) ? deskOpen.sid : null;
@@ -458,10 +454,10 @@ function deskFollowSid() {
   return l && !deskLeadEnded(d) && sessionOf(l.sid) ? l.sid : null;
 }
 /** The Desk's judgment calls (DECIDED lines), the only decisions worth your look: routes, gives, sessions started,
- *  contexts kept and Cue's hand-off asks are steps, kept on their item (deskItemPane). */
+ *  contexts kept and Cue's hand-off asks are steps. */
 const deskCalls = (d) => d.decisions.filter((c) => c.call);
 /** The Desk's Decisions list (#420): a call on an item that's over (you checked it, or it was dropped) is settled, so it
- *  goes behind "Show all" with the housekeeping; it stays on its item's own page. */
+ *  goes behind "Show all" with the housekeeping. */
 const deskOpenCalls = (d) => deskCalls(d).map((c) => (!c.minor && ["done", "dropped"].includes(deskItem(d.project, c.item_id || "")?.state) ? { ...c, minor: true } : c));
 function deskDecisions(d) {
   const calls = deskOpenCalls(d), empty = `<div class="dk-empty">No judgment calls yet. Routes and hand-offs are on each item.</div>`;
@@ -489,9 +485,6 @@ const deskDoneWhenHtml = (t, base = null) => {
   const pts = deskDoneWhenPoints(t);
   return pts.length ? `<ul class="dk-dwl">${pts.map((p) => `<li><i aria-hidden="true"></i><span>${linkify(esc(p), base)}</span></li>`).join("")}</ul>` : "";
 };
-/** Its designs' canvas (the last DESIGNS: link a session gave, desk/hub/core/desk.rs designs_said): "Open the mocks ↗", a
- *  plain link in the accent colour (Lead chats pick 1 + D: no outlined button), in its page's header (#178). */
-const deskDesignsLink = (i) => /^https?:\/\//.test(i.designs || "") ? `<div class="dk-dsg">${deskDesignsA(i.designs)}</div>` : "";
 const deskDesignsA = (url) => `<a class="dk-dlink" href="#" data-href="${esc(url)}">Open the mocks ↗</a>`;
 /** Its mocks' canvas: the DESIGNS: link its session gave, or for an item whose work was only mocks (#408, #436), the
  *  link it made. "" for none. */
@@ -578,14 +571,6 @@ function deskPickBtns(i, cls = "") {
   const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || named(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${esc(i.id)}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
   return `<ul class="dk-opts${cls ? ` ${cls}` : ""}">${opts.map(row).join("")}</ul>`;
 }
-/** The reply on item `i`'s chat that asks you to pick (#539): the newest of its holder's replies `ex` with its pick
- *  line, or with no pick line its options one to a line. Its time, null for none. */
-function deskPickReplyAt(i, ex) {
-  if (!deskPickOptions(i).length) return null;
-  const line = deskPickLine(i);
-  const asks = (e) => (line ? deskPickLineIn(e.text) === line : deskOptionWords({ said: [{ text: e.text }] }).size > 1);
-  return (ex || []).findLast((e) => e.role === "agent" && asks(e))?.at_ms ?? null;
-}
 /** Item `id` wherever the window has it: a Desk's open items, or the finished ones fetched for its Done list. */
 const deskItemAnywhere = (id) => (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.id === id)
   || [...deskDonePages.values()].flatMap((pg) => pg.items).find((x) => x.id === id) || null;
@@ -609,25 +594,8 @@ const deskBuiltLink = (i) => {
   return words ? `<p class="dk-built">${words}</p>` : "";
 };
 const deskSec = (title, html) => (html ? `<div class="dk-sec"><h3>${title}</h3>${html}</div>` : "");
-/** Item `i`'s latest DONE (`d.checks`), quiet, under What to check on its page: "Done by web-lead · 12m ago · 2 files"
- *  (a click on who opens its chat, as its row does), then whether the installed Cue has it ("In the installed Cue ·
- *  installed Mon 3:04 PM" / "Not installed yet: install Cue to try it"), or for a design item, its mocks. */
-function deskCheckInfo(i, d) {
-  const c = i.state === "to_check" || i.state === "done" ? (d.checks || []).find((x) => x.id === i.id && x.last) : null;
-  if (!c) return "";
-  const by = c.by || "its session", ses = (state.sessions || []).find((s) => s.name === c.by && s.project === deskWorkspace(d));
-  const who = ses ? `<button class="dk-chk-a" ${deskChatAttrs(ses.session_id, d)}>${esc(by)}</button>` : `<b>${esc(by)}</b>`;
-  // In it when Cue was installed after the work last changed (`edited`), not after the DONE: you install, then say DONE.
-  const mocks = /^https?:\/\//.test(c.designs || "") ? `<a class="dk-dlink" href="#" data-href="${esc(c.designs)}">Open the mocks ↗</a>` : "";
-  const inst = mocks || !c.cue ? mocks : deskInstallWait({ ...i, state: "to_check" }) ? "Not installed yet: install Cue to try it"
-    : i.finish?.step === "checked" ? (deskCheckBox(i) ? "" : "Ready to verify in Cue")
-    : `In the installed Cue · installed ${esc(deskChkWhen(state.desk?.installed_ms || 0))}`;
-  return `<div class="dk-chk-info"><div class="dk-chk-w">Done by ${who} · ${ago(c.at)} ago</div>${inst ? `<div class="dk-chk-in">${inst}</div>` : ""}</div>`;
-}
-const deskChkWhen = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
-/** Back to `to` (a holder's sid), else to what shows with nothing open: the lead's chat, or on today's page (B2,
- *  desk/b2.js) the item list ("‹ Items 40"). */
-const deskBack = (label, to = "") => (deskB2On() && !to ? `<button class="dk-back dk2b-items" data-desk-back="">‹ ${esc(deskB2ItemsWord(deskOf(deskSelection())))}</button>` : `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`);
+/** Back to `to` (a holder's sid), else to what shows with nothing open: the lead's chat ("‹ Items 40"). */
+const deskBack = (label, to = "") => (!to ? `<button class="dk-back dk2b-items" data-desk-back="">‹ ${esc(deskB2ItemsWord(deskOf(deskSelection())))}</button>` : `<button class="dk-back" data-desk-back="${esc(to)}">‹ ${esc(label)}</button>`);
 
 /** What you answered an item's holder on its page, by item: { q, a, ask, at }. Shown there until its holder asks again
  *  goes back to work, or ten minutes pass (board/board.js respond calls deskAnswered). */
@@ -791,23 +759,10 @@ function deskMore(i, items) {
   const menu = open ? `<span class="dk-givemenu dk-moremenu" role="menu">${items}</span>` : "";
   return `<span class="dk-givewrap dk-morewrap"><button class="btn small dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}">⋯</button>${menu}</span>`;
 }
-/** Looks right on an item's page: in its title area, always in reach however far its page is scrolled (#163); its
- *  few seconds to take it back there too. None while it waits for an install or you're writing why to send it back. */
-function deskLooksTop(i) {
-  if (i.state !== "to_check" || deskInstallWait(i) || deskBackFor === i.id) return "";
-  // Committed when its session said DONE: Looks right only closes it (its state line says which commit). Not
-  // committed yet: the same button commits it to main first, and says so.
-  return deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">${deskLooksWord(i)}</button>`;
-}
-/** Looks right's words: "Commit to main" for an item whose files aren't committed; "Close" beside its check line (#526). */
-const deskLooksWord = (i) => (deskUncommitted(i) ? "Commit to main" : deskCheckBox(i) ? "Close" : "Looks right");
-/** Item `i` is to check and there's something to do with it now (#526): its check line shows in a box at the top of
- *  its panel, with Close and Send back. Not mocks (their pick), not changes left on its branch, not waiting for install. */
-const deskCheckBox = (i) => i?.state === "to_check" && !deskInstallWait(i) && !i.finish?.unlanded && !i.finish?.mocks && !deskCanvas(i);
-const DESK_LOG_FOLD = 6;
 /** Which items' build logs are open in full (Show all), by id. */
+const DESK_LOG_FOLD = 6;
 const deskFinLogOpen = new Set();
-/** A failed build's or start's log tail on its item's page: mono, folded to a few lines, Show all opens it (and it
+/** A failed build's or start's log tail, under its item's bar: mono, folded to a few lines, Show all opens it (and it
  *  scrolls). Its last lines show folded. */
 function deskFinLog(i) {
   const log = i.state === "needs_you" ? (i.finish?.log || "").trimEnd() : "";

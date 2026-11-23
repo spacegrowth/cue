@@ -1,11 +1,13 @@
-// After you send a note on an item's page, its chat shows its holder at work on it (its Working line) till the reply
-// comes (#407), as it did before the live chat (#395), now in the holder's own chat (#418).
+// After you send a note from an item's box, its chat shows its holder at work on it (its Working line) till the reply
+// comes (#407), in the holder's own chat the item opens (#418, #744).
 import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
   await openDesk(page);
-  await page.locator(`[data-desk-item="${id}"]`).first().click();
+  await page.locator(`.dkn-items [data-desk-item="${id}"]`).first().click();
 };
+/** The item's chat: its holder's, in the session page that opened in the middle. */
+const chatOf = (page, sid = "host") => page.locator(`.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="${sid}"]`);
 const turns = (cue, list) => cue.override("session_steps", ({ sessionId }, list) => ({ version: list.length, turns: sessionId === "host" ? list : [] }), list);
 
 test("you send a note on an item's page: a Working line shows in its chat till the reply comes", async ({ page, cue }) => {
@@ -20,7 +22,7 @@ test("you send a note on an item's page: a Working line shows in its chat till t
     Object.assign(s, { state: "waiting", doing: "", thread: [{ role: "you", text: "About #d5 (x): go on", at_ms: t0 }, { role: "agent", text: first, at_ms: t0 + 5000 }] });
   }, [t0, first]);
   await openItem(page, "d5");
-  const ichat = page.locator(".dk-right .dk-ichat"), where = ichat.locator('[data-key="where"]');
+  const ichat = chatOf(page), where = ichat.locator('[data-key="where"]');
   await expect(ichat.locator(".cv-agent").filter({ hasText: first })).toHaveCount(1);
   await expect(where).not.toContainText("Working");
   // You send a note; it goes to its session, which starts on it.

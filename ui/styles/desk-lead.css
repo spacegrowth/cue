@@ -56,22 +56,15 @@
 .dk-state { margin: 0 24px; color: var(--muted); font-size: var(--type-body); }
 .dk-state b { color: var(--ink); font-weight: 600; }
 /* An item's designs (desk.js deskDesignsLink): "Open the mocks ↗" in the accent, plain words, no box. */
-.dk-dsg { margin: 10px 24px 0; }
 .dk-dlink { font-size: var(--type-body); font-weight: 600; color: var(--accent); text-decoration: none; }
 .dk-dlink:hover { text-decoration: underline; }
 .dk-sec { padding: 16px 24px 0; }
 /* A section's head on a Desk page: quiet, in normal case, at the message family's meta size (#501). */
 .dk-sec h3 { margin: 0 0 8px; font: 600 var(--type-small) / 1.4 var(--sans); color: var(--muted); }
 .dk-sec p { margin: 0 0 6px; line-height: 1.5; }
-.dk-sec p.dk-split { color: var(--muted); font-size: var(--type-body); }
 .dk-quiet { color: var(--muted); }
 .dk-note { margin: 14px 24px 0; color: var(--muted); font-size: var(--type-body); line-height: 1.5; }
 .dk-files { font-family: var(--mono); font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); }
-.dk-fcs { display: flex; flex-direction: column; }
-.dk-fc { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; margin: 0 -6px; border: 0; border-radius: var(--radius-qp); background: none; color: var(--ink); font: var(--type-small)/var(--type-small-lh) var(--mono); text-align: left; cursor: pointer; }
-.dk-fc:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-.dk-fc-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-fc-new { font: 600 var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .dk-chain .dk-acts { padding: 8px 0 0; }
 .dk-drop { margin: 18px 0 0 18px; padding: 4px 6px; border: 0; background: none; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); cursor: pointer; border-radius: var(--radius-btn); }
@@ -79,23 +72,8 @@
 .dk-drop.armed { color: var(--deny); }
 /* The item page: its header, then the open tab (below). */
 .dk-ipane { container-type: inline-size; padding: 0 0 24px; }
-.dk-ihead { padding: 0; }
-/* The header (back, title, pill, tabs) stays at the top as the open tab scrolls, on the tinted band it had before #140,
-   so the pill stands out on it (#142); the tabs' line is its bottom edge. */
-.dk-ipane > .dk-ihead { position: sticky; top: 0; z-index: 2; background: var(--panel-2); }
-.dk-ipane .dk-ihead h1 { margin: 6px 0 8px 24px; max-width: 700px; font-size: var(--type-page); letter-spacing: -.01em; }
-/* What pick it waits on (desk.js deskPickLine), one plain line under the state (#178). */
-.dk-pickl { margin: 8px 24px 0; font-size: var(--type-body); color: var(--ink); }
 /* What a waiting item asks you to do (#182): its verb bold; what it unblocks, quiet, under it. */
 .dk-vb { font-weight: 700; }
-.dk-ub { grid-column: 2; margin-top: 3px; color: var(--muted); font: var(--type-small)/var(--type-small-lh) var(--mono); }
-.dk-it.on .dk-ub { color: var(--on-sel); }
-.dk-iub { margin: 3px 24px 0; }
-/* A failed build's or start's log tail on its page: mono, its last few lines till Show all, then it scrolls. */
-.dk-flog { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel-2); color: var(--ink); font: var(--type-small)/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.dk-flog.open { max-height: 320px; overflow: auto; }
-.dk-flog-more { all: unset; margin-top: 6px; color: var(--accent); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; cursor: pointer; }
-.dk-flog-more:hover, .dk-flog-more:focus-visible { text-decoration: underline; }
 /* Pick 4 (Item thread, 16 Nov 2026): under the header, Thread, Decisions and Steps tabs (Drop at their right); the
    open one below. Thread is a time line: each message's age, its dot on a line, who and what kind, then its words. */
 .dk-itabs { display: flex; align-items: center; gap: 4px; margin: 14px 0 0; padding: 0 24px; border-bottom: 1px solid var(--line); }
@@ -107,57 +85,12 @@
 .dk-itabs .dk-drop { margin: 0; font-weight: 500; white-space: nowrap; flex: none; }
 .dk-ibody { padding: 18px 24px 0; min-width: 0; }
 .dk-ibody > .dk-decs, .dk-ibody > .dk-log { margin: 0 -24px; }
-.dk-thread { display: flex; flex-direction: column; }
-.dk-tm { display: grid; grid-template-columns: 40px 14px minmax(0, 1fr); column-gap: 12px; padding-bottom: 18px; }
-.dk-tm > .dk-age { text-align: right; padding-top: 2px; font: var(--type-label)/var(--type-label-lh) var(--sans); font-variant-numeric: tabular-nums; }
-.dk-tdot { position: relative; }
-.dk-tdot i { display: block; width: 10px; height: 10px; margin: 4px 2px 0; border-radius: 50%; background: var(--line); }
-.dk-tdot.on i { background: var(--accent); }
-.dk-tdot.back i { background: var(--deny); }
-.dk-tdot::after { content: ""; position: absolute; left: 6px; top: 18px; bottom: -14px; width: 2px; background: var(--line); }
-.dk-tm:last-child .dk-tdot::after { display: none; }
-.dk-tw { display: flex; align-items: center; gap: 8px; font-size: var(--type-body); }
-/* Reply / Done / Sent back on a thread line: plain muted words after a dot, no box. */
-.dk-ttag { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 500; text-transform: lowercase; }
-.dk-ttag::before { content: "· "; }
-.dk-ttag.on { color: var(--ink); }
-.dk-ttag.back { color: var(--deny); }
-.dk-tb { min-width: 0; }
-.dk-tb > .dk-md { margin-top: 3px; font-size: var(--type-body); line-height: 1.5; overflow-wrap: anywhere; }
 /* Its Done when under the thread, the first thing by where it stands (#140): the checklist at the thread's size. */
-.dk-idw .dk-dwl { font-size: var(--type-body); gap: 8px; }
 .dk-tpics { margin-top: 8px; }
-/* A send-back's pictures, counted under your words. */
-.dk-tpn { margin-top: 3px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
-/* Under what to check (deskCheckInfo): who did it, when, how many files; installed or not, or its mocks. Quiet. */
-.dk-chk-info { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; font-size: var(--type-body); color: var(--muted); }
-.dk-chk-info .dk-chk-a { color: var(--ink); font-weight: 600; }
-/* A record line (#276): a hand-off, a Done; one quiet line in the time line, not a message. */
-.dk-tm.rec { padding-bottom: 12px; }
-.dk-tm.rec .dk-tdot i { width: 6px; height: 6px; margin: 5px 4px 0; }
-.dk-tm.rec .dk-tb { font-size: var(--type-small); line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
-.dk-tm.rec .dk-tb b { color: var(--ink); font-weight: 600; }
-/* A turn's steps in a line, over its words (the live turn). */
-.dk-stp { margin-top: 3px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow-wrap: anywhere; }
-/* What its crew at work are doing (#318): a line of its own under the holder's words. */
-.dk-crewnow { display: block; margin-top: 3px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow-wrap: anywhere; }
-/* Under a reply: the link to that turn in its session. */
-.dk-tl { margin-top: 6px; font-size: var(--type-body); }
-.dk-tl .dk-tlink { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 /* A message on the Thread (yours, a send-back, the lead's note): the chat's bubble on the right, its one line under it
    (#422, chat.css .msg-line); no dot of its own, the time line running past it. */
-.dk-tmsg { padding-bottom: 10px; }
-.dk-tmsg .dk-tdot::after { top: 0; }
-.dk-tmsg .dk-tb { display: flex; flex-direction: column; min-width: 0; }
-.dk-tbar { width: 160px; height: 6px; margin-top: 8px; border-radius: var(--radius-pill); background: var(--work); }
-.dk-inow .dk-sec { padding: 4px 0 14px; }
-.dk-inow .dk-acts { padding: 0 0 14px; }
 .dk-ibody > .dk-note { margin: 0; }
 .dk-ibody > .dk-sec { padding: 0; }   /* Files: in line with the tabs, as the thread is */
-/* Files: each file's counts at the right, apart from its name, as in the diff it opens (#149); the list kept narrow
-   enough that the counts stay by their file on a wide page. */
-.dk-ibody .dk-fcs { max-width: 560px; }
-.dk-ibody .dk-fc .dv-add { margin-left: 16px; }
 /* Its decisions as sentences: what (age at the right), why under it, by who and Undo. */
 .dk-decs { border-top: 1px solid var(--line); }
 .dk-lr.dk-dl { display: block; padding: 10px 24px; }   /* the body's side padding, as the Thread has (#297) */
@@ -225,7 +158,6 @@
 .dk-fchip-i { margin-right: 4px; color: var(--muted); vertical-align: -1px; }
 .dk-fchip-d { color: var(--muted); font-weight: 400; }
 .dk-fchip-n { font-weight: 600; }
-
 
 /* A message between Desks (#640 option B, desk/lead.js deskBand): a band across the whole chat in the sending Desk's
    colour (--pc, its project's swatch; the one it went to for the lead's own TELL DESK), headed by a tile and the Desk,

@@ -33,7 +33,8 @@ test("START, CLOSE, PARK, UNPARK and a whole-Desk PAUSE show as short lines, no 
   await expect(act.locator(".dk-ln.open .mg-full")).toContainText("the owner sent it back and is waiting; it's a Desk reliability bug");
   await expect(page.locator(".dk-board [title]")).toHaveCount(0);
   await act.locator('.dk-ln [data-desk-chk-item="d2"]').first().click();
-  await expect(page.locator('.dk-right .dk-pg[data-desk-page="item"]')).toBeVisible();
+  await expect(page.locator(".dk-right .dkn-sp .dkn-ib")).toBeVisible();
+  await expect(page.locator('.dkn-card .dkn-row.on[data-desk-item="d2"]')).toHaveCount(1);
 });
 
 test("a START Cue already acted on isn't drawn twice: its own line says it", async ({ page, cue }) => {

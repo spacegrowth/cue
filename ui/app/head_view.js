@@ -91,11 +91,10 @@ function headDesks() {
   return `${main}${hvDeskChips(all).map(chip).join("")}`;
 }
 
-/** Today's Desk page (B2, desk/b2.js), whose All sessions list holds the Desk's name to rename: reached from here too,
- *  so a Desk with no lead (no strip over its chat) still has them. */
-const hvB2 = () => typeof deskB2On === "function" && deskB2On();
-/** What opens a Desk's settings: the Desk page's own (deskSettingsOpen), else the drawer of the v2 page. */
-const hvSettingsOpener = () => (typeof deskSettingsOpen === "function" ? deskSettingsOpen : typeof deskV2Open === "function" ? deskV2Open : null);
+/** The Desk page is loaded: its All sessions list holds the Desk's name to rename, reached from here too. */
+const hvB2 = () => typeof deskSessions === "function";
+/** What opens a Desk's settings: the Desk page's own (deskSettingsOpen). */
+const hvSettingsOpener = () => (typeof deskSettingsOpen === "function" ? deskSettingsOpen : null);
 
 // ---------- clicks ----------
 

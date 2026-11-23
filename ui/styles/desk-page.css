@@ -82,12 +82,9 @@
 .dk-pdid .dk-pdt { grid-column: 2; line-height: 1.4; overflow-wrap: anywhere; }
 /* Its why cut to two lines (#452: a twelve-line reopen ran down the panel); the whole of it is in the lead's chat. */
 .dk-pdid .dk-prs { line-height: 1.4; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-/* Its item, a link in plain words (the page's done line, Cue's lines). */
-.dk-chk-a { all: unset; cursor: pointer; color: inherit; font-weight: inherit; }
-.dk-chk-a:hover { color: var(--link, var(--accent)); }
 /* The Desk chats' unset buttons (a line, a title, who did it, waits on you ›): a ring when
    reached by keyboard, as the item page's tabs have. */
-.dk-sch-t:focus-visible, .dk-chk-a:focus-visible, .dk-ln-it:focus-visible, .mg-line[role="button"]:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
+.dk-sch-t:focus-visible, .dk-ln-it:focus-visible, .mg-line[role="button"]:focus-visible, .dk-undo-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
 .dk-chk-after { padding-top: 6px; font-size: var(--type-body); color: var(--muted); }
 /* Send back, open on its item (desk.js deskBackHtml): why, in a box like the Desk's own. */
 .dk-sb { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -107,7 +104,6 @@
 .dk-cmt { display: inline-flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .dk-undo-c { all: unset; cursor: pointer; color: var(--accent); }
 .dk-undo-c:hover { text-decoration: underline; }
-
 
 /* An item's kind (deskKindIcon): one small line icon in the theme color, wherever an item's kind shows. */
 .dk-kic { flex: none; display: inline-block; vertical-align: -2px; margin-right: 5px; color: var(--accent); }
@@ -195,7 +191,6 @@
 .dk-ptabs { flex: none; display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .dk-ptabs::-webkit-scrollbar { display: none; }
 .dk-ptabs .dk-tab { flex: none; font-size: var(--type-body); white-space: nowrap; }
-.dk-pg .dk-ipane > .dk-ihead { background: var(--panel); }
 .dk-pg .dk-itabs { margin: 0; padding: 0 12px; gap: 0; }
 .dk-pg .dk-itab { padding: 9px 8px; flex: none; }
 .dk-pg .dk-itab .n { margin-left: 4px; }
@@ -203,7 +198,6 @@
 .dk-pg .dk-ibody > .dk-decs, .dk-pg .dk-ibody > .dk-log { margin: 0 -20px; }
 .dk-pg .dk-pane > .dk-sec:first-child, .dk-pg .dk-pane > .dk-sec { padding: 16px 20px 0; }
 .dk-pg .dk-note { margin: 14px 20px 0; }
-.dk-pg .dk-inow .dk-sb { padding: 0 0 14px; }
 /* The panel. */
 .dk-panel { grid-area: panel; min-width: 0; padding: 0 20px 12px; border-bottom: 1px solid var(--line); user-select: text; -webkit-user-select: text; }
 .dk-panel button { user-select: none; -webkit-user-select: none; }
@@ -218,13 +212,10 @@
 .dk-pdot.stop { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .dk-pfc { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .dk-psay { margin-top: 6px; font-size: var(--type-small); line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
-.dk-psay .dk-pickl { margin: 0; font-size: var(--type-small); line-height: var(--type-small-lh); }
-.dk-psay .dk-iub { margin: 3px 0 0; }
 .dk-psay .dk-kic { width: 12px; height: 12px; margin-right: 3px; vertical-align: -2px; color: var(--muted); }
 .dk-pacts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
 .dk-pacts .dk-acts { flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; }
 .dk-pacts .dk-givewrap { display: block; }
-.dk-pacts .dk-dsg { margin: 2px 0 0; }
 /* A picked mocks item and the item that builds its pick, each linking to the other (#281). */
 /* A mocks item's options, each with a Pick (#445). */
 .dk-opts { flex-basis: 100%; list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -233,7 +224,6 @@
 .dk-optw { flex: 1; min-width: 0; color: var(--muted); }
 .dk-opts .btn { flex: none; }
 /* The same options under the reply that asks you to pick, in the item's chat (#539). */
-.dk-chat-opts { margin: 8px 0 2px; max-width: 520px; }
 .dk-built { flex-basis: 100%; margin: 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 /* The same line on its row in Done (#606), under its title. */
 .dk-it .dk-built { flex-basis: auto; margin: 1px 0 2px; }
@@ -243,12 +233,6 @@
 .dk-pacts .dk-chk-after { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 /* Send back while you write why (#394): pressed, in place, beside Looks right (greyed till you're done). */
 .dk-pacts .btn[aria-pressed="true"] { background: var(--panel-2); border-color: var(--muted); }
-/* Done when as ticks: a ring each, filled in the accent once it's to check or done. */
-.dk-ptk { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: var(--type-small); line-height: 1.4; color: var(--ink); }
-.dk-ptk li { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 8px; align-items: start; }
-.dk-tk { width: 14px; height: 14px; margin-top: 1px; box-sizing: border-box; display: grid; place-items: center; border: 1.6px solid var(--muted); border-radius: 50%; }
-.dk-tk.y { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.dk-pdw .dk-chk-info { margin-top: 10px; font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* A note in the panel starts at the same edge as everything else in it (#394). */
 .dk-pg .dk-panel .dk-note { margin: 0; }
 /* WHO: a quiet label, then its value. */
@@ -409,7 +393,6 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-aw-ask p { margin: 0; }
 .dk-aw-ask pre:not(.slab) { margin: 0; white-space: pre-wrap; font: var(--type-small)/var(--type-small-lh) var(--mono); }
 .dk-aw-ask .dk-request-who { all: unset; color: var(--muted); font-weight: 600; font-size: var(--type-small); line-height: var(--type-small-lh); }
-.dk-aw-ask .dk-row-decisions { display: flex; flex-wrap: wrap; gap: 6px; }
 .dk-aw-more { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-aw-opt { margin-top: -4px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* Before you go (#618, pick C): one question at a time, marks per Desk, Skip; the rules fold into one row. */
@@ -462,17 +445,12 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-gb { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: var(--type-body); }
 .dk-gb-n { color: var(--muted); }
 .dk-gb-box { margin: 8px 0; }
-/* Parked (#385, #391): a quiet group; its titles muted, a plain Start at the row's end (Park on a queued row). */
-.dk-held .dk-t { color: var(--muted); }
-.dk-held .dk-it.on .dk-t { color: inherit; }
-.dk-i2 .dk-hstart { margin-left: auto; flex: none; }
 
 /* A group of the item list folds and opens (#430): a click on its header; a chevron before its name turns with it, its
    count stays; its rows slide shut and fade, about 200ms, none with reduced motion. */
 .dk-gh.dk-gf { cursor: pointer; user-select: none; }
 .dk-gf > .dk-gchev { flex: none; margin-left: -16px; transform: rotate(90deg); transition: transform .2s ease; }
 .dk-gf[aria-expanded="false"] > .dk-gchev { transform: none; }
-.dk-gf[aria-expanded="false"] .dk-qhint { visibility: hidden; }
 .dk-gbody { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .2s ease, opacity .2s ease; }
 .dk-gbody.shut { grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .2s ease, opacity .2s ease, visibility 0s .2s; }
 .dk-gin { min-width: 0; min-height: 0; }
@@ -501,18 +479,8 @@ body.dk-dragging, body.dk-dragging * { cursor: grabbing !important; user-select:
 .dk-it.on .dk-chev { color: inherit; }
 .dk-pcs { margin: 0 0 4px; }
 .dk-it.pc { margin-left: 30px; padding: 5px 10px; }
-.dk-it.pc .dk-i1 { font-size: var(--type-body); font-weight: 500; }
-.dk-it.pc.dk-done .dk-i1 { color: var(--muted); font-weight: 500; }
 /* On its page: the bar in the line under the title, longer. */
 .dk-fp.big .dk-pbar { width: 160px; height: 5px; }
-/* Its Pieces tab (own names: .dk-prs/.dk-prt are the side panel's rows). */
-.dk-pcl { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; }
-.dk-pc { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding: 8px 12px; border-radius: var(--radius-btn); cursor: pointer; }
-.dk-pc:hover { background: var(--panel-2); }
-.dk-pc .dk-si { grid-row: span 2; }
-.dk-pc-t { font-size: var(--type-body); line-height: 1.4; overflow-wrap: anywhere; }
-.dk-pc.done .dk-pc-t { color: var(--muted); }
-.dk-pc-m { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 
 /* Progress (#409, desk/progress.js; mock J2 of the "Live progress" canvas page): a popover over the Desk from the Items
    head, one row per item under way, the six steps as columns named once, each row's marks joined by a line with how
@@ -579,15 +547,9 @@ button.dk-al-row:hover { background: var(--line); }
 button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dk-al-t { color: var(--ink); }
 .dk-al-cmd { display: block; margin-top: 3px; font: var(--type-small)/var(--type-small-lh) var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
-/* A list row's permission opened with more (#426): all its words, not two lines. */
-.dk-it .req-cut.open .dk-h { display: block; -webkit-line-clamp: unset; }
-/* An item's page (#418, option B of the item chat mocks): its holder's own chat in the middle, its turns about other
-   items folded to a line each; the item itself in the column at the right, in the Items list's place. */
-.dk-ichat { display: flex; flex-direction: column; gap: 14px; }
 /* Not started yet (#626): a status card, panel-2 on the pane, its head small caps, what it waits for at 13px. */
 .dk-ns { align-self: stretch; box-sizing: border-box; padding: var(--card-pad-y) var(--card-pad-x); border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel-2); color: var(--ink); font-size: var(--type-body); line-height: 1.45; }
 .dk-ns-t { font: var(--mg-body); }   /* what it waits for: a chat's words (#703) */
-.dk-inow > .dk-ns { margin-top: 12px; }
 .dk-ns-h { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 600; }
 .dk-ns-h .dk-si { flex: none; }
 .dk-ns-t { margin-top: 6px; }
@@ -599,13 +561,6 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-ns-by ul { margin: 4px 0 0; padding-left: 18px; }
 .dk-ns-by a { font-weight: 500; text-decoration: none; }
 .dk-ns-by a:hover { text-decoration: underline; }
-.dk-fold { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 8px 12px; border-radius: var(--radius-btn); background: var(--panel-2); color: var(--muted); font-size: var(--type-body); cursor: pointer; user-select: none; -webkit-user-select: none; }
-.dk-fold b { flex: none; color: var(--ink); font-weight: 600; }
-.dk-fold .dk-fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-.dk-fold .dk-fold-n { flex: none; }
-.dk-fold .dk-fold-gt { margin-left: auto; flex: none; }
-.dk-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, var(--panel-2)); }
-.dk-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* An item's panel, beside its chat (#418): a little wider than a session's for its You'll see and record; its Open
    and Drop at its end. */
 @container dkcard (min-width: 641px) {
@@ -633,30 +588,13 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dk-pg[data-desk-page="item"] > .dk-panel .dk-note { margin: 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .dk-pg[data-desk-page="item"] > .dk-panel > .dk-sfoot { flex-wrap: wrap; gap: 8px; margin-top: auto; padding: 12px 0 0; border-top: 1px solid var(--line); }
 /* Whether it's ready for you to check (#710), under its state's word. */
-.dk-pready { margin-top: 6px; font-size: var(--type-small); font-weight: 600; line-height: 1.4; }
-.dk-pready.yes { color: var(--pcp5); }
-.dk-pready.no, .dk-pready.done { color: var(--muted); }
-.dk-pmeta { margin-top: 8px; color: var(--muted); font-size: var(--type-small); line-height: 1.45; }
-.dk-recs { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; user-select: text; -webkit-user-select: text; }
-.dk-rec { font-size: var(--type-body); line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
-.dk-rec .dk-age { color: var(--muted); font: var(--type-label)/var(--type-label-lh) var(--sans); font-variant-numeric: tabular-nums; }
 .dk-sfoot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
 .dk-sfoot .dk-drop { margin: 0 0 0 auto; align-self: center; font-weight: 600; }
-
 
 /* An item to check (#526, option B): its Now in a filled box at the panel's top: the state, what to do in larger type
    ("Try:" / "Nothing to see:" bold), a quiet note of where that line came from, then Close and Send back. Folded, the
    box is no box: the same one line as any Now. */
 .dk-pbox { display: contents; }
-.dk-ckl { margin: 0; font-size: var(--type-title); line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
-.dk-ckl .dk-vb { font-weight: 700; }
-.dk-cks { margin: 4px 0 0; font-size: var(--type-small); line-height: 1.4; color: var(--muted); }
-/* Its three steps (#668): Where, Do, Expect, numbered, each label bold on a line of its own with its words beside it;
-   Show me under them when there's a page to open. */
-.dk-steps { margin: 0; padding: 0 0 0 1.4em; display: grid; gap: 4px; font-size: var(--type-title); line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
-.dk-steps li::marker { color: var(--muted); font-weight: 600; }
-.dk-steps .dk-vb { font-weight: 700; margin-right: 4px; }
-.dk-show { display: inline-flex; margin-top: 8px; text-decoration: none; }
 /* "Cue's words" on a row: quiet, after the line. */
 .dk-cw { color: var(--muted); }
 .dk-it.on .dk-cw { color: var(--on-sel); opacity: .8; }
@@ -668,11 +606,6 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pbox { display: block; padding: 12px; border-radius: var(--radius-card); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
   .dk-pg[data-desk-page="item"]:not(.hid) .dk-pbox .dk-psay { margin-top: 6px; }
 }
-/* Starts on (#597): where an item's session starts, on its page while nobody has it. */
-.dk-starts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dk-on-l { color: var(--muted); }
-.dk-on-seg button { font-size: var(--type-small); line-height: var(--type-small-lh); padding: 2px 8px; }
-.dk-on-hint { margin-top: 4px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 
 /* #688 (option D): in a Desk chat only your messages have a background (code blocks keep theirs). Cue's cards and lines,
    what opens under a line, a CHECK's parts, the folds and the item's state card are plain on the chat. */

@@ -63,8 +63,8 @@ test("an item's page: a note to its busy holder (the hub keeps it, hub/desk_act.
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
   const sid = await page.evaluate(() => { const h = deskItem("cue", "d3").holder; return h.lead_sid || h.sid; });
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .dkn-sp textarea");
   await box.fill("Narrow windows too");
   await box.press("Enter");
-  await once(page, cue, page.locator(".dk-right .dk-ichat"), "Narrow windows too", sid);
+  await once(page, cue, page.locator(".dk-right .dkn-sp"), "Narrow windows too", sid);
 });

@@ -1,7 +1,7 @@
 // Permission cards (#426): No and Allow sit side by side on one line at the right, No first, the ask beside them (or
-// above them when narrow); on the Desk's Progress view, and the item page's / session chat's card. The item list's
-// row only says what it asks, in its one line (B2, #666). A long command shows its first lines with more on the card,
-// which opens the rest in place, and less, which folds it back.
+// above them when narrow); on the Desk's Progress view, and the item's session chat's card. The Items row only says
+// it asks you. A long command shows its first lines with more on the card, which opens the rest in place, and less,
+// which folds it back.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const CMD = "node node_modules/@playwright/test/cli.js test --config tests/ui/playwright.config.mjs --grep 'a Desk can start in a folder|three columns'";
@@ -33,24 +33,16 @@ const layout = (page, box, no, yes, ask) => page.evaluate(([box, no, yes, ask]) 
 
 const ROW = '.dk-items [data-desk-item="227"]';
 const NO = '[data-desk-decision="deny"]', YES = '[data-desk-decision="allow"]';
-/** The open item's card: the page's ask, where No and Allow are (B2's row has none, #666). */
+/** The open item's card: the chat's ask, where No and Allow are (the row has none). */
 const CARD = ".dk-right .act-card";
-/** The row's one status line, and whether it holds on one line, cut with … when long. */
-const oneLine = (page) => page.locator(`${ROW} .dk2b-ts`).evaluate((e) => [Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)), e.scrollWidth > e.clientWidth]);
 
-test("the item list's permission: its row says what it asks in one line, No then Allow on its page's card (#426, #666)", async ({ cue, page }) => {
+test("the item list's permission: its row says it asks you, No then Allow on its chat's card (#426, #666)", async ({ cue, page }) => {
   await setup(cue, page);
-  await expect(page.locator(`${ROW} .dk2b-ts`)).toContainText(/^Asks: Allow node node_modules/);
+  await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Asks you");
   // No answer buttons on the row: the row opens the item, its card answers.
   await expect(page.locator(`${ROW} :is(${NO}, ${YES}, button)`)).toHaveCount(0);
   await page.locator(ROW).click();
   await expect.poll(() => layout(page, CARD, '[data-act="deny"]', '[data-act="allow"]')).toBe("ok");
-});
-
-test("on a narrow list the row's ask stays one line, cut with … (#426, #666)", async ({ cue, page }) => {
-  await setup(cue, page);
-  await page.addStyleTag({ content: `${ROW} { width: 300px; }` });
-  await expect.poll(() => oneLine(page)).toEqual([1, true]);
 });
 
 test("Progress puts No before Allow on one line (#426)", async ({ cue, page }) => {
@@ -68,15 +60,14 @@ test("the item page's card puts Deny and Allow on one line, Allow at the right (
   await expect.poll(() => layout(page, ".dk-right .act-card", '[data-act="deny"]', '[data-act="allow"]')).toBe("ok");
 });
 
-// One long command (the list row sums up a chain of them as "run x and y", which is short).
+// One long command (a chain of them is summed up as "run x and y", which is short).
 const LONG = `node scripts/check.mjs ${Array.from({ length: 40 }, (_, n) => `--case=tests/fixtures/case-${n}.json`).join(" ")}`;
 
 test("a long command shows a few lines with more; more opens the rest in place, less folds it back (#426)", async ({ cue, page }) => {
   await setup(cue, page, LONG);
-  // The list row: one line, cut with …; no more on the row (#666), the card has it.
-  await expect.poll(() => oneLine(page)).toEqual([1, true]);
+  // No more on the row, the card has it.
   await expect(page.locator(`${ROW} [data-req-more]`)).toHaveCount(0);
-  // The item page's card: three lines of the command, more for the rest.
+  // The item's chat's card: three lines of the command, more for the rest.
   await page.locator('.dk-items [data-desk-item="227"]').click();
   const card = page.locator(".dk-right .act-card");
   const pre = () => card.locator("pre.slab").evaluate((e) => e.getBoundingClientRect().height);
@@ -92,7 +83,7 @@ test("a long command shows a few lines with more; more opens the rest in place, 
 
 test("a short command shows in full, with no more (#426)", async ({ cue, page }) => {
   await setup(cue, page, "npm test");
-  await expect(page.locator(`${ROW} .dk2b-ts`)).toContainText("Asks: Allow npm test?");
+  await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Asks you");
   await expect(page.locator(`${ROW} [data-req-more]`)).toHaveCount(0);
   await page.locator('.dk-items [data-desk-item="227"]').click();
   await expect(page.locator(".dk-right .act-card pre.slab")).toContainText("npm test");

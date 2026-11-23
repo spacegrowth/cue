@@ -1,0 +1,21 @@
+import { test, expect, openDesk } from "./cue.mjs";
+import { openSessions } from "./desk.mjs";
+test("probe", async ({ page, cue }) => {
+  await cue.open("desk"); await openDesk(page);
+  await page.locator('[data-desk-item="d2"]').click();
+  await page.locator('.dk-right .dkn-ib [data-desk-act="send_back"]').click();
+  console.log("BACK", await page.locator(".dk-right .dkn-ibback").evaluate((e) => e.outerHTML.slice(0, 1500)));
+  await page.locator(".dk-right .dkn-ibback textarea").fill("Still loses focus");
+  await cue.override("desk_item_act", () => { throw "offline"; });
+  await page.locator('.dk-right [data-desk-act="back_go"]').click();
+  await page.waitForTimeout(800);
+  console.log("FAILED", JSON.stringify(await page.locator(".msg-failed").evaluateAll((els) => els.map((e) => e.outerHTML.slice(0, 900)))));
+  console.log("IBBACK", await page.locator(".dk-right .dkn-ibback").count());
+  await page.locator(".dk-right .dk-back").click();
+  await openSessions(page);
+  const row = page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first();
+  await row.click();
+  console.log("HEAD", await page.locator(".dk-right").evaluate((e) => e.outerHTML.slice(0, 1200)));
+  await page.locator(".dk-right .rename-btn").first().click();
+  console.log("REN", await page.locator(".dk-right .ap-head").evaluate((e) => e.outerHTML.slice(0, 1200)));
+});

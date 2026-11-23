@@ -46,9 +46,10 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
   await toEnd(60);
   await toEnd(72);
   await expect(rows.last()).toContainText("(old 69)");
-  // Its item's number opens the item.
+  // Its item's number opens the item: its holder's chat with its bar, its row lit.
   await rows.first().locator('[data-desk-chk-item="d3"]').click();
-  await expect(page.locator('.dk-right .dk-pg[data-desk-page="item"]')).toBeVisible();
+  await expect(page.locator('.dk-right .dkn-sp[data-desk-page="session"] .dkn-ib')).toBeVisible();
+  await expect(page.locator('.dkn-items .dkn-row.on[data-desk-item="d3"]')).toHaveCount(1);
   await page.locator(".dk-right .dk-back").first().click();
   await page.locator('.dk-right .dk-tab[data-desk-tab="moves"]').click();
   // Clear asks once; Keep leaves it; Clear again empties it.

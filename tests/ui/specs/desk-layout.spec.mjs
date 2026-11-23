@@ -1,57 +1,37 @@
-// The new Desk layout (#738, desk/c.js): "Try the new Desk layout" in Desk settings, off by default and remembered. On:
-// the Desk's sessions at the left on the green (the lead on top, a heading per machine), the lead's chat with a panel of
-// only Now and Activity, Items as one card (Waiting on you and Working, six steps a row) with Up next and Done today side
-// by side under it, each folding to its heading; no count of its own in the header. Off: today's Desk, untouched.
+// The Desk's layout (#738, desk/c.js; the only one since #748): the Desk's sessions at the left on the green (the lead
+// on top, a heading per machine), the lead's chat with a panel of only Now and Activity, Items as one card (Waiting on
+// you and Working, six steps a row) with Up next and Done today side by side under it, each folding to its heading; no
+// count of its own in the header. An item opens its session's chat with its bar of steps, or (no session yet) its bar
+// over what it was added with: there's no other item page.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 import { stampSteps } from "./desk-steps.mjs";
 
-/** Desk settings, from the header's Desks menu. */
-async function settings(page) {
-  await page.locator('.top [data-hv-menu="desks"]').click();
-  await page.locator(".top .hv-menu [data-hv-desk-set]").click();
-  return page.locator(".ld-dialog [data-desk-c-try]");
-}
-/** The new layout turned on from Desk settings, which then close. */
-async function turnOn(page) {
-  const sw = await settings(page);
-  await expect(sw).toHaveText("Try the new Desk layout");
-  await expect(sw).toHaveAttribute("aria-checked", "false");
-  await sw.click();
-  await expect(page.locator(".dk-board.dk-c")).toHaveCount(1);
-  await page.keyboard.press("Escape");
-  await expect(page.locator(".ld-dialog")).toHaveCount(0);
-}
 const open = async (page, cue, size = { width: 1800, height: 1095 }) => {
   await page.setViewportSize(size);
   await cue.open("desk");
   await openDesk(page);
-  await turnOn(page);
+  await expect(page.locator(".dk-board.dk-c")).toHaveCount(1);
 };
 
-test("off by default; on, the three columns; off again, today's Desk", async ({ page, cue }) => {
-  await page.setViewportSize({ width: 1800, height: 1095 });
-  await cue.open("desk");
-  await openDesk(page);
-  await expect(page.locator(".dk-board.dk-c")).toHaveCount(0);
-  await expect(page.locator(".dk-board.dk-b2 .dk2b-tabs")).toHaveCount(1);
-  await turnOn(page);
+test("the three columns, always: no switch in Desk settings, no tabs, no List | Cards", async ({ page, cue }) => {
+  await open(page, cue);
   const [s, c, i] = await Promise.all([".dk-c > .dkn-side", ".dk-c > .dk-right", ".dk-c > .dkn-items"].map((q) => page.locator(q).boundingBox()));
   expect(s.x + s.width).toBeLessThan(c.x);
   expect(c.x + c.width).toBeLessThan(i.x);
-  // No tabs and no List | Cards: every group is on screen.
-  await expect(page.locator(".dk-c .dk2b-tabs, .dk-c .dk-cards-sw")).toHaveCount(0);
-  // Remembered across a reload.
+  await expect(page.locator(".dk-c .dk2b-tabs, .dk-c .dkc-sw")).toHaveCount(0);
+  // Desk settings has no switch of layouts.
+  await page.locator('.top [data-hv-menu="desks"]').click();
+  await page.locator(".top .hv-menu [data-hv-desk-set]").click();
+  await page.locator(".ld-dialog").waitFor();
+  await expect(page.locator(".ld-dialog .dk2-sw, .ld-dialog [data-desk-c-try], .ld-dialog [data-desk2-try]")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // Turned on before, the old switches' keys change nothing.
+  await page.evaluate(() => { localStorage.setItem("cue.deskC", "0"); localStorage.setItem("cue.deskV2", "1"); });
   await page.reload();
   await page.locator('#app [data-view="board"]').waitFor();
   await openDesk(page);
   await expect(page.locator(".dk-board.dk-c")).toHaveCount(1);
-  // Off: today's Desk is back.
-  const sw = await settings(page);
-  await expect(sw).toHaveAttribute("aria-checked", "true");
-  await sw.click();
-  await page.keyboard.press("Escape");
-  await expect(page.locator(".dk-board.dk-c")).toHaveCount(0);
-  await expect(page.locator(".dk-board.dk-b2 .dk2b-tabs")).toHaveCount(1);
+  await expect(page.locator(".dk-board.dk-v2")).toHaveCount(0);
 });
 
 test("the sessions column: the lead on top under a line, a heading per machine, a click opens a chat", async ({ page, cue }) => {
@@ -334,10 +314,23 @@ test("an item a session holds opens that session's chat: back, its top bar, the 
   await expect(bar.locator('[data-desk-act="looks_right"]')).toHaveText("Looks right");
   await expect(bar.locator('[data-desk-act="send_back"]')).toHaveText("Send back");
   await expect(bar.locator(".dkn-ibsee")).toHaveText(/^Try: \S/);
-  // An item no session has keeps its own page.
+  // Send back: why, in its own box in the bar, in place of the buttons.
+  await bar.locator('[data-desk-act="send_back"]').click();
+  await expect(page.locator(".dk-c > .dk-right .dkn-ib .dkn-ibback textarea")).toBeFocused();
+  await expect(page.locator('.dk-c > .dk-right .dkn-ib [data-desk-act="looks_right"]')).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".dk-c > .dk-right .dkn-ib .dkn-ibback")).toHaveCount(0);
+  // An item no session has: the same frame, its bar over what it was added with; no tabs, no panel.
   await page.locator('[data-dkn-drawer="next"] .dkn-nx[data-desk-item="d6"]').click();
-  await expect(page.locator('.dk-c > .dk-right [data-desk-page="item"]')).toHaveCount(1);
-  await expect(page.locator(".dk-c > .dk-right .dkn-sp")).toHaveCount(0);
+  const bare = page.locator('.dk-c > .dk-right .dkn-sp[data-desk-page="item"]');
+  await expect(bare.locator(".dkn-ih1")).toContainText("#d6");
+  await expect(bare.locator(".dkn-ib .dkn-ks .dkn-kp")).toHaveCount(6);
+  await expect(bare.locator(".dkn-ibare .dk-sec h3", { hasText: "Added with" })).toHaveCount(1);
+  await expect(bare.locator('.dkn-ib [data-desk-act="drop"]')).toHaveText("Drop this item");
+  await expect(bare.locator(".dkn-spm textarea")).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dk-right .dk-panel, .dk-c > .dk-right .dkn-stabs")).toHaveCount(0);
+  // Nowhere an item page of the old kind: no Thread, Record or Decisions tabs.
+  await expect(page.locator(".dk-ipane, .dk-itabs, [data-desk-itab], .dk2b-ipage")).toHaveCount(0);
 });
 
 test("in a session's chat on the new layout its replies show as written: its IF PICKED and CHECK lines are text, not cards", async ({ page, cue }) => {

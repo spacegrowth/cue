@@ -28,20 +28,21 @@ test("a checked Cue fix without a commit hash waits for verification on the Desk
       { ...base, id: "awaits-install", title: "Queued for install", state: "finishing", finish: { step: "queued", at }, checks: [{ at, edited, cue: true }] }
     );
   });
-  // On the Desk it waits on you to check, not as a question (#602); B2 lists both under WAITS ON YOU (#666), its row
-  // with Check, the one still installing in WORKING with none.
-  expect(await groupOf(page, "265")).toBe("WAITS ON YOU");
+  // On the Desk it waits on you to check, not as a question (#602): under WAITING ON YOU, its row with the ✓ (Looks
+  // right), the one still installing in WORKING with none.
+  expect(await groupOf(page, "265")).toBe("WAITING ON YOU");
   await expect(page.locator('[data-desk-item="265"]')).not.toHaveClass(/\bask\b/);
-  await expect(page.locator('[data-desk-item="265"] .dk2b-chk')).toHaveText("Check");
+  await expect(page.locator('[data-desk-item="265"] .dk-ok')).toHaveAttribute("aria-label", "Looks right");
   expect(await groupOf(page, "awaits-install")).toBe("WORKING");
-  await expect(page.locator('[data-desk-item="awaits-install"] .dk2b-chk')).toHaveCount(0);
+  await expect(page.locator('[data-desk-item="awaits-install"] .dk-ok')).toHaveCount(0);
   await page.locator('[data-desk-item="265"]').click();
-  await expect(page.locator(".dk-right h1")).toContainText("265");
-  await page.locator(".dk-panel[data-side-for]").getByRole("button", { name: "Close" }).click();
+  // It opens its session's chat with its bar: Looks right closes it.
+  const bar = page.locator(".dk-right .dkn-ib.check");
+  await bar.locator('[data-desk-act="looks_right"][data-id="265"]').click();
   await cue.called("desk_looks_right", { id: "265" });
-  // Back to the Items list (#418: it's hidden while an item is open).
-  await page.locator(".dk-right .dk-back").click();
-  await expect(page.locator('.dk-items [data-desk-item="265"]')).toHaveCount(0);
+  await page.locator(".dk-right .dkn-sback .dk-back").click();
+  // Out of Waiting on you: done today.
+  await expect.poll(() => groupOf(page, "265")).toBe("DONE TODAY");
 });
 
 test("the Desk counts its open decisions, excluding resolved requests and reviews", async ({ cue, page }) => {
@@ -51,15 +52,14 @@ test("the Desk counts its open decisions, excluding resolved requests and review
     const task = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5");
     Object.assign(task, { state: "needs_you", ask: { item_id: "codex-approval", sid: "host", kind: "permission", text: "printf approval-check" } });
   });
-  // The Desk's open decisions: the asking rows under WAITS ON YOU (B2 lists what's ready to check there too, after
-  // them, #666).
-  const deskRows = async () => { const o = await listOrder(page), at = o.indexOf("# WAITS ON YOU"); const rows = []; for (const x of o.slice(at + 1)) { if (x.startsWith("# ")) break; rows.push(x); } return rows; };
+  // The Desk's open decisions: the asking rows under WAITING ON YOU (what's ready to check is there too, after them).
+  const deskRows = async () => { const o = await listOrder(page), at = o.indexOf("# WAITING ON YOU"); const rows = []; for (const x of o.slice(at + 1)) { if (x.startsWith("# ")) break; rows.push(x); } return rows; };
   const deskAsks = async () => { const out = []; for (const id of await deskRows()) if (await page.locator(`.dk-items [data-desk-item="${id}"]`).evaluate((e) => e.classList.contains("ask"))) out.push(id); return out; };
   const deskCount = async () => (await deskAsks()).length;
   await expect.poll(deskCount).toBe(2);
   expect((await deskAsks()).sort()).toEqual(["d1", "d5"]);
   expect((await deskRows()).slice(0, 2).sort()).toEqual(["d1", "d5"]);
-  expect(await groupOf(page, "d2")).toBe("WAITS ON YOU");
+  expect(await groupOf(page, "d2")).toBe("WAITING ON YOU");
   await expect(page.locator('.dk-items [data-desk-item="d2"]')).not.toHaveClass(/\bask\b/);
   await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
 
@@ -102,11 +102,11 @@ test("a request on an item shows on the item and in its session's chat, never as
     Object.assign(task, { state: "needs_you", ask: { item_id: "codex-approval", sid: "host", kind: "permission", text: "printf approval-check" } });
   });
   const left = page.locator(".dk-sessions");
-  // Its row says what it asks (B2, #666); its page has the card that answers it.
-  await expect(statusOf(page, "d5")).toHaveText(/^Asks: Allow printf approval-check\? · since /);
+  // Its row says it asks you; its chat has the card that answers it.
+  await expect(statusOf(page, "d5")).toHaveText("Asks you");
   await page.locator('.dk-items [data-desk-item="d5"]').click();
   await expect(page.locator('.dk-right [data-act="allow"][data-id="codex-approval"]')).toHaveCount(1);
-  await page.locator(".dk-right .dk-back").first().click();
+  await page.locator(".dk-right .dkn-sback .dk-back").click();
   await openSessions(page);
   await expect(left.locator('[data-desk-chat-of="host"] .dk-st')).toHaveText("needs you");
   await expect(left.locator('[data-desk-request], .dk-request, .dk-approvals, [data-act="allow"], [data-desk-decision]')).toHaveCount(0);
@@ -127,8 +127,9 @@ test("the worker chat on Desk has the live approval footer and Deny clears it", 
 test("Allow from the session removes the same pending request from Desk", async ({ cue, page }) => {
   await setup(cue, page);
   await openSessions(page);
-  await page.locator('.dk-sessions [data-desk-chat-of="host"]').click();
-  await page.locator('.dk-right [data-desk-session="host"]').click();
+  // The session on the Board, answered there.
+  await page.locator('.switch-view [data-view="board"]').click();
+  await page.locator('.nrow[data-big="codex-approval"]').click();
   await page.locator('.active-pane [data-act="allow"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval" });
   await page.locator('.switch-view [data-view="desk"]').click();
@@ -175,9 +176,9 @@ for (const [verb, behavior] of [["Allow", "allow"], ["No", "deny"]]) {
     }, PLAYWRIGHT_227);
     const task = page.locator('.dk-items [data-desk-item="227"]');
     await expect(task).toHaveClass(/\bask\b/);
-    expect(await groupOf(page, "227")).toBe("WAITS ON YOU");
-    // Its row says what it asks (B2, #666); its page's card answers it.
-    await expect(statusOf(page, "227")).toContainText(`Asks: Allow ${PLAYWRIGHT_227}?`);
+    expect(await groupOf(page, "227")).toBe("WAITING ON YOU");
+    // Its row says it asks you; its chat's card answers it.
+    await expect(statusOf(page, "227")).toHaveText("Asks you");
     await expect(page.locator('.dk-sessions [data-desk-request="codex-approval"]')).toHaveCount(0);
     await task.click();
     const approval = page.locator('.dk-right .act-card').filter({ has: page.locator('[data-id="codex-approval"]') });
@@ -199,8 +200,8 @@ test("a crew member's approval, whose brief has no item tag, waits under its ses
   });
   const row = page.locator('.dk-items [data-desk-item="295"]');
   await expect(row).toHaveClass(/\bask\b/);
-  await expect(statusOf(page, "295")).toContainText("Asks: Allow printf approval-check?");
-  expect(await groupOf(page, "295")).toBe("WAITS ON YOU");
+  await expect(statusOf(page, "295")).toHaveText("Asks you");
+  expect(await groupOf(page, "295")).toBe("WAITING ON YOU");
   await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
   await row.click();
   await page.locator('.dk-right [data-act="allow"][data-id="codex-approval"]').click();

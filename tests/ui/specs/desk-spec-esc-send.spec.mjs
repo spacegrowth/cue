@@ -2,7 +2,7 @@
 // (Edit or Esc), with its words intact and nothing typed since lost; Esc closes what's open before it stops anything.
 // Sources: #494 (Esc pulls back a kept message, Esc twice stops a working session, on the lead's chat, an item's page and
 // a session's page), #422 (Edit on a kept message, back into this page's box), #437 (an item's box keeps what you typed).
-import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 /** desk_send as the hub answers it for a busy lead (ipc/desk.rs deliver + hub/send.rs keep): the Desk's summary block,
  *  a blank line, your words, kept in Cue till its turn ends. */
@@ -60,10 +60,9 @@ test("the lead's chat: Edit on a kept message puts your words back in the lead's
 test("a session's page: kept while it works, Edit brings it back into that page's box, draft kept after it", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await deskAllSessions(page);
-  await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
-  await expect(page.locator('.dk-right .dk-pg[data-desk-page="session"]')).toHaveCount(1);
-  const box = page.locator(".dk-right .dk-box textarea");
+  await page.locator('.dkn-side [data-desk-chat-of="host"]').click();
+  await expect(page.locator('.dk-right .dkn-sp[data-desk-page="session"]')).toHaveCount(1);
+  const box = page.locator(".dk-right .dkn-spm textarea");
   await box.fill("check the canvas port");
   await box.press("Enter");
   await cue.called("send_to_session", { sessionId: "host", text: "check the canvas port" });
@@ -74,7 +73,7 @@ test("a session's page: kept while it works, Edit brings it back into that page'
   await kept.locator(".msg-line button", { hasText: "Edit" }).click();
   await cue.called("unhold_message", { sessionId: "host" });
   await expect(box).toHaveValue("check the canvas port\n\nthen the logs");
-  await expect(page.locator('.dk-right .dk-pg[data-desk-page="session"]')).toHaveCount(1);
+  await expect(page.locator('.dk-right .dkn-sp[data-desk-page="session"]')).toHaveCount(1);
 });
 
 // #494 / #422 on an item's page: Esc takes back the note kept for its busy holder, without the "About #…" Cue added,
@@ -82,13 +81,13 @@ test("a session's page: kept while it works, Edit brings it back into that page'
 test("an item's page: Esc takes back the note kept for its busy holder, your words alone, the draft after them", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
-  const box = page.locator(".dk-right .dk-box textarea");
+  await page.locator('.dkn-items [data-desk-item="d5"]').click();
+  const box = page.locator(".dk-right .dkn-spm textarea");
   await box.fill("try the other port");
   await box.press("Enter");
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "try the other port" });
   await expect(box).toHaveValue("");
-  await expect(page.locator(".dk-right .dk-ichat .cv-you", { hasText: "try the other port" }).locator(".msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends");
+  await expect(page.locator('.dk-right [data-desk-chat="host"] .cv-you', { hasText: "try the other port" }).locator(".msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends");
   await box.fill("and 8080");
   await page.keyboard.press("Escape");
   await cue.called("unhold_message", { sessionId: "host" });
@@ -103,11 +102,10 @@ test("Esc with words in a page's box keeps the page and the words; empty, it clo
   await cue.open("desk");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "host").state = "waiting"; });
   await openDesk(page);
-  await deskAllSessions(page);
-  await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
-  const sp = page.locator('.dk-right .dk-pg[data-desk-page="session"]');
+  await page.locator('.dkn-side [data-desk-chat-of="host"]').click();
+  const sp = page.locator('.dk-right .dkn-sp[data-desk-page="session"]');
   await expect(sp).toHaveCount(1);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .dkn-spm textarea");
   await box.fill("half a thought");
   await box.focus();
   await page.keyboard.press("Escape");
@@ -125,7 +123,7 @@ test("Esc with words in a page's box keeps the page and the words; empty, it clo
 test("an item's page: one Esc doesn't stop its working holder, the second within a moment does; the page stays", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
+  await page.locator('.dkn-items [data-desk-item="d5"]').click();
   await page.keyboard.press("Escape");
   await page.waitForTimeout(200);
   expect(await cue.calls("interrupt_session")).toHaveLength(0);

@@ -13,7 +13,7 @@ const churn = (page) => page.evaluate(() => {
 const pointerFine = async (page, box) => {
   expect(await box.evaluate((t) => { const r = t.getBoundingClientRect(); return document.elementFromPoint(r.x + 20, r.y + r.height / 2) === t; })).toBe(true);
   expect(await box.evaluate((t) => getComputedStyle(t).cursor)).toMatch(/^(auto|text)$/);
-  expect(await page.evaluate(() => { const b = document.querySelector(".dk-items [data-desk2b-tab]"); return [getComputedStyle(b).cursor, document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4) === b || b.contains(document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4))]; })).toEqual(["pointer", true]);
+  expect(await page.evaluate(() => { const b = document.querySelector(".dkn-items .dkn-ih [data-desk-c-line]"); return [getComputedStyle(b).cursor, document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4) === b || b.contains(document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4))]; })).toEqual(["pointer", true]);
   expect(await page.evaluate(() => [getComputedStyle(document.body).cursor, getComputedStyle(document.body).pointerEvents])).toEqual(["auto", "auto"]);
 };
 const clickAndType = async (page, box) => {
@@ -36,16 +36,16 @@ test("clicking the lead's text box and an item's puts the cursor there and typin
   await expect(box).toHaveAttribute("data-text", 'desk:["cue",""]');
   await clickAndType(page, box);
   // An item's page: its own box.
-  await page.locator('.dk-items [data-desk-item="d3"] .dk2b-tt').click();
+  await page.locator('.dkn-items [data-desk-item="d3"] .dkn-tt').click();
   await expect(box).toHaveAttribute("data-text", /"d3"\]$/);
   await clickAndType(page, box);
-  // Back to the list (the item opened in its place, B2 #666), the lead's chat beside it: what you typed is still there.
+  // Back (the item opened in the chat's place, Items beside it): the lead's chat: what you typed is still there.
   await page.locator(".dk-right .dk-back").click();
   await expect(box).toHaveAttribute("data-text", 'desk:["cue",""]');
   await expect(box).toHaveValue("the dot is too big");
-  // The Progress popover open (redrawing too) and closed again: the box still takes the cursor. B2 has no Progress
-  // button in the list's head (#666); deskProgToggle still opens it.
-  await expect(page.locator('.dk-items [data-desk-prog-toggle]')).toHaveCount(0);
+  // The Progress popover open (redrawing too) and closed again: the box still takes the cursor. Items has no Progress
+  // button in its head (#666); deskProgToggle still opens it.
+  await expect(page.locator('.dkn-items [data-desk-prog-toggle]')).toHaveCount(0);
   await page.evaluate(() => deskProgToggle(true));
   await expect(page.locator(".dk-prog")).toBeVisible();
   await page.waitForTimeout(300);

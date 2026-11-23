@@ -89,9 +89,6 @@
 .dk-sh { display: flex; flex-direction: column; min-width: 0; }
 /* The strip's top line (‹ Desks … ⋯). Not .dk-stop: a stopped item's row is .dk-it.dk-stop and took this flex (#218). */
 .dk-shr { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* A quiet line in the pill size: the landing line's "next …" (desk/desk.js). */
-.dk-next { all: unset; display: inline; min-width: 0; font-size: var(--type-small); line-height: var(--type-small-lh); opacity: .7; overflow-wrap: anywhere; cursor: pointer; }
-.dk-next:hover, .dk-next:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
 /* The Desk's mark takes the strip's text colour: in --accent it would vanish into the light strip. */
 .dk-strip .dk-shr :is(.dk-ric, .dk-kic) { color: inherit; }
 /* The Desk's name shows in full: a long one wraps onto a second line rather than being cut short (#402). */

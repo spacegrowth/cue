@@ -42,5 +42,6 @@ test("no A− / A+ on a chat, the Desk lead's chat or an item's chat", async ({ 
   await page.locator(".dk-chat").first().waitFor();
   await expect(page.getByRole("button", { name: /text/i })).toHaveCount(0);
   await page.locator('[data-desk-item="d5"]').first().click();
-  await expect(page.locator(".dk-right .dk-itabs")).not.toContainText("A+");
+  await page.locator(".dk-right .dkn-sp .dkn-stabs").waitFor();
+  await expect(page.locator(".dk-right .dkn-sp")).not.toContainText("A+");
 });

@@ -1,12 +1,12 @@
-// The Desk's two columns resize like the Board's (board/columns.js deskColDrag, styles/desk-cols.css): a grip in the gap
-// between the lead's chat and Items trades their width, Items never under 520px and the chat never under 560px; the
-// width is kept across reloads and a double-click on the grip puts back today's (the chat 878px at 1800 wide). The
-// Board's own grips still work.
+// The Desk's chat and Items resize like the Board's columns (board/columns.js deskColDrag, styles/desk-c.css): a grip in
+// the gap between the chat (the middle column, after the sessions) and Items trades their width, Items never under
+// 520px and the chat never under 560px; the width is kept across reloads and a double-click on the grip puts back
+// today's (the chat 729px at 1800 wide). The Board's own grips still work.
 import { test, expect, openDesk } from "./cue.mjs";
 
-const chat = (page) => page.locator(".board.dk-b2 > .dk-card").first();
-const items = (page) => page.locator(".dk-card.dk-items");
-const grip = (page) => page.locator('.board.dk-b2 [data-col-grip="items"]');
+const chat = (page) => page.locator(".board.dk-c > .dk-right");
+const items = (page) => page.locator(".board.dk-c > .dkn-items");
+const grip = (page) => page.locator('.board.dk-c [data-col-grip="items"]');
 const width = (loc) => loc.evaluate((el) => Math.round(el.getBoundingClientRect().width));
 /** Press on a grip's middle, drag it `dx` px, let go. */
 async function drag(page, loc, dx) {
@@ -26,14 +26,14 @@ const open = async (page, cue) => {
 
 test("the grip widens and narrows Items; the chat gives what Items takes", async ({ page, cue }) => {
   await open(page, cue);
-  expect(await width(chat(page))).toBe(878);
+  expect(await width(chat(page))).toBe(729);
   const i0 = await width(items(page));
   await drag(page, grip(page), -150);
   await expect.poll(() => width(items(page))).toBe(i0 + 150);
-  expect(await width(chat(page))).toBe(878 - 150);
+  expect(await width(chat(page))).toBe(729 - 150);
   await drag(page, grip(page), 250);
   await expect.poll(() => width(items(page))).toBe(i0 - 100);
-  expect(await width(chat(page))).toBe(878 + 100);
+  expect(await width(chat(page))).toBe(729 + 100);
   // The grip follows the gap after the chat.
   const [c, g] = await Promise.all([chat(page).boundingBox(), grip(page).boundingBox()]);
   expect(Math.round(g.x)).toBe(Math.round(c.x + c.width));
@@ -49,28 +49,31 @@ test("Items stops at 520px and the chat at 560px, and a narrower window keeps bo
   await page.setViewportSize({ width: 1300, height: 1095 });
   await expect.poll(() => width(chat(page))).toBe(560);
   expect(await width(items(page))).toBeGreaterThanOrEqual(520);
-  // Too narrow for both: today's split, no grip.
+  // Too narrow for both: today's split of what's left beside the sessions' 64px strip, no grip.
   await page.setViewportSize({ width: 1000, height: 1095 });
-  await expect.poll(() => width(chat(page))).toBe(Math.round((960 - 28) * 1.9 / 3.75));
+  await expect.poll(() => width(chat(page))).toBe(Math.round((960 - 64 - 14 - 28) * 1.9 / 3.75));
   await expect(grip(page)).toBeHidden();
 });
 
 test("the width is kept across a reload, and a double-click on the grip puts it back", async ({ page, cue }) => {
   await open(page, cue);
   const i0 = await width(items(page));
+  // Dragged 200px, the chat stops at its 560: Items takes what it gave.
   await drag(page, grip(page), -200);
-  await expect.poll(() => width(items(page))).toBe(i0 + 200);
+  await expect.poll(() => width(chat(page))).toBe(560);
+  expect(await width(items(page))).toBe(i0 + 729 - 560);
   await page.reload();
   await page.locator('#app [data-view="board"]').waitFor();
   await openDesk(page);
-  await expect.poll(() => width(items(page))).toBe(i0 + 200);
+  await expect.poll(() => width(items(page))).toBe(i0 + 729 - 560);
+  expect(await width(chat(page))).toBe(560);
   await grip(page).dblclick();
-  await expect.poll(() => width(chat(page))).toBe(878);
+  await expect.poll(() => width(chat(page))).toBe(729);
   expect(await width(items(page))).toBe(i0);
   await page.reload();
   await page.locator('#app [data-view="board"]').waitFor();
   await openDesk(page);
-  await expect.poll(() => width(chat(page))).toBe(878);
+  await expect.poll(() => width(chat(page))).toBe(729);
 });
 
 test("the Board's grips still trade width and reset", async ({ page, cue }) => {

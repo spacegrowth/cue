@@ -34,7 +34,7 @@ const openWorking = async (page, cue) => {
   });
   await openDesk(page);
   await page.locator('[data-desk-item="d5"]').first().click();
-  return page.locator(".dk-right .dk-ichat .stx");
+  return page.locator(".dk-right .dkn-sp[data-desk-page='session'] .stx");
 };
 
 test("folded by default: one chip, its message in view with its count, no step drawn; the line under the chat is the running line, with its count", async ({ page, cue }) => {
@@ -54,7 +54,7 @@ test("folded by default: one chip, its message in view with its count, no step d
   expect(await msg.locator(".stx-cnt").evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
   await expect(msg).toBeInViewport();
   // Under the chat: its live dot, what it's doing, then the steps since its last words (s3, s4, s5).
-  const status = page.locator(".dk-right .dk-ichat .cv-status");
+  const status = page.locator(".dk-right .dkn-sp[data-desk-page='session'] .cv-status");
   await expect(status.locator(".dot-live")).toHaveCount(1);
   await expect(status.locator(".stx-cnt")).toHaveText("· 3 steps");
   // Its count opens just those three steps.
@@ -67,7 +67,7 @@ test("folded by default: one chip, its message in view with its count, no step d
 
 test("the count on the line under the chat goes up as steps come in", async ({ page, cue }) => {
   await openWorking(page, cue);
-  const status = page.locator(".dk-right .dk-ichat .cv-status");
+  const status = page.locator(".dk-right .dkn-sp[data-desk-page='session'] .cv-status");
   await expect(status.locator(".stx-cnt")).toHaveText("· 3 steps");
   await cue.override("session_steps", ({ sessionId }) => {
     const at = window.__t0;
@@ -166,7 +166,7 @@ const openTurn = async (page, cue, mk, thread = [], working = true) => {
   }, [thread, working]);
   await openDesk(page);
   await page.locator('[data-desk-item="d5"]').first().click();
-  return page.locator(".dk-right .dk-ichat");
+  return page.locator(".dk-right .dkn-sp[data-desk-page='session']");
 };
 
 test("a finished turn folds with no foot row; its reply is drawn once, as the chat's, with the steps that led to it", async ({ page, cue }) => {
@@ -203,8 +203,9 @@ test("a turn you wrote into mid-turn: one chip, your message where you sent it, 
   ], [["you", "About #d5 (x): check the footer too", 280]]);
   await expect(chat.locator(".stx-fold")).toHaveCount(1);
   await expect(chat.locator(".stx-fold")).toContainText("Working · 4 steps");
-  // In time order: the chip, your message, then the words with the steps since the previous ones (all three).
-  const order = await chat.evaluate((el) => [...el.querySelectorAll(".stx-fold, .cv-you, .stx-say, .stx-last")].map((x) => x.classList.contains("stx-fold") ? "chip" : x.classList.contains("cv-you") ? (x.textContent.includes("footer too") ? "you" : "go on") : x.classList.contains("stx-say") ? "say" : "last"));
+  // In time order: the chip, your message, then the words with the steps since the previous ones (all three). The
+  // session's whole chat is drawn (#744): its earlier messages, about no item, come first and aren't this turn's.
+  const order = await chat.evaluate((el) => [...el.querySelectorAll(".stx-fold, .cv-you, .stx-say, .stx-last")].filter((x) => !x.classList.contains("cv-you") || x.textContent.includes("#d5")).map((x) => x.classList.contains("stx-fold") ? "chip" : x.classList.contains("cv-you") ? (x.textContent.includes("footer too") ? "you" : "go on") : x.classList.contains("stx-say") ? "say" : "last"));
   expect(order).toEqual(["go on", "chip", "you", "say"]);
   await expect(chat.locator(".stx-say .stx-cnt")).toHaveText("· 3 steps");
   // Opened from the chip: every step back, on both sides of your message.
@@ -237,7 +238,7 @@ test("your choice stays across polls and redraws; a running step's command is as
 test("the line under the chat says what it's doing whether the turn is folded or open", async ({ page, cue }) => {
   const turn = await openWorking(page, cue);
   await cue.change((st, long) => Object.assign(st.sessions.find((x) => x.session_id === "host"), { doing: `Running: ${long.slice(0, 40)}…`, doing_ms: Date.now() - 60000 }), LONG);
-  const chat = page.locator(".dk-right .dk-ichat");
+  const chat = page.locator(".dk-right .dkn-sp[data-desk-page='session']");
   await expect(turn.locator(".stx-last")).toHaveCount(0);
   await expect(chat.locator(".cv-status")).toContainText("Running: cargo test");
   await expect(chat.locator(".cv-status .stx-cnt")).toHaveText("· 3 steps");
@@ -258,16 +259,6 @@ test("an open turn of 75 steps lists them one line each and reads nothing until 
   await expect(chat.locator(".stx-out")).toHaveCount(1);
   await expect(chat.locator(".stx-out")).toHaveText("out b0");
   expect(await asked()).toEqual(["b0"]);
-});
-
-test("an item's page whose holder moved on to another item: the turn folds under that item's line, so the line under the chat says what it's doing", async ({ page, cue }) => {
-  const chat = await openTurn(page, cue, (at, step) => [
-    step("o1", "read", "Read", "rail.js", 300), step("o2", "run", "Running", "npm run rail", 290, { done: false }),
-  ], [["you", "About #d4 (y): now the rail dot", 320]]);
-  await cue.change((st) => Object.assign(st.sessions.find((x) => x.session_id === "host"), { doing: "Running: npm run rail", doing_ms: Date.now() - 30000 }));
-  await expect(chat.locator(".dk-fold")).toContainText("Worked on #d4");
-  await expect(chat.locator(".stx-last")).toHaveCount(0);
-  await expect(chat.locator(".cv-status")).toContainText("Running: npm run rail");
 });
 
 test("a Stop hook's running step: not drawn while its fold is closed; the count under the chat opens the fold and it shows there once", async ({ page, cue }) => {
@@ -292,7 +283,7 @@ test("a command that finishes keeps its full words on its line: never the cut su
   // Watch every redraw for the cut subject from here on.
   await page.evaluate(() => {
     window.__cut = false;
-    const look = () => { if ([...document.querySelectorAll(".dk-ichat .stx-line")].some((l) => l.textContent.includes("…"))) window.__cut = true; };
+    const look = () => { if ([...document.querySelectorAll(".dk-right .dkn-sp .stx-line")].some((l) => l.textContent.includes("…"))) window.__cut = true; };
     new MutationObserver(look).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   // Its output takes a moment; meanwhile the step comes in finished.

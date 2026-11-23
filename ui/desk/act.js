@@ -4,9 +4,8 @@
 
 /** Open `what` in the chat card (null: back to the lead's chat). */
 function deskShow(what) {
-  // Today's page (B2, desk/b2.js): the lead's chat is the chat card's own, so opening it goes back to it, rather than a
-  // second copy of it.
-  if (what?.kind === "chat" && deskB2On() && what.sid === deskLead(deskOf(deskSelection()))?.sid) {
+  // The lead's chat is the chat card's own, so opening it goes back to it, rather than a second copy of it.
+  if (what?.kind === "chat" && what.sid === deskLead(deskOf(deskSelection()))?.sid) {
     deskPick = null;
     deskOpen = null;
     deskTab = "lead";
@@ -381,9 +380,6 @@ function deskOpenCrew(lead, agent) {
  *  groups, in this order (the first rule an element has is the one taken). An item's page, its panels and boxes: */
 deskClicks({
   deskPre: (el) => el.closest(".dk-box")?.querySelector("textarea")?.focus(),
-  deskItab: (el) => { deskItemTabs.set(el.dataset.id, el.dataset.deskItab); renderMain(); },
-  // An item's chat (#418): a turn about another item opened in place, or folded again; its record, all of it.
-  deskFold: (el) => { const k = el.dataset.deskFold; if (!deskTurnOpen.delete(k)) deskTurnOpen.add(k); renderMain(); },
   deskPanel: (el) => deskPanelToggle(el.dataset.deskPanel),
   deskItem: (el) => deskShow(deskOpen?.kind === "item" && deskOpen.id === el.dataset.deskItem ? null : { kind: "item", id: el.dataset.deskItem }),
   deskHolder: (el) => deskShow({ kind: "holder", sid: el.dataset.deskHolder }),
@@ -398,7 +394,6 @@ deskClicks({
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
-  deskRetry: (el) => deskRetry(el.dataset.item, el.dataset.deskRetry),
   deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskTick: (el) => { const id = el.dataset.deskTick; if (!deskTicked.delete(id)) deskTicked.add(id); if (!deskTicked.size) deskGoBackOpen = null; renderMain(); },
@@ -423,17 +418,11 @@ deskClicks({
   deskLogRow: (el) => { const id = el.dataset.deskLogRow; if (!deskLogOpen.delete(id)) deskLogOpen.add(id); renderMain(); },
   deskSession: (el) => openSession(el.dataset.deskSession),
   // B2: its chat is the left card already; from All sessions the list stays beside it, its card lit.
-  deskLeadChat: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(deskB2On() && deskOpen?.kind === "sessions" ? { kind: "sessions" } : null); },
+  deskLeadChat: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(deskOpen?.kind === "sessions" ? { kind: "sessions" } : null); },
   deskChkItem: (el) => deskShow({ kind: "item", id: el.dataset.deskChkItem }),
   deskDecision: (el) => {
     const it = state.items.find((i) => i.id === el.dataset.id && i.kind === "permission" && i.status === "pending");
     if (it && !answering.has(it.id)) return el.dataset.deskDecision === "allow" ? allow(it) : deny(it);
-  },
-  // A question's Send its suggestions on its row (#383): what's picked, sent.
-  deskSendAnswers: (el) => {
-    const it = state.items.find((i) => i.id === el.dataset.deskSendAnswers && i.kind === "question" && i.status === "pending");
-    const a = it && !answering.has(it.id) && answersFor(it);
-    if (a) return respond(it, { behavior: "allow", answers: a });
   },
   deskRen: (el) => renameSession({ dataset: { rename: el.dataset.deskRen } }),
 });
@@ -478,13 +467,6 @@ deskClicks({
     try { localStorage.setItem("cue.deskFold", JSON.stringify([...deskFoldOpen])); } catch { /* kept for this window only */ }
     renderMain();
   },
-  deskMade: (el) => {
-    const id = el.closest("[data-desk-item]")?.dataset.deskItem || deskOpen?.id;
-    deskSeeItem(id);
-    openPathOrDoc(el.dataset.deskMade, deskHolderSid(deskItem(deskSelection(), id)) || null);
-    renderMain();
-  },
-  deskOpenFile: (el) => deskOpenFile(el.dataset.id, el.dataset.deskOpenFile, el.dataset.folder || ""),
   deskDiffFile: (el) => deskShowFile(el.dataset.deskDiffFile, +el.dataset.n),
   deskTurnFile: (el) => deskShowTurnFile(el.dataset.deskTurnFile, +el.dataset.n),
   deskMateFile: (el) => deskShowMateFile(el.dataset.deskMateFile, +el.dataset.n),
@@ -535,8 +517,6 @@ function deskClick(e) {
     deskAddingSession = null;
     queueMicrotask(renderMain);
   }
-  // The new Desk page's menus close on a click outside them (desk/v2.js).
-  deskV2Outside(e);
   // Progress (#409) closes on a click outside it.
   if (deskProgShown && !e.target.closest?.(".dk-prog, [data-desk-prog-toggle]")) { deskProgShown = false; queueMicrotask(renderMain); }
   // A crew member's ⋯ menu closes on a click outside it.
@@ -579,7 +559,6 @@ BOX_OWNERS.push({
     return deskSendBox(key, true);
   },
   recall: (key) => deskRecall(key),
-  suggestion: (sid) => (sid?.startsWith?.("item:") ? deskItemSuggestion(sid.slice(5)) : null),
   view: "desk",
   chatEnd: (atEnd) => { deskChatEnd = atEnd; },
   keptBox: (sid) => deskKeptBox(sid),
@@ -590,24 +569,16 @@ BOX_OWNERS.push({ owns: (key) => key === "goback", send: () => deskGoBackSend() 
  *  holder's page (a crew member's: its lead), the item's holder on an item's page (its page is its holder's chat, #418).
  *  Handed to the Board's Esc (app/keys.js escSession) with the box at the foot: a message Cue kept for it comes back
  *  there (on an item's page as its Edit does, deskHeldEdit), and Esc twice stops it. */
-function deskEscSession(at = document.activeElement) {
+function deskEscSession() {
   const d = deskOf(deskSelection()), o = deskOpen;
   if (!d) return false;
-  // B2 with a page open on the right: the lead's chat keeps its card at the left, and Esc there is the lead's (its kept
-  // message into its own box, Esc twice stops it), never the page's on the right.
-  if (deskLeadCardHas(at)) {
-    const lk = [...document.querySelectorAll(".dk2b-chat textarea[data-text]")].map((t) => t.dataset.text).find((k) => deskBoxes.has(k));
-    return deskPick !== d.project && deskLead(d) && !deskLeadEnded(d) ? escSession(deskLead(d).sid, lk) : false;
-  }
-  // The open card's box (.dk-right): on B2 the lead's chat keeps its own box at the left while a page is open.
+  // The open card's box (.dk-right).
   const boxIn = (q) => [...document.querySelectorAll(q)].map((t) => t.dataset.text).find((k) => deskBoxes.has(k));
   const key = boxIn(".dk-right textarea[data-text]") || boxIn("textarea[data-text]");
   if (o?.kind === "item") return escSession(deskHolderSid(deskItem(d.project, o.id)), key, (sid) => deskHeldEdit(o.id, sid));
   const lead = !o && deskTab === "lead" && deskPick !== d.project && deskLead(d) && !deskLeadEnded(d) ? deskLead(d).sid : "";
   return escSession(o?.kind === "crew" ? o.lead : o?.kind === "chat" || o?.kind === "holder" ? o.sid : lead, key);
 }
-/** Whether `el` is in the lead's card while B2 shows a page beside it (the left card, not the one marked .dk-right). */
-const deskLeadCardHas = (el) => !!(deskB2Side() && el?.closest?.(".dk2b-chat:not(.dk-right)"));
 /** Keys on the Desk: ⌘N goes to the quick-add line (a box's Enter is the window's, app/keys.js enterInBox), the quick-add line's keys
  *  (desk/lead.js), Esc closes a Give to… menu, then the picker (when changing), then takes back a message Cue kept for
  *  the open session or stops it (Esc twice, deskEscSession), then the open pane. */
@@ -620,14 +591,13 @@ function deskKey(e) {
   if (row && (e.key === "Enter" || e.key === " ") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
     const at = Object.keys(DESK_CLICKS).find((k) => k in row.dataset), sel = `[${deskAttr(at)}="${CSS.escape(row.dataset[at])}"]`;
     deskTake(row);
-    // Today's page (B2, desk/b2.js) opens an item in the lead chat's place and the list stays: the keyboard stays on
-    // its row (else the page's way back, ‹ Items N), never in its box.
+    // An item opens in the lead chat's place and the list stays: the keyboard stays on its row (else the way back),
+    // never in its box.
     (document.querySelector(`.dk-board ${sel}`) || document.querySelector(".dk-right .dk-ph [data-desk-back]"))?.focus();
     return true;
   }
   if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key?.toLowerCase() === "n" && deskSelection() && !sheet && !(crewPageSid && document.querySelector(".crew-page"))) return deskQaFocus();
   if (deskQaKey(e, key)) return true;
-  if (e.key === "Escape" && deskV2Escape()) return true;
   if (e.key === "Escape" && deskProgShown) { deskProgToggle(false); document.querySelector("[data-desk-prog-toggle]")?.focus(); return true; }
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
@@ -648,7 +618,7 @@ function deskKey(e) {
     const shown = readerShown() || (helperView && helperViewed(helperView.sid)) || (key && cmdMatches(key).length);
     if (!shown && deskEscSession(e.target)) return true;
     // The page on the right closes from its own card or the list's, not from the lead's box at the left.
-    if (deskOpen && !deskLeadCardHas(e.target) && !(e.target.matches?.("textarea, input") && e.target.value)) { deskShow(deskOpen.kind === "crew" ? deskOpen.from || { kind: "holder", sid: deskOpen.lead } : deskOpen.kind === "chat" ? deskOpen.from || null : null); return true; }
+    if (deskOpen && !(e.target.matches?.("textarea, input") && e.target.value)) { deskShow(deskOpen.kind === "crew" ? deskOpen.from || { kind: "holder", sid: deskOpen.lead } : deskOpen.kind === "chat" ? deskOpen.from || null : null); return true; }
   }
   return false;
 }

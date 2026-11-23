@@ -64,33 +64,3 @@ test("Cue's messages and the lead's lines next to each other are one count line;
   await expect(page.locator(".dk-moves .dk-cue")).toHaveCount(1);
   await expect(page.locator('.dk-moves [data-dk="route"]')).toHaveCount(1);
 });
-
-test("a session's chat: no switch in its head; its CHECK and IF PICKED stay as lines with signs, its small call and DONE are a count line", async ({ page, cue }) => {
-  await cue.open("desk");
-  await openDesk(page);
-  await cue.change((st) => {
-    st.sessions.find((x) => x.session_id === "host").thread.push({ role: "agent", at_ms: Date.now(), text: [
-      "Built it and the tests pass.",
-      "",
-      "DECIDED (minor): kept the old name — nothing reads it",
-      "IF PICKED: B | a task follows | You'll see: the switch",
-      "DONE: #d5",
-      "CHECK: #d5 | Where: the Desk | Do: open a chat | Expect: a switch in its head",
-    ].join("\n") });
-  });
-  await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
-  const pg = page.locator(".dk-right");
-  const chat = pg.locator('[data-desk-chat="host"]');
-  await expect(chat).toContainText("Built it and the tests pass.");
-  await noSwitch(page);
-  for (const raw of ["CHECK:", "IF PICKED:", "DECIDED (minor)"]) await expect(chat).not.toContainText(raw);
-  const check = chat.locator(".dk-ln", { has: page.locator('.dk-sg[data-sg="check"]') });
-  await expect(check.locator(".mg-lh")).toHaveText(/^How to check \w+ #d5$/);
-  await expect(check.locator(".dk-opt-r")).toHaveText(["Where the Desk", "Do open a chat", "Expect a switch in its head"]);
-  await expect(chat.locator(".dk-ln", { has: page.locator('.dk-sg[data-sg="if-picked"]') }).locator(".mg-lh")).toHaveText("If you pick B");
-  await expect(chat.locator('.dk-sg[data-sg="minor"], .dk-sg[data-sg="done"]')).toHaveCount(0);
-  await expect(chat.locator(".dk-cnt")).toHaveText(/^2 Desk updates · #d5 done, a small call · Activity ›$/);
-  // The small call is in Activity, said as a line.
-  await chat.locator(".dk-cnt-b").click();
-  await expect(page.locator(".dk-moves .dk-ln", { has: page.locator('.dk-sg[data-sg="minor"]') }).locator(".mg-lh")).toHaveText("Small call: kept the old name");
-});

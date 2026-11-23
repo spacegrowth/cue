@@ -2,13 +2,10 @@
 // "reorder"); one can't go above the item it waits on: it snaps back and says why; a running item doesn't move.
 import { test, expect, openDesk } from "./cue.mjs";
 
-/** The Desk open, then its list settled. */
-const openSettled = async (page, long = false) => {
+/** The Desk open, then its list settled. Up next shows every queued item (no Show all), open. */
+const openSettled = async (page) => {
   await openDesk(page);
-  // A long queue shows its first 3 (B2, #666): the whole of it, to order. A short one has no Show all.
-  const all = page.locator('.dk-items [data-desk2b-all="queued"]');
-  if (long) await all.click();
-  else await expect(all).toHaveCount(0);
+  await expect(page.locator('.dk-items [data-desk-c-fold="next"]')).toHaveAttribute("aria-expanded", "true");
   // The list is drawn again just after the Desk opens: wait for it to settle, so a row looked up isn't swapped mid-drag.
   await page.evaluate(() => new Promise((ok) => {
     let t = setTimeout(done, 200);
@@ -46,8 +43,10 @@ test("Queued items drag into your order; one can't go above the item it waits on
     d.items.push({ ...d4, id: "d10", title: "Footer links", after: "d4", after_why: "same file", created: Math.max(...d.items.map((i) => i.created)) + 1 });
   });
   await openSettled(page);
-  // They're UP NEXT (B2, #666), each with its grip.
-  await expect(page.locator('.dk-items [data-desk2b-group="queued"]')).toHaveText("UP NEXT 3");
+  // They're UP NEXT (C, #748), each with its grip.
+  const next = page.locator('.dk-items [data-desk-c-fold="next"]');
+  await expect(next).toContainText("UP NEXT");
+  await expect(next.locator(".dkn-dn")).toHaveText("3");
   expect(await order(page)).toEqual(["d4", "d6", "d10"]);
   // Footer links above Rail dot, which it waits on: back in its place, and why.
   await drag(page, "d10", "d4");
@@ -71,7 +70,7 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
     const d = st.desk.projects.find((x) => x.project === "cue"), d6 = d.items.find((i) => i.id === "d6"), t = Math.max(...d.items.map((i) => i.created));
     for (let k = 1; k <= 10; k++) d.items.push({ ...d6, id: `q${k}`, title: `Queued thing ${k}`, created: t + k });
   });
-  await openSettled(page, true);
+  await openSettled(page);
   // Cue is slow to save it: a change that comes in meanwhile still shows your order.
   await cue.override("desk_item_act", () => new Promise(() => {}));
   await drag(page, "d6", "d4");
@@ -81,12 +80,15 @@ test("a dropped item stays where you let it go, selects no text, and the list sc
   // A short window, so the list scrolls.
   await page.setViewportSize({ width: 1280, height: 560 });
   // The last one, held at the list's top edge: the list scrolls up and it goes to the top.
-  const { a, b: box } = await boxes(page, '.dk-items [data-desk-item="q10"]', ".dk-items .dk-scroll");
+  // Up next's own list on the green (desk/c.js deskCDrawer).
+  const list = '.dk-items [data-dkn-list="next"]';
+  await expect.poll(() => page.locator(list).evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(40);
+  const { a, b: box } = await boxes(page, '.dk-items [data-desk-item="q10"]', list);
   await page.mouse.move(a.x + 60, a.y + a.height / 2);
   await page.mouse.down();
   await page.mouse.move(a.x + 60, a.y + a.height / 2 - 10, { steps: 2 });
   await page.mouse.move(a.x + 60, box.y + 4, { steps: 8 });
-  await expect.poll(() => page.locator(".dk-items .dk-scroll").evaluate((el) => el.scrollTop), { timeout: 5000 }).toBe(0);
+  await expect.poll(() => page.locator(list).evaluate((el) => el.scrollTop), { timeout: 5000 }).toBe(0);
   await page.waitForTimeout(300);
   await page.mouse.up();
   await expect.poll(async () => (await order(page))[0]).toBe("q10");
@@ -100,13 +102,14 @@ test("each queued item shows a grip with a grab hand, only on queued rows, and d
   expect(queued.length).toBeGreaterThan(1);
   for (const id of queued) await expect(page.locator(`.dk-items [data-desk-item="${id}"] > .dk-grip`)).toBeVisible();
   await expect(page.locator(".dk-items .dk-it:not([data-desk-qg]) .dk-grip")).toHaveCount(0);
-  // A ridged bar of three short lines, centred at the row's right end, in its padding (away from the state icon); the pointer a grab hand over it. (Read in one go: the list may
-  // be drawn again between two looks.)
+  // A ridged bar of three short lines at the row's right end, in its padding, level with its title (C's rows are two
+  // lines: title, then number and words); the pointer a grab hand over it. (Read in one go: the list may be drawn
+  // again between two looks.)
   const id = queued[1];
   const look = await page.evaluate((id) => {
-    const r = document.querySelector(`.dk-items [data-desk-item="${id}"]`), g = r.querySelector(":scope > .dk-grip");
-    const rb = r.getBoundingClientRect(), gb = g.getBoundingClientRect();
-    return { d: g.querySelector("path").getAttribute("d"), dx: rb.right - gb.right, dy: Math.abs((rb.top + rb.bottom) / 2 - (gb.top + gb.bottom) / 2), cursor: getComputedStyle(g).cursor };
+    const r = document.querySelector(`.dk-items [data-desk-item="${id}"]`), g = r.querySelector(":scope > .dk-grip"), t = r.querySelector(".dkn-a1");
+    const rb = r.getBoundingClientRect(), gb = g.getBoundingClientRect(), tb = t.getBoundingClientRect();
+    return { d: g.querySelector("path").getAttribute("d"), dx: rb.right - gb.right, dy: Math.abs((tb.top + tb.bottom) / 2 - (gb.top + gb.bottom) / 2), cursor: getComputedStyle(g).cursor };
   }, id);
   expect(look).toEqual({ d: "M1 1h10M1 5h10M1 9h10", dx: expect.any(Number), dy: expect.any(Number), cursor: "grab" });
   expect(look.dx).toBeLessThan(14);

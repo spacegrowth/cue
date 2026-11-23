@@ -1,5 +1,6 @@
 // #667: a mocks item its holder still has (at work, or finishing) lists its options with a Pick; a pick closes it
-// there and then, and the item and the lead's chat each show one line: "You picked B2 on #d5; #… builds it".
+// there and then (its options in the bar over its chat, #748), and the lead's chat shows one line: "You picked B2 on
+// #d5; #… builds it".
 // Light and dark, no hover text.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
@@ -16,17 +17,15 @@ for (const scheme of ["light", "dark"]) {
       await openDesk(page);
       const text = "Three on the canvas.\nPick one for working items: B1, B2 or B3.";
       await patchItem(cue, "d5", { state, title: "Mocks: working items", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text }], ...(state === "finishing" ? { finish: { step: "commit", at: Date.now() } } : {}) });
-      await page.locator('.dk-items [data-desk-item="d5"]').click();
-      const head = page.locator(".dk-panel[data-side-for] .dk-pnow");
-      await expect(head.locator(".dk-opts .dk-optk")).toHaveText(["B1", "B2", "B3"]);
-      await head.locator('.dk-opts [data-desk-act="pick"]').nth(1).click();
+      await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
+      const head = page.locator(".dk-right .dkn-ib");
+      await expect(head.locator(".dkn-ibopts .dk-optk")).toHaveText(["B1", "B2", "B3"]);
+      await head.locator('.dkn-ibopts [data-desk-act="pick"]').nth(1).click();
       await cue.called("desk_item_act", { id: "d5", act: "pick", text: "B2" });
-      await expect(head.locator(".dk-pword")).toHaveText("Done");
-      await expect(head.locator(".dk-opts")).toHaveCount(0);
-      const n = (await items(page)).find((i) => i.id === "d5").built_as;
-      await expect(head.locator(".dk-built")).toHaveText(`You picked B2 on #d5; #${n} builds it`);
+      await expect(head.locator(".dkn-ibopts")).toHaveCount(0);
+      expect((await items(page)).find((i) => i.id === "d5").built_as).toBeTruthy();
       await expect(page.locator(".dk-right [title]")).toHaveCount(0);
-      if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-panel[data-side-for]").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-667-${state}-${scheme}.png`, timeout: 2000 })).toPass();
+      if (process.env.SHOT_DIR) await expect(async () => page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-667-${state}-${scheme}.png`, timeout: 2000 })).toPass();
     });
   }
 

@@ -1,20 +1,14 @@
-// What an item waits on (#250, ui/desk/desk.js deskWaitsOn): its page shows one "Waits on" box with the buttons that clear
+// What an item waits on (#250, ui/desk/page.js deskWaitsOn): its page shows one "Waits on" box with the buttons that clear
 // it: a circle (red tag, the loop, Cut this link on each link); the item it's queued after. No "Try again" anywhere.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const patchDesk = (cue, patch) => cue.change((st, p) => { Object.assign(st.desk.projects.find((x) => x.project === "cue"), p); }, patch);
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
-// An item's page (#418): its holder's chat in the middle, the item itself in the column at the right, in the Items
-// list's place, so another item opens from the list after "‹ Items".
-const backToItems = async (page) => {
-  if (await page.locator(".dk-panel[data-side-for]").count()) await page.locator(".dk-right .dk-back").click();
-  await page.locator(".dk-items .dk-it").first().waitFor();
-};
+// An item opened from Items: its page in the middle (the Items card stays at the right).
 const openItem = async (page, id) => {
-  await backToItems(page);
-  await page.locator(`.dk-items [data-desk-item="${id}"] .dk2b-tt`).click();
-  await page.locator(`.dk-panel[data-side-for="${id}"]`).waitFor();
-  return page.locator(".dk-board");
+  await page.locator(`.dk-items [data-desk-item="${id}"] :is(.dkn-tt, .dkn-tx)`).click();
+  await page.locator(".dk-right .dkn-sp").waitFor();
+  return page.locator(".dk-right");
 };
 
 test("a circle is shown on each item in it: a red Circle tag, the loop, and Cut this link on every link (#250)", async ({ page, cue }) => {

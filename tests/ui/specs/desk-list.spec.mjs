@@ -35,12 +35,13 @@ test("the sessions on the left: working first, then each group most recent first
   await expect.poll(ids).toEqual(["# Working", "host", "# Idle", "older", "newest", "middle"]);
 });
 
-test("two cards: the lead's chat at the left, the items at the right; All N sessions puts the project's sessions in the chat's place (#666)", async ({ page, cue }) => {
+test("the lead's chat in the middle, the items at the right; All N sessions puts the project's sessions in the chat's place (#666)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const cols = () => page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => [...el.classList].find((c) => ["dk-sessions", "dk2b-chat", "dk-items"].includes(c))));
+  const cards = () => page.locator(".dk-board > :is(.dk-card, .dk-items)");
+  const cols = () => cards().evaluateAll((els) => els.map((el) => [...el.classList].find((c) => ["dk-sessions", "dk2b-chat", "dk-items"].includes(c))));
   expect(await cols()).toEqual(["dk2b-chat", "dk-items"]);
-  const xs = async () => page.locator(".dk-board > .dk-card").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().x));
+  const xs = async () => cards().evaluateAll((els) => els.map((el) => el.getBoundingClientRect().x));
   const [x0, x1] = await xs();
   expect(x0 < x1).toBe(true);
   await openSessions(page);
@@ -63,12 +64,10 @@ test("two cards: the lead's chat at the left, the items at the right; All N sess
   // Rows run edge to edge, so their hover and lime reach both sides of the column.
   const [rx, rw, cx, cw] = await left.locator('[data-desk-chat-of="host"]').evaluate((el) => { const r = el.getBoundingClientRect(), c = el.closest(".dk-scroll").getBoundingClientRect(); return [r.x, r.width, c.x, c.width]; });
   expect([rx, Math.round(rw)]).toEqual([cx, Math.round(cw)]);
-  // The right list (B2): each row starts with its number, no kind icon (B2 rows are compact).
-  // ‹ back: the lead's chat again, in the sessions' place.
+  // ‹ back: the lead's chat again, in the sessions' place; the items at the right, each row's number under its title.
   await page.locator(".dk-sessions .dk-back").click();
   const items = page.locator(".dk-items");
-  await expect(items.locator('[data-desk-item="d1"] .dk2b-n')).toHaveText("#d1");
-  await expect(items.locator(".dk-it .dk-kic")).toHaveCount(0);
+  await expect(items.locator('[data-desk-item="d1"] .dkn-sub .dkn-id')).toHaveText("#d1");
   await openSessions(page);
   await expect(left.locator(".dk-srow.crew")).toHaveCount(0);
   await expect(left.locator("[data-desk-done-fold]")).toHaveCount(0);
@@ -85,24 +84,20 @@ test("two cards: the lead's chat at the left, the items at the right; All N sess
   await expect(left.locator(".dk-srow.on, .dk-lcard.on")).toHaveCount(1);
   await expect(left.locator('[data-desk-lead-chat="lead"]')).toHaveClass(/\bon\b/);
   // Another session: its chat in the list's place (#666), ‹ All sessions back to the list, its row lit in place there.
-  const back = async () => { await page.locator(".dk-right .dk-ph .dk-back").first().click(); await left.waitFor(); };
+  const back = async () => { await page.locator(".dk-right :is(.dk-ph, .dkn-sback) .dk-back").first().click(); await left.waitFor(); };
   await left.locator('[data-desk-chat-of="host"]').click();
   await expect(page.locator('.dk-right [data-desk-chat="host"]')).toHaveCount(1);
-  // A session's page (#200): back, Open its session; its kind's icon, "Session ·" and its name; under it what it's on
-  // (its number opening the item); its state in the panel's NOW.
-  const ph = page.locator('.dk-right .dk-pg[data-desk-page="session"] .dk-ph');
-  await expect(ph.locator("h1 [data-desk-mark]")).toHaveText("Session");
-  await expect(ph.locator("h1")).toHaveText("Session · host-lead");
-  await expect(ph.locator(".dk-ph1")).toHaveText(/^‹ .+Open its session\s*Hide panel$/);
-  await expect(ph.locator(".dk-ph3")).toHaveText(/^on #d5 · Hosted sessions can't open the canvas/);
-  await expect(page.locator(".dk-right .dk-pnow .dk-pword")).toHaveText(/^(Idle|Working|Waiting on you)$/);
+  // A session's chat (#744): back, the Board's top bar with its name; under it what it's on (its number opening the item).
+  const sp = page.locator('.dk-right .dkn-sp[data-desk-page="session"]');
+  await expect(sp.locator(".dkn-sback .dk-back")).toHaveText(/^‹ /);
+  await expect(sp.locator(".ap-head")).toContainText("host-lead");
+  await expect(sp.locator(".dkn-smeta")).toHaveText(/^on #d5 · Hosted sessions can't open the canvas/);
   await back();
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "host");
-  // One with nothing on the Desk: back, its name, Open its session; it says it's on nothing.
+  // One with nothing on the Desk: back, its name.
   await left.locator('[data-desk-chat-of="spare"]').click();
-  await expect(ph.locator("h1")).toHaveText("Session · spare");
-  await expect(ph.locator(".dk-ph3")).toHaveText(/^nothing on the Desk/);
-  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await page.locator(".dk-right .dk-ph").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-head-${c}.png` }); }
+  await expect(sp.locator(".ap-head")).toContainText("spare");
+  if (process.env.SHOT_DIR) for (const c of ["light", "dark"]) { await page.emulateMedia({ colorScheme: c }); await sp.locator(".ap-head").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-sess-head-${c}.png` }); }
   await page.emulateMedia({ colorScheme: "light" });
   await back();
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-chat-of", "spare");

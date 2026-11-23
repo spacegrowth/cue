@@ -43,11 +43,8 @@ const deskLooksSoonHtml = (id) => `<span class="dk-soon">Done · <button class="
 /** Items folding away after their moment: id -> { at, h } (when it began, the row's height then). The row draws
  *  with its fold already `now - at` in (a negative animation delay), so a redraw meanwhile doesn't start it again. */
 const deskLeaving = new Map();
-const DESK_LEAVE_MS = 280;
-/** How long a row takes to fold away: a full second on the new Desk layout (desk/c.js), so you see it go. */
-const deskLeaveMs = () => (deskLooksC() ? 300 : DESK_LEAVE_MS);
-/** On the new Desk layout (desk/c.js) a row you tick stays for the wait, its ✓ filled, then folds away. */
-const deskLooksC = () => typeof deskCOn === "function" && deskCOn();
+/** How long a row takes to fold away, so you see it go. */
+const deskLeaveMs = () => 300;
 const deskLooksWaitMs = () => DESK_LOOKS_WAIT;
 /** The style a leaving row draws with, "" for any other. */
 function deskLeaveStyle(id) {
