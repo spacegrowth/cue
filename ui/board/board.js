@@ -53,7 +53,7 @@ function projChip() {
   // A pinned project picked shows as its own chip, lit; the projects chip then reads All projects.
   const shown = projFilter && !pins.includes(projFilter) ? projFilter : "";
   // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
-  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
+  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle" aria-label="Projects, ${shown ? esc(projLabel(shown)) : "All projects"}">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
   // Its dot changes its color, as the projects chip's does.
   // Replies that just came back there, in a conversation you're having (In conversation's rule), while another project

@@ -6,11 +6,12 @@ import { test, expect, openDesk } from "./cue.mjs";
 const area = (page) => page.locator(".top .hchips");
 const goView = (page, v) => page.locator(`.switch-view [data-view="${v}"]`).click();
 
-test("Board and Read show the projects under a Projects label; the menu still has All projects", async ({ cue, page }) => {
+test("Board and Read show the projects with no label before them; the menu still has All projects", async ({ cue, page }) => {
   await cue.open("many-sessions");
   for (const v of ["board", "read"]) {
     await goView(page, v);
-    await expect(area(page).locator(".hv-lbl")).toHaveText("Projects");
+    await expect(area(page).locator(".hv-lbl")).toHaveCount(0);
+    await expect(area(page).locator('[data-pj="toggle"]')).toHaveAttribute("aria-label", /^Projects, /);
     await expect(area(page).locator('[data-pj="toggle"]')).toHaveCount(1);
   }
   await goView(page, "board");
@@ -21,7 +22,8 @@ test("Board and Read show the projects under a Projects label; the menu still ha
 test("Desk: the Desks as chips, no projects pill; a chip switches Desk; the open one brings its lead's chat back", async ({ cue, page }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(area(page).locator(".hv-lbl")).toHaveText("Desks");
+  await expect(area(page).locator(".hv-lbl")).toHaveCount(0);
+  await expect(area(page).locator('[data-hv-menu="desks"]')).toHaveAttribute("aria-label", /^Desks/);
   await expect(area(page).locator('[data-pj="toggle"]')).toHaveCount(0);
   const chips = area(page).locator(".hv-chip[data-hv-desk]");
   await expect(chips).toHaveCount(2);
@@ -121,7 +123,8 @@ test("the Desks menu: a long Desk name stops before its count, fades at its end 
 test("Inbox: Show filters the list to one project, each with how many need you; All shows every one", async ({ cue, page }) => {
   await cue.open("desk-inbox");
   await goView(page, "inbox");
-  await expect(area(page).locator(".hv-lbl")).toHaveText("Show");
+  await expect(area(page).locator(".hv-lbl")).toHaveCount(0);
+  await expect(area(page).locator(".hv-segs")).toHaveAttribute("aria-label", "Show");
   await expect(area(page).locator('[data-pj="toggle"]')).toHaveCount(0);
   const by = await page.evaluate(() => inboxCountsBy());
   expect(by.length, "the scenario's asks are in more than one project").toBeGreaterThan(1);
@@ -163,12 +166,12 @@ test("Inbox: past four projects the rest are under More, with their counts; one 
 test("an add-on's view shows what its head() gives there, and nothing when it has none", async ({ cue, page }) => {
   await cue.open("many-sessions");
   await page.evaluate(() => {
-    addOn.views.push({ id: "loops", label: () => "Loops", html: () => `<div class="board">loops page</div>`, head: () => `${hvLabel("Loops")}<button class="hchip">All loops 4</button>` });
+    addOn.views.push({ id: "loops", label: () => "Loops", html: () => `<div class="board">loops page</div>`, head: () => `<button class="hchip">All loops 4</button>` });
     addOn.views.push({ id: "plain", label: () => "Plain", html: () => `<div class="board">plain page</div>` });
     renderMain();
   });
   await goView(page, "loops");
-  await expect(area(page).locator(".hv-area")).toContainText("LoopsAll loops 4");
+  await expect(area(page).locator(".hv-area")).toHaveText("All loops 4");
   await expect(area(page).locator('[data-pj="toggle"]')).toHaveCount(0);
   await goView(page, "plain");
   await expect(area(page).locator(".hv-area, .hv-lbl, [data-pj]")).toHaveCount(0);

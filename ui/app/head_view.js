@@ -1,5 +1,5 @@
 // Cue UI app — the header's area after the waiting count follows the view (#666). Loaded before app/render.js.
-// Board and Read (and the views not in the switch): the projects, as before, under a "Projects" label. Desk: a Desks ▾
+// Board and Read (and the views not in the switch): the projects, as before. Desk: a Desks ▾
 // menu first, with every Desk (each with a pin), All Desks, New Desk… and Desk settings…, then the pinned Desks as chips in
 // the order pinned (a dot when that Desk waits on you), never reordered by use; a chip opens its Desk, the one open brings its lead's chat back. Inbox: a Show filter, All or one project,
 // each with how many need you. An add-on's view: what its optional head() gives, else nothing.
@@ -17,9 +17,6 @@ const HV_DESK_CHIPS = 3;
 /** How many projects the Inbox filter shows as chips before the rest go under More. */
 const HV_INBOX_CHIPS = 4;
 
-/** The area's small label ("Projects", "Desks", "Show"): an add-on's head() may use it too. */
-const hvLabel = (text) => `<span class="hv-lbl">${esc(text)}</span>`;
-
 /** The area for the view shown. */
 function headViewHtml() {
   if (hvMenu && hvMenuView !== view) { hvMenu = ""; delete drafts["hv-desk-find"]; }
@@ -27,8 +24,7 @@ function headViewHtml() {
   if (view === "inbox") return headInbox();
   const v = addOn.views.find((x) => x.id === view);
   if (v) { const h = typeof v.head === "function" ? v.head() : ""; return h ? `<span class="hv-area">${h}</span>` : ""; }
-  const pj = projChip();
-  return pj ? `${hvLabel("Projects")}${pj}` : "";
+  return projChip();
 }
 
 // ---------- Desk ----------
@@ -96,8 +92,8 @@ function headDesks() {
   const car = `<svg class="hv-car" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
   // The Desks menu first, as the projects chip is on the Board: it reads the Desk open when that one isn't pinned.
   const loose = now && !pins.includes(now) ? all.find((d) => d.project === now) : null;
-  const main = `<span class="hv-wrap"><button class="hchip hv-chip hv-open${loose ? " hot" : ""}" data-hv-menu="desks" aria-expanded="${open}">${loose ? `${dot(hvDeskGoing(loose))}<span class="hv-cn">${esc(deskName(loose))}</span>` : "Desks"}${car}</button>${menu}</span>`;
-  return `${hvLabel("Desks")}${main}${hvDeskChips(all).map(chip).join("")}`;
+  const main = `<span class="hv-wrap"><button class="hchip hv-chip hv-open${loose ? " hot" : ""}" data-hv-menu="desks" aria-label="Desks${loose ? `, ${esc(deskName(loose))}` : ""}" aria-expanded="${open}">${loose ? `${dot(hvDeskGoing(loose))}<span class="hv-cn">${esc(deskName(loose))}</span>` : "Desks"}${car}</button>${menu}</span>`;
+  return `${main}${hvDeskChips(all).map(chip).join("")}`;
 }
 
 /** Today's Desk page (B2, desk/b2.js), whose All sessions list holds the Desk's name to rename: reached from here too,
@@ -143,7 +139,7 @@ function headInbox() {
   const open = hvMenu === "inbox";
   const menu = open ? `<div class="hv-menu" role="menu">${rest.map(([p, n]) => `<button class="hv-row" role="menuitem" data-hv-inbox="${esc(p)}"><span class="hv-rn">${esc(projLabel(p))}</span><span class="hv-rs">${n}</span></button>`).join("")}</div>` : "";
   const more = rest.length ? `<span class="hv-wrap"><button class="hv-seg hv-more" data-hv-menu="inbox" aria-expanded="${open}">More<em>${rest.length}</em></button>${menu}</span>` : "";
-  return `${hvLabel("Show")}<span class="hv-segs" role="group" aria-label="Show">${seg("", "All", total)}${shown.map(([p, n]) => seg(p, projLabel(p), n)).join("")}${more}</span>`;
+  return `<span class="hv-segs" role="group" aria-label="Show">${seg("", "All", total)}${shown.map(([p, n]) => seg(p, projLabel(p), n)).join("")}${more}</span>`;
 }
 /** The Inbox shows project `p` ("" for all), remembered. */
 function setInboxProj(p) {
