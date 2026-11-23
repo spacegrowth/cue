@@ -2,9 +2,11 @@
 //! those edits behind without a word. An item started now with every copy in use gets a copy of its own past the
 //! count (never the main folder), and a copy's landing stops on files its holder changed in the main folder that the
 //! copy doesn't have: sent back naming them once; the same ones still there at its next DONE land without them, its
-//! lead told which. Nothing in the main folder is ever removed.
+//! lead told which. Nothing in the main folder is ever removed. #770: a file counts as its session's only while what
+//! its own Edit or Write put there is still in it (#767 was named another session's ui/styles/desk-c.css), and each
+//! is named to it once and to its lead once, however often it lands again.
 
-use super::desk_commit::{ends, item, log_edit, routed_with};
+use super::desk_commit::{ends, item, log, log_edit, routed_with};
 use super::team::git;
 use crate::testing::World;
 use std::path::{Path, PathBuf};
@@ -25,12 +27,17 @@ fn told(w: &World, to: &str, from: usize) -> Vec<String> {
     w.hosted.sent().into_iter().skip(from).filter(|(s, _)| s == to).map(|(_, t)| t).collect()
 }
 
+/// Session `sid`'s Write of `text` to `path`, in its log.
+fn log_write(w: &World, sid: &str, path: &Path, text: &str) {
+    std::fs::write(path, text).unwrap();
+    log(w, sid).tool_use(&format!("toolu_w{}", crate::clock::now_ms()), "Write", serde_json::json!({ "file_path": path, "content": text }));
+    w.settle();
+}
+
 /// Its holder edits a.txt in its copy and b.txt in the main folder (as #598's did before its copy was free).
 fn edits_main_too(w: &World, dir: &Path, h: &str, path: &Path) {
-    std::fs::write(path.join("a.txt"), "a\n").unwrap();
-    log_edit(w, h, &path.join("a.txt"));
-    std::fs::write(dir.join("b.txt"), "b\n").unwrap();
-    log_edit(w, h, &dir.join("b.txt"));
+    log_write(w, h, &path.join("a.txt"), "a\n");
+    log_write(w, h, &dir.join("b.txt"), "b\n");
 }
 
 #[test]
@@ -82,6 +89,58 @@ fn a_main_folder_file_its_session_never_touched_never_stops_its_landing() {
     ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
     assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed");
     assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt");
+}
+
+#[test]
+fn another_sessions_uncommitted_edit_in_the_main_folder_is_never_pinned_on_a_landing_item() {
+    // #770: #767 was told three times that ui/styles/desk-c.css, another session's unfinished work, was its own.
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    // shared.txt stands for #767's ui/styles/desk-c.css (the test repository tracks only a few names).
+    let css = Path::new("shared.txt");
+    log_write(&w, &h, &path.join("a.txt"), "a\n");
+    // Its holder tried to edit the main folder's copy of it; Cue stopped that, so the call failed.
+    let stopped = format!("toolu_s{}", crate::clock::now_ms());
+    log(&w, &h).tool_use(&stopped, "Edit", serde_json::json!({ "file_path": dir.join(css), "old_string": "", "new_string": ".rail { gap: 4px }" }));
+    log(&w, &h).entry(serde_json::json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": stopped, "content": "Stopped: outside its copy", "is_error": true}]}}));
+    // A shell command of its names the file by a relative path: a guess at what it wrote, never counted as its write.
+    log(&w, &h).tool_use(&format!("toolu_b{}", crate::clock::now_ms()), "Bash", serde_json::json!({ "command": "printf '.rail { gap: 4px }\\n' > shared.txt" }));
+    // Another session's edit of the same file, uncommitted in the main folder as this item lands.
+    std::fs::write(dir.join(css), ".rail { gap: 8px }\n/* half done */\n").unwrap();
+    w.settle();
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let n = w.hosted.sent().len();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed at its first DONE");
+    let named = |to: &str| told(&w, to, n).into_iter().filter(|t| t.contains("shared.txt")).collect::<Vec<_>>();
+    assert!(named(&h).is_empty() && named(&lead).is_empty(), "never pinned on it: {:?} {:?}", named(&h), named(&lead));
+    assert!(item(&w, &project, "Header jumps")["main_left"].is_null());
+}
+
+#[test]
+fn a_file_left_in_the_main_folder_is_named_to_its_session_once_and_to_its_lead_once_however_often_it_lands() {
+    // #770: a landing tried again (here after a clash) named the same file again, back to its session and to its lead.
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    edits_main_too(&w, &dir, &h, &path);
+    log_write(&w, &h, &path.join("shared.txt"), "theirs\n");
+    let lead = super::desk::desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let n = w.hosted.sent().len();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working", "named to it");
+    // Main moves on with a shared.txt of its own: its next landing clashes after the lead is told.
+    std::fs::write(dir.join("shared.txt"), "ours\n").unwrap();
+    git(&dir, &["add", "shared.txt"]);
+    git(&dir, &["commit", "-q", "-m", "Ours"]);
+    ends(&w, &h, &format!("b.txt is another session's.\nDONE: #{id}"));
+    assert!(told(&w, &h, n).iter().any(|t| t.contains("clashes")), "the clash goes back: {:?}", told(&w, &h, n));
+    // Settled in its copy: it lands, without b.txt, and nobody hears of b.txt again.
+    log_write(&w, &h, &path.join("shared.txt"), "ours\n");
+    ends(&w, &h, &format!("Settled.\nDONE: #{id}"));
+    assert_eq!(subject(&dir), format!("Header jumps (#{id})"), "landed");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt", "without b.txt");
+    let named = |to: &str| told(&w, to, n).into_iter().filter(|t| t.contains("b.txt") && t.contains("main folder")).count();
+    assert_eq!((named(&h), named(&lead)), (1, 1), "once each: {:?}", w.hosted.sent());
 }
 
 #[test]

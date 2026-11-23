@@ -289,11 +289,14 @@ pub struct DeskItem {
     /// `desk_tree_failed`): it works where its holder is, not queued or lined up for another, till a copy is its.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub copy_failed: bool,
-    /// Files its holder changed in the main folder, not in its copy, that its last landing sent it back over
-    /// (desk/hub/landing/own_work.rs `main_leftovers`, #653): named once; the same ones still there at its next DONE
-    /// land without them, the lead told which.
+    /// Files its holder changed in the main folder, not in its copy, that a landing sent it back over
+    /// (desk/hub/landing/own_work.rs `main_leftovers`, #653): each named to it once; still there at a later DONE,
+    /// it lands without them, the lead told which.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub main_left: Vec<String>,
+    /// Of those, the ones its lead was told it landed without: each said once, however often it lands again (#770).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub main_left_told: Vec<String>,
     /// Where each of its commits is: (folder, short hash), for its Files changed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_in: Vec<(String, String)>,
