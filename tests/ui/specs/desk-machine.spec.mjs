@@ -59,7 +59,8 @@ test("an item nobody has yet shows where it will start, and you can choose anoth
   }, [machines, fresh]);
   await openDesk(page);
   const row = page.locator('.dk-it[data-desk-item="n597"]');
-  await expect(row.locator(".dk2b-tt .mach")).toHaveText("build-box");
+  // Its row has no machine (#776): that's picked as it starts. Its page says where it will start.
+  await expect(row.locator(".mach")).toHaveCount(0);
   await row.locator(".dk2b-tt").click();
   const right = page.locator(".dk-right");
   const seg = right.locator(".dk-starts");
@@ -254,3 +255,37 @@ test("an item waiting for room on a full machine says so on its row and page", a
   await row.click();
   await expect(page.locator(".dk-right")).toContainText("Starts when build-box has room");
 });
+
+// Up next has no machine on a row nobody has yet (#776): where it starts is picked as it leaves the queue, so the row
+// says only why it waits. At a laptop window and at the smallest, in today's Desk and the new layout.
+for (const [name, size] of [["a laptop window", { width: 1440, height: 900 }], ["the smallest window", { width: 900, height: 600 }]]) {
+  for (const layout of ["today's Desk", "the new layout"]) {
+    test(`at ${name}, in ${layout}, an Up next row nobody has shows why it waits and no machine`, async ({ page, cue }) => {
+      if (layout === "the new layout") await page.addInitScript(() => { try { localStorage.setItem("cue.deskC", "1"); } catch {} });
+      await page.setViewportSize(size);
+      await cue.open("desk");
+      await cue.change((st, [ms, it]) => {
+        const d = st.desk.projects.find((x) => x.project === "cue");
+        d.machines = { ...ms, machines: [...ms.machines, { name: "", label: "This Mac", folder: "" }] };
+        // As an older Cue might send it: a machine on it too. The row still shows none.
+        d.items.push({ ...it, id: "w776", title: "Waits for any free place", state: "queued", room_wait: true, machine_wait: "build-box or This Mac", machine: "build-box" });
+        d.items.push({ ...it, id: "n776", title: "Not given out yet", state: "new" });
+      }, [machines, fresh]);
+      await openDesk(page);
+      const row = page.locator('.dk-it[data-desk-item="w776"]');
+      await row.scrollIntoViewIfNeeded();
+      await expect(row).toBeVisible();
+      await expect(row).toContainText("Waits for room on build-box or This Mac");
+      await expect(row.locator(".mach")).toHaveCount(0);
+      await expect(page.locator('.dk-it[data-desk-item="n776"] .mach')).toHaveCount(0);
+      // Its text fits its row: nothing runs past the right edge.
+      const [r, box] = await Promise.all([row.boundingBox(), page.locator(".dk-items").first().boundingBox()]);
+      expect(r.x + r.width).toBeLessThanOrEqual(box.x + box.width + 1);
+      if (process.env.SHOT_DIR) await row.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-up-next-${size.width}-${layout === "the new layout" ? "c" : "b2"}.png` });
+      // Its page says where it may start.
+      await row.click();
+      await expect(page.locator(".dk-right")).toContainText("Starts on whichever of build-box or This Mac has room first");
+      await expect(page.locator(".dk-items [title], .dk-right [title]")).toHaveCount(0);
+    });
+  }
+}

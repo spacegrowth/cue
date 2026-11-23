@@ -231,7 +231,8 @@ function deskCRow(i) {
 /** A row in Up next or Done today, on the green: #id and title (a grip on the ones you can drag), and a line under it. */
 function deskCLow(i, line) {
   const on = deskOpen?.kind === "item" && deskIdIs(i, deskOpen.id);
-  const mach = deskCMach(i);
+  // Nobody has it yet: no machine, it's picked as the item starts (#776).
+  const mach = i.holder ? deskCMach(i) : "";
   return `<div class="dk-it dkn-nx${on ? " on" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-a1"><span class="dkn-tx">${esc(i.title)}</span></div><div class="dkn-a2">${deskCNum(i)}${mach}${line ? `<span>${line}</span>` : ""}</div></div>`;
 }
 /** A done item's line: how long it took and when it landed. */

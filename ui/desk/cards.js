@@ -55,6 +55,7 @@ function deskCardsWhy(i) {
   if (i.state === "new") return "new";
   if (i.after) { const on = deskAfterName(i); return on.startsWith("#") ? `after ${on}` : `waits for ${on}`; }
   if (deskCopyWaits(i)) return "starts when a copy is free";
+  if (i.machine_wait) return "waits for room";
   const nf = i.holder ? deskHolderOf(i) : i.next_for ? deskHolderOf({ holder: i.next_for }) : "";
   return nf ? `next for ${nf}` : "any free session";
 }
