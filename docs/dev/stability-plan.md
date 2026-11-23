@@ -160,7 +160,7 @@ New dev-only crate `src-tauri/xtask/` (a `cargo xtask` binary, not shipped) usin
   keeps going; the log names the pair. Requires every `.lock()` site (135) to go through `locking::lock` — the
   xtask lint enforces it.
 - **Main-thread probe:** a 1 s `dispatch_async` ping on the main queue from a watcher thread (objc2
-  `dispatch_get_main_queue`); if a ping isn't answered in 3 s, log "main thread stalled" + every lock holder
+  `dispatch_get_main_queue`); if a ping isn't answered in 2 s, log "main thread stalled" + every lock holder (and sample the page process, #775)
   from the side table. Also the signal used by the soak harness (§5). Dev builds additionally
   `SIGQUIT` themselves after 10 s so `sample` output is attached.
 - **dSYMs:** `[profile.release] strip = "none"`, `debug = 1` (line tables), `split-debuginfo = "packed"`;

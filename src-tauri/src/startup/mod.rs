@@ -50,7 +50,15 @@ pub(crate) fn build() -> tauri::App {
         .menu(window::app_menu)
         .on_menu_event(window::on_menu_event)
         // Which windows have their page in (edit.rs: an Edit command to one still loading is skipped, not crashed on).
-        .on_page_load(|webview, payload| edit::page_load(webview.label(), matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)))
+        // and, for the main window, which process its page runs in (sampled when the main thread stalls, locking/sample.rs).
+        .on_page_load(|webview, payload| {
+            let finished = matches!(payload.event(), tauri::webview::PageLoadEvent::Finished);
+            edit::page_load(webview.label(), finished);
+            #[cfg(target_os = "macos")]
+            if finished && webview.label() == "main" {
+                let _ = webview.with_webview(|wv| crate::locking::sample::page_process(crate::locking::sample::pid_of(wv.inner())));
+            }
+        })
         .on_window_event(window::on_window_event)
         .build(context)
         .expect("error while building Cue")
