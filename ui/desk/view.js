@@ -53,7 +53,8 @@ function deskBox(d, o = deskOpen) {
       to = { sid, mate: t?.name || "" };
       ph = `Tell ${deskHolderName(sid)} about ${t?.name || "it"}…`;
       // A crew member has no box of its own: what you type goes to its lead, said over the box.
-      pre = `To ${deskHolderName(sid)}, its lead`;
+      // Two lines: whose box it is, small; "Lead" under it, larger.
+      pre = [`To ${deskHolderName(sid)}`, "Lead"];
     }
   }
   const key = deskBoxKey(to);
