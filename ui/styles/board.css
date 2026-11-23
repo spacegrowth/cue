@@ -167,7 +167,9 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
 .field-row { display: flex; align-items: flex-end; gap: 4px; }
 /* Who the box goes to, at the left of where you type (desk/view.js deskCBox): a tag filled in the box's own tint. */
-.field-to { flex: none; align-self: flex-start; margin: 5px 4px 0 0; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--panel-2); color: var(--muted); font: 600 var(--type-small)/1.5 var(--sans); white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; }
+.field-to { flex: none; align-self: stretch; display: flex; align-items: center; margin: -3px 8px -3px -10px; padding: 0 12px; border-radius: var(--radius-btn) 0 0 var(--radius-btn); background: var(--panel-2); box-shadow: inset -1px 0 0 var(--line); color: var(--muted); font: 600 var(--type-small)/1.4 var(--sans); white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; }
+/* Over a quick-phrase row, it fills only its own row's height (the box's top corner isn't its). */
+.field > :not(.field-row) ~ .field-row > .field-to { margin-top: 0; border-top-left-radius: 0; }
 .field textarea { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--type-body); line-height: 1.45; resize: none; padding: 5px 0; max-height: 180px; overflow-y: auto; }
 .field textarea::placeholder { color: var(--muted); }
 /* The box's mic and picture buttons: the same in a session's box and the Desk's (#493). */

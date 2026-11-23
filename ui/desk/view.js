@@ -69,13 +69,14 @@ function deskBox(d, o = deskOpen) {
   // talks to: the lead, or the open holder (not about an item, or a crew member: those words are Cue's, not its).
   const sugSid = to.item ? `item:${d.project}|${to.item}` : to.mate ? "" : to.sid || deskLead(d)?.sid || "";
   // The new layout: the same box as the lead's (a session's chat box), who it goes to at its left (deskCBox).
-  if (deskCOn()) return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid);
+  if (deskCOn()) return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, !to.mate);
   // An item's page shows its recipient and item above the input; quick phrases use its normal send flow.
   return boxHtml({ key, top: quickRow(`data-quick="${esc(key)}"`) + deskPreHtml(pre), wrap: true, sug: suggestionFor(sugSid), sugSid, placeholder: ph, send: { attrs: `data-desk-send="${esc(key)}"` } });
 }
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
-const deskCBox = (key, pre, ph, sug = "", sugSid = "") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quickRow(`data-quick="${esc(key)}"`), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
+// No quick phrases on a crew member's box (`quick` false): there's nothing quick to say about one.
+const deskCBox = (key, pre, ph, sug = "", sugSid = "", quick = true) => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quick ? quickRow(`data-quick="${esc(key)}"`) : "", send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
 /** Box `to` is the lead's own: about no item, crew member, kept copy or other session. */
 const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kept;
 // The lead's box writes to its session (chat/compose.js sidOfKey): its "/" menu, Send at and suggestion are the lead's.
