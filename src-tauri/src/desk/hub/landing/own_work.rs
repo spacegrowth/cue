@@ -229,9 +229,11 @@ fn rel_in(abs: &str, top: &str) -> Option<String> {
 impl Hub {
     /// The files item `it`'s holder changed in its repository's main folder while it held it, not in its copy `t`
     /// (#653), that its copy's landing would leave behind: still changed there (git says so; ignored ones, build
-    /// output, aren't) and not as its copy has them. Relative to the main folder. #598's holder worked in the main
-    /// folder before its copy was free and moved only part of it over; the rest stayed there, uncommitted. None for a
-    /// branch in the folder itself (everything there is in its snapshot), a branch the lead named, or another machine.
+    /// output, aren't), not as its copy has them, and what its own Edit or Write put there still in them (#770: a
+    /// file only another session changed, a shell command's guessed path, or an edit Cue stopped is never its).
+    /// Relative to the main folder. #598's holder worked in the main folder before its copy was free and moved only
+    /// part of it over; the rest stayed there, uncommitted. None for a branch in the folder itself (everything there
+    /// is in its snapshot), a branch the lead named, or another machine.
     pub(crate) fn main_leftovers(&self, it: &DeskItem, t: &crate::desk::ItemTree) -> Vec<String> {
         if t.in_place || t.keep || it.remote.is_some() {
             return Vec::new();
@@ -239,9 +241,10 @@ impl Hub {
         let Some(own) = self.read(|st| own_log(st, it)) else { return Vec::new() };
         let others = self.read(|st| other_copies(st, it));
         let own_copy = [(t.path.clone(), t.branch.clone())];
+        let writes = crate::logs::steps::writes_between(&own.log, own.from, own.until);
         let mut out: Vec<String> = Vec::new();
-        for f in crate::logs::steps::edited_between(&own.log, own.from, own.until) {
-            let abs = if f.starts_with('/') { f } else { format!("{}/{}", own.folder.trim_end_matches('/'), f.trim_start_matches("./")) };
+        for f in writes.iter().map(|w| w.file.clone()) {
+            let abs = if f.starts_with('/') { f.clone() } else { format!("{}/{}", own.folder.trim_end_matches('/'), f.trim_start_matches("./")) };
             if in_copies(&abs, &own_copy) || in_copies(&abs, &others) {
                 continue;
             }
@@ -255,7 +258,13 @@ impl Hub {
             }
             let in_main = std::fs::read(std::path::Path::new(&t.repo).join(&rel)).ok();
             let in_copy = std::fs::read(std::path::Path::new(&t.path).join(&rel)).ok();
-            if in_main != in_copy {
+            if in_main == in_copy {
+                continue;
+            }
+            // Its own write still there (#770): uncommitted when it lands isn't enough, another session may have
+            // changed it, and an edit Cue stopped or one it undid isn't its.
+            let text = in_main.map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+            if writes.iter().any(|w| w.file == f && w.still_in(&text)) {
                 out.push(rel);
             }
         }

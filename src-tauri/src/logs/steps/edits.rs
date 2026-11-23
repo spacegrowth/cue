@@ -118,6 +118,75 @@ pub fn edited_between_named(path: &str, from: u64, until: u64) -> Vec<(String, b
     out
 }
 
+/// What one of the session's own edit calls put in a file (#770): an Edit's (or one MultiEdit part's) old and new
+/// text, or a Write's whole content (`whole`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Wrote {
+    pub file: String,
+    pub old: String,
+    pub new: String,
+    pub whole: bool,
+}
+
+impl Wrote {
+    /// The file's `text` still holds what this call put there: a Write's content is the whole file; an Edit's new
+    /// text is in it (a deletion: its old text no longer is). Never for an Edit with neither to go by.
+    pub fn still_in(&self, text: &str) -> bool {
+        if self.whole {
+            return text == self.new;
+        }
+        if !self.new.is_empty() {
+            return text.contains(&self.new);
+        }
+        !self.old.is_empty() && !text.contains(&self.old)
+    }
+}
+
+/// What the session's own Edit, MultiEdit and Write calls wrote from `from` until `until` (ms), in order (#770). Only
+/// calls the session itself made, not shell guesses, and none that failed or Cue stopped (its result an error): a file
+/// is credited to it only for what it surely wrote. A Claude Code log only (others: none).
+pub fn writes_between(path: &str, from: u64, until: u64) -> Vec<Wrote> {
+    if kind_of(path) != Kind::Claude {
+        return vec![];
+    }
+    let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
+    let entries: Vec<Value> = text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).collect();
+    let blocks = |e: &Value| e.pointer("/message/content").and_then(Value::as_array).cloned().unwrap_or_default();
+    let failed: std::collections::HashSet<String> = entries.iter().flat_map(blocks)
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result") && b.get("is_error").and_then(Value::as_bool) == Some(true))
+        .filter_map(|b| b.get("tool_use_id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let mut out: Vec<Wrote> = vec![];
+    for e in &entries {
+        let at = crate::logs::transcript::stamp(e);
+        if at < from || at >= until {
+            continue;
+        }
+        for b in blocks(e).iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use")) {
+            if b.get("id").and_then(Value::as_str).is_some_and(|id| failed.contains(id)) {
+                continue;
+            }
+            let input = &b["input"];
+            let file = s(input, "file_path");
+            if file.trim().is_empty() {
+                continue;
+            }
+            match b.get("name").and_then(Value::as_str).unwrap_or("") {
+                "Edit" => out.push(Wrote { file, old: s(input, "old_string"), new: s(input, "new_string"), whole: false }),
+                "MultiEdit" => {
+                    for p in input.get("edits").and_then(Value::as_array).into_iter().flatten() {
+                        out.push(Wrote { file: file.clone(), old: s(p, "old_string"), new: s(p, "new_string"), whole: false });
+                    }
+                }
+                "Write" => out.push(Wrote { file, old: String::new(), new: s(input, "content"), whole: true }),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 /// `script_writes`, each path as seen from where the command started: a script run after `cd` writes there.
 pub(crate) fn script_writes_in(command: &str) -> Vec<String> {
     use crate::logs::shell_writes::{from_dir, runs_in};
