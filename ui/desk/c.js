@@ -99,8 +99,8 @@ function deskCSessions(project) {
     return `<button class="dkn-ss${on ? " on" : ""}" data-desk-chat-of="${esc(sid)}" aria-label="${esc(deskHolderName(sid))}"><span class="dkn-n"><i class="dkn-d ${dot}" aria-hidden="true"></i><span class="dkn-nm">${esc(deskHolderName(sid))}</span>${on ? '<span class="dkn-chev" aria-hidden="true">›</span>' : ""}</span><span class="dkn-s">${line}</span></button>${crew}`;
   };
   const groups = machines.filter((m) => shown.some((s) => (s.machine || "") === m) || !m).map((m) => {
-    // The ones at work first, in their order; then the rest.
-    const list = shown.filter((s) => (s.machine || "") === m).sort((a, b) => busy(b) - busy(a));
+    // The ones at work first, in their order; then the rest, the one that stopped last first.
+    const list = shown.filter((s) => (s.machine || "") === m).sort((a, b) => busy(b) - busy(a) || (busy(a) ? 0 : (b.since_ms || 0) - (a.since_ms || 0)));
     const of = atOnce(m), n = busyOn(m);
     const head = `<div class="dkn-mg">${DESK_C_MAC}<b>${esc(m ? machShort(m).toUpperCase() : "THIS MAC")}</b><span>· ${of ? `${n} of ${of} busy` : `${n} busy`}</span></div>`;
     return head + (list.map(row).join("") || `<div class="dkn-none">No sessions here yet.</div>`);
