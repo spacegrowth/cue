@@ -147,18 +147,13 @@ const moreShown = new Map();
 let moreFrame = 0;
 const moreWoke = new Set();
 
-// ---------- header chips: what's waiting (its list), what's asking, what's going cold (open the oldest) ----------
-/** Each chip's list, what ‹ › step through: waiting newest first, as its list shows it; asking oldest first; going
- *  cold soonest first. */
+// ---------- header chips: what's waiting (its list), what's asking (open the oldest) ----------
+/** Each chip's list, what ‹ › step through: waiting newest first, as its list shows it; asking oldest first. */
 function chipList(kind) {
   const { yours, decide } = groups();
   // The add-on's that wait on you count here too, in among yours by when each came back.
   if (kind === "waiting") return [...yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms })), ...addOn.waitingChips()].sort((a, b) => b.since - a.since);
-  if (kind === "asking") return decide.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
-  // Waiting on you with its cache counting down on its card (insights.js cacheWarn): the soonest to run out first.
-  return [...yours, ...decide].map((i) => ({ id: i.id, sid: i.session_id, project: i.project, w: cacheWarn(i.session_id) }))
-    .filter((x) => x.w && x.w.left > 0)
-    .map((x) => ({ id: x.id, sid: x.sid, project: x.project, since: x.w.c.until_ms })).sort((a, b) => a.since - b.since);
+  return decide.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
 }
 function headerChips() {
   const chip = (kind, label, extra, cls, dot) => {
@@ -172,7 +167,7 @@ function headerChips() {
       : `<button class="hchip ${cls}" ${open}><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
     return kind === "waiting" ? `<span class="lv-wrap wt-wrap">${html}${waitOpen ? waitPop(list) : ""}</span>` : html;
   };
-  const waiting = chipList("waiting"), cold = chipList("cold");
+  const waiting = chipList("waiting");
   const first = waiting.reduce((o, x) => (!o || x.since < o.since ? x : o), null);
   const oldest = first ? now() - first.since : 0;
   // Stronger the longer the oldest has waited: soft under 5 minutes, then half, then solid at 15.
@@ -181,7 +176,6 @@ function headerChips() {
   // `talking`); steady otherwise.
   const back = groups().yours.some((i) => talking(i) && i.session_id !== active?.sid);
   const html = chip("waiting", "waiting", "", heat, back ? "z back" : "z")
-    + chip("cold", "going cold", cold[0] ? `<span data-cold-in="${cold[0].since}">${coldIn(cold[0].since)}</span>` : "", "cold", "c")
     + chip("asking", "asking you", "", "", "ask");
   return html || `<span class="hall" data-tauri-drag-region>all clear</span>`;
 }

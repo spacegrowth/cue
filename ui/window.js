@@ -376,13 +376,12 @@ async function loadDrafts() {
   } catch { /* nothing to move */ }
 }
 let untilNext = null;   // the moment a countdown's shown number next changes
-/** The live "what it's doing · 3s" counts, every second, without redrawing everything; the going-cold chip counts
- *  down, and redraws without it once its soonest goes cold. Both windows tick it (app.js, mini.js). */
+/** The live "what it's doing · 3s" counts, every second, without redrawing everything. Both windows tick it (app.js,
+ *  mini.js). */
 function tickAges() {
   // Only where the words changed: setting the same text still swaps the node, so a row kept in place (#480) would change.
   document.querySelectorAll("[data-ago]").forEach((el) => { const t = ago(+el.dataset.ago); if (el.textContent !== t) el.textContent = t; });
   let coldDone = false;
-  document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
   // A countdown (a finishing item's next install, #339): redraws once it's due, to say what it waits on then. Its
   // last minute moves on the second it counts, not at the next tick: that came up to a second late.
   let next = Infinity;

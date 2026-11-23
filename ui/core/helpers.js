@@ -13,11 +13,6 @@ function ago(ms) {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
-/** How long until a cache runs out, for the header's "going cold" chip ("in 8m 05s"). */
-function coldIn(until) {
-  const s = Math.max(0, Math.round((until - now()) / 1000));
-  return s < 60 ? `in ${s}s` : `in ${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
-}
 /** How long until `until`, counting down: "in 12m", "in 1h 05m", "in 40s"; "now" once it's passed. Rounded up, so
  *  it reads "in 1s" until it's due, never "now" before. */
 function untilIn(until) {
