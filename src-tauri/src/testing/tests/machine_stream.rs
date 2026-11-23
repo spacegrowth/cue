@@ -228,3 +228,47 @@ fn a_sessions_log_is_never_read_at_the_machines_path_on_this_mac() {
     // Nothing ever opened the machine's path: the pipe was never read, so it's left unanswered.
     let _ = std::fs::remove_dir_all(&w_dir);
 }
+
+/// The pids of processes on this Mac whose command line has `part` in it (only looked at: never killed by it).
+fn running(part: &str) -> Vec<i32> {
+    let out = std::process::Command::new("/bin/ps").args(["-axo", "pid=,ppid=,command="]).output().unwrap();
+    String::from_utf8_lossy(&out.stdout).lines().filter_map(machines::ps_line).filter(|(_, _, c)| c.contains(part)).map(|(p, _, _)| p).collect()
+}
+
+#[test]
+fn a_test_cue_quitting_ends_the_tail_its_fake_machine_runs_copying_a_log() {
+    let b = machine("quit-box", &[], false, "");
+    let remote = b.ssh.home("quit-box").join("s1.jsonl");
+    std::fs::write(&remote, "{}\n").unwrap();
+    let remote = remote.to_string_lossy().into_owned();
+    std::fs::write(b.ssh.home("quit-box").join("stream"), format!("{}\n", event(1, "prompt", input("s1", json!({"prompt": "go", "transcript_path": remote}))))).unwrap();
+    // The copy runs the machine's real `tail -F` (on this Mac, in the machine's home).
+    b.ssh.host("quit-box", &format!("case \"$1\" in *cue-watch*) exec cat \"$FAKE_HOME/stream\" ;; esac\n{RUNS_IT}"));
+    b.stream();
+    let tail = format!("tail -c +1 -F {remote}");
+    until("the copy's tail to run", || !running(&tail).is_empty());
+    drop(b);
+    until("the tail to end with the Cue that started it", || running(&tail).is_empty());
+}
+
+#[test]
+fn a_fake_machines_tail_ends_once_the_run_that_started_it_is_gone() {
+    let ssh = FakeSsh::new();
+    ssh.host("gone-run-box", RUNS_IT);
+    let log = ssh.dir().join("gone-run.log");
+    std::fs::write(&log, "").unwrap();
+    let tail = format!("tail -c +1 -F {}", log.display());
+    // The run: starts the machine's tail and stays, until it's ended.
+    let mut run = std::process::Command::new("/bin/sh")
+        .args(["-c", r#""$0" -T gone-run-box "exec $1" >/dev/null 2>&1 & exec sleep 60"#])
+        .arg(FakeSsh::program().unwrap())
+        .arg(&tail)
+        .spawn()
+        .unwrap();
+    until("the tail to run", || !running(&tail).is_empty());
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    assert!(!running(&tail).is_empty(), "it runs on while the run does");
+    run.kill().unwrap();
+    run.wait().unwrap();
+    until("the tail to end with its run", || running(&tail).is_empty());
+}

@@ -285,9 +285,16 @@ function deskCFitLists() {
   lists.forEach((el, k) => {
     el.style.maxHeight = deskCFits[k] ? `${deskCFits[k]}px` : "";
     el.nextElementSibling.hidden = !deskCFits[k];
+    // On its way after "↓ N more": a redraw meanwhile made it afresh where it had got to (its start, in the slide's
+    // first frame), so it goes on from there to where the click sent it.
+    const go = deskCGoing.get(el.dataset.dknList);
+    if (go && Date.now() < go.until && Math.abs(el.scrollTop - go.top) > 1) el.scrollTo({ top: go.top, behavior: "smooth" });
+    else deskCGoing.delete(el.dataset.dknList);
   });
   deskCMore();
 }
+/** Where a list's "↓ N more" is sending it, by list, for as long as its slide takes (deskCAll, deskCFitLists). */
+const deskCGoing = new Map(), DESK_C_GOING_MS = 1000;
 /** "↓ N more" under each list that scrolls: the rows still below its edge. */
 function deskCMore() {
   for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-list]")) {
@@ -396,10 +403,10 @@ function deskCList(project, taskApprovals) {
   const queued = new Set(g.queued), next = [...g.queued, ...g.held];
   const doneToday = deskB2DoneToday(d);
   // Each group folds to its heading with a click on it, as Up next and Done today do (remembered with them).
-  const grp = (key, label, list, extra = "", n = list.length) => {
-    if (!list.length && !extra) return "";
+  const grp = (key, label, list, extra = "", n = list.length, first = "") => {
+    if (!list.length && !extra && !first) return "";
     const open = !deskCFolds.has(key);
-    const rows = list.map(deskCRow).join("") + extra;
+    const rows = first + list.map(deskCRow).join("") + extra;
     // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
     const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
     return `<button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span>${n}</span></button>${open ? body : ""}`;
@@ -407,10 +414,12 @@ function deskCList(project, taskApprovals) {
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
   const leadAsk = ask ? `<div class="dk-it dkn-row ask" role="button" tabindex="0" data-desk-c-lead><div class="dkn-t"><span class="dkn-tt">${esc(deskLeadName(d))}</span><span class="dkn-sub">The Desk lead</span></div>${deskCLine === "line" ? "" : `<div class="dkn-pl"></div>`}<div class="dkn-now"><span class="dkn-nask">${esc(deskOneLine(summary(ask) || "Asks you something"))}</span></div></div>` : "";
-  // What's blocked on you (the lead asking, steps held for your OK, asks while away) goes first, over Working: nothing
-  // moves till you answer. Then Working, then the rest that waits on you.
-  const blocked = grp("blocked", "BLOCKED ON YOU", [], leadAsk + (aw.html || ""), (aw.n || 0) + (ask ? 1 : 0));
-  const you = grp("you", "WAITING ON YOU", waits);
+  // What's blocked on you goes first, over Working: nothing moves till you answer. Steps held for your OK, oldest first
+  // (#749), with the lead's own one-way ask among them; then the lead asking you, then asks while you were away.
+  const hf = deskHeldFirst(aw, waits, deskCRow, ask?.one_way && leadAsk ? [[ask.created_ms || 0, leadAsk]] : []);
+  const blockedN = (aw.n || 0) + (ask ? 1 : 0) + (waits.length - hf.rest.length);
+  const blocked = grp("blocked", "BLOCKED ON YOU", [], (ask?.one_way ? "" : leadAsk) + (aw.more || ""), blockedN, hf.html);
+  const you = grp("you", "WAITING ON YOU", hf.rest);
   const work = grp("working", "WORKING", working);
   const kept = (d?.kept || []).length ? `<div class="dkn-gh" data-desk2b-group="kept">KEPT COPIES <span>${d.kept.length}</span></div>${d.kept.map(deskKeptRow).join("")}` : "";
   const calls = d?.away?.on ? deskAwayCalls(d) : [];
@@ -444,7 +453,10 @@ deskClicks({
   deskCStab: (el) => { deskCSessTabs.set(el.dataset.sid, el.dataset.deskCStab); renderMain(); },
   deskCAll: (el) => {
     const list = el.previousElementSibling;
-    list?.scrollBy({ top: list.clientHeight, behavior: "smooth" });
+    if (!list) return;
+    const top = Math.min(list.scrollTop + list.clientHeight, list.scrollHeight - list.clientHeight);
+    deskCGoing.set(list.dataset.dknList, { top, until: Date.now() + DESK_C_GOING_MS });
+    list.scrollTo({ top, behavior: "smooth" });
   },
   deskCFold: (el) => {
     const k = el.dataset.deskCFold;

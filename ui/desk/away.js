@@ -247,26 +247,41 @@ function deskAwayHeadMark() {
   return `<span class="top-away" data-tauri-drag-region>${DESK_AWAY_ICON.replace('width="12" height="12"', 'width="14" height="14"')}<span>${esc(main)}</span>${rest ? `<span class="top-away-m">· ${esc(rest)}</span>` : ""}</span>`;
 }
 /** What Away adds under Waiting on you: open asks from the Desk's sessions not already on an item (a permission with
- *  Allow / Deny right there; the lead never grants one), and sessions on a usage limit as one quiet line. */
+ *  Allow / Deny right there; the lead never grants one), and sessions on a usage limit as one quiet line.
+ *  { n, html, held: [[at, html]] (steps held for your OK, which go first: deskHeldFirst), more: the rest's html }. */
 function deskAwayWaiting(d, taskApprovals) {
   // Steps held while you were away (#406): listed until you answer them, Away on or not.
   const held = deskHeldRows(d);
-  if (!d?.away?.on) return { n: held.n, html: held.html };
+  const out = (n, rows, more) => ({ n, held: rows, more, html: rows.map((x) => x[1]).join("") + more });
+  if (!d?.away?.on) return out(held.n, held.rows, "");
   const { asks } = deskAwayNeeds(d, taskApprovals);
   const askRow = (it) => it.kind === "permission" ? deskAwayAsk(it, d, "Deny") : `<button class="dk-prow" ${deskChatAttrs(it.session_id, d)}><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskHolderName(it.session_id))}</b> <span class="dk-prs">asks you · ${esc(deskOneLine(summary(it)))}</span></span></button>`;
+  // A session's ask that's a step Cue holds for your OK (a push, a delete, a release) goes with the held ones (#749).
+  const ow = asks.filter((it) => it.one_way), other = asks.filter((it) => !it.one_way);
+  const rows = [...held.rows, ...ow.map((it) => [it.created_ms || 0, `<div class="dk-prows dk-aw-asks">${askRow(it)}</div>`])];
   const paused = [d.lead?.sid, ...(d.members || [])].filter((sid, k, all) => sid && all.indexOf(sid) === k && deskPausedTill(sid));
   const till = paused.length ? Math.max(...paused.map(deskPausedTill)) : 0;
   const quiet = paused.length ? `<div class="dk-aw-quiet">${esc(paused.map((sid) => deskHolderName(sid)).join(", "))} paused${till > 1 ? ` till ${deskHm(till)}` : ""} · Cue carries on then</div>` : "";
-  return { n: held.n + asks.length, html: held.html + (asks.length ? `<div class="dk-prows dk-aw-asks">${asks.map(askRow).join("")}</div>` : "") + quiet };
+  return out(held.n + asks.length, rows, (other.length ? `<div class="dk-prows dk-aw-asks">${other.map(askRow).join("")}</div>` : "") + quiet);
 }
 
 /** Desk `d`'s held steps (desk/hub/away/away_holds.rs): who, what it wants to do in plain words, the exact command, Allow and No.
- *  Only what you allow runs, in the order the session asked. */
+ *  Only what you allow runs, in the order the session asked. { n, rows: [[at, html]] }, oldest first. */
 function deskHeldRows(d) {
   const held = d?.held || [];
-  if (!held.length) return { n: 0, html: "" };
-  const row = (h) => `<div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div>${cmdCut(`held:${h.id}`, h.command)}<div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div>`;
-  return { n: held.length, html: `<div class="dk-prows dk-aw-asks">${held.map(row).join("")}</div>` };
+  const row = (h) => `<div class="dk-prows dk-aw-asks"><div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div>${cmdCut(`held:${h.id}`, h.command)}<div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div></div>`;
+  return { n: held.length, rows: held.map((h) => [h.at || 0, row(h)]) };
+}
+/** A step Cue holds for your OK (Ask me before: a push to main, a release, a delete) that an item asks: when it was
+ *  asked, else 0 (#749). */
+const deskHeldAt = (i) => { const r = deskItemRequest(i); return r?.one_way ? r.created_ms || 1 : 0; };
+/** Waiting on you's top (#749): every step held for your OK, oldest first, above everything else — the held steps and
+ *  sessions' asks from `aw` (deskAwayWaiting) and the items of `list` asking one (drawn by `row`), plus `extra`
+ *  ([[at, html]], the lead's own). { html, rest: the other items of `list`, in their order }. */
+function deskHeldFirst(aw, list, row, extra = []) {
+  const mine = list.filter(deskHeldAt);
+  const rows = [...aw.held, ...extra, ...mine.map((i) => [deskHeldAt(i), row(i)])].sort((a, b) => a[0] - b[0]);
+  return { html: rows.map((x) => x[1]).join(""), rest: mine.length ? list.filter((i) => !deskHeldAt(i)) : list };
 }
 /** Your Allow or No to held step `id`: gone from the list at once; the session is told once its earlier ones are answered. */
 async function deskHeldAnswer(id, allow) {

@@ -123,9 +123,21 @@ pub(super) fn long_wait_over(what: &str, waited: Duration) {
     write(&format!("waited {what}"), &line, || Some(Backtrace::force_capture()));
 }
 
-/// The main thread hasn't answered for `waited`; `held` is every lock held right now.
-pub(super) fn stall(waited: Duration, held: &[String]) {
+/// The folder locks.log is in, where a stall's sample goes too. Tests: a folder of their own in the temp dir.
+pub(super) fn dir() -> std::path::PathBuf {
+    #[cfg(not(test))]
+    return path().parent().map(|d| d.to_path_buf()).unwrap_or_default();
+    #[cfg(test)]
+    return std::env::temp_dir().join(format!("cue-locks-dir-{}", std::process::id()));
+}
+
+/// The main thread hasn't answered for `waited`; `held` is every lock held right now; `sample` the file the
+/// page process's sample goes to, when one was started.
+pub(super) fn stall(waited: Duration, held: &[String], sample: Option<&std::path::Path>) {
     let mut line = format!("cue: main thread stalled {} ms", waited.as_millis());
+    if let Some(f) = sample {
+        line.push_str(&format!("\n    sampling the page's process into {}", f.display()));
+    }
     for h in held {
         line.push_str(&format!("\n    holding: {h}"));
     }
