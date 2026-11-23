@@ -237,6 +237,23 @@ test("a selected row fills the card edge to edge; the card fills its column, Up 
   await expect.poll(async () => (await page.locator(".dkn-card").boundingBox()).height).toBeGreaterThan(c.height + low.height * 0.6);
 });
 
+test("\"↓ N more\" scrolls its list on even when the Desk redraws just as it starts (#749)", async ({ page, cue }) => {
+  await open(page, cue, { width: 1440, height: 900 });
+  await cue.change((st) => {
+    const its = st.desk.projects.find((d) => d.project === "cue").items;
+    const d3 = its.find((i) => i.id === "d3"), d4 = its.find((i) => i.id === "d4");
+    for (let k = 0; k < 14; k++) its.push({ ...d3, id: `w${k}`, title: `Working item ${k}` });
+    for (let k = 0; k < 10; k++) its.push({ ...d4, id: `q${k}`, title: `Queued item ${k}`, depends_on: [] });
+  });
+  for (const name of ["items", "next"]) {
+    const list = page.locator(`[data-dkn-list="${name}"]`);
+    await expect(list.locator("xpath=following-sibling::*[1]")).toHaveText(/^↓ \d+ more$/);
+    // The click, and an update drawing the window afresh in the same moment, before the list has moved at all.
+    await page.evaluate((n) => { document.querySelector(`[data-desk-c-all="${n}"]`).click(); renderMain(); }, name);
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  }
+});
+
 /** Each list ends on a whole row: none cut by its edge. */
 const wholeRows = (list) => list.evaluate((el) => {
   const edge = el.getBoundingClientRect().bottom;

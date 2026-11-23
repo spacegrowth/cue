@@ -278,9 +278,16 @@ function deskCFitLists() {
   lists.forEach((el, k) => {
     el.style.maxHeight = deskCFits[k] ? `${deskCFits[k]}px` : "";
     el.nextElementSibling.hidden = !deskCFits[k];
+    // On its way after "↓ N more": a redraw meanwhile made it afresh where it had got to (its start, in the slide's
+    // first frame), so it goes on from there to where the click sent it.
+    const go = deskCGoing.get(el.dataset.dknList);
+    if (go && Date.now() < go.until && Math.abs(el.scrollTop - go.top) > 1) el.scrollTo({ top: go.top, behavior: "smooth" });
+    else deskCGoing.delete(el.dataset.dknList);
   });
   deskCMore();
 }
+/** Where a list's "↓ N more" is sending it, by list, for as long as its slide takes (deskCAll, deskCFitLists). */
+const deskCGoing = new Map(), DESK_C_GOING_MS = 1000;
 /** "↓ N more" under each list that scrolls: the rows still below its edge. */
 function deskCMore() {
   for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-list]")) {
@@ -409,7 +416,10 @@ deskClicks({
   deskCStab: (el) => { deskCSessTabs.set(el.dataset.sid, el.dataset.deskCStab); renderMain(); },
   deskCAll: (el) => {
     const list = el.previousElementSibling;
-    list?.scrollBy({ top: list.clientHeight, behavior: "smooth" });
+    if (!list) return;
+    const top = Math.min(list.scrollTop + list.clientHeight, list.scrollHeight - list.clientHeight);
+    deskCGoing.set(list.dataset.dknList, { top, until: Date.now() + DESK_C_GOING_MS });
+    list.scrollTo({ top, behavior: "smooth" });
   },
   deskCFold: (el) => {
     const k = el.dataset.deskCFold;
