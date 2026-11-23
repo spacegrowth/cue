@@ -700,7 +700,8 @@ function deskCrewPane(lead, agent, d, foot = "") {
   const diff = mateBtn(lead, t, "diff", "Diff", "link");
   const size = t.stat || (shown.length ? plural(shown.length, "file") : ""), sofar = [size, diff].filter(Boolean).join(" · ");
   const files = shown.length ? `<div class="dk-files">${shown.map(esc).join(" · ")}</div>` : "";
-  const main = `<div class="dk-pane dk-crewpg" data-scroll-key="${skey}">${chat}${sofar || files ? `<div class="dk-csofar">${sofar ? `<p class="dk-quiet">${working ? "So far" : "Changed"}: ${sofar}</p>` : ""}${files}</div>` : ""}</div>`;
+  // data-bg-scroll (app/render.js): it opens at its end and follows new steps there; scrolled up, it keeps your place.
+  const main = `<div class="dk-pane dk-crewpg" data-scroll-key="${skey}" data-bg-scroll="${skey}">${chat}${sofar || files ? `<div class="dk-csofar">${sofar ? `<p class="dk-quiet">${working ? "So far" : "Changed"}: ${sofar}</p>` : ""}${files}</div>` : ""}</div>`;
   const back = deskOpen?.kind === "crew" && deskOpen.from?.kind === "sessions" ? `<button class="dk-back" data-desk-chat-back>‹ All sessions</button>` : deskBack(leadName, lead);
   return deskPage({ page: "crew", kind: "crew", back, mark: "Crew · ", title: esc(t.name),
     meta: `in <b>${esc(leadName)}</b>'s crew${it?.title || t.what ? ` · on <b>${esc(it?.title || t.what)}</b>` : ""} · ${esc(mateSpan(t))}`,

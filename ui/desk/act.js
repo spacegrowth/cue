@@ -384,11 +384,7 @@ deskClicks({
   deskHeld: (el) => deskHeldAnswer(el.dataset.deskHeld, el.dataset.allow === "1"),
   deskAddon: (el) => deskShow({ kind: "addon", key: el.dataset.deskAddon }),
   // Opened from All sessions (B2), its ‹ goes back there, its row lit, as a session's chat does.
-  deskCrew: (el) => {
-    deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew, ...(deskOpen?.kind === "sessions" ? { from: { kind: "sessions", crew: [el.dataset.lead, el.dataset.deskCrew] } } : {}) });
-    // Its chat opens at its end, where it's at now, as a session's chat does.
-    requestAnimationFrame(() => { const p = document.querySelector("#app .dk-crewpg"); if (p) p.scrollTop = p.scrollHeight; });
-  },
+  deskCrew: (el) => deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew, ...(deskOpen?.kind === "sessions" ? { from: { kind: "sessions", crew: [el.dataset.lead, el.dataset.deskCrew] } } : {}) }),
   deskBack: (el) => deskShow(el.dataset.deskBack ? { kind: "holder", sid: el.dataset.deskBack } : null),
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
