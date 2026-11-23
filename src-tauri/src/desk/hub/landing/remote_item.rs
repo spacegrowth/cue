@@ -125,15 +125,28 @@ pub(crate) fn machine_cap(st: &Store, project: &str, machine: &str) -> Option<us
     (l.at == "copy").then_some(l.at_once.max(1) as usize)
 }
 
-/// What `DeskItem::machine_wait` holds for this Mac, waiting for one of its own folders there (#711).
+/// This Mac, as a place an item waits for room on is named.
 pub(crate) const THIS_MAC: &str = "This Mac";
 
-/// `machine` as `DeskItem::machine_wait` holds it ("" for this Mac is `THIS_MAC`), and back.
-pub(crate) fn wait_name(machine: &str) -> String {
-    if machine.is_empty() { THIS_MAC.into() } else { machine.into() }
+/// Where item `it`'s new session may start, as it leaves the queue (#776; "" for this Mac): the place you or the lead
+/// named for it, or where its start already went; else every place its Desk spreads its items over, in the order ticked.
+pub(crate) fn start_places(st: &Store, it: &DeskItem) -> Vec<String> {
+    if let Some(o) = &it.on_machine {
+        return vec![o.machine.clone()];
+    }
+    if let Some(m) = it.start_on.as_ref().or_else(|| st.desk.run.start_machine.get(&it.id)) {
+        return vec![m.clone()];
+    }
+    crate::desk::machine_pref::of(&it.project).spread()
 }
-pub(crate) fn waited_machine(wait: &str) -> String {
-    if wait == THIS_MAC { String::new() } else { wait.into() }
+
+/// Item `it`, waiting for room, said where (#776): "box", "box or This Mac".
+pub(crate) fn room_words(st: &Store, it: &DeskItem) -> String {
+    let names: Vec<String> = start_places(st, it).iter().map(|m| if m.is_empty() { THIS_MAC.to_string() } else { crate::machines::display_name(m) }).collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        _ => names.join(""),
+    }
 }
 
 /// Whether item `it` waits for a slot on `machine` before its session starts there. On this Mac only while its Desk
@@ -162,8 +175,9 @@ pub(crate) fn start_full(st: &Store, it: &DeskItem) -> Option<crate::desk::Start
     }
     let machine = if it.tree_wait && it.holder.is_some() {
         String::new()
-    } else if it.holder.is_none() && !it.machine_wait.is_empty() {
-        waited_machine(&it.machine_wait)
+    } else if it.holder.is_none() && it.room_wait {
+        // Where it would start now (#776): a place with room if any has, else the least busy.
+        start_place(st, it).ok().flatten().map(|o| o.machine).unwrap_or_default()
     } else {
         return None;
     };
@@ -916,11 +930,15 @@ pub(crate) fn is_remote_copy(t: &ItemTree, id: &str) -> bool {
 pub(crate) fn shown_machine(st: &Store, it: &mut DeskItem) {
     let machine = it.holder.as_ref().and_then(|h| st.sessions.get(h.to())).map(|s| s.origin.machine.clone()).filter(|m| !m.is_empty());
     let machine = machine.or_else(|| it.remote.as_ref().map(|r| r.machine.clone()));
-    // Not started yet (#597): the machine its session will start on.
-    let machine = machine.or_else(|| (it.holder.is_none() && !matches!(it.state.as_str(), "done" | "dropped")).then(|| start_place(st, it).ok().flatten().map(|o| o.machine)).flatten());
+    // Not started yet (#597): the machine its session will start on, only once that's settled (#776): named for it,
+    // its start under way, or the one place its Desk has. With several, it's picked as the item starts, by room then.
+    let open = !matches!(it.state.as_str(), "done" | "dropped");
+    let unstarted = it.holder.is_none() && open;
+    let settled = |st: &Store, it: &DeskItem| start_places(st, it).len() == 1;
+    let machine = machine.or_else(|| (unstarted && settled(st, it)).then(|| start_place(st, it).ok().flatten().map(|o| o.machine)).flatten());
     it.machine = machine.as_deref().map(crate::machines::display_name).unwrap_or_default();
     // A Desk spreading its items over several computers (#661): one on this Mac says so too, while it's open.
-    if it.machine.is_empty() && !matches!(it.state.as_str(), "done" | "dropped") && crate::desk::machine_pref::of(&it.project).spread().len() > 1 {
+    if it.machine.is_empty() && open && (!unstarted || settled(st, it)) && crate::desk::machine_pref::of(&it.project).spread().len() > 1 {
         it.machine = "This Mac".into();
     }
     if let Some(r) = it.remote.as_mut() {

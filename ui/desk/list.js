@@ -339,7 +339,7 @@ function deskItemRow(i, lit, held = false, lane = null) {
   const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
   return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
     ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}${deskB2On() && !piece && i.state !== "done" ? deskB2Track(i) : ""}</div>
-    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${((who || deskB2On()) && i.holder && i.state !== "held") || (!i.holder && i.machine) ? deskMachTag(i) : ""}${i.state !== "held" && !piece ? deskModelTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
+    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${(who || deskB2On()) && i.holder && i.state !== "held" ? deskMachTag(i) : ""}${i.state !== "held" && !piece ? deskModelTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
 }
 /** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
 function deskAllowNo(id) {
@@ -563,8 +563,9 @@ function deskQueueLine(i) {
     const on = deskAfterName(i);
     return [on.startsWith("#") ? `after ${on}` : `Waits for ${on}`, nf && `then ${nf}`].filter(Boolean).join(" · ");
   }
-  // Its machine has its number of the Desk's items at work (#711): it starts there once one is done.
-  if (i.machine_wait) return `waits for room on ${i.machine || i.machine_wait}`;
+  // Every place it may start has its number of the Desk's items at work (#711): it starts on whichever has room
+  // first, picked then (#776), so the row names the places, not one machine.
+  if (i.machine_wait) return `waits for room on ${i.machine_wait}`;
   if (nf) return `next for ${nf}${i.fresh_at ? ` · goes to a fresh session at ${deskQHm(i.fresh_at)}` : ""}`;
   return "any free session";
 }

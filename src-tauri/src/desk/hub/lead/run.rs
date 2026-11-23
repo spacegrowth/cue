@@ -380,7 +380,7 @@ fn claim_place(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart) -> (R
             let mut fx = crate::desk::hub::core::desk::Effects::default();
             st.desk.run.new_starts.remove(&s.id);
             if start_ready(st, s) {
-                machine_wait(st, s, &m, now_ms(), &mut fx);
+                room_wait(st, s, now_ms(), &mut fx);
             }
             return (place, Some(fx));
         }
@@ -389,17 +389,17 @@ fn claim_place(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart) -> (R
     (place, None)
 }
 
-/// New start `s` can't go to `machine` now: it has its number of the Desk's items at work (#711). The item waits
-/// queued with no holder, with the why it was started with, and starts by itself once there's room
-/// (desk/hub/turn/queue.rs `machine_sweep`).
-fn machine_wait(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, machine: &str, now: u64, fx: &mut crate::desk::hub::core::desk::Effects) {
+/// New start `s` can't go anywhere now: each place it may start has its number of the Desk's items at work (#711).
+/// The item waits queued with no holder and no machine, with the why it was started with, and starts by itself on
+/// whichever place has room first (desk/hub/turn/queue.rs `machine_sweep`, #776).
+fn room_wait(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart, now: u64, fx: &mut crate::desk::hub::core::desk::Effects) {
     let Some(it) = st.desk.item_mut(&s.id) else { return };
     if it.holder.is_some() {
         return;
     }
-    let wait = crate::desk::hub::landing::remote_item::wait_name(machine);
-    let again = it.machine_wait == wait && it.state == "queued";
-    (it.state, it.machine_wait, it.next_for, it.after) = ("queued".into(), wait, None, None);
+    let again = it.room_wait && it.state == "queued";
+    (it.state, it.room_wait, it.next_for, it.after) = ("queued".into(), true, None, None);
+    it.machine_wait.clear();
     if !s.why.trim().is_empty() {
         it.after_why = s.why.clone();
     }
@@ -593,11 +593,15 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
         out.push_str(&if why.is_empty() { " | RESUME it when it should go on".to_string() } else { format!(" | paused: {why}") });
     }
     // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
-    if it.state == "queued" && it.holder.is_none() && !it.machine_wait.is_empty() {
-        let m = crate::desk::hub::landing::remote_item::waited_machine(&it.machine_wait);
-        let n = crate::desk::hub::landing::remote_item::machine_cap(st, &it.project, &m).unwrap_or(0);
-        let name = if m.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(&m) };
-        out.push_str(&format!(" | waiting for room on {name} (the user's setting: {n} of this Desk's items at once there): it starts by itself, there or on another machine ticked, once one has room"));
+    if it.state == "queued" && it.holder.is_none() && it.room_wait {
+        use crate::desk::hub::landing::remote_item::{machine_cap, start_places};
+        let places = start_places(st, it);
+        let each: Vec<String> = places.iter().map(|m| {
+            let name = if m.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(m) };
+            format!("{name}: {}", machine_cap(st, &it.project, m).unwrap_or(0))
+        }).collect();
+        let name = crate::desk::hub::landing::remote_item::room_words(st, it).replace("This Mac", "this Mac");
+        out.push_str(&format!(" | waiting for room on {name} (the user's setting for this Desk's items at once there: {}): it starts by itself on whichever has room first, picked then", each.join(", ")));
     } else if it.state == "queued" && it.tree_wait {
         out.push_str(&format!(" | {}", crate::desk::hub::landing::trees::copy_wait(st, &it.project, &it.tree_wait_repo)));
     } else if it.state == "working" && it.tree_wait && it.tree.is_none() {
