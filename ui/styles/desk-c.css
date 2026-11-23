@@ -285,3 +285,5 @@
 .dkn-cword { color: var(--muted); font-size: var(--type-small); white-space: nowrap; }
 .dkn-chead .dk-pacts, .dkn-chead .dk-cmore { display: inline-flex; gap: 6px; }
 .dkn-crew .dk-crewpg { padding: 12px 16px; }
+/* Its status line sits centred under the chat, as a session's does (messages.css .mg-status centres in a flex column). */
+.dkn-crew .dk-crewpg > .mg-status { width: fit-content; margin: 14px auto 4px; }
