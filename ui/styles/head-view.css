@@ -1,6 +1,4 @@
-/* The header's area after the waiting count, by view (app/head_view.js): a small label, then the view's chips and menu. */
-.hv-lbl { flex: none; margin: 0 -2px 0 4px; font: 600 var(--type-tag) var(--sans); color: var(--on-bg-muted); white-space: nowrap; }
-.top:is(.tfit3, .tfit4) .hv-lbl { display: none; }
+/* The header's area after the waiting count, by view (app/head_view.js): the view's chips and menu. */
 .hv-wrap { position: relative; display: inline-flex; }
 .hv-chip { min-width: 0; }
 .hv-chip .hv-cn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
