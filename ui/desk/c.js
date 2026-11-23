@@ -414,7 +414,7 @@ function deskCList(project, taskApprovals) {
     // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
     const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
     const say = GRP_SAY[key] ? `<em class="dkn-gsay">${GRP_SAY[key]}</em>` : "";
-    return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}<i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? body : ""}</section>`;
+    return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}"><i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? body : ""}</section>`;
   };
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
