@@ -124,3 +124,14 @@ Sizes are from the lead's own list that morning; waits are from the times of its
   open, so rule 4 moves on: the next session with a record there, or a new one (rule 5).
 - **#179, session rows don't look clickable.** New session because you asked; done in about
   9 minutes in a chat about one thing. Same under the rules (rule 5).
+
+## Tests while you work
+
+This one is built (#778): Cue puts it in the brief every session gets with its item, so it holds
+without the lead repeating it.
+
+13. **A session runs only the tests its change touches.** While it works, it runs the tests for the
+    files it changed and for code that uses them, not the whole suite. The full suite runs only
+    before a push: once, just before the session's DONE, since Cue pushes its work from there.
+    Why: a full run after every edit made items slow; one full run before the push still catches
+    what the narrow runs miss.
