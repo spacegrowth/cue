@@ -257,6 +257,11 @@ const deskCFitStyle = (name) => (deskCFitBy.get(name) ? ` style="max-height:${de
 /** How many of Working's rows show before it scrolls within (7 to 10 at once happens). */
 const DESK_C_WORK_ROWS = 4;
 function deskCFitLists() {
+  // The bands' headings stack as they stick: each under the ones above it (desk-c.css .dkn-band > .dkn-gh).
+  for (const list of document.querySelectorAll("#app .dkn-items [data-dkn-list=items]")) {
+    let top = 0;
+    for (const gh of list.querySelectorAll(":scope > .dkn-band > .dkn-gh")) { gh.style.top = `${top}px`; top += gh.offsetHeight; }
+  }
   // Working first: cut to its first rows, so the card's own cut below counts it at that height.
   for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-cap]")) {
     const r = el.children[DESK_C_WORK_ROWS - 1];
@@ -272,7 +277,7 @@ function deskCFitLists() {
       const top = el.getBoundingClientRect().top - el.scrollTop;
       let fit = 0;
       // Row by row, into each group's band (option A wraps a group in one): a cut never falls mid-row.
-      for (const r of el.querySelectorAll(":scope > :not(.dkn-band), :scope > .dkn-band > *")) {
+      for (const r of el.querySelectorAll(":scope > :not(.dkn-band), :scope > .dkn-band > .dkn-gh, :scope > .dkn-band > .dkn-bb > *")) {
         const bottom = r.getBoundingClientRect().bottom - top;
         if (bottom > el.clientHeight) break;
         fit = bottom;
@@ -302,7 +307,7 @@ function deskCMore() {
     const more = el.nextElementSibling;
     if (more.hidden) continue;
     const edge = el.getBoundingClientRect().bottom;
-    const n = [...el.querySelectorAll(":scope > .dk-it, :scope > .dkn-band > .dk-it, :scope > .dkn-band > .dk-prows")].filter((r) => r.getBoundingClientRect().bottom > edge + 1).length;
+    const n = [...el.querySelectorAll(":scope > .dk-it, :scope > .dkn-band > .dkn-bb > .dk-it, :scope > .dkn-band > .dkn-bb > .dk-prows")].filter((r) => r.getBoundingClientRect().bottom > edge + 1).length;
     more.textContent = `↓ ${n} more`;
     more.classList.toggle("end", !n);
   }
@@ -414,7 +419,7 @@ function deskCList(project, taskApprovals) {
     // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
     const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
     const say = GRP_SAY[key] ? `<em class="dkn-gsay">${GRP_SAY[key]}</em>` : "";
-    return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}"><i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? body : ""}</section>`;
+    return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}"><i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? `<div class="dkn-bb">${body}</div>` : ""}</section>`;
   };
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
