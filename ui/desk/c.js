@@ -330,6 +330,21 @@ const deskCSessTabs = new Map();
  *  top bar for it (its name, state, chips, Commit, ⋯, btw, Stop: chat/pane.js activeHead), the item it's on, the item's
  *  bar when there is one, then Chat and Files (what it changed this turn, each opening its changes) as tabs, and the box.
  *  No panel: Stop and the rest are in the bar, the files in their tab. */
+/** A crew member's page in the new layout (desk/thread.js deskCrewPane): back, its name with its state and Stop it, ⋯;
+ *  the line saying whose crew and what it's on; then Chat (its steps), Files (what it changed) and Activity (its lead's
+ *  Desk lines) as tabs; and the box to its lead. No panel. */
+function deskCCrewPage({ lead, key, t, it, leadName, back, word, dot, acts, main, files, d, foot }) {
+  const k = `crew:${lead}:${key}`, tab = ["files", "activity"].includes(deskCSessTabs.get(k)) ? deskCSessTabs.get(k) : "chat";
+  const rows = dkActivityOf(lead);
+  const b = (id, label) => `<button class="dkn-stab${tab === id ? " on" : ""}" role="tab" aria-selected="${tab === id}" data-desk-c-stab="${id}" data-sid="${esc(k)}">${label}</button>`;
+  const tabs = `<div class="dkn-stabs" role="tablist">${b("chat", "Chat")}${b("files", "Files")}${b("activity", "Activity")}</div>`;
+  const body = tab === "files" ? `<div class="dk-pane dkn-sfiles" data-scroll-key="cfiles:${esc(k)}">${files || `<div class="dk-quiet">Nothing changed yet.</div>`}</div>`
+    : tab === "activity" ? `<div class="dk-pane dkn-sfiles" data-scroll-key="cact:${esc(k)}">${rows.length ? `<div class="dk-prows">${rows.map((r) => deskActPanelRow({ at: r.at, line: r }, d)).join("")}</div>` : `<div class="dk-quiet">Nothing yet.</div>`}</div>`
+    : main;
+  const head = `<div class="dkn-chead"><i class="dk-pdot ${dot}" aria-hidden="true"></i>${DESK_C_CREW}<b class="dkn-cname">${esc(t.name)}</b><span class="dkn-cword">${esc(word)}</span><span class="grow"></span>${acts}</div>`;
+  const meta = `<div class="dkn-smeta">in <b>${esc(leadName)}</b>'s crew${it ? ` · on ${deskItemLink(it)} · ${esc(it.title)}` : t.what ? ` · on ${esc(t.what)}` : ""}</div>`;
+  return `<div class="dkn-sp dkn-crew" data-desk-page="crew"><div class="dkn-sback">${back}</div>${head}${meta}${tabs}<div class="dkn-spm">${body}${foot}</div></div>`;
+}
 /** Under this turn's files in a session's Files tab: each item it worked on, newest first, with the files that item
  *  changed (its commit's, or so far), as its page lists them (desk.js deskFilesChanged). */
 const deskCSessTasks = (d, sid) => (d.items || []).filter((i) => i.holder && i.holder.kind !== "crew" && i.holder.sid === sid).sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0));
