@@ -272,3 +272,6 @@
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
 .dkn-spm { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .dkn-sfiles { padding: 14px 20px; }
+/* A session's Files tab: this turn's, then each item it worked on, newest first (desk/c.js deskCSessTaskFiles). */
+.dkn-sfiles .dk-psec { display: block; margin-bottom: 20px; }
+.dkn-sfiles .dk-psh { margin: 0 0 6px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }

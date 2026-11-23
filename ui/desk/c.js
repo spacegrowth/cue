@@ -330,6 +330,12 @@ const deskCSessTabs = new Map();
  *  top bar for it (its name, state, chips, Commit, ⋯, btw, Stop: chat/pane.js activeHead), the item it's on, the item's
  *  bar when there is one, then Chat and Files (what it changed this turn, each opening its changes) as tabs, and the box.
  *  No panel: Stop and the rest are in the bar, the files in their tab. */
+/** Under this turn's files in a session's Files tab: each item it worked on, newest first, with the files that item
+ *  changed (its commit's, or so far), as its page lists them (desk.js deskFilesChanged). */
+const deskCSessTasks = (d, sid) => (d.items || []).filter((i) => i.holder && i.holder.kind !== "crew" && i.holder.sid === sid).sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0));
+function deskCSessTaskFiles(d, sid) {
+  return deskCSessTasks(d, sid).map((i) => { const f = deskFilesChanged(i); return f ? deskPsec(`${deskNum(i)} · ${esc(i.title)}`, `<div class="dk-fcs">${f}</div>`, "dk-pfiles") : ""; }).join("");
+}
 function deskCSessChat(sid, from, d, foot, bar = "") {
   const s = sessionOf(sid);
   if (!s) return null;
@@ -337,12 +343,13 @@ function deskCSessChat(sid, from, d, foot, bar = "") {
   const head = activeHead(paneArgs({ it: card, s }));
   const on = deskSessItems(d, sid)[0];
   const meta = on ? `<div class="dkn-smeta">on ${deskItemLink(on)} · ${esc(on.title)}</div>` : "";
-  const n = (inboxTurnDiff(sid)?.files || s.changes?.files || []).length;
+  // This turn's files and each of its items' (its Files tab lists them all).
+  const n = (inboxTurnDiff(sid)?.files || s.changes?.files || []).length + deskCSessTasks(d, sid).reduce((k, i) => k + (deskDiffs.get(deskDiffId(i))?.files || deskFilesOn(i)).length, 0);
   const tab = deskCSessTabs.get(sid) === "files" ? "files" : "chat";
   const t = (k, label) => `<button class="dkn-stab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-c-stab="${k}" data-sid="${esc(sid)}">${label}</button>`;
   const tabs = `<div class="dkn-stabs" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}</div>`;
   let main;
-  if (tab === "files") main = `<div class="dk-pane dkn-sfiles" data-scroll-key="files:${esc(sid)}">${deskSessFiles(sid) || `<div class="dk-empty">Nothing changed this turn.</div>`}</div>`;
+  if (tab === "files") main = `<div class="dk-pane dkn-sfiles" data-scroll-key="files:${esc(sid)}">${deskSessFiles(sid) || deskPsec("Changed this turn", `<div class="dk-quiet">Nothing yet.</div>`, "dk-pfiles")}${deskCSessTaskFiles(d, sid)}</div>`;
   else {
     const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
     const rows = deskChatRows(s, lead ? { you: deskLeadNote } : undefined), where = whereNow(null, s);
