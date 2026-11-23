@@ -402,7 +402,9 @@ function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "
   const tog = `<button class="btn small dk-ptog" data-desk-panel="${deskPanelKey(page)}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
   return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph"><div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>`
     + `<h1 class="dk-ph2"><span class="dk-hk"${["desk", "session", "crew", "lead"].includes(kind) ? ` data-desk-mark="${kind}"` : ""}>${deskKindIcon(kind)}${esc(mark.replace(/ · $/, ""))}</span><span class="dk-hsep"> · </span><span class="dk-tname">${title}</span></h1>${meta ? `<div class="dk-ph3">${meta}</div>` : ""}</div>`
-    + `<aside class="dk-panel"${aside}>${now}${panel}</aside><div class="dk-pgm">${main}${foot}</div></div>`;
+    // The box runs under both the chat and the panel (the panel stops above it), so what you type has the whole width;
+    // an item's page keeps it in its column (its rows are laid out for that).
+    + `<aside class="dk-panel"${aside}>${now}${panel}</aside>` + (page === "item" || !foot ? `<div class="dk-pgm">${main}${foot}</div></div>` : `<div class="dk-pgm">${main}</div><div class="dk-pgf">${foot}</div></div>`);
 }
 /** A session's dot and word for the panel, from deskSessState. */
 const deskPstate = (s) => { const [dot, word] = s ? deskSessWithHelpers(s) : ["idle", "idle"]; return [dot === "ask" ? "ask" : dot === "idle" ? "stop" : "work", word[0].toUpperCase() + word.slice(1)]; };
