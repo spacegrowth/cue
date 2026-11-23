@@ -104,6 +104,9 @@
 .dkn-more[hidden] { display: none; }
 /* Scrolled to the end: the line keeps its room (the list doesn't jump), just shows nothing. */
 .dkn-more.end { visibility: hidden; }
+/* Working past its first rows scrolls within (desk/c.js DESK_C_WORK_ROWS), its "↓ N more" under it, quieter. */
+.dkn-wl { overflow-y: auto; overscroll-behavior: contain; }
+.dkn-wmore { display: block; padding: 4px 16px 8px; border-top: 0; }
 /* Strip (K, #751): Item, Progress (a 180px strip), Now. Line (T): Item and Now, the line along each row's foot. */
 .dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 136px; gap: 0 12px; align-items: center; }
 .dkn-line :is(.dkn-th, .dkn-row) { grid-template-columns: minmax(130px, 1fr) minmax(200px, .8fr); }

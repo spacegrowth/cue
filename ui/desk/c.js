@@ -254,9 +254,16 @@ let deskCFitKey = "", deskCFits = [];
  *  height at once (a list scrolled to its end is put back there, and stays at its end). */
 const deskCFitBy = new Map();
 const deskCFitStyle = (name) => (deskCFitBy.get(name) ? ` style="max-height:${deskCFitBy.get(name)}px"` : "");
+/** How many of Working's rows show before it scrolls within (7 to 10 at once happens). */
+const DESK_C_WORK_ROWS = 4;
 function deskCFitLists() {
-  const lists = [...document.querySelectorAll("#app .dkn-items [data-dkn-list]")];
-  const key = `${innerWidth}x${innerHeight}|${deskCLine}|${lists.map((el) => `${el.dataset.dknList}:${el.children.length}`).join(",")}`;
+  // Working first: cut to its first rows, so the card's own cut below counts it at that height.
+  for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-cap]")) {
+    const r = el.children[DESK_C_WORK_ROWS - 1];
+    if (r) el.style.maxHeight = `${Math.floor(r.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop)}px`;
+  }
+  const lists = [...document.querySelectorAll("#app .dkn-items [data-dkn-list]:not([data-dkn-cap])")];
+  const key = `${innerWidth}x${innerHeight}|${deskCLine}|${lists.map((el) => `${el.dataset.dknList}:${el.querySelectorAll(".dk-it").length}`).join(",")}`;
   if (key !== deskCFitKey) {
     // "↓ N more" measured with its words in, as it will be drawn (empty, it's a line shorter, and the cut a row too low).
     for (const el of lists) { el.style.maxHeight = ""; el.nextElementSibling.hidden = false; el.nextElementSibling.textContent ||= "↓ 0 more"; }
@@ -369,7 +376,10 @@ function deskCList(project, taskApprovals) {
   const grp = (key, label, list, extra = "", n = list.length) => {
     if (!list.length && !extra) return "";
     const open = !deskCFolds.has(key);
-    return `<button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span>${n}</span></button>${open ? list.map(deskCRow).join("") + extra : ""}`;
+    const rows = list.map(deskCRow).join("") + extra;
+    // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
+    const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
+    return `<button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span>${n}</span></button>${open ? body : ""}`;
   };
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
