@@ -43,9 +43,10 @@ for (const engine of ["with moveBefore", "without moveBefore"]) {
     await openDesk(page);
     await settle(page);
     expect(await groupOf(page, "d4")).toBe("UP NEXT");
-    const box = page.locator(".dk-items > .dk-scroll");
+    // The Items card's list (desk/c.js deskCList): Waiting on you and Working.
+    const box = page.locator(".dk-items .dkn-card > .dk-scroll");
     const boxEl = await box.elementHandle();
-    // A short window, so the list scrolls (B2's list shows 3 rows a group: it's short). Not by a style set on the list
+    // A short window, so the list scrolls. Not by a style set on the list
     // here: its attributes are brought up to the fresh draw's, so that would go.
     await page.setViewportSize({ width: 1280, height: 400 });
     await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(40);
@@ -67,7 +68,8 @@ for (const engine of ["with moveBefore", "without moveBefore"]) {
     const k = await kept(page, ".dk-items .dk-it[data-desk-item]", "deskItem", ["d1", "d2", "d3", "d5", "d4"]);
     // The rows that didn't change: the same elements, nothing inside them touched.
     for (const id of ["d1", "d2", "d3", "d5"]) expect(k[id], `row ${id}`).toEqual({ same: true, touched: false });
-    expect(k.d4.same, "the moved row is the same element").toBe(true);
+    // d4 came from Up next, a list of its own on the green (desk/c.js deskCDrawer), into the card's: drawn new there.
+    expect(k.d4.same, "the moved row is a new element in the card").toBe(false);
     // The list itself and its group heads are the same elements; its scroll stayed.
     expect(await box.evaluate((el, was) => el === was, boxEl)).toBe(true);
     expect(await page.evaluate(() => window.__heads.filter((h) => h.isConnected).length)).toBeGreaterThan(1);

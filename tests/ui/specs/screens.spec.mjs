@@ -45,10 +45,9 @@ const dropOn = (page, sel, text) => page.evaluate(([sel, text]) => {
 
 // A laptop's window (#734's review: every mock was drawn at 2560 wide).
 const LAPTOP = { width: 1440, height: 900 };
-/** The new Desk layout switched on, the Desk open on cue, its items' steps timed (desk-steps.mjs); `line`: its
+/** The Desk open on cue, its items' steps timed (desk-steps.mjs); `line`: its
  *  progress as the line along each row's foot (Strip · Line, #751), else the strip. */
 const deskLayout = async (page, line = false) => {
-  await page.evaluate(() => deskCTurn(true));
   await openDesk(page);
   await stampSteps(page);
   if (line) await page.locator('.dkn-ih [data-desk-c-line="line"]').click();
@@ -217,7 +216,7 @@ const SCREENS = {
     },
   },
   "narrowest-window": { scenario: "board-waiting", viewport: NARROWEST, done: (p) => p.locator('[data-big="n6"]').first().waitFor() },
-  // The new Desk layout (#738, desk/c.js), switched on: at a laptop's size the sessions a strip of dots, the lead's chat,
+  // The Desk (#738, desk/c.js): at a laptop's size the sessions a strip of dots, the lead's chat,
   // Items' card with Up next and Done today side by side under it; dark with host-lead's chat open and Done today
   // folded; and the smallest window.
   "desk-layout-laptop": { scenario: "desk", viewport: LAPTOP, setup: (p) => deskLayout(p), done: deskLayoutDrawn },

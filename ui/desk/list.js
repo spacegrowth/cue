@@ -40,12 +40,6 @@ function deskUnblocks(i, items) {
   }
   return out;
 }
-/** "unblocks #154, #157, #160 +2 more" under a waiting row, or "". */
-function deskUnblocksHtml(i) {
-  const ids = deskUnblocks(i, deskOf(i.project)?.items || []);
-  if (!ids.length) return "";
-  return `<div class="dk-ub">unblocks ${ids.slice(0, 3).map((x) => `#${esc(x)}`).join(", ")}${ids.length > 3 ? ` +${ids.length - 3} more` : ""}</div>`;
-}
 /** Markdown on the item page and in its thread, with each file or folder named in `code` as a file chip (#305): an
  *  icon, its folder quiet (a long one by its last two) and its name in ink, at the words' size, as Slack shows a file. */
 const DESK_FILE_SVG = '<svg class="dk-fchip-i" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5h4l2.5 2.5v6.5H3z"/><path d="M7 1.5V4h2.5"/></svg>';
@@ -146,18 +140,6 @@ function deskToCheckLine(i) {
 /** That line as text ("Try: …") and as html, its label bold. */
 const deskCheckText = (c) => `${DESK_CHECK_LABEL[c.kind]} ${c.text}`;
 const deskCheckHtml = (c) => `<b class="dk-vb">${DESK_CHECK_LABEL[c.kind]}</b> ${esc(c.text)}`;
-/** Its three steps on its page (#668): Where, Do, Expect, numbered, each label bold; then Show me when its steps (or
- *  its mocks) give a page to open. Its one line (deskCheckHtml) when it has no steps. */
-function deskCheckSteps(i, c) {
-  if (!c.steps) return `<p class="dk-ckl">${deskCheckHtml(c)}</p>`;
-  const li = c.steps.map((s, n) => `<li><b class="dk-vb">${["Where", "Do", "Expect"][n]}</b> <span>${esc(s)}</span></li>`).join("");
-  const url = deskShowMe(i, c);
-  const show = url ? `<a class="btn small dk-show" href="#" data-href="${esc(url)}">Show me</a>` : "";
-  return `<ol class="dk-steps">${li}</ol>${show}`;
-}
-/** Where Show me goes (#668): a web page its steps name (a canvas page, say), else its mocks' canvas; "" for none.
- *  Screens inside Cue have no link, so their Where says the way there. */
-const deskShowMe = (i, c) => (c.steps || []).join(" ").match(/https?:\/\/[^\s)\]>"']+/)?.[0]?.replace(/[.,;:]+$/, "") || deskCanvas(i) || "";
 function deskVerb(i) {
   if (i.state === "to_check") return ["", deskWhereLine(i).text];
   if (i.state !== "needs_you") return null;
@@ -186,8 +168,6 @@ const deskFeatDone = (f) => f.pieces.filter((p) => p.state === "done").length;
  *  started and isn't done, else queued. One with a holder is its own item. */
 const deskFeatState = (f) => (f.holder ? null : f.pieces.every((p) => p.state === "done") ? "done"
   : f.pieces.some((p) => !["done", "new", "queued", "paused", "needs_resume"].includes(p.state)) ? "work" : "q");
-/** A feature's list open: it or one of its pieces is open. */
-const deskFeatOpen = (f) => deskOpen?.kind === "item" && (deskIdIs(f, deskOpen.id) || f.pieces.some((p) => deskIdIs(p, deskOpen.id)));
 /** "3 of 5 done" and a thin bar of it. */
 const deskFeatBar = (f, cls = "") => `<span class="dk-fp${cls}"><span>${deskFeatDone(f)} of ${f.pieces.length} done</span><span class="dk-pbar"><i style="width:${Math.round((100 * deskFeatDone(f)) / f.pieces.length)}%"></i></span></span>`;
 
@@ -232,22 +212,6 @@ function deskGroups(project, taskApprovals) {
 
 // ---------- the list ----------
 
-/** An item's state as its row's tag: [words, look]. Only an ask and a stuck one have words; the rest say it by their
- *  group. Back to check: a dot before it while not opened since (landed, its title bold too), nothing once opened. */
-function deskTag(i) {
-  // An ask carries no tag: its question, boxed under the title, says it.
-  // In a circle of waits (#250): none of it can move till a link is cut.
-  if (deskCircleOf(i)) return ["circle", "ask"];
-  if (i.state === "needs_you") return ["", "ask"];
-  if (deskInstallWait(i)) return ["", ""];
-  if (i.state === "to_check") return deskLanded(i) ? ["", "landed"] : ["", "check"];
-  // Its new session wouldn't start (#172): says so, its page has why and Retry.
-  if ((i.state === "new" || i.state === "queued") && !i.holder && i.start_failed) return ["couldn't start", "ask"];
-  if ((i.state === "new" || i.state === "queued") && i.route_failed) return ["stuck", "ask"];
-  // Parked (#391): a quiet tag, so the row says it on its own too.
-  if (i.state === "held") return ["parked", ""];
-  return ["", i.state === "done" ? "done" : ""];
-}
 /** Where an item stands, as its row's icon: waiting on you (an ask, or back to check), in progress, queued (also
  *  one waiting for its install), done. */
 const deskStateOf = (i) => (deskFeat(i) && !i.holder ? deskFeatState(i) : i.state === "done" ? "done" : i.state === "held" ? "held" : i.state === "needs_resume" || i.state === "paused" || i.stopped ? "stop" : i.state === "working" && deskStalled(i) ? "idle" : i.state === "working" ? "work" : deskFinishing(i) || deskLane(i) ? "fin" : (i.state === "needs_you" || i.state === "to_check") && !deskInstallWait(i) ? "you" : "q");
@@ -282,65 +246,7 @@ function deskRemoteLine(i) {
   const mins = (ms) => { const m = Math.max(1, Math.round((now() - ms) / 60000)); return m < 60 ? `${m} min` : ago(ms); };
   return [r.quiet_since > 0 ? `machine not answering for ${mins(r.quiet_since)}` : "", r.wait ? firstLine(r.wait) : "", r.pushed_at > 0 ? `last pushed ${mins(r.pushed_at)} ago` : r.quiet_since > 0 && !r.wait ? "its work is on the machine, not pushed" : ""].filter(Boolean).join(" · ");
 }
-/** The model item `i`'s session was asked to start on (#620: the lead's `model:`, else the Desk's default), short
- *  ("Fable"), beside its holder; "" when Claude Code picked or none was asked. */
-const deskModelTag = (i) => (i?.model && i.model !== "default" && typeof prettyModel === "function" ? `<span class="dk-model">${esc(prettyModel(i.model))}</span>` : "");
 const deskHolderOf = (i) => (!i.holder ? "" : i.holder.kind === "crew" ? `${deskHolderName(i.holder.lead_sid)} → ${i.holder.name}` : i.crew ? `${i.holder.name} → ${i.crew}` : i.holder.name);
-/** One item in two rows: its state, #id and title (what you'll see when it's done under it, a quiet line, #382); under them who holds it (Give to… when no one does), its age (a
- *  done one's time it finished), and a quiet ✓ when it's ready to check (Looks right; it fills on hover); an ask's question below that. Lit
- *  when it's open, or its crew member is. */
-function deskItemRow(i, lit, held = false, lane = null) {
-  // A feature's piece under it (#282): a smaller row, no lane.
-  const piece = !!lane?.piece;
-  if (piece) lane = null;
-  const on = lit || (deskOpen?.kind === "item" && deskOpen.id === i.id);
-  const [tag, look] = deskTag(i);
-  // Lit by its session (clicked on the left) and at work: "working · host-lead · 4m", how long its session has been at it.
-  const s = held && i.state === "working" ? sessionOf(i.holder?.sid) : null;
-  const at = s ? (s.state === "working" && s.since_ms) || deskMs(i.updated) : 0;
-  // At work on it (#285): what its holder is doing now and how long since ("cue-281 · Editing desk.rs · 1m"), or
-  // that it has done nothing for a while ("Stalled · last read model.rs · 14m ago"). The holder's step, not the age.
-  const act = !s && i.state === "working" && i.act;
-  const stalled = act && deskStalled(i);
-  const doing = !act ? "" : stalled ? `<span class="dk-doing"><b class="dk-stw">Stalled</b> · ${esc(i.act.was)} · <span data-ago="${i.act.at_ms}">${ago(i.act.at_ms)}</span> ago</span>`
-    : `<span class="dk-doing"${i.act.stalls_at > 0 ? ` data-stalls="${i.act.stalls_at}"` : ""}>${esc(i.act.now)} · <span data-ago="${i.act.at_ms}">${ago(i.act.at_ms)}</span></span>`;
-  // In a lane (#346): its holder and its step, short; the lane's head has the rest.
-  const feat = deskFeat(i), fopen = feat && deskFeatOpen(i);
-  // Today's page (B2, #666): rows name no session (who has it is on its page and in the Working strip); what the line
-  // says besides (Give to…, the queue's words, its step) stays. A finished row has no step track: it would be all six
-  // done, and hundreds of them made each draw of a long Done list slow.
-  const hn = deskB2On() ? "" : esc(deskHolderOf(i));
-  const who = i.state === "held" ? "" : feat ? [hn, deskFeatBar(i)].filter(Boolean).join(" · ") : lane ? [hn, `<span class="dk-fstep">${deskLaneStep(i, lane.ahead)}</span>`].filter(Boolean).join(" · ") : deskCopyWaits(i) ? esc(deskCopyWaitLine(i)) : deskQueueLine(i) ? esc(deskQueueLine(i)) : i.state === "queued" && i.after ? [hn, (deskAfterName(i).startsWith("#") ? `after ${esc(deskAfterName(i))}` : `Waits for ${esc(deskAfterName(i))}`)].filter(Boolean).join(" · ") : i.waiting && i.state === "working" ? `waiting · ${esc(firstLine(i.waiting))}` : deskClearable(i) ? `stopped · leftover edits in the main folder` : i.stopped && (i.state === "working" || deskFinishing(i)) ? `stopped · the Desk lead is on it` : s ? `${["working", hn].filter(Boolean).join(" · ")} · <span data-ago="${at}">${ago(at)}</span>` : !i.holder && i.state !== "done" ? deskGive(i, "row") : deskInstallWait(i) ? ["waiting for install", hn].filter(Boolean).join(" · ") : deskFinishing(i) ? `<span class="dk-fstep">${deskFinStep(i)}</span>` : hn;
-  // Finishing: no age, so its step has the room.
-  const when = s || act || deskFinishing(i) || (feat && i.state !== "done") ? "" : i.state === "done" ? `${i.commit ? `<span class="dk-cm">committed ${esc(i.commit)}</span> · ` : ""}${clockAt(deskMs(i.done_at || i.updated))}` : ago(deskMs(i.created));
-  const ok = i.state === "held" ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start</button>`
-    // Stopped on its own leftover edits in the main folder (#659): one OK clears them and lands it.
-    : deskClearable(i) ? `<button class="btn small primary dk-hstart" data-desk-act="clear_land" data-id="${esc(i.id)}">Clear and land</button>`
-    // Waiting to install (#490): Skip install on its row; Install now is the lane head's, for all of it.
-    : lane ? deskSkipInstall(i, "btn small dk-rinst")
-    // Waiting for a free working folder (#401): Start now goes without one.
-    : deskCopyWaits(i) && !piece && !feat ? `<button class="btn small dk-hstart" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`
-    // Park on a row that waits its turn (#391), as on its page.
-    : (i.state === "new" || i.state === "queued") && !piece && !feat ? `<button class="btn small dk-hstart dk-park" data-desk-act="park" data-id="${esc(i.id)}">Park</button>` : deskFinishing(i) ? deskInstallNow(i, "btn small dk-rinst") + deskSkipInstall(i, "btn small dk-rskip") : deskInstallWait(i) || deskUncommitted(i) ? "" : i.state === "to_check" && deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id) : i.state === "to_check" ? `<button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`
-    : i.state === "done" && !i.picked ? `<button class="dk-undo" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button>` : "";
-  // What it waits on you for, in one plain line (Answer, Pick, Allow, Try it), and what it unblocks (#182).
-  const request = i.state === "needs_you" && deskItemRequest(i);
-  const [question] = request?.kind === "question" ? questions(request) : [];
-  const isQuestion = i.state === "needs_you" && (i.ask?.kind === "question" || (!i.ask && !i.finish?.question && !deskPickLine(i)));
-  const vb = isQuestion ? esc(deskOneLine(question?.question || deskQuestion(i))) : deskVerbHtml(i);
-  const decision = request?.kind === "permission"
-    ? deskAllowNo(request.id)
-    // A question (#383): Send its suggestions, or Choose… on the item's page, where its whole card is.
-    : question ? qFoldBtns(request, `<button class="btn small" data-desk-chk-item="${esc(i.id)}">Choose…</button>`, "btn small", `data-desk-send-answers="${esc(request.id)}"`)
-    : i.state === "needs_you" && i.ask?.kind !== "permission" ? `<button class="btn small" data-desk-chk-item="${esc(i.id)}">Answer</button>` : "";
-  const yn = request?.kind === "permission";
-  // Finished (#606): which item builds your pick on it, or which pick it came from, its number a link to that item.
-  const built = i.state === "done" && !piece ? deskBuiltWords(i) : "";
-  const ask = vb || decision ? `<div class="dk-ask-row${yn ? " yn" : ""}">${vb ? (yn ? reqCut(request.id, `<div class="dk-h">${vb}</div>`, deskAllowLine(i), 2, 100) : `<div class="dk-h">${vb}</div>`) : ""}${question ? qFoldLine(request) : ""}${decision ? `<div class="dk-row-decisions">${decision}</div>` : ""}</div>` : "";
-  return `<div class="dk-it ${i.state === "needs_you" ? "ask" : ""} ${look === "landed" ? "landed" : ""} dk-${deskStateOf(i)} ${on ? "on" : ""}${stalled ? " stalled" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}${feat ? " dk-feat" : ""}${piece ? " pc" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"${feat ? ` aria-expanded="${fopen}"` : ""}>
-    ${deskStateIcon(i)}<div class="dk-i1">${on ? '<span class="dk-larrow" aria-hidden="true">‹</span>' : ""}<span class="dk-tag ${look}">${tag}</span>${lane?.n ? `<span class="dk-rn">${lane.n}</span>` : ""}<span class="dk-t">${esc(i.title)}</span>${feat ? `<span class="dk-chev${fopen ? " open" : ""}" aria-hidden="true">›</span>` : ""}${deskB2On() && !piece && i.state !== "done" ? deskB2Track(i) : ""}</div>
-    ${i.see && !piece && !deskWhereLine(i)?.tried ? `<div class="dk-see">You'll see: ${esc(deskOneLine(i.see))}</div>` : ""}<div class="dk-i2"><span class="dk-kid">${deskKindIcon(i)}<span class="dk-id">${esc(deskNum(i))}</span></span><span class="dk-who${s ? " held" : ""}${!feat && !lane && !deskCopyWaits(i) && deskQueueLine(i) ? " dk-qw" : ""}">${who}${(who || deskB2On()) && i.holder && i.state !== "held" ? deskMachTag(i) : ""}${i.state !== "held" && !piece ? deskModelTag(i) : ""}</span>${doing}<span class="dk-age">${when}</span>${ok}</div>${deskRemoteLine(i) ? `<div class="dk-see dk-rmt">${esc(deskRemoteLine(i))}</div>` : ""}${built ? `<div class="dk-see dk-built">${built}</div>` : ""}${ask}${deskWaits(i) ? deskUnblocksHtml(i) : ""}</div>`;
-}
 /** A permission's two buttons on the Desk (#426): No, then Allow, side by side on one line. */
 function deskAllowNo(id) {
   const off = answering.has(id) ? " disabled" : "";
@@ -406,7 +312,7 @@ function deskDoneMore(project) {
 const deskDoneDrawn = new Map();
 /** 10 more finished items, or the end gone, put in at the list's end in place (#733): the rest of the window isn't
  *  drawn again, so each step stays quick however long the list grows and however busy the Mac is. False when the
- *  list on screen isn't the one last drawn (a full draw then). `b2`: drawn for B2's list (deskB2Row) or the old one. */
+ *  list on screen isn't the one last drawn (a full draw then). */
 function deskDonePatch(project) {
   const at = deskDoneDrawn.get(project), d = deskOf(project), pg = deskDonePages.get(project);
   const end = document.querySelector(`.dk-items [data-desk-done-more="${CSS.escape(project)}"]`);
@@ -437,12 +343,6 @@ const deskGroupsOpened = (() => { try { return new Set(JSON.parse(localStorage.g
 const DESK_GROUPS_FOLDED = new Set(["held", "done"]);
 const deskGroupShut = (key) => (DESK_GROUPS_FOLDED.has(key) ? !deskGroupsOpened.has(key) : deskGroupsShut.has(key));
 const DESK_GCHEV = `<svg class="dk-gchev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2l3 3-3 3"/></svg>`;
-/** A group of the item list: its header (a chevron, its name and count) folds or opens it; its rows sit in a box that
- *  slides shut. */
-function deskGroupHtml(key, head, body, cls = "", attrs = "") {
-  const shut = deskGroupShut(key);
-  return `<div class="dk-gh dk-gf${cls ? ` ${cls}` : ""}"${attrs} role="button" tabindex="0" data-desk-group="${key}" aria-expanded="${!shut}">${DESK_GCHEV}${head}</div><div class="dk-gbody${shut ? " shut" : ""}" data-desk-gbody="${key}"><div class="dk-gin">${body}</div></div>`;
-}
 /** A group's header clicked: it folds or opens in place with a short slide (the list isn't drawn again, so nothing
  *  jumps), and stays so. */
 function deskGroupFold(key) {
@@ -458,89 +358,8 @@ function deskGroupFold(key) {
   setTimeout(() => { b.classList.remove("moving"); if (!shut) deskDoneWatch(); }, 240);
 }
 
-/** The end of the Items list: the copies kept from dropped items, then Done. `put` adds a group, `row` draws an item. */
-function deskListDone(project, g, put, row) {
-  const group = deskGroupHtml;
-  // Finished: the 10 newest, then 10 more each time the list's end comes into view (deskDoneWatch). Its end holds
-  // its place while the next ones load, so nothing jumps.
-  const pg = deskDonePages.get(project);
-  if (!pg) queueMicrotask(() => deskDoneFetch(project));
-  // On B2's Done today tab, only what was done today (desk/b2.js deskB2DoneToday, its count).
-  const done = deskB2On() && deskB2Tab === "done" ? deskB2DoneToday(g.d) : deskDoneList(g.d), shown = done.slice(0, deskDoneShown.get(project) || DESK_DONE_STEP);
-  const more = done.length > shown.length || !pg?.end;
-  // Dropped items' copies kept with their work, till you remove them (desk/hub/landing/trees.rs).
-  const kept = g.d?.kept || [];
-  if (kept.length) put("kept", group("kept", `Kept copies <span class="n">${kept.length}</span>`, kept.map(deskKeptRow).join("")));
-  // Its "Loading older…" end goes in its fold, so a folded Done loads nothing more.
-  const doneMore = more && (shown.length || pg?.loading || !pg) ? `<div class="dk-more" data-desk-done-more="${esc(project)}">${shown.length ? "Loading older…" : ""}</div>` : "";
-  deskDoneDrawn.set(project, { n: deskB2On() && deskB2Tab === "done" ? 0 : shown.length, last: shown.at(-1)?.id, row, least: 0, b2: false });
-  if (shown.length) put("done", group("done", "Done", shown.map(row).join("") + doneMore));
-  else if (doneMore) put("done", doneMore);
-}
 
-/** The Items list's tabs (today's page) and what shows under them: the groups in `parts` with `top` over them, a plain
- *  line when there is nothing, or the new page's Progress rows. */
-function deskListBody(g, parts, top, taskApprovals) {
-  const n = parts.length + (top ? 1 : 0);
-  // B2: tabs by group over the list (All · Waits on you · Up next · Done today · Calls while away); one picked shows
-  // only its groups.
-  const tabs = deskB2On() ? deskB2Tabs(g, taskApprovals) : "";
-  const pick = deskB2On() ? deskB2Shown(parts, top) : { parts, top };
-  // A tab with nothing in it says so in a plain line, not an empty list.
-  const tabNone = deskB2On() && deskB2Tab !== "all" && !deskB2TabCounts(g, taskApprovals).find(([k]) => k === deskB2Tab)?.[2];
-  let body = tabNone ? `<div class="dk-empty">${DESK_B2_NONE[deskB2Tab] || "Nothing here."}</div>` : pick.top + pick.parts.map((x) => x[1]).join("") + (n > (g.d?.away?.on ? 2 : 1) ? "" : `<div class="dk-empty">No items yet.</div>`);
-  // The new Desk page: List or Progress in its head, one at a time; Progress is its rows in place of the list.
-  if (deskV2 && deskV2Mode === "progress") body = deskV2Progress(g);
-  return { tabs, body };
-}
 
-function deskList(project, taskApprovals) {
-  const g = deskGroups(project, taskApprovals);
-  const o = deskOpen;
-  const crewLit = o?.kind === "crew" ? deskCrewItem(project, o.lead, o.agent)?.id : null;
-  // A session clicked on the left lights nothing on the right (#170): it can hold several items.
-  // A feature's row, then its pieces under it while it or one of them is open (#282): in place, nothing moves.
-  const row = (i) => deskItemRow(i, i.id === crewLit, false) + (deskFeat(i) && deskFeatOpen(i) ? `<div class="dk-pcs">${i.pieces.map((p) => deskItemRow(p, p.id === crewLit, false, { piece: true })).join("")}</div>` : "");
-  // Away (#415, calls 1): the lead's calls since it went on, in one foldable line at the top.
-  const top = deskAwayCallsHtml(g.d), parts = [];
-  // Each group with its key, so the new Desk page (desk/v2.js) can put them in its own order.
-  const put = (k, html) => parts.push([k, html]);
-  // Waiting on you stays at 0 (in red only while something waits), so you see there's nothing for you; while away it
-  // says so in words. While away, the open asks from the Desk's sessions join it.
-  const aw = deskAwayWaiting(g.d, taskApprovals), nWait = g.asks.length + aw.n;
-  const none = !nWait && g.d?.away?.on ? `<div class="dk-aw-none">Nothing waits on you.</div>` : "";
-  const group = deskGroupHtml;
-  // The order, top to bottom (#602, Robin's): Waiting on you (questions), Ready to check, In progress (with the
-  // landing lanes, nearly done, over it and what stopped under it), Queue, Parked (folded), Done (folded).
-  // Today's page (B2, desk/b2.js): the long groups show their first 3, then Show all N.
-  const cap = (k, list) => (deskB2On() ? deskB2Cap(k, list) : [list, ""]);
-  // Steps held for your OK at the very top, oldest first, never behind Show all (#749).
-  const hf = deskHeldFirst(aw, g.asks, row);
-  const [asks, asksMore] = cap("you", hf.rest), [check, checkMore] = cap("check", g.check), [queued, queuedMore] = cap("queued", g.queued);
-  put("you", group("you", `Waiting on you <span class="n">${nWait}</span>`, `${hf.html}${asks.map(row).join("")}${asksMore}${aw.more}${none}`, `you${nWait ? "" : " none"}`));
-  // Ready to check: what finished and waits for your Looks right or Send back (split out of Waiting on you, #602).
-  if (g.check.length) put("check", group("check", `Ready to check <span class="n">${g.check.length}</span>`, check.map(row).join("") + checkMore));
-  // The landing line (above In progress, #468), numbered in the order it lands (one at a time), then what's on main for the next install, with
-  // its time and Install now (#346).
-  if (g.landing.length) put("landing", group("landing", `Landing <span class="n">${g.landing.length}</span><span class="dk-split">one at a time</span>`, g.landing.map((i, k) => deskItemRow(i, i.id === crewLit, false, { n: k + 1, ahead: g.landing[k - 1] })).join(""), "dk-lane", ' data-lane="landing"'));
-  if (g.install.length) put("install", group("install", `Waiting to install <span class="n">${g.install.length}</span>${deskInstallHead(g.install)}`, g.install.map((i) => deskItemRow(i, i.id === crewLit, false, {})).join(""), "dk-lane", ' data-lane="install"'));
-  // In progress sits under Landing and Waiting to install (#468): what is nearly yours comes first.
-  if (g.working.length) put("working", group("working", `In progress <span class="n">${g.working.length}</span>${deskSplitHtml(g.working)}`, g.working.map(row).join("")));
-  if (g.resume.length) put("resume", group("resume", `Needs resume <span class="n">${g.resume.length}</span>`, g.resume.map(row).join("")));
-  // The Queue, under In progress (#602; at the top before, #576): what waits for a session hasn't started, so it comes
-  // after what's yours and what's under way. In your order, dragged up and down into it (#387); each row says what it
-  // waits for.
-  if (g.queued.length) put("queued", group("queued", `Queue <span class="n">${g.queued.length}</span>${g.queued.length > 1 ? '<span class="dk-qhint">drag to reorder</span>' : ""}`, queued.map(deskQRow(row)).join("") + queuedMore));
-  if (g.paused.length) put("paused", group("paused", `Paused <span class="n">${g.paused.length}</span>`, g.paused.map(row).join("")));
-  if (g.held.length) put("held", group("held", `Parked <span class="n">${g.held.length}</span><span class="dk-split">start them when you want</span>`, `<div class="dk-held">${g.held.map(row).join("")}</div>`, "dk-heldh"));
-  for (const h of g.extra) put("extra", deskHolderHead({ ...h, addon: true, key: h.key || h.name }, o?.kind === "addon" && o.key === (h.key || h.name)) + (h.items || []).map(row).join(""));
-  deskListDone(project, g, put, row);
-  if (deskV2) parts.sort((a, b) => deskV2Order(a[0]) - deskV2Order(b[0]));
-  const { tabs, body } = deskListBody(g, parts, top, taskApprovals);
-  const head = deskV2 ? deskV2ListSwitch() : deskProgButtonHead();
-  return `<div class="dk-card dk-items"><div class="dk-ch"><b>Items</b>${deskPausedTag(g.d)}${head}${deskPauseButton(g.d)}${deskAwaySwitch(g.d)}</div>
-    ${deskQuickAdd()}${tabs}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}${deskV2 && deskV2Mode === "progress" ? ":progress" : ""}">${body}</div></div>`;
-}
 
 // ---------- the Queued list in your order (#387) ----------
 
@@ -609,7 +428,7 @@ function deskQPress(e) {
   const row = e.target.closest?.(".dk-it[data-desk-q]");
   if (!row || e.target.closest("button, a, input, textarea")) return;
   const rows = [...row.parentElement.querySelectorAll(":scope > .dk-it[data-desk-qg]")];
-  const scroller = row.closest(".dk-scroll"), st0 = scroller?.scrollTop || 0;
+  const scroller = row.closest(".dk-scroll, .dkn-dl"), st0 = scroller?.scrollTop || 0;
   const from = rows.indexOf(row), y0 = e.clientY, rects = rows.map((r) => r.getBoundingClientRect());
   const h = rects[from].height + 2;
   let on = false, to = from, y = y0, edge = 0, tick = 0;
@@ -684,7 +503,7 @@ document.addEventListener("pointerdown", deskQPress);
  *  is drawn and put back after, brought up to date by key: a row whose HTML is the same is left exactly as it is, one
  *  that changed is updated in place, one that changed group is moved there (the same element), a new one goes in, a
  *  gone one comes out. */
-const DESK_KEPT_LISTS = '.dk-items > .dk-scroll[data-scroll-key], .dk-prog > .dk-scroll[data-scroll-key]';
+const DESK_KEPT_LISTS = '.dk-items > .dk-scroll[data-scroll-key], .dkn-card > .dk-scroll[data-scroll-key], .dk-prog > .dk-scroll[data-scroll-key]';
 /** A child's key among its siblings: an item's row by its id (the same row anywhere in the list), a group's head and
  *  body by the group, a Progress row by its item; anything else by its class and place among those of its kind. */
 function deskKeepKey(el, n) {

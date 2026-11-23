@@ -2,10 +2,10 @@
 // session's chat, over its box), #477 (one click sends the phrase at once as its own message, repeat clicks never stack
 // it, a draft stays untouched; every chat with phrases), #488 (on an item to check a phrase is a note to its holder, the
 // item stays to check). The scenario's phrases: Commit, Go ahead, Think hard.
-import { test, expect, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
-const box = (page) => page.locator(".dk-right :is(.dk-box, .foot:not(.held) .composer) textarea");
-const phrase = (page, p) => page.locator(`.dk-right :is(.dk-box, .foot:not(.held) .composer) .quick .qp[data-phrase="${p}"]`);
+const box = (page) => page.locator(".dk-right :is(.dkn-spm, .foot:not(.held) .composer) textarea");
+const phrase = (page, p) => page.locator(`.dk-right :is(.dkn-spm, .foot:not(.held) .composer) .quick .qp[data-phrase="${p}"]`);
 
 // #128: the same phrases a session's chat shows (the shared quick row), over the lead's box.
 test("the lead's chat shows a session chat's quick phrases, over its box", async ({ page, cue }) => {
@@ -35,9 +35,8 @@ test("a session's page: a phrase goes to that session at once, the draft stays, 
   await cue.open("desk");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "host").state = "waiting"; });
   await openDesk(page);
-  await deskAllSessions(page);
-  await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
-  await expect(page.locator('.dk-right .dk-pg[data-desk-page="session"]')).toHaveCount(1);
+  await page.locator('.dkn-side [data-desk-chat-of="host"]').click();
+  await expect(page.locator('.dk-right .dkn-sp[data-desk-page="session"]')).toHaveCount(1);
   await box(page).fill("the canvas, then");
   await phrase(page, "Commit").dblclick();
   await cue.called("send_to_session", { sessionId: "host", text: "Commit" });
@@ -51,11 +50,11 @@ test("a session's page: a phrase goes to that session at once, the draft stays, 
 test("an item its holder is working on: a phrase is a note to the holder, shown as waiting, the draft untouched", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
+  await page.locator('.dkn-items [data-desk-item="d5"]').click();
   await box(page).fill("the port is");
   await phrase(page, "Think hard").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Think hard" });
-  await expect(page.locator(".dk-right .dk-ichat .cv-you", { hasText: "Think hard" }).locator(".msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends");
+  await expect(page.locator('.dk-right [data-desk-chat="host"] .cv-you', { hasText: "Think hard" }).locator(".msg-line")).toContainText("Not sent yet · Cue sends it when its turn ends");
   await expect(box(page)).toHaveValue("the port is");
   expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "send_back")).toEqual([]);
 });
@@ -65,7 +64,7 @@ test("an item its holder is working on: a phrase is a note to the holder, shown 
 test("an item to check: a phrase with a draft typed goes as a note, the item stays to check, the draft stays", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('.dk-items [data-desk-item="d2"]').click();
+  await page.locator('.dkn-items [data-desk-item="d2"]').click();
   await box(page).fill("still 6px");
   await phrase(page, "Commit").click();
   await cue.called("desk_item_act", { id: "d2", act: "phrase", text: "Commit" });

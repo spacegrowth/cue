@@ -77,7 +77,9 @@ test("Listen on a lead's reply shows the Listening line over its box; Read opens
   await cue.change(reply, { sid: "eng", LONG });
   await page.locator('.working[data-session="eng"]').first().click();
   await boardCard(page).locator("[data-read]").last().click();
-  const rd = (card) => card.evaluate((c) => { const cr = c.getBoundingClientRect(), t = c.querySelector(".rd .msg").getBoundingClientRect(), h = c.querySelector(".rd-head").getBoundingClientRect(); return { textLeft: Math.round(t.left - cr.left), textW: Math.round(t.width), headH: Math.round(h.height) }; });
+  // The reader's text against the reader (centred in its card, whose width is the layout's: the Desk's middle column is
+  // narrower than the Board's chat at this window), its width and its head's height.
+  const rd = (card) => card.evaluate((c) => { const cr = c.getBoundingClientRect(), r = c.querySelector(".rd").getBoundingClientRect(), t = c.querySelector(".rd .msg").getBoundingClientRect(), h = c.querySelector(".rd-head").getBoundingClientRect(); return { centred: Math.abs((r.left - cr.left) - (cr.right - r.right)) < 2, textLeft: Math.round(t.left - r.left), textW: Math.round(t.width), headH: Math.round(h.height) }; });
   const boardRd = await rd(boardCard(page));
   await cue.open("desk");
   await cue.change(reply, { sid: "lead", LONG });

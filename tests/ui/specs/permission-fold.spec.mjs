@@ -68,21 +68,6 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
-test("once denied, the item's page shows the command folded with what you answered (#611)", async ({ cue, page }) => {
-  await setup(cue, page, SCRIPT);
-  await page.locator('.dk-items [data-desk-item="227"]').click();
-  await page.locator('.dk-right .act-card [data-act="deny"]').click();
-  // The request is gone and its turn stopped there (its session idle): its page says what you answered, the command
-  // folded, not the whole script.
-  await cue.change((st) => {
-    st.items = st.items.filter((i) => i.id !== "perm");
-    st.sessions.find((s) => s.session_id === "host").state = "idle";
-  });
-  const q = page.locator(".dk-right .dk-q");
-  await expect(q).toContainText("You answered: Declined");
-  await expect.poll(() => fold(page, ".dk-right .dk-q")).toEqual({ shown: 3, more: true, cut: 0 });
-});
-
 test("a session's chat: a long script's card is three whole lines with more, Allow in view (#611)", async ({ cue, page }) => {
   await cue.open("world-one-ask");
   await cue.change((st, c) => { st.items[0].tool_input.command = c; }, SCRIPT);

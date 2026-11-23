@@ -1,6 +1,6 @@
 import { test, expect, openDesk } from "./cue.mjs";
 
-// #525: on #496's page (to check, its holder idle), "which one you think is good for users.." went back at 06:38 and
+// #525: on #496's chat (to check, its holder idle), "which one you think is good for users.." went back at 06:38 and
 // cue-496 answered it. At 06:50 a question went too; the hub sends only a session's last few messages, so the
 // send-back fell out of them, and the item's chat drew it again as a dashed "Sending… · sent back" bubble.
 test("a send-back that went stays sent once its holder's chat has moved past it (#525)", async ({ cue, page }) => {
@@ -12,12 +12,14 @@ test("a send-back that went stays sent once its holder's chat has moved past it 
   });
   await openDesk(page);
   await page.locator('[data-desk-item="d2"]').click();
-  const box = page.locator(".dk-right .dk-box textarea");
+  // Send back on its bar opens the box for why.
+  await page.locator('.dk-right .dkn-ib [data-desk-act="send_back"][data-id="d2"]').click();
+  const box = page.locator(".dk-right .dkn-ibback textarea");
   const words = "which one you think is good for users.. I cna't tell there are a lot";
   await box.fill(words);
   await box.press("Enter");
   await cue.called("desk_item_act", { id: "d2", act: "send_back" });
-  const chat = page.locator(".dk-right .dk-ichat");
+  const chat = page.locator('.dk-right [data-desk-chat="lead"]');
   const sending = chat.locator(".cv-you.msg-sending");
   // Its holder had it, and answered: back to check.
   await cue.change((st) => {
@@ -60,10 +62,11 @@ test("a send-back the hub is still sending stays Sending on the item's chat", as
     return null;
   });
   await page.locator('[data-desk-item="d2"]').click();
-  const box = page.locator(".dk-right .dk-box textarea");
+  await page.locator('.dk-right .dkn-ib [data-desk-act="send_back"][data-id="d2"]').click();
+  const box = page.locator(".dk-right .dkn-ibback textarea");
   await box.fill("Still on its way");
   await box.press("Enter");
   await cue.called("desk_item_act", { id: "d2", act: "send_back" });
-  const chat = page.locator(".dk-right .dk-ichat");
+  const chat = page.locator('.dk-right [data-desk-chat="lead"]');
   await expect(chat.locator(".cv-you.msg-sending", { hasText: "Still on its way" })).toHaveCount(1);
 });

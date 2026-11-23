@@ -161,7 +161,7 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   await expect(seg("After landing")).toHaveText(["Nothing", "Install or serve Cue", "Your own steps"]);
 });
 
-test("a Desk's model for new sessions is picked in its settings, and an item started on a model says so (#620)", async ({ page, cue }) => {
+test("a Desk's model for new sessions is picked in its settings (#620)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await deskAllSessions(page);
@@ -179,24 +179,5 @@ test("a Desk's model for new sessions is picked in its settings, and an item sta
   await expect(page.locator(".ld-dialog [data-ld-model]")).toHaveValue("opus");
   await expect(page.locator(".ld-dialog [title]")).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // An item a new session was started for on Fable: its page names the model by Who (B2 #666: rows are compact); one
-  // on Claude Code's own pick doesn't.
-  await cue.change((st) => {
-    const desk = st.desk.projects.find((d) => d.project === "cue");
-    const base = desk.items.find((i) => i.id === "d2");
-    desk.items.push(
-      { ...base, id: "620a", title: "Started on Fable", state: "queued", holder: null, model: "fable" },
-      { ...base, id: "620b", title: "Started on the default", state: "queued", holder: null, model: "default" }
-    );
-  });
-  // In the item list (‹ Items N from the sessions list), the queue shown whole (a long one shows its first 3, #666).
-  await page.locator(".dk-sessions .dk2b-items").click();
-  const all = page.locator('.dk-items [data-desk2b-all="queued"]');
-  await all.click();
-  const who = page.locator(".dk-right .dk2b-kv .dk2b-iv").first();
-  await page.locator('.dk-items [data-desk-item="620a"]').click();
-  await expect(who.locator(".dk-model")).toHaveText("Fable");
-  await page.locator('.dk-items [data-desk-item="620b"]').click();
-  await expect(page.locator(".dk-right .dk2b-ititle")).toHaveText("Started on the default");
-  await expect(who.locator(".dk-model")).toHaveCount(0);
 });
+

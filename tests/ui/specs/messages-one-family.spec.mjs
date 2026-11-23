@@ -82,12 +82,9 @@ for (const scheme of ["light", "dark"]) {
       await expect(chat.locator(".mg-agent").last().locator(".mg-h")).toHaveCSS("font-size", META);
       await isCard(chat.locator(".mg.ask"));
       await expect(chat.locator(".mg.ask pre.mg-code")).toHaveCount(1);
-      // Cue's card is the Desk's own (#688): a count line in the chat, the card in Activity.
-      await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
-      await expect(chat.locator(".dk-cnt")).toHaveCount(1);
-      await page.evaluate(() => deskOpenActivity());
-      await isCard(page.locator(".dk-moves .mg.cue-msg"));
-      await readsOn(page.locator(".dk-moves .mg.cue-msg .mg-t"));
+      // Cue's card: a session that isn't a lead shows its chat as it is (#744), so the card is in it, drawn as the family's.
+      await isCard(chat.locator(".mg.cue-msg"));
+      await readsOn(chat.locator(".mg.cue-msg .mg-t"));
       await noHover(page);
     });
 
@@ -98,7 +95,7 @@ for (const scheme of ["light", "dark"]) {
       await push(page, sid, [{ role: "you", text: "Note from the Desk lead on Desk item #d2 (Phrases, finishing): Check the dark theme too." }]);
       await page.evaluate(() => deskShow({ kind: "item", id: "d2" }));
       // Cue's card is the Desk's own (#688): a count line in the item's chat, the card in Activity.
-      await expect(page.locator(".dk-right .dk-ichat .dk-cnt")).toHaveCount(1);
+      await expect(page.locator(".dk-right .dkn-sp[data-desk-page='session'] .dk-cnt")).toHaveCount(1);
       await expect(page.locator(".dk-right .mg.cue-msg")).toHaveCount(0);
       await expect(page.locator(".dk-right .dk-cue")).toHaveCount(0);
       // The holder is the lead: its chat draws Cue's notes as short lines (#616), so Activity shows that line, not a card.
@@ -185,47 +182,6 @@ for (const scheme of ["light", "dark"]) {
       const card = page.locator(".m-chat .mg").first();
       await isCard(card);
       await readsOn(card.locator(".mg-t"));
-      await noHover(page);
-    });
-
-    test("an item's page: what it asked at the body size, your answer and the section heads at the meta size, heads in normal case", async ({ page, cue }) => {
-      await page.setViewportSize({ width: 1500, height: 950 });
-      await cue.open("desk");
-      await openDesk(page);
-      // Its ask answered and the item at work again: "It asked you", the question, then "You answered: …".
-      await page.evaluate(() => {
-        const i = deskItem("cue", "d1");
-        deskAnswers.set("d1", { q: deskQuestion(i), a: "Keep it in the box", ask: i.ask?.item_id || "", at: now() });
-        deskShow({ kind: "item", id: "d1" });
-      });
-      await cue.change((st) => {
-        st.items = st.items.filter((i) => i.id !== "n-focus-ask");
-        const d1 = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
-        d1.state = "working"; d1.ask = null;
-      });
-      const chain = page.locator(".dk-pane .dk-chain");
-      await expect(chain).toContainText("You answered: Keep it in the box");
-      expect(await sizes(chain.locator(".dk-q .dk-lt"))).toEqual([BODY]);
-      expect(await onPage(chain.locator(".dk-q .dk-lt"), (e) => getComputedStyle(e).fontWeight, false)).toBe("400");
-      expect(await sizes(chain.locator(".dk-picked"))).toEqual([META]);
-      const heads = page.locator(".dk-pane .dk-sec h3");
-      await expect(heads.filter({ hasText: "It asked you" })).toHaveCount(1);
-      for (const [size, tt, ls] of await onPage(heads, (es) => es.map((e) => { const c = getComputedStyle(e); return [c.fontSize, c.textTransform, c.letterSpacing]; }), true)) {
-        expect(size).toBe(META);
-        expect(tt).toBe("none");
-        expect(ls).toBe("normal");
-      }
-      await readsOn(chain.locator(".dk-picked"));
-      // Waiting on another item (#626): its not-started card, what it waits for at the body size, the rest at meta.
-      await cue.change((st) => {
-        const it = st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1");
-        it.state = "queued"; it.ask = null; it.after = "d2";
-      });
-      await page.evaluate(() => { deskAnswers.delete("d1"); renderMain(); });
-      const card = page.locator(".dk-pane .dk-ns");
-      await expect(card.locator(".dk-ns-t")).toHaveCount(1);
-      expect(await sizes(card.locator(".dk-ns-t"))).toEqual([BODY]);
-      expect(await sizes(card.locator(".dk-ns-n"))).toEqual([META]);
       await noHover(page);
     });
   });

@@ -54,7 +54,7 @@ async function loadOlder(sid, fromTranscript = false, pressed = false) {
   if (shown) { shown._pinAt = Date.now(); shown.scrollTop = 0; }
   // On the Desk, off its end now, before the scroll event says so: a draw in between would put it back at its end.
   // (The chat desk/view.js deskSettle keeps at its end: the right one while something is open, B2.)
-  if (shown && view === "desk" && shown === (document.querySelector(".dk-right .dk-chat") || (!deskB2On() && document.querySelector(".dk-chat")))) deskChatEnd = false;
+  if (shown && view === "desk" && shown === document.querySelector(".dk-right .dk-chat")) deskChatEnd = false;
 }
 /** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
 const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();

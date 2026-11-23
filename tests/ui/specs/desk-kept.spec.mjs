@@ -1,4 +1,4 @@
-// A dropped item's kept copy (#608): its row opens the item's page (with the chat of the session that held it, which
+// A dropped item's kept copy (#608): its row opens the item (with the chat of the session that held it, which
 // you can still write to), shows what it changed with a Diff, and offers Pick up again (the item back on the Desk with
 // that copy, for the lead to route) beside Remove, which still takes two clicks.
 import { test, expect, openDesk } from "./cue.mjs";
@@ -37,42 +37,36 @@ test("a kept copy's row shows what it changed, and its Diff opens the files over
   await expect(row).toHaveCSS("border-left-width", "0px");
 });
 
-test("clicking a kept copy opens its item's page: the chat of the session that held it, a box straight to it, its files, Pick up again and Remove", async ({ page, cue }) => {
-  await page.locator('.dk-items .dk-kept[data-kept="k1"] .dk-kept-t').click();
-  const panel = page.locator('.dk-panel[data-side-for="k1"]');
-  await panel.waitFor();
-  const right = page.locator(".dk-right");
+test("clicking a kept copy opens its item: the chat of the session that held it, a box straight to it, Pick up again and Remove", async ({ page, cue }) => {
+  await page.locator('.dkn-items .dk-kept[data-kept="k1"] .dk-kept-t').click();
+  const right = page.locator(".dk-c > .dk-right");
+  await expect(right.locator(".dkn-sp")).toHaveCount(1);
   await expect(right).toContainText("Old idea, dropped");
-  // Its holder's chat, as on any item's page.
-  await expect(right.locator(".dk-ipane.chat")).toHaveCount(1);
-  await expect(right).toContainText("host-lead's chat");
-  await expect(panel.locator(".dk-pword")).toHaveText("Dropped · copy kept");
-  await expect(panel).toContainText("/r/cue/.claude/worktrees/kept-k1 on desk/k1");
-  await expect(panel.locator(".dk-pfiles .ib-file")).toHaveCount(2);
+  await expect(right).toContainText("/r/cue/.claude/worktrees/kept-k1 on desk/k1");
+  // Its bar: Pick up again and Remove.
+  const bar = right.locator(".dkn-ib .dkn-ibacts");
+  await expect(bar.locator('[data-desk-act="pickup_kept"]')).toHaveText("Pick up again");
   // The box goes to the session that held it, not as an item message.
   await expect(right.locator(".dk-pre")).toHaveText("To host-lead, who held it");
-  await right.locator(".dk-box textarea").fill("What did you get done on it?");
+  await right.locator(".dkn-spm textarea").fill("What did you get done on it?");
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await cue.calls("send_to_session")).map((c) => [c.args.sessionId, c.args.text])).toContainEqual(["host", "What did you get done on it?"]);
   // Remove asks twice, here as on its row.
-  const remove = panel.locator('[data-desk-act="remove_kept"]');
+  const remove = bar.locator('[data-desk-act="remove_kept"]');
   await expect(remove).toHaveText("Remove");
   await remove.click();
   await expect(remove).toHaveText("Remove it and its work");
-  await expect(panel.locator("[title]")).toHaveCount(0);
+  await expect(right.locator(".dkn-ib [title]")).toHaveCount(0);
 });
 
 test("Pick up again puts the item back on the Desk, new, with its kept copy, and off Kept copies", async ({ page, cue }) => {
-  await page.locator('.dk-items .dk-kept[data-kept="k1"] .dk-kept-t').click();
-  const panel = page.locator('.dk-panel[data-side-for="k1"]');
-  await panel.locator('[data-desk-act="pickup_kept"]').click();
+  await page.locator('.dkn-items .dk-kept[data-kept="k1"] .dk-kept-t').click();
+  await page.locator('.dk-c > .dk-right .dkn-ib [data-desk-act="pickup_kept"]').click();
   await cue.called("desk_item_act", { id: "k1", act: "pickup_kept" });
-  // Its page is the item's own now: new, for the lead to give out.
-  await expect(panel.locator(".dk-pword")).not.toHaveText("Dropped · copy kept");
-  await expect(page.locator(".dk-items .dk-kept")).toHaveCount(0);
-  await expect(page.locator(".dk-items .dk-gh", { hasText: "Kept copies" })).toHaveCount(0);
-  await page.locator(".dk-right .dk-back").click();
-  await expect(page.locator('.dk-items [data-desk-item="k1"]')).toBeVisible();
+  await expect(page.locator(".dkn-items .dk-kept")).toHaveCount(0);
+  await expect(page.locator('.dkn-items .dkn-gh[data-desk2b-group="kept"]')).toHaveCount(0);
+  await page.locator(".dk-c > .dk-right .dk-back").first().click();
+  await expect(page.locator('.dkn-items [data-desk-item="k1"]')).toBeVisible();
 });
 
 test("Pick up again from the row; Remove there still takes two clicks", async ({ page, cue }) => {
@@ -84,5 +78,5 @@ test("Pick up again from the row; Remove there still takes two clicks", async ({
   // Another button disarms Remove; nothing was removed.
   expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "remove_kept")).toHaveLength(0);
   await cue.called("desk_item_act", { id: "k1", act: "pickup_kept" });
-  await expect(page.locator('.dk-items [data-desk-item="k1"]')).toBeVisible();
+  await expect(page.locator('.dkn-items [data-desk-item="k1"]')).toBeVisible();
 });

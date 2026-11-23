@@ -81,8 +81,7 @@ test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk w
   await expect(page.locator(".nd")).toBeVisible();
   await page.locator(".nd .nd-x").click();
   await expect(page.locator(".nd")).toHaveCount(0);
-  // Desk settings… opens that Desk's settings (a dialog): the Desk page's own when it has them (deskSettingsOpen, how
-  // its work lands), else Desk settings' drawer (desk/v2.js).
+  // Desk settings… opens that Desk's settings (a dialog): how its work lands (deskSettingsOpen).
   await page.locator('.top [data-hv-menu="desks"]').click();
   await page.locator(".top .hv-menu [data-hv-desk-set]").click();
   await expect(page.locator(".ld-dialog")).toBeVisible();
@@ -220,9 +219,9 @@ test("the Desks menu: open on a list row's click, that row opens and the menu cl
   await page.locator('.top [data-hv-menu="desks"]').click();
   await expect(page.locator(".top .hv-menu")).toHaveCount(1);
   // A click on the Desk's list: the menu closes and the item opens, in the one click.
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
+  await page.locator('.dkn-items [data-desk-item="d5"]').click();
   await expect(page.locator(".top .hv-menu")).toHaveCount(0);
-  await expect(page.locator(".dk-card.dk-right .dk-ph")).toContainText("#d5");
+  await expect(page.locator(".dk-right .dkn-sp")).toContainText("#d5");
   // Enter on a find that matches no Desk: nothing opens, nothing breaks.
   await page.locator('.top [data-hv-menu="desks"]').click();
   await page.locator(".top .hv-find").fill("no desk is called this");

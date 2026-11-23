@@ -5,8 +5,10 @@ import { test, expect, openDesk } from "./cue.mjs";
 
 const openItem = async (page, id) => {
   await openDesk(page);
-  await page.locator(`[data-desk-item="${id}"]`).first().click();
+  await page.locator(`.dkn-items [data-desk-item="${id}"]`).first().click();
 };
+/** The item's chat: its holder's, in the session page that opened in the middle. */
+const chatOf = (page, sid = "host") => page.locator(`.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="${sid}"]`);
 const TITLE = "Hosted sessions can't open the canvas";
 /** Bubble `b`'s words, its item head (the kind, number and title over them) left out. */
 const wordsOf = (b) => b.evaluate((el) => { const c = el.cloneNode(true); c.querySelector(".dk-about")?.remove(); return c.innerText.trim(); });
@@ -28,7 +30,7 @@ test("a note sent from an item's page shows only your words, in its chat and the
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Try it in a hosted session too" });
   // The session got Cue's whole message (the window hears of it after the call, as from the hub).
   await expect.poll(() => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toBe(`About #d5 (${TITLE}): Try it in a hosted session too`);
-  const mine = page.locator(".dk-right .dk-ichat .cv-you .cv-you-text").filter({ hasText: "Try it in a hosted session too" });
+  const mine = chatOf(page).locator(".cv-you .cv-you-text").filter({ hasText: "Try it in a hosted session too" });
   await expect(mine).toHaveCount(1);
   expect(await wordsOf(mine)).toBe("Try it in a hosted session too");
   await expect(mine.locator(".dk-about")).toContainText(TITLE);
@@ -52,7 +54,7 @@ test("a question sent from an item's page shows only your question, never Cue's 
   const sent = await delivered();
   expect(sent).toMatch(/^A question about Desk item #d5 \(.+\), which is with the user to check: Does it open on the second try too\?\nAnswer it\./);
   expect(sent).toContain("CHECK: #d5");
-  for (const where of [page.locator(".dk-right .dk-ichat"), null]) {
+  for (const where of [chatOf(page), null]) {
     const chat = where || (await openSession(page, "host"));
     const mine = chat.locator(".cv-you .cv-you-text").filter({ hasText: "Does it open on the second try too?" });
     await expect(mine).toHaveCount(1);
@@ -77,13 +79,14 @@ test("older messages sent with Cue's words after them show only yours, light and
   const want = ["make the canvas open at once", "and keep the old window", "why two windows?"];
   await openItem(page, "d5");
   const check = async (chat) => {
-    const mine = chat.locator(".cv-you .cv-you-text");
+    // (The fake log's made-up "Earlier message N"s load above them in a chat opened on the Desk: not these.)
+    const mine = chat.locator(".cv-you .cv-you-text").filter({ hasNotText: /^Earlier message \d+$/ });
     await expect(mine).toHaveCount(3);
     expect(await Promise.all((await mine.all()).map(wordsOf))).toEqual(want);
     for (const cue of ["Work in its own copy", "It waits for a free copy", "Answer it.", "About #d5"]) await expect(chat).not.toContainText(cue);
     expect(await chat.locator(".cv-you [title]").count()).toBe(0);
   };
-  await check(page.locator(".dk-right .dk-ichat"));
+  await check(chatOf(page));
   const own = await openSession(page, "host");
   await check(own);
   for (const c of ["light", "dark"]) {

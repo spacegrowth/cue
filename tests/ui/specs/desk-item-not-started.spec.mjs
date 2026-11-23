@@ -1,5 +1,5 @@
-// An item given out but not started yet (#476, #626): its page shows a status card, under its holder's chat or in
-// place of "What's holding it up", saying what it waits for by title (the item before it, the items using the working
+// An item given out but not started yet (#476, #626): a status card, in the bar over its holder's chat (C, #748) or,
+// with no live session, on the item's own page in place of "What's holding it up", saying what it waits for by title (the item before it, the items using the working
 // folders) and what happens next, with Start now as a clear button; never "Waiting on you" of its idle holder unless
 // something really waits on you; gone the moment it starts. Light and dark, from the design system's tokens.
 import { test, expect, openDesk } from "./cue.mjs";
@@ -9,14 +9,14 @@ const openItem = async (page, id) => {
   await page.locator(`[data-desk-item="${id}"]`).first().click();
 };
 const d4Of = (st) => st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d4");
-// Its holder idle with no turns and nothing open: its own line would say "Waiting on you for your reply".
-const idleLead = (st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "waiting", thread: [], since_ms: Date.now() - 60000 }); st.items = st.items.filter((i) => !(i.session_id === "lead" && i.status === "pending")); };
+// The holder's page (C, #748): its chat, and the item's bar over it where the card sits.
+const SP = '.dk-right .dkn-sp[data-desk-page="session"]', CHAT = `${SP} [data-desk-chat="lead"]`, BAR = `${SP} .dkn-ib`;
 
 test("a queued item after another shows a card naming that item, who is on it and what happens next, with Start now", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "waiting", thread: [], since_ms: Date.now() - 60000 }); st.items = st.items.filter((i) => !(i.session_id === "lead" && i.status === "pending")); });
   await openItem(page, "d4");
-  const ichat = page.locator(".dk-right .dk-ichat"), card = ichat.locator(".dk-ns");
+  const ichat = page.locator(CHAT), card = page.locator(`${BAR} .dk-ns`);
   await expect(card).toHaveCount(1);
   await expect(card.locator(".dk-ns-h")).toHaveText("Not started yet");
   await expect(card.locator(".dk-ns-t")).toHaveText("It waits for Search stays centred in the header.");
@@ -28,7 +28,7 @@ test("a queued item after another shows a card naming that item, who is on it an
   await expect(go).toHaveText("Start now");
   await expect(go).not.toHaveClass(/\bprimary\b/);
   // Said once: no chain of the same below it, no "Waiting on you", no holder's line.
-  await expect(page.locator(".dk-right .dk-pane .dk-chain")).toHaveCount(0);
+  await expect(page.locator(".dk-right .dk-chain")).toHaveCount(0);
   await expect(ichat).not.toContainText("Waiting on you");
   await expect(ichat.locator('[data-key="where"]')).toHaveCount(0);
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
@@ -54,7 +54,7 @@ test("a queued item waiting for a free working folder says how many, with their 
     Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d4"), { after: null, tree_wait: true, copy_users: ["d3", "d5"] });
   });
   await openItem(page, "d4");
-  const ichat = page.locator(".dk-right .dk-ichat"), card = ichat.locator(".dk-ns");
+  const ichat = page.locator(CHAT), card = page.locator(`${BAR} .dk-ns`);
   await expect(card.locator(".dk-ns-t")).toHaveText("Waiting for one of 2 items on This Mac to finish.");
   // The titles stay folded away till you ask (#671).
   await expect(card.locator(".dk-ns-s a").first()).toBeHidden();
@@ -76,7 +76,7 @@ test("Start now with every working folder in use warns first: Keep waiting leave
     Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d4"), { after: null, tree_wait: true, copy_users: ["d3", "d5", "d6"], start_full: { machine: "", on: "This Mac", n: 3, max: 9 } });
   });
   await openItem(page, "d4");
-  const go = page.locator('.dk-right .dk-ichat .dk-ns button[data-desk-act="start_now"]');
+  const go = page.locator(`${BAR} .dk-ns button[data-desk-act="start_now"]`);
   const dialog = page.locator('[role="alertdialog"]');
   await go.click();
   await expect(dialog.locator(".move-title")).toHaveText("This Mac already has 3 items working");
@@ -108,13 +108,13 @@ test("Start now with every working folder in use warns first: Keep waiting leave
   expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "start_now")).toEqual([]);
 });
 
-test("with no chat of its holder's, the card shows on its page in place of What's holding it up", async ({ page, cue }) => {
+test("with no holder, the card shows on its page in place of What's holding it up", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d4").holder = null; });
   await openItem(page, "d4");
-  const pane = page.locator(".dk-right .dk-pane");
-  await expect(pane.locator(".dk-ichat")).toHaveCount(0);
-  const card = pane.locator(".dk-inow .dk-ns");
+  const pane = page.locator('.dk-right .dkn-sp[data-desk-page="item"] .dkn-ibare');
+  await expect(page.locator(SP)).toHaveCount(0);
+  const card = pane.locator(".dk-ns");
   await expect(card.locator(".dk-ns-t")).toHaveText("It waits for Search stays centred in the header.");
   await expect(card.locator("button")).toHaveText("Start now in a new session");
   await expect(pane.locator(".dk-chain")).toHaveCount(0);
@@ -127,7 +127,7 @@ for (const scheme of ["light", "dark"]) {
     await cue.open("desk");
     await cue.change((st) => { Object.assign(st.sessions.find((x) => x.session_id === "lead"), { state: "waiting", thread: [], since_ms: Date.now() - 60000 }); st.items = st.items.filter((i) => !(i.session_id === "lead" && i.status === "pending")); });
     await openItem(page, "d4");
-    const card = page.locator(".dk-right .dk-ichat .dk-ns");
+    const card = page.locator(`${BAR} .dk-ns`);
     await expect(card).toBeVisible();
     const got = await card.evaluate((e) => {
       const c = getComputedStyle(e), root = getComputedStyle(document.documentElement);
@@ -139,8 +139,8 @@ for (const scheme of ["light", "dark"]) {
         t: fs(".dk-ns-t"), s: fs(".dk-ns-s"), n: fs(".dk-ns-n"), muted: getComputedStyle(e.querySelector(".dk-ns-n")).color, mutedTok: tok("--muted"),
         btn: getComputedStyle(e.querySelector("button")).backgroundColor, accent: tok("--accent"), bgImg: c.backgroundImage };
     });
-    // No fill: only your messages have a background in a Desk chat (#688); the hairline border frames it.
-    expect(got.bg).toBe("rgba(0, 0, 0, 0)");
+    // In the item's bar over the chat, not in the chat (#688's no-fill was a chat's): panel-2, the hairline framing it.
+    expect(got.bg).toBe(got.panel2);
     expect(got.border).toBe(got.line);
     // No coloured left stripe: the left edge is the same hairline as the rest.
     expect([got.leftW, got.leftC]).toEqual([got.topW, got.border]);

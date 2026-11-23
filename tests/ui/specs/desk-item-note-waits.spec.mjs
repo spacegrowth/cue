@@ -1,5 +1,5 @@
-// A note you send on an item's page while its session is busy (#419): it shows as your words alone with "Waiting:
-// host-lead is finishing something, your note goes in next" under it, kept in Cue or queued; once the session takes it,
+// A note you send on an item's page while its session is busy (#419): the item opens its session's chat (C, #748), where
+// it shows as your words alone with the board's line that it waits, kept in Cue or queued; once the session takes it,
 // the chat's Working line instead. The item leaves Waiting on you when the note goes (the hub puts it back at work): in
 // the Items list, the Progress view and the Waiting on you count.
 import { test, expect, openDesk } from "./cue.mjs";
@@ -20,7 +20,7 @@ test("a note kept for its busy session shows your words and that it goes in next
     st.sessions.find((x) => x.session_id === "host").held = { role: "you", text: `About #d5 (${st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").title}): make the button bigger`, at_ms: Date.now(), images: [] };
   });
   await openItem(page, "d5");
-  const ichat = page.locator(".dk-right .dk-ichat"), held = ichat.locator(".cv-you.msg-held");
+  const ichat = page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"]'), held = ichat.locator(".cv-you.msg-held");
   // Its words under the item's head, as the board's chat draws a message about an item (#688).
   await expect(held.locator(".cv-you-text")).toHaveText(/make the button bigger$/);
   await expect(held.locator(".dk-about")).toContainText("#d5");
@@ -45,7 +45,7 @@ test("a send-back queued in its session shows your words alone, waiting", async 
     st.sessions.find((x) => x.session_id === "host").queued = { role: "you", text: `Desk item #d5 (${st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").title}) isn't done: the colour is off\nIts fixes stay in #d5; don't add new items for them. Say DONE: #d5 when it is.`, at_ms: Date.now(), images: [] };
   });
   await openItem(page, "d5");
-  const q = page.locator(".dk-right .dk-ichat .cv-you.msg-queued");
+  const q = page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"] .cv-you.msg-queued');
   await expect(q.locator(".cv-you-text")).toHaveText(/the colour is off$/);
   await expect(q.locator(".cv-you-text")).not.toContainText("isn't done");
   await expect(q.locator(".dk-about")).toContainText("#d5");
@@ -57,11 +57,11 @@ test("an item your note went to leaves Waiting on you: the list, Progress and th
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5"), { state: "needs_you" }); });
   await openDesk(page);
-  // B2 (#666): WAITS ON YOU's head holds its count; Progress has no button in the Items head (deskProgToggle opens it).
-  const you = page.locator('.dk-items .dk2b-gh[data-desk2b-group="you"] i');
+  // WAITING ON YOU's head holds its count; Progress has no button in the Items head (deskProgToggle opens it).
+  const you = page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)');
   await expect(you).toHaveText(/^\d+$/);
   const before = Number(await you.innerText());
-  expect(await groupOf(page, "d5")).toBe("WAITS ON YOU");
+  expect(await groupOf(page, "d5")).toBe("WAITING ON YOU");
   await page.evaluate(() => deskProgToggle(true));
   const count = page.locator(".dk-prog .dk-grcount"), needs = async () => Number((await count.innerText()).match(/(\d+) needs? you/)?.[1] || 0);
   await expect(count).toBeVisible();
@@ -74,7 +74,7 @@ test("an item your note went to leaves Waiting on you: the list, Progress and th
     st.sessions.find((x) => x.session_id === "host").held = { role: "you", text: `About #d5 (${st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").title}): yes, and smaller`, at_ms: Date.now(), images: [] };
   });
   await expect(you).toHaveText(String(before - 1));
-  await expect.poll(() => groupOf(page, "d5")).not.toBe("WAITS ON YOU");
+  await expect.poll(() => groupOf(page, "d5")).not.toBe("WAITING ON YOU");
   await page.evaluate(() => deskProgToggle(true));
   await expect.poll(needs).toBe(needBefore - 1);
   await expect(page.locator('.dk-prog [data-desk-prog-row="d5"] .dk-grw.you')).toHaveCount(0);
@@ -87,13 +87,14 @@ test("a send-back waiting for a free working folder says so, not Sending, and th
     Object.assign(it, { state: "queued", tree_wait: true, back_waiting: "The canvas still opens blank" });
   });
   await openItem(page, "d5");
-  // Sent back from its page (desk/act.js deskSendBack), the hub keeping it till a working folder is free.
+  // Sent back from its page (desk/act.js deskSendBack), the hub keeping it till a working folder is free. Its session's
+  // chat (C, #748) never says Sending… of it.
   await page.evaluate(() => { deskPend("d5", "The canvas still opens blank", "back"); renderMain(); });
-  const right = page.locator(".dk-right"), ichat = right.locator(".dk-ichat");
-  await expect(ichat.locator(".cv-you .ml-words", { hasText: "Waiting: sent back, it starts when a working folder is free" })).toHaveCount(1);
-  await expect(ichat).not.toContainText("Sending…");
+  const chat = page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"]');
+  await expect(chat).toHaveCount(1);
+  await expect(chat).not.toContainText("Sending…");
   // Its row says it waits for a folder, sent back (whether it's Waiting on you is the hub's: desk_copy_wait.rs). In the
-  // Items list: ‹ Items first, the item's page took its place (#666).
-  await page.locator(".dk-right .dk-ph .dk-back").first().click();
-  await expect(page.locator('.dk-items [data-desk-item="d5"]').first()).toContainText("Sent back · waiting for a free working folder");
+  // Items list: back first, the item's chat took the lead's place.
+  await page.locator(".dk-right .dkn-sback .dk-back").first().click();
+  await expect(page.locator('.dkn-items [data-desk-item="d5"]').first()).toContainText("Sent back · waiting for a free working folder");
 });

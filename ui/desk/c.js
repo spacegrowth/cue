@@ -1,36 +1,13 @@
-// Cue UI desk — the new Desk layout (#738, "C, reviewed" of the #726 mocks), tried with "Try the new Desk layout" in
-// Desk settings: off by default, remembered across launches. Today's page (B2, desk/b2.js) with three columns on the
+// Cue UI desk — the Desk's layout (#738, "C, reviewed" of the #726 mocks; the only one since #748): three columns on the
 // green: at the left the Desk's sessions right on the green, grouped by machine, the lead on top with a thin line under
-// it; in the middle the lead's chat (or what's open in its place, as on B2), its panel only Now and Activity; at the
+// it; in the middle the lead's chat (or what's open in its place), its panel only Now and Activity; at the
 // right Items, one white card for what waits on you and what's working (a row per item with its progress as a strip,
 // or a line along its foot (#751), the step it's at in the Board's waiting stripes), and under it Up next and Done today side by side on the green, each folding to its
 // heading. One count everywhere: Waiting on you's heading is the Desk's own. Drawn by desk/view.js deskView;
 // everything here sits under `.dk-c` (styles/desk-c.css). Loaded after desk/b2.js (index.html, mini.html).
 
-const DESK_C_KEY = "cue.deskC";
-/** The new Desk layout is on. Kept in this window's storage, like the Desk's other choices of look. */
-let deskC = (() => { try { return localStorage.getItem(DESK_C_KEY) === "1"; } catch { return false; } })();
 /** Up next and Done today folded to their headings, by key ("next", "done"); kept across restarts. */
 const deskCFolds = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskCFolds") || "[]")); } catch { return new Set(); } })();
-
-/** Turn the new layout on or off, at once. It's today's page underneath, so the new Desk page (#628) goes off with it. */
-function deskCTurn(on) {
-  deskC = on;
-  try { localStorage.setItem(DESK_C_KEY, on ? "1" : "0"); } catch { /* not kept: on for this run only */ }
-  if (on && typeof deskV2 !== "undefined" && deskV2) return deskV2Turn(false);
-  renderMain();
-}
-/** The switch, by Desk settings' title beside the new Desk page's. */
-const deskCToggle = () => `<button class="dk2-sw${deskC ? " on" : ""}" role="switch" aria-checked="${deskC}" data-desk-c-try><span class="dk2-knob" aria-hidden="true"></span>Try the new Desk layout</button>`;
-if (typeof document !== "undefined") {
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest?.("[data-desk-c-try]")) return;
-    e.stopPropagation();
-    deskCTurn(!deskC);
-  }, true);
-}
-/** The new layout is what the Desk shows now: on, and not the new Desk page. */
-const deskCOn = () => deskC && !(typeof deskV2 !== "undefined" && deskV2);
 
 const DESK_C_MAC = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>`;
 const DESK_C_CREW = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.5A5 5 0 0 1 21 19"/></svg>`;
@@ -216,7 +193,7 @@ const deskCMach = (i) => (i?.machine === "This Mac" ? "" : deskMachTag(i));
 function deskCNow(i) {
   // What it asks opens with the row, as Check did: no Choose… button fighting the words for room.
   if (i.state === "needs_you") return `<span class="dkn-nask">Asks you</span>`;
-  if (i.state === "to_check" && !deskInstallWait(i)) return deskLooksSoon.has(i.id) || deskLeaving.has(i.id) ? `<span class="dk-ok on" aria-hidden="true"></span><span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(i.id)}">Undo</button></span>` : `<span class="dkn-nw">Ready to check</span><button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`;
+  if (i.state === "to_check" && !deskInstallWait(i) && !deskUncommitted(i)) return deskLooksSoon.has(i.id) || deskLeaving.has(i.id) ? `<span class="dk-ok on" aria-hidden="true"></span><span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(i.id)}">Undo</button></span>` : `<span class="dkn-nw">Ready to check</span><button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`;
   const [st, mono] = deskB2Status(i);
   return `<span class="dkn-nw${mono ? " mono" : ""}">${st}</span>`;
 }
@@ -305,7 +282,7 @@ function deskCMore() {
     more.classList.toggle("end", !n);
   }
 }
-window.addEventListener("resize", () => { if (view === "desk" && deskCOn()) { deskCFitLists(); deskCFitNames(); } });
+window.addEventListener("resize", () => { if (view === "desk") { deskCFitLists(); deskCFitNames(); } });
 /** Line: a step's name goes with its time only where its piece has room for both; else just the time. What each
  *  label came to is kept (by item, step, time and window width) and drawn with it next time (deskCFoot). */
 const deskCShortBy = new Map();
@@ -320,20 +297,51 @@ function deskCFitNames() {
   if (deskCShortBy.size > 500) deskCShortBy.clear();
 }
 document.addEventListener("scroll", (e) => { if (e.target?.dataset?.dknList) deskCMore(); }, true);
-/** An item opened on the new layout: its session's chat (the same as clicking the session on the left), not a page of
- *  its own (#560's plan A, finished in #744: one item per session until it's done, so that chat is its story). The
- *  page's head already says the item it's on; over the chat, a bar with its strip, and ready to check, what to try
- *  with Looks right and Send back. null when no session
- *  has it yet (its page shows instead). */
+/** The bar over an opened item: its strip, then what you can do with it. Ready to check: Looks right and Send back,
+ *  and what to try under them; writing why to send it back: that box in their place. Else its own buttons (Give to…,
+ *  what it waits on and what clears it: Clear and land, Run the landing again…; its ⋯ menu: Start, Resume, Install
+ *  now…; a plain working item has none, Stop is in the chat's own top bar), and a failed build's output. With no
+ *  session (`bare`) also Drop this item, or for a dropped item's kept copy Pick up again and Remove. */
+function deskCItemBar(i, bare = false) {
+  const id = esc(i.id), check = i.state === "to_check" && !deskInstallWait(i), backing = deskBackFor === i.id, armed = deskDropArm === i.id;
+  const drop = i.state !== "done" && i.state !== "dropped" ? `<button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${id}">${armed ? "Drop it" : "Drop this item"}</button>` : "";
+  const acts = backing ? "" : i.kept && bare ? `<button class="btn small primary" data-desk-act="pickup_kept" data-id="${id}">Pick up again</button><button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${id}">${armed ? "Remove it and its work" : "Remove"}</button>`
+    : !check ? deskItemActs(i) + (bare ? drop : "") : deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
+    : `<button class="btn small primary" data-desk-act="looks_right" data-id="${id}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button><button class="btn small" data-desk-act="send_back" data-id="${id}">Send back</button>`;
+  // What to try: its session's check line (Try / Nothing to try), else its You'll see, else Send back to ask.
+  const cl = check && !backing ? deskToCheckLine(i) : null;
+  const see = cl ? `<div class="dkn-ibsee">${deskCheckHtml(cl)}</div>` : "";
+  const back = backing ? `<div class="dkn-ibback">${deskBackHtml(i.id)}</div>` : "";
+  // Queued for its session, which is still on something else: what it waits for and Start now, over that chat.
+  const log = deskFinLog(i), ns = bare ? "" : deskNotStarted(i);
+  // Options to pick from (#281, #445): each with what it is and Pick; and its mocks, a click away.
+  const picks = backing ? "" : deskPickBtns(i, "dkn-ibopts"), mocks = deskCanvas(i) ? `<div class="dkn-ibmocks">${deskDesignsA(deskCanvas(i))}</div>` : "";
+  const kept = i.kept ? `<div class="dkn-ibkept">Its work is kept in ${esc(i.kept.path)} on ${esc(i.kept.branch)}. Pick up again puts it back on the Desk with this copy, for ${esc(deskLeadName(deskOf(i.project)) || "the lead")} to give out.</div>` : "";
+  return `<div class="dkn-ib${check ? " check" : ""}"><div class="dkn-ib2">${deskCStrip(i)}<div class="dkn-ibacts">${acts}</div></div>${see}${kept}${mocks}${picks}${back}${ns}${log ? `<div class="dkn-iblog">${log}</div>` : ""}</div>`;
+}
+/** An item opened: its session's chat (the same as clicking the session on the left), not a page of its own (#560's
+ *  plan A, finished in #744: one item per session until it's done, so that chat is its story), its bar over the chat.
+ *  null when no session has it (deskCItemBare instead). */
 function deskCItemChat(i, d, foot) {
   const sid = deskHolderSid(i);
+  // A dropped item's kept copy is off the Desk: its own view, with Pick up again and Remove.
   if (!sid || !sessionOf(sid)) return null;
-  const check = i.state === "to_check" && !deskInstallWait(i);
-  const acts = !check ? "" : deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
-    : `<button class="btn small primary" data-desk-act="looks_right" data-id="${esc(i.id)}">Looks right</button><button class="btn small" data-desk-act="send_back" data-id="${esc(i.id)}">Send back</button>`;
-  const see = check && (i.see || "").trim() ? `<div class="dkn-ibsee"><b>Try:</b> ${esc(deskOneLine(i.see))}</div>` : "";
-  const bar = `<div class="dkn-ib${check ? " check" : ""}"><div class="dkn-ib2">${deskCStrip(i)}<div class="dkn-ibacts">${acts}</div></div>${see}</div>`;
-  return deskCSessChat(sid, null, d, foot, bar);
+  // A dropped item's kept copy (#608): the chat of the session that held it, which you can still write to; its bar
+  // says where the work is kept, with Pick up again and Remove.
+  return deskCSessChat(sid, null, d, foot, deskCItemBar(i, !!i.kept), i);
+}
+/** An item no session has (Up next, parked, a dropped one's kept copy, or one whose session has ended): back, its
+ *  kind, number and title, where it stands, its bar, then what it was added with (its words, pictures, what you'll
+ *  see) and, given out but not started, what it waits for; the box at the foot. */
+function deskCItemBare(i, d, foot) {
+  const [st] = deskB2Status(i), pics = thumbs(i.images), pts = deskDoneWhenPoints(i.see);
+  const words = `<div class="dk-md">${deskMd(i.words || i.title)}</div>${pics ? `<div class="dk-tpics">${pics}</div>` : ""}`;
+  const see = pts.length ? deskSec("You'll see", `<ul class="dkn-isee">${pts.map((p) => `<li>${linkify(esc(p))}</li>`).join("")}</ul>`) : "";
+  // What you sent about it from this box, on its way to the lead (or that couldn't go): as a chat's outbox rows.
+  const ls = deskLead(d) && !deskLeadEnded(d) ? deskLeadSession(d) : null;
+  const sent = ls ? deskCItemPending(i, ls).map((o) => outboxRow(o, ls, o.key)).join("") : "";
+  const head = `<div class="dkn-ihead"><h1 class="dkn-ih1">${deskCKind(i)}<span class="dkn-iid">#${esc(i.id)}</span> <span class="dkn-itt">${esc(i.title)}</span></h1><div class="dkn-smeta">${st}</div></div>`;
+  return `<div class="dkn-sp" data-desk-page="item"><div class="dkn-sback">${deskBack("")}</div>${head}${deskCItemBar(i, true)}<div class="dkn-spm"><div class="dk-pane dkn-ibare" data-scroll-key="item:${esc(i.id)}">${i.state === "needs_you" ? deskChain(i) : ""}${deskNotStarted(i)}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}${deskSec("Couldn't give it out", i.route_failed && !i.holder ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Added with", words)}${see}${sent ? `<div class="dkn-isent">${sent}</div>` : ""}</div>${foot}</div></div>`;
 }
 /** Each session's open tab on the new layout ("chat" | "files"), by session: Chat unless you picked Files. */
 const deskCSessTabs = new Map();
@@ -341,12 +349,41 @@ const deskCSessTabs = new Map();
  *  top bar for it (its name, state, chips, Commit, ⋯, btw, Stop: chat/pane.js activeHead), the item it's on, the item's
  *  bar when there is one, then Chat and Files (what it changed this turn, each opening its changes) as tabs, and the box.
  *  No panel: Stop and the rest are in the bar, the files in their tab. */
-function deskCSessChat(sid, from, d, foot, bar = "") {
+/** What you sent from an opened item's box that its session's chat doesn't show yet (deskPend), as the chat's own
+ *  outbox rows under the item's head: Sending till it's there, a send-back said so, red with Send again if it couldn't
+ *  go. */
+function deskCItemPending(i, s, d = deskOf(i.project)) {
+  const thread = s.thread || [], said = (p) => p.text.trim();
+  // Gone by the hub's own record (#525): a step of yours with the same words that it says went.
+  const steps = [...(d?.older || []), ...(d?.decisions || [])].filter((c) => c.item_id === i.id && c.by === "You" && !c.call);
+  const after = (c, p) => Math.max(deskMs(c.at), c.delivery?.at_ms || 0) >= p.at - 1000;
+  // A note to the lead is kept with no delivery: in, it has gone. One to a holder has gone once the hub says so.
+  const went = (p) => p.failed == null && said(p) && steps.some((c) => String(c.text || "").trim() === said(p) && after(c, p) && (!c.delivery || !["", "sending"].includes(c.delivery.went || "")));
+  const sent = (p) => went(p) || p.failed == null && ([s.held, s.queued].some((w) => said(p) && String(w?.text || "").includes(said(p)))
+    || outbox.some((o) => o.sid === s.session_id && o.text === p.text)
+    || thread.some((e) => e.role === "you" && e.at_ms >= p.at - 60000 && (said(p) ? String(e.text || "").includes(said(p)) : true)));
+  const head = deskAboutBtn(i.id, i, i.title);
+  // What the hub says didn't reach it (#437: Cue stopped, the session was gone): red with why and Send again, kept
+  // across restarts as the hub keeps it; a copy of it waiting here is shown by it.
+  const lost = steps.filter((c) => (c.delivery?.went || "").startsWith("failed"));
+  const lostOf = (p) => lost.some((c) => String(c.text || "").trim() === said(p) && after(c, p));
+  const failedRows = lost.map((c) => ({ text: c.text, at: deskMs(c.at), key: `lost:${c.id}`, head, m: { st: "failed", why: esc(c.delivery.went.replace(/^failed:?\s*/, "") || "it didn't go"), to: i.holder?.name, item: i.id,
+    acts: sendAgainBtn(`data-desk-act="msg_retry" data-id="${esc(i.id)}" data-step="${esc(c.id)}"`) } }));
+  return failedRows.concat((deskPending.get(i.id) || []).filter((p) => !sent(p) && !(p.failed == null && lostOf(p))).map((p) => {
+    const failed = p.failed != null;
+    const acts = failed ? sendAgainBtn(`data-desk-act="msg_retry" data-id="${esc(i.id)}" data-at="${esc(String(p.at))}"`) : "";
+    const picsHtml = !p.images?.length && p.pics ? `<div class="dk-tpn">${p.pics === 1 ? "1 picture" : `${p.pics} pictures`}</div>` : "";
+    const m = { ...(failed ? { st: "failed", why: esc(p.failed), retry: p.at } : i.state === "queued" && i.tree_wait ? { st: "sending", note: "Waiting: sent back, it starts when a working folder is free" } : { st: "sending" }), to: p.why === "lead" ? deskLeadName(d) : i.holder?.name, item: i.id, acts, extra: p.why === "back" ? ' · <span class="ml-back">sent back</span>' : "" };
+    return { text: p.text, images: p.images, picsHtml, at: p.at, key: `p:${p.at}`, head, m };
+  }));
+}
+function deskCSessChat(sid, from, d, foot, bar = "", item = null) {
   const s = sessionOf(sid);
   if (!s) return null;
   const card = (state.items || []).find((x) => x.session_id === sid) || null;
-  const head = activeHead(paneArgs({ it: card, s }));
-  const on = deskSessItems(d, sid)[0];
+  // The Board's own top bar, without its hover words (none on the Desk).
+  const head = activeHead(paneArgs({ it: card, s })).replace(/ title="[^"]*"/g, "");
+  const on = item || deskSessItems(d, sid)[0];
   const meta = on ? `<div class="dkn-smeta">on ${deskItemLink(on)} · ${esc(on.title)}</div>` : "";
   const n = (inboxTurnDiff(sid)?.files || s.changes?.files || []).length;
   const tab = deskCSessTabs.get(sid) === "files" ? "files" : "chat";
@@ -356,7 +393,10 @@ function deskCSessChat(sid, from, d, foot, bar = "") {
   if (tab === "files") main = `<div class="dk-pane dkn-sfiles" data-scroll-key="files:${esc(sid)}">${deskSessFiles(sid) || `<div class="dk-empty">Nothing changed this turn.</div>`}</div>`;
   else {
     const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
-    const rows = deskChatRows(s, lead ? { you: deskLeadNote } : undefined), where = whereNow(null, s);
+    const pending = item ? deskCItemPending(item, s) : [];
+    // Not started on the item yet (its card is in the bar, #626): its holder's own line only when it really asks you.
+    const notYet = item && deskNotStarted(item), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";
+    const rows = deskChatRows(s, lead || pending.length ? { ...(lead ? { you: deskLeadNote } : {}), ...(pending.length ? { pending } : {}) } : undefined), where = !notYet || asks ? whereNow(null, s) : "";
     const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Nothing said yet.</div>` : "";
     main = `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
   }

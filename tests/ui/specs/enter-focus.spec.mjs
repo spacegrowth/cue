@@ -84,39 +84,38 @@ test("a Desk item's box: opening it puts the cursor there; composing Enter never
   await enterKeys(page, cue, box, "desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): keep the old one" });
 });
 
-// The item opens in the lead chat's place (B2, #666) and the list stays, its row lit: the keys stay on that row, not
-// the page's box.
+// The item opens in the lead chat's place and the list stays, its row lit: the keys stay on that row, not the box.
 test("a Desk item opened from the keyboard keeps the keys out of its box; one opened by a click puts them there", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const row = page.locator('.dk-items [data-desk-item="d6"]');
+  const row = page.locator('.dkn-items [data-desk-item="d6"]');
   await row.focus();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".dk-right .dk-pg h1")).toContainText("Tidy the Settings copy");
+  await expect(page.locator(".dk-right .dkn-sp .dkn-ih1")).toContainText("Tidy the Settings copy");
   await expect(row).toBeFocused();
-  await expect(page.locator(".dk-right .dk-box textarea")).not.toBeFocused();
-  await page.locator(".dk-right .dk-ph [data-desk-back]").click();
-  await expect(page.locator(".dk-right .dk-pg[data-desk-page=\"item\"]")).toHaveCount(0);
-  await page.locator('.dk-items [data-desk-item="d5"]').click();
-  await expect(page.locator(".dk-right .dk-box textarea")).toBeFocused();
+  await expect(page.locator(".dk-right .dkn-spm textarea")).not.toBeFocused();
+  await page.locator(".dk-right .dkn-sback .dk-back").click();
+  await expect(page.locator('.dk-right .dkn-sp[data-desk-page="item"]')).toHaveCount(0);
+  await page.locator('.dkn-items [data-desk-item="d5"]').click();
+  await expect(page.locator(".dk-right .dkn-spm textarea")).toBeFocused();
 });
 
 test("Send back: opening it puts the cursor in its box; composing Enter never sends, ⇧↵ a new line, ↵ sends it back", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await page.locator('.dk-items [data-desk-item="d2"]').click();
+  await page.locator('.dkn-items [data-desk-item="d2"] .dkn-tt').click();
   const pane = page.locator(".dk-right");
-  await pane.locator('.dk-panel[data-side-for] [data-desk-act="send_back"]').click();
+  await pane.locator('.dkn-ib [data-desk-act="send_back"]').click();
   const box = pane.locator('textarea[data-text="back:d2"]');
   await expect(box).toBeFocused();
   // Send with nothing in it: says why, the cursor stays in the box.
   await pane.locator('[data-desk-act="back_go"][data-id="d2"]').click();
   await expect(page.locator(".toast").last()).toHaveText("Say why it goes back first");
   await expect(box).toBeFocused();
-  // Send back again closes it.
-  await pane.locator('.dk-panel[data-side-for] [data-desk-act="send_back"]').click();
+  // Its box takes Send back's place in the item's bar: its Cancel closes it.
+  await pane.locator('.dkn-ib [data-desk-act="back_cancel"][data-id="d2"]').click();
   await expect(box).toHaveCount(0);
-  await pane.locator('.dk-panel[data-side-for] [data-desk-act="send_back"]').click();
+  await pane.locator('.dkn-ib [data-desk-act="send_back"]').click();
   await expect(box).toBeFocused();
   await enterKeys(page, cue, box, "desk_item_act", { id: "d2", act: "send_back", text: "keep the old one" });
   await expect(box).toHaveCount(0);

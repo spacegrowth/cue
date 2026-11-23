@@ -34,7 +34,8 @@ test("a NOTE is a small card: who it went to and which item, the message under i
   if (process.env.SHOT_DIR) await card.screenshot({ path: `${process.env.SHOT_DIR}/note-card.png` });
   // Its item number opens the item.
   await card.locator('[data-desk-chk-item="d2"]').click();
-  await expect(page.locator('.dk-right .dk-pg[data-desk-page="item"]')).toBeVisible();
+  await expect(page.locator(".dk-right .dkn-sp .dkn-ib")).toBeVisible();
+  await expect(page.locator('.dkn-card .dkn-row.on[data-desk-item="d2"]')).toHaveCount(1);
 });
 
 test("a NOTE Cue has no record of yet names the item's holder; one the hub wouldn't read stays as written", async ({ page, cue }) => {

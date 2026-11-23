@@ -1,25 +1,10 @@
-// Cue UI desk — the Desk page as option B2 of #652 (#666): today's page unless "Try the new Desk page" is on
-// (desk/v2.js). The lead's chat card at the left is always the lead's; Now and Waits on you fold into one strip over its
-// chat (the Working pill unfolds the sessions at work in place, a line each); Show panel brings back the panel. At the
-// right one item list, a row of four columns per item, the long groups showing their first 3. An item, a session's
-// chat or All sessions open on the left in the chat card's place, ‹ Items N or Esc going back to the lead's chat; the
-// list stays, the open row lit in place. Drawn by desk/view.js deskView; styles/desk-b2.css.
-// Loaded after desk/v2.js (index.html, mini.html).
+// Cue UI desk — parts first made for B2 of #652 (#666) that the Desk's layout (desk/c.js) still uses: the strip over
+// the lead's chat when its panel is hidden (Now and Waits on you; the Working pill unfolds the sessions at work in
+// place, a line each), where an item stands in a few words (deskB2Status), Done today's list, the folded groups, and
+// Desk settings. styles/desk-b2.css. Loaded before desk/c.js (index.html, mini.html).
 
-/** Today's page is B2: everything but the new page (#628) when it's on. */
-const deskB2On = () => !(typeof deskV2 !== "undefined" && deskV2);
-/** Something open beside the lead's chat: never now (#666), what's open takes the chat card's place on the left. */
-const deskB2Side = () => false;
 /** The Working pill in the strip is unfolded. */
 let deskB2Unfold = false;
-/** The list's tab: "all", "you" (Waits on you), "next" (Up next), "done" (Done today), "away" (Calls while away). */
-let deskB2Tab = "all";
-/** The groups shown whole after Show all, as "project|group". */
-const deskB2Full = new Set();
-/** How many rows a long group shows before Show all. */
-const DESK_B2_SHOW = 3;
-/** Each tab's groups (deskList's keys); Calls while away is the Away line over the list. */
-const DESK_B2_TABS = { you: ["you", "check"], next: ["queued", "held"], done: ["done"], away: [] };
 const DESK_B2_CARET = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 
 /** Desk `d`'s open items, as the lead's line and the All tab count them. */
@@ -32,8 +17,6 @@ function deskB2WaitN(d, taskApprovals) {
 }
 /** Desk `d`'s finished items done today: the Done today tab's rows and its count. */
 const deskB2DoneToday = (d) => deskDoneList(d).filter(deskDoneToday);
-/** What an empty tab says in its list's place. */
-const DESK_B2_NONE = { you: "Nothing waits on you.", next: "Nothing up next.", done: "Nothing done today.", away: "No calls while away." };
 /** The way back to the list: "Items 40". */
 const deskB2ItemsWord = (d) => `Items ${deskB2Open(d)}`;
 /** "a", "a and b", "a, b and c". */
@@ -102,40 +85,12 @@ const deskB2StepCls = (i, at, k) => (k < at ? "done" : k === at ? (deskProgLook(
 /** After a draw (app/render.js replayMotion): every moving step's dots keep time with the page's clock, so a step drawn
  *  afresh carries on where it was, never starting over, and a kept one stays as it runs. */
 function deskB2Drift() {
-  for (const el of document.querySelectorAll(".dk2b-trk i.cur.live, .dk2b-step.cur.live i")) for (const a of el.getAnimations?.() || []) if (a.startTime !== 0) a.startTime = 0;
+  for (const el of document.querySelectorAll(".dk2b-trk i.cur.live, .dk2b-step.cur.live i, .dkn-kp.cur.live i")) for (const a of el.getAnimations?.() || []) if (a.startTime !== 0) a.startTime = 0;
 }
 /** An item's six steps as six short bars: done filled, the one it's at dotted, the rest faint. */
 function deskB2Track(i) {
   const at = deskB2At(i);
   return `<span class="dk2b-trk" aria-hidden="true">${DESK_B2_STEPS.map((_, k) => `<i class="${deskB2StepCls(i, at, k)}"></i>`).join("")}</span>`;
-}
-/** Under the bar: "3/6 · Tests", or "not started". */
-const deskB2StepWord = (i) => { const at = deskB2At(i); return at < 0 ? "not started" : at >= 6 ? "6/6 · Done" : `${at + 1}/6 · ${DESK_B2_STEPS[at]}`; };
-/** The tabs over the list, plain words with their counts, All a filled pill when picked (Calls while away only while
- *  away). */
-function deskB2Tabs(g, taskApprovals) {
-  const b = ([k, label, n]) => `<button class="dk2b-tab${deskB2Tab === k ? " on" : ""}" role="tab" aria-selected="${deskB2Tab === k}" data-desk2b-tab="${k}">${label} <span class="n">${n}</span></button>`;
-  return `<div class="dk2b-tabs" role="tablist" aria-label="Show">${deskB2TabCounts(g, taskApprovals).filter(([k]) => k !== "away" || g.d?.away?.on).map(b).join("")}</div>`;
-}
-/** The tabs over the list, each [key, label, count]. */
-function deskB2TabCounts(g, taskApprovals) {
-  const d = g.d, away = d?.away?.on ? deskAwayCalls(d).length : 0;
-  if (deskB2Tab === "away" && !d?.away?.on) deskB2Tab = "all";
-  return [["all", "All", deskB2Open(d)], ["you", "Waits on you", deskB2WaitN(d, taskApprovals)], ["next", "Up next", g.queued.length + g.held.length], ["done", "Done today", deskB2DoneToday(d).length], ["away", "Calls while away", away]];
-}
-/** The list's groups the tab shows (the new page's list, desk/list.js): all of them, or the tab's, and the Away line. */
-function deskB2Shown(parts, top) {
-  if (deskB2Tab === "all") return { parts, top };
-  const keys = DESK_B2_TABS[deskB2Tab] || [];
-  return { parts: parts.filter(([k]) => keys.includes(k)), top: deskB2Tab === "away" ? top : "" };
-}
-/** A long group's rows in the All tab: its first 3 and Show all N, till that's pressed. [rows, Show all's html]. */
-function deskB2Cap(key, list) {
-  if (deskB2Tab !== "all" || list.length <= DESK_B2_SHOW || deskB2Full.has(`${deskSelection()}|${key}`)) return [list, ""];
-  // The open item stays in view, in its own place.
-  const open = deskOpen?.kind === "item" ? list.find((i) => deskIdIs(i, deskOpen.id)) : null;
-  const head = list.filter((x, k) => k < DESK_B2_SHOW || x === open);
-  return [head, `<button class="dk2b-all" data-desk2b-all="${esc(key)}">Show all ${list.length}</button>`];
 }
 /** The line under a row's title: where it stands in a few words, the old row's words cut short (#666: the row has no
  *  other line, so every state says itself here; answering and Looks right are on its page). [html, whether it's a
@@ -195,29 +150,6 @@ function deskB2Status(i) {
   if (!i.holder) return ["Nobody has it yet", false];
   return ["Queued", false];
 }
-/** Its tests, in a word, at the right of a row at work: what Cue knows from its steps. */
-function deskB2Tests(i) {
-  if (i.finish?.check_failed || i.finish?.step === "check_failed") return "still fail";
-  const at = deskProgAt(i);
-  return at < 2 ? "not run yet" : at === 2 ? "running" : "all pass";
-}
-/** One item as a row of four: #id; its title (and the machine it runs or starts on, when not this Mac, #597) with
- *  where it stands under it; its six steps with "3/6 · Tests"; Check
- *  when it's ready to check, its tests while at work. Lit in place while its page is open on the left. */
-function deskB2Row(i) {
-  const on = deskOpen?.kind === "item" && deskIdIs(i, deskOpen.id);
-  const [st, mono] = deskB2Status(i);
-  const right = i.state === "to_check" && !deskInstallWait(i) ? `<button class="dk2b-chk" data-desk-chk-item="${esc(i.id)}">Check</button>`
-    : i.state === "working" || deskFinishing(i) ? `<span class="dk2b-ok">${deskB2Tests(i)}</span>` : "<span></span>";
-  // A row nobody has yet shows no machine (#776): that's picked as it starts.
-  return `<div class="dk-it dk2b-row${on ? " on" : ""}${deskFeat(i) ? " dk-feat" : ""}${i.state === "needs_you" ? " ask" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><span class="dk2b-n">#${esc(i.id)}</span><div class="dk2b-t"><div class="dk2b-tt"><span>${esc(i.title)}</span>${i.holder ? deskMachTag(i) : ""}</div><div class="dk2b-ts${mono ? " mono" : ""}">${st}</div></div><div class="dk2b-st">${deskB2Track(i)}<span>${deskB2StepWord(i)}</span></div>${right}</div>`;
-}
-/** A group: its head (WORKING 7) and its rows, the first 3 in the All tab and Show all N; each drawn by `row`. */
-function deskB2Group(key, label, list, extra = "", n = list.length, row = deskB2Row, first = "") {
-  if (!list.length && !extra && !first) return "";
-  const [rows, more] = deskB2Cap(key, list);
-  return `<div class="dk2b-gh" data-desk2b-group="${key}">${label} <i>${n}</i></div>${first}${rows.map(row).join("")}${more}${extra}`;
-}
 /** The folded groups that are open, by key ("done", "away"), the same on every Desk; kept across restarts (#430). */
 const deskB2Folds = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.desk2bFolds") || "[]")); } catch { return new Set(); } })();
 /** A folded group, one line with its count and ›: Done today, Calls while away. Opened, its rows under it. */
@@ -225,87 +157,12 @@ function deskB2Fold(key, label, n, body) {
   const open = deskB2Folds.has(key);
   return `<button class="dk2b-fold${open ? " open" : ""}" data-desk2b-fold="${key}" aria-expanded="${open}">${label} <i>${n}</i><span aria-hidden="true">›</span></button>${open ? body : ""}`;
 }
-/** Done today, folded to a line with today's count. Opened: every finished item, newest first (today's, then older
- *  ones), 10 more each time its end comes into view (list.js deskDoneWatch), as the old Done group did. */
-function deskB2DoneFold(project, d, today) {
-  if (!d) return "";
-  const pg = deskDonePages.get(project);
-  if (!pg) queueMicrotask(() => deskDoneFetch(project));
-  const all = deskDoneList(d), shown = all.slice(0, Math.max(deskDoneShown.get(project) || DESK_DONE_STEP, today.length));
-  if (!shown.length) return "";
-  deskDoneDrawn.set(project, { n: deskB2Folds.has("done") ? shown.length : 0, last: shown.at(-1).id, row: deskB2Row, least: today.length, b2: true });
-  const end = all.length > shown.length || !pg?.end ? `<div class="dk-more" data-desk-done-more="${esc(project)}">Loading older…</div>` : "";
-  return deskB2Fold("done", "DONE TODAY", today.length, shown.map(deskB2Row).join("") + end);
-}
-/** Today's Items card: Items, Add an item…, Away and Pause in one line; the tabs; then Waits on you (questions and what's
- *  ready to check), Working, Up next, and Done today and Calls while away folded to a line each. */
-function deskB2List(project, taskApprovals) {
-  if (deskCardsOn()) return deskCards(project, taskApprovals);
-  const g = deskGroups(project, taskApprovals), d = g.d, t = deskB2Tab;
-  const aw = deskAwayWaiting(d, taskApprovals);
-  const waits = [...g.asks, ...g.check];
-  const working = [...g.landing, ...g.install, ...g.working, ...g.resume, ...g.paused];
-  const next = [...g.queued, ...g.held];
-  const doneToday = deskB2DoneToday(d), calls = d?.away?.on ? deskAwayCalls(d) : [];
-  const tabs = deskB2Tabs(g, taskApprovals);
-  // Steps held for your OK at the very top, oldest first, never behind Show all (#749).
-  const hf = deskHeldFirst(aw, waits, deskB2Row);
-  const you = deskB2Group("you", "WAITS ON YOU", hf.rest, aw.more || "", waits.length + (aw.n || 0), deskB2Row, hf.html);
-  const work = deskB2Group("working", "WORKING", working);
-  // Queued rows drag into your order by their grip (#387, #424: list.js deskQRow, deskQPress); parked ones don't.
-  const qRow = deskQRow(deskB2Row), queued = new Set(g.queued);
-  const up = deskB2Group("queued", "UP NEXT", next, "", next.length, (i) => (queued.has(i) ? qRow(i) : deskB2Row(i)));
-  const done = t === "done" ? deskB2Group("done", "DONE TODAY", doneToday) : deskB2DoneFold(project, d, doneToday);
-  const away = !d?.away?.on ? "" : t === "away" ? deskAwayCallsHtml(d) : deskB2Fold("away", "CALLS WHILE AWAY", calls.length, deskAwayCallsHtml(d));
-  // Dropped items' kept copies, above Done today as the old list had them; an add-on's own items after the rest.
-  const kept = (d?.kept || []).length ? `<div class="dk2b-gh" data-desk2b-group="kept">KEPT COPIES <i>${d.kept.length}</i></div>${d.kept.map(deskKeptRow).join("")}` : "";
-  let extra = [];
-  try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
-  const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskB2Row).join("")).join("");
-  const body = { all: you + work + up + kept + done + away + tail, you, next: up, done, away }[t] || "";
-  const empty = !body ? `<div class="dk-empty">${t === "all" ? "No items yet." : DESK_B2_NONE[t] || "Nothing here."}</div>` : "";
-  return `<div class="dk-card dk-items dk2b-list"><div class="dk2b-ih"><b>Items</b>${deskCardsSwitch()}${deskQuickAdd()}${deskAwaySwitch(d)}${deskPausedTag(d)}${deskPauseButton(d)}</div>${tabs}<div class="dk-scroll" data-scroll-key="desk-items:${esc(project)}">${body}${empty}</div></div>`;
-}
 
-// ---------- an item's page, on the left in the lead's chat's place ----------
-
-/** Item `i`'s page: ‹ Items N, its number and title; its progress in six steps; who has it, what it's doing, its tests,
- *  what's next; what to try and its buttons while it waits on you (Close, Send back); its last messages; Open its chat
- *  and Changes. Its question's card, or the box, at its foot. */
-function deskB2ItemPage(i, d, foot) {
-  const at = deskB2At(i);
-  const bar = DESK_B2_STEPS.map((n, k) => `<div class="dk2b-step ${deskB2StepCls(i, at, k)}"><i></i><span>${esc(n)}</span></div>`).join("");
-  const sid = deskHolderSid(i), s = sid ? sessionOf(sid) : null;
-  const since = s && i.state === "working" ? deskProgStamps(i)[0] || s.since_ms || 0 : 0;
-  const who = i.holder ? `<b>${esc(deskHolderOf(i))}</b>${since ? ` · working for <span data-ago="${since}">${ago(since)}</span>` : ""}` : "Nobody has it yet";
-  const [now, mono] = deskB2Status(i);
-  const tests = i.finish?.check_failed ? "Still fail" : at >= 3 ? "All pass" : at === 2 ? "Running" : "Not run yet";
-  const next = i.state === "done" ? "Nothing: it's done." : i.state === "to_check" ? "Waits on you to check it." : i.state === "needs_you" ? "Waits on your answer."
-    : i.state === "held" ? "Starts when you press Start." : at < 0 ? esc(deskQueueLine(i) || "Starts when a session is free.")
-    : at < 3 ? "Lands when the tests pass, then waits on you to check." : "Waits on you to check once it has landed.";
-  const kv = (k, v, cls = "") => `<span class="dk2b-ik">${k}</span><div class="dk2b-iv${cls}">${v}</div>`;
-  // What to try and its buttons (Close, Send back, Start…), as its panel had them, while there's something to do.
-  const backing = deskBackFor === i.id;
-  const acts = `${backing ? deskBackActs(i) : deskLooksTop(i) + deskPickBtns(i) + deskItemActs(i)}${deskBuiltLink(i)}${deskDesignsLink(i)}`;
-  const check = i.state === "to_check" ? deskCheckInfo(i, d) : "";
-  const todo = check || acts.trim() || backing ? `<div class="dk2b-todo">${check}${acts}${backing ? deskBackHtml(i.id) : ""}</div>` : "";
-  const msgs = deskItemSteps(i, d).slice(-2).map((c) => `<div class="dk2b-msg"><div class="dk2b-mh"><b>${esc(c.by || "Cue")}</b><span class="grow"></span><span class="dk2b-age">${c.at ? esc(ago(deskMs(c.at))) : ""}</span></div>${esc(c.text)}</div>`).join("");
-  const files = deskItemTabs.get(i.id) === "files", changed = files ? deskFilesChanged(i) : "";
-  const btns = `<div class="dk2b-iacts">${s ? `<button class="btn small" ${deskChatAttrs(sid, d)}>Open its chat</button>` : ""}<button class="btn small" data-desk-itab="${files ? "thread" : "files"}" data-id="${esc(i.id)}" aria-pressed="${files}">Changes</button></div>`;
-  return `<div class="dk-pg dk2b-ipage" data-desk-page="item"><div class="dk-ph dk2b-iph">${deskBack("")}<span class="dk2b-in">#${esc(i.id)}</span><b class="dk2b-ititle">${esc(i.title)}</b></div>
-    <div class="dk-pane dk-ipane dk2b-ipb" data-scroll-key="item:${esc(i.id)}"><div><div class="dk2b-sec">PROGRESS</div><div class="dk2b-steps">${bar}</div></div>
-    <div class="dk2b-kv">${kv("Who", who)}${kv("Doing now", now, mono ? " mono" : "")}${kv("Tests", tests)}${kv("Next", next)}</div>${todo}
-    <div><div class="dk2b-sec">ITS LAST MESSAGES</div>${msgs ? `<div class="dk2b-msgs">${msgs}</div>` : `<p class="dk-note">Nothing said about it yet.</p>`}</div>
-    ${btns}${files ? `<div><div class="dk2b-sec">CHANGES</div>${changed ? `<div class="dk-fcs">${changed}</div>` : `<p class="dk-note">No files on it yet.</p>`}</div>` : ""}</div>${foot}</div>`;
-}
 
 // ---------- clicks ----------
 
 deskClicks({
   desk2bWork: () => { deskB2Unfold = !deskB2Unfold; renderMain(); },
-  // A tab (or +N › in the strip, to Waits on you): the list in place of what was open.
-  desk2bTab: (el) => { deskB2Tab = el.dataset.desk2bTab in DESK_B2_TABS ? el.dataset.desk2bTab : "all"; renderMain(); },
-  desk2bAll: (el) => { deskB2Full.add(`${deskSelection()}|${el.dataset.desk2bAll}`); renderMain(); },
   desk2bFold: (el) => {
     const k = el.dataset.desk2bFold;
     if (!deskB2Folds.delete(k)) deskB2Folds.add(k);
@@ -315,10 +172,8 @@ deskClicks({
   desk2bSessions: () => deskShow({ kind: "sessions" }),
 });
 
-/** Desk settings for `project` (the header's Desks menu, head_view.js): today's settings screen (lands.js), or the
- *  new page's drawer when that page is on. */
+/** Desk settings for `project` (the header's Desks menu, head_view.js): the settings screen (lands.js). */
 function deskSettingsOpen(project) {
-  if (!deskB2On()) return deskV2Open(project);
   const d = deskOf(project);
   // Every Desk the hub sends has how its work lands (desk/lands.rs desk_view), what it asks before on the same screen.
   landsChange(d?.id || d?.project || project);

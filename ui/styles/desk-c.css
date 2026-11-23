@@ -248,9 +248,9 @@
 /* An item opened on the new layout is its session's chat (desk/c.js deskCItemChat): this bar over it, its steps, and
    when it's ready to check, what to try with Looks right and Send back. */
 .dkn-ib { flex: none; padding: 10px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-.dkn-ib2 { display: flex; align-items: center; gap: 16px; }
-.dkn-ib2 .dkn-ks { flex: none; width: 260px; }
-.dkn-ibacts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.dkn-ib2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
+.dkn-ib2 .dkn-ks { flex: 0 1 260px; min-width: 160px; }
+.dkn-ibacts { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
 .dkn-ibsee { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); }
 .dkn-ibsee b { font-weight: 600; margin-right: 4px; }
 
@@ -268,3 +268,31 @@
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
 .dkn-spm { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .dkn-sfiles { padding: 14px 20px; }
+/* An item no session has (desk/c.js deskCItemBare, #748): its kind, number and title, where it stands, its bar, then
+   what it was added with, the box at the foot. */
+.dkn-ihead { flex: none; padding: 8px 16px 0; }
+.dkn-ih1 { margin: 0; display: flex; align-items: baseline; gap: 6px; font-size: var(--type-title); font-weight: 600; color: var(--ink); min-width: 0; }
+.dkn-ih1 .dkn-iid { color: var(--muted); font-weight: 500; flex: none; }
+.dkn-ih1 .dkn-itt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkn-ihead .dkn-smeta { padding: 2px 0 0; }
+.dkn-ibare { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 20px; }
+.dkn-isee { margin: 0; padding-left: 18px; }
+.dkn-ibback { padding-top: 2px; }
+/* A failed build's or start's output under an item's bar (desk/page.js deskFinLog): its last few lines till Show all, then it scrolls. */
+.dk-flog { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel-2); color: var(--ink); font: var(--type-small)/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dk-flog.open { max-height: 320px; overflow: auto; }
+.dk-flog-more { all: unset; margin-top: 6px; color: var(--accent); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; cursor: pointer; }
+.dk-flog-more:hover, .dk-flog-more:focus-visible { text-decoration: underline; }
+/* A session's Files tab (deskCSessChat): its list always shows, not folded as a page's panel sections are. */
+.dkn-sfiles .dk-psec { display: block; }
+.dkn-ih1, .dkn-smeta, .dkn-ibare { user-select: text; -webkit-user-select: text; }
+.dkn-ibopts { margin: 0; }
+.dkn-ibmocks { font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dkn-isent { margin-top: 12px; }
+/* Pictures sent with a message, as a count under its words. */
+.dk-tpn { margin-top: 3px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
+/* The item's own buttons in its bar's row: no page margins; what it waits on (Clear and land…) takes the whole row. */
+.dkn-ibacts .dk-acts { padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.dkn-ibacts .dk-drop { margin: 0; }
+.dkn-ibacts:has(.dk-wo) { flex: 1 1 100%; margin-left: 0; justify-content: stretch; }
+.dkn-ibkept { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }

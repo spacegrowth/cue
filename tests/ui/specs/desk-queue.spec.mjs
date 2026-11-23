@@ -1,4 +1,4 @@
-// The Desk's Queue (#576): waiting items sit in UP NEXT (B2, #666: Waits on you, Working, Up next, Done today), in your order, with no
+// The Desk's Queue (#576): waiting items sit in UP NEXT (C, #748: Waiting on you, Working, then Up next and Done today), in your order, with no
 // session yet; each row says in words what it waits for: the session it's marked for (and when it goes to a fresh
 // one instead), the item before it, or any free session. The item's own page says the same.
 import { test, expect, openDesk } from "./cue.mjs";
@@ -14,18 +14,18 @@ const queue = (cue, id, fields) => cue.change((st, [id, f]) => {
 const who = (page, id) => statusOf(page, id);
 const HOST = { kind: "session", sid: "host", name: "host-lead" };
 
-/** The order of the list's group heads and folded lines, by key ("you", "working", "queued", "done", …). */
-const heads = (page) => page.locator(".dk-items [data-desk2b-group], .dk-items [data-desk2b-fold]").evaluateAll((els) => els.map((el) => el.dataset.desk2bGroup || el.dataset.desk2bFold));
+/** The order of Items' group heads and its drawers on the green, by key ("you", "working", "next", "done", …). */
+const heads = (page) => page.locator(".dk-items [data-desk2b-group], .dk-items [data-dkn-drawer]").evaluateAll((els) => els.map((el) => el.dataset.desk2bGroup || el.dataset.dknDrawer));
 /** One item parked on the cue Desk, so every section shows. */
 const park = (cue) => cue.change((st) => {
   st.desk.projects.find((d) => d.project === "cue").items.push({ id: "p1", project: "cue", kind: "task", title: "Tidy the footer", state: "held", holder: null, after: null,
     created: Date.now() / 1000, updated: Date.now() / 1000, from: "you", held: [Math.floor(Date.now() / 1000), "You", ""] });
 });
-/** B2's order, top to bottom (#666): what waits on you (questions, then what's ready to check), what's at work, what's
- *  up next (queued, then parked), and Done today folded to a line. */
-const ORDER = ["you", "working", "queued", "done"];
+/** C's order, top to bottom (#748): what waits on you (questions, then what's ready to check), what's at work, what's
+ *  up next (queued, then parked), and Done today. */
+const ORDER = ["you", "working", "next", "done"];
 
-test("the list's groups in order: Waits on you, Working, Up next, Done today folded; light and dark (#602, #666)", async ({ page, cue }) => {
+test("the list's groups in order: Waiting on you, Working, Up next, Done today; light and dark (#602, #748)", async ({ page, cue }) => {
   for (const colorScheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme });
     await cue.open("desk");
@@ -33,15 +33,15 @@ test("the list's groups in order: Waits on you, Working, Up next, Done today fol
     await park(cue);
     await expect.poll(() => heads(page)).toEqual(ORDER);
     // Each one's rows under it: the question before the finished one; the queue in your order, the parked one last.
-    await expect.poll(() => listOrder(page)).toEqual(["# WAITS ON YOU", "d1", "d2", "# WORKING", "d3", "d5", "# UP NEXT", "d4", "d6", "p1", "# DONE TODAY"]);
+    await expect.poll(async () => (await listOrder(page)).slice(0, 11)).toEqual(["# WAITING ON YOU", "d1", "d2", "# WORKING", "d3", "d5", "# UP NEXT", "d4", "d6", "p1", "# DONE TODAY"]);
     await expect(statusOf(page, "p1")).toHaveText("Parked: starts when you press Start");
-    // Done today starts folded: no rows under it.
-    await expect(page.locator('.dk-items [data-desk2b-fold="done"]')).toHaveAttribute("aria-expanded", "false");
-    await expect(page.locator('.dk-items [data-desk-item="d7"]')).toHaveCount(0);
+    // Done today starts open, its rows after its head.
+    await expect(page.locator('.dk-items [data-desk-c-fold="done"]')).toHaveAttribute("aria-expanded", "true");
+    expect((await listOrder(page)).slice(11)).toContain("d7");
   }
 });
 
-test("the order holds with Done today opened, groups emptied, and after a restart (#602, #666)", async ({ page, cue }) => {
+test("the order holds with Done today opened, groups emptied, and after a restart (#602, #748)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await park(cue);
@@ -54,18 +54,18 @@ test("the order holds with Done today opened, groups emptied, and after a restar
   await openDesk(page);
   await park(cue);
   await expect.poll(() => heads(page)).toEqual(ORDER);
-  await expect(page.locator('.dk-items [data-desk2b-fold="done"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator('.dk-items [data-desk-c-fold="done"]')).toHaveAttribute("aria-expanded", "true");
 
   // Empty groups go, and the rest keep their order.
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.id === "d1") { i.state = "working"; delete i.ask; } });
-  await expect(page.locator('.dk-items [data-desk2b-group="you"] i')).toHaveText("1");
+  await expect(page.locator('.dk-items [data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText("1");
   await expect.poll(() => heads(page)).toEqual(ORDER);
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.id === "d2") { i.state = "working"; delete i.finish; } });
-  await expect.poll(() => heads(page)).toEqual(["working", "queued", "done"]);
+  await expect.poll(() => heads(page)).toEqual(["working", "next", "done"]);
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.state === "working") i.state = "done"; });
-  await expect.poll(() => heads(page)).toEqual(["queued", "done"]);
+  await expect.poll(() => heads(page)).toEqual(["next", "done"]);
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.state === "held") i.state = "queued"; });
-  await expect.poll(() => heads(page)).toEqual(["queued", "done"]);
+  await expect.poll(() => heads(page)).toEqual(["next", "done"]);
   expect(await groupOf(page, "p1")).toBe("UP NEXT");
 });
 
@@ -94,15 +94,13 @@ test("each queued row says what it waits for, in words; the item's page says the
   // Nothing in the list has hover text.
   await expect(page.locator(".dk-items [title]")).toHaveCount(0);
 
-  // Its page: Doing now says the same, and Next the same in its own words.
+  // Its page (no session has it: desk/c.js deskCItemBare): the line under its title says the same.
   await queue(cue, "d4", { next_for: HOST, fresh_at: NOW + 20 * 60000 });
   await page.locator('.dk-items [data-desk-item="d4"]').click();
-  const kv = (k) => page.locator(".dk2b-kv .dk2b-ik", { hasText: new RegExp(`^${k}$`) }).locator("xpath=following-sibling::*[1]");
-  await expect(kv("Doing now")).toHaveText("Next for host-lead · goes to a fresh session at 17:20");
-  await expect(kv("Next")).toHaveText("next for host-lead · goes to a fresh session at 17:20");
+  const meta = page.locator('.dk-right .dkn-sp[data-desk-page="item"] .dkn-ihead .dkn-smeta');
+  await expect(meta).toHaveText("Next for host-lead · goes to a fresh session at 17:20");
   await queue(cue, "d4", {});
-  await expect(kv("Doing now")).toHaveText("Any free session");
-  await expect(kv("Next")).not.toContainText("next for");
+  await expect(meta).toHaveText("Any free session");
 });
 
 test("the Queue's look, light and dark", async ({ page, cue }) => {

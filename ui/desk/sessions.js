@@ -131,7 +131,7 @@ function deskSessions(project) {
   const sessions = (state.sessions || []).filter((s) => s.project === deskWorkspace(d) && s.session_id);
   // B2: the lead's chat is always open on the left, so with only this list beside it, its card is the open one; back
   // from a session's chat (`o.was`), that session's row is.
-  const leadShown = !o || (deskB2On() && o.kind === "sessions" && !o.was && !o.crew);
+  const leadShown = !o || (o.kind === "sessions" && !o.was && !o.crew);
   const lit = (sid) => (sid === leadSid && leadShown && deskPick !== project) || ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid) || (o?.kind === "sessions" && o.was === sid);
   const row = (s, card = false) => deskSessionsRow({ project, d, o, leadSid, lit }, s, card);
   const leadS = sessions.find((s) => s.session_id === leadSid);

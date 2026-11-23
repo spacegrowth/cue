@@ -94,15 +94,16 @@ test("the panel: Now, Waits on you and Working, then Activity's last 3 rows and 
 });
 
 for (const scheme of ["light", "dark"]) {
-  test(`an item's chat: its holder's Desk lines are a count line; its panel ends with them (${scheme})`, async ({ page, cue }) => {
+  test(`an item's chat: its holder's Desk lines are a count line (${scheme})`, async ({ page, cue }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await cue.open("desk");
     await openDesk(page);
     await page.locator('.dk-items .dk-it[data-desk-item="d2"]').first().click();
     const right = page.locator(".dk-right");
-    const ichat = right.locator(".dk-ichat");
-    await ichat.waitFor();
+    // The item opens its holder's chat (desk/c.js deskCItemChat).
     const sid = await page.evaluate(() => deskHolderSid(deskItem(deskOpen.project, "d2")));
+    const ichat = right.locator(`.dkn-sp[data-desk-page="session"] [data-desk-chat="${sid}"]`);
+    await ichat.waitFor();
     await push(page, sid, { role: "agent", text: "Working on the header.\n\nTO LEAD: #d2 needs the logo file\nDECIDED (minor): kept the old size — less churn" });
     await expect(ichat).toContainText("Working on the header.");
     await expect(ichat.locator(".dk-cnt").last()).toHaveText(/^2 Desk updates · .*Activity ›$/);
@@ -111,11 +112,6 @@ for (const scheme of ["light", "dark"]) {
     const caps = await page.evaluate(() => [...document.querySelectorAll(".dk-board *")].filter((el) => el.offsetParent && getComputedStyle(el).textTransform === "uppercase").map((el) => el.className));
     expect(caps).toEqual([]);
     if (SHOTS) await right.screenshot({ path: `${SHOTS}/item-chat-${scheme}.png` });
-    // Its panel (shown) ends with those rows.
-    const tog = right.locator(".dk-ptog");
-    if ((await tog.count()) && (await tog.textContent()).includes("Show panel")) await tog.click();
-    const sec = right.locator(".dk-panel .dk-psec.dk-pact");
-    if (await right.locator(".dk-panel").isVisible()) await expect(sec.locator(".dk-pdid")).toHaveCount(2);
   });
 }
 
@@ -177,9 +173,9 @@ test("an item the lead holds: opening its page leaves the panel's Activity the l
   const before = words(await sec.locator(".dk-pdid").allTextContents());
   const all = () => page.evaluate(() => deskActivity(deskOf(deskSelection())).map((r) => (r.x ? `mv:${r.x.id}` : `${r.line.sid}:${r.line.key}`)));
   const whole = await all();
-  // Its page folds the lead's chat to #d2's turns: Activity stays the lead's, whole.
+  // Its page (the lead's chat, desk/c.js deskCItemChat): Activity stays the lead's, whole.
   await page.evaluate(() => deskShow({ kind: "item", id: "d2" }));
-  await expect(page.locator(".dk-right .dk-ichat")).toBeVisible();
+  await expect(page.locator('.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="lead"]')).toBeVisible();
   expect(await all()).toEqual(whole);
   const panel = await page.evaluate(() => { const d = deskOf(deskSelection()), t = document.createElement("div"); t.innerHTML = deskPanelActivity(deskActivity(d), d); return [...t.querySelectorAll(".dk-pdid")].map((r) => r.textContent); });
   expect(words(panel)).toEqual(before);

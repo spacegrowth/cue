@@ -64,11 +64,11 @@ const SCREENS = {
       await openDesk(page);
       const out = [];
       for (const id of ITEMS) {
-        await page.locator(`.dk-items [data-desk-item="${id}"]`).first().click();
-        await page.locator(`.dk-right`).first().waitFor();
+        await page.locator(`.dkn-items [data-desk-item="${id}"] :is(.dkn-tt, .dkn-tx)`).first().click();
+        await page.locator(`.dk-right .dkn-sp`).first().waitFor();
         out.push(...(await check(page, `${where}, item ${id}`)));
-        // The item opens in the list's place (B2, #666): back to the list for the next.
-        await page.locator(".dk-right .dk-back").click();
+        // The item opens in the chat's place: back to the lead's chat for the next.
+        await page.locator(".dk-right .dkn-sback .dk-back").click();
       }
       return out;
     },

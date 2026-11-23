@@ -118,26 +118,22 @@ for (const scheme of ["light", "dark"]) {
     await expect(yours).toHaveCount(1);
     await expect(yours.locator(".dk-about")).toContainText("#d5");
     await expect(yours).not.toContainText("Its fixes stay");
-    // Cue's messages are the Desk's own (#688): out of the chat, one count line for the run; Activity lists each,
-    // newest first.
-    await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
-    await expect(chat.locator(".dk-cnt")).toHaveText([new RegExp(`^${IN_CHAT.length} Desk updates · .*Activity ›$`)]);
-    // All of them at once (the tab shows 30 till you scroll; the lead's lines are in it too).
-    await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
-    const act = page.locator(".dk-moves"), R = [...IN_CHAT].reverse();
-    const lines = act.locator(".mg.cue-msg");
+    // Cue's messages to a session are cards in its chat (#744), oldest first.
+    await expect(chat.locator(".dk-cnt")).toHaveCount(0);
+    const act = page.locator(".dk-moves"), R = IN_CHAT;
+    const lines = chat.locator(".mg.cue-msg");
     await expect(lines).toHaveCount(IN_CHAT.length);
     await expect(lines.locator(".mg-t")).toHaveText(words(R));
     await heads(lines, R);
-    await expect(lines.last().locator(".mg-tag")).toHaveText("Not done");
-    await expect(lines.last().locator(".mg-tag")).toHaveCSS("text-transform", "none");
-    await expect(act.locator(".mg-hand")).toHaveCount(0);
+    await expect(lines.first().locator(".mg-tag")).toHaveText("Not done");
+    await expect(lines.first().locator(".mg-tag")).toHaveCSS("text-transform", "none");
+    await expect(chat.locator(".mg-hand")).toHaveCount(0);
     // Each has the one line every message has (#422): delivered, to whom.
     await expect(lines.locator(".msg-line.ml-delivered")).toHaveCount(IN_CHAT.length);
-    await expect(lines.last().locator(".cue-more")).toHaveText("· its log");
-    await expect(lines.nth(IN_CHAT.length - 14).locator(".cue-more")).toHaveText("· 1 more item");
+    await expect(lines.first().locator(".cue-more")).toHaveText("· its log");
+    await expect(lines.nth(13).locator(".cue-more")).toHaveText("· 1 more item");
     // Folded: the standing words aren't in the line; a click opens Cue's full text under it, again closes it.
-    const first = lines.last();
+    const first = lines.first();
     await expect(first).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-full")).toHaveCount(0);
     await first.locator(".mg-lk", { hasText: "More" }).click();
@@ -146,25 +142,17 @@ for (const scheme of ["light", "dark"]) {
     await expect(first.locator(".mg-full")).toContainText("ui-tests fixes it and says it's done");
     await expect(first.locator(".mg-full")).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
-    // Where they show (#688): each in its own Activity row, after the row's time, at the left of the row's line
-    // column, with the chat it came from under it.
-    const where = await page.evaluate(() => [...document.querySelectorAll(".dk-moves .mg.cue-msg")].map((l) => {
-      const row = l.closest(".dk-mv-ln"), col = row?.querySelector(".dk-mv-line"), at = row?.querySelector(".dk-mv-at");
-      return [row?.querySelectorAll(".mg.cue-msg").length, Math.round(l.getBoundingClientRect().x - col.getBoundingClientRect().x),
-        l.getBoundingClientRect().x > at.getBoundingClientRect().right, row.querySelector(".dk-act-why")?.textContent || ""];
-    }));
-    expect(where).toEqual(R.map(() => [1, 0, true, "in host-lead's chat"]));
     // No left stripe, no hover text.
     // Found and measured in one go: a redraw replaces the chat, and a locator finds it in one call and measures it in the
     // next, which a redraw can land between (then it measures the old line, gone: no box, no style).
-    const border = await page.evaluate(() => getComputedStyle(document.querySelector(".dk-moves .mg.cue-msg")).borderLeftWidth);
+    const border = await page.evaluate(() => getComputedStyle(document.querySelector('.dk-right [data-desk-chat="host"] .mg.cue-msg')).borderLeftWidth);
     expect(border).toBe("0px");
     await expect(page.locator("[title]")).toHaveCount(0);
-    if (process.env.SHOT_DIR) await act.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
+    if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
     await first.locator(".mg-lk", { hasText: "Less" }).click();
     await expect(first.locator(".mg-full")).toHaveCount(0);
     // Its item's number opens the item.
-    await lines.last().locator("button.mg-id").click();
+    await lines.first().locator("button.mg-id").click();
     await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
 
     // Cue's messages to the lead: out of its chat too (#688); in Activity each one quiet line (#616), "+ Cue · its
@@ -176,7 +164,8 @@ for (const scheme of ["light", "dark"]) {
     await expect(lchat).toContainText("no agent");
     await expect(lchat).not.toContainText("The answer: Blue");
     if (process.env.SHOT_DIR) await lchat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-lead-${scheme}.png` });
-    await page.evaluate(() => deskOpenActivity());
+    // All of them at once (the tab shows 30 till you scroll; the session's lines are in it too).
+    await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
     const RL = [...IN_LEAD].reverse(), llines = act.locator(".dk-cue");
     await expect(llines).toHaveCount(IN_LEAD.length);
     await expect(llines.locator(".dk-cue-w")).toHaveText(words(RL));

@@ -1,4 +1,4 @@
-// The Desk's chats update in place (#624): an item page's chat, the lead's and a session's. Each draw used to take the
+// The Desk's chats update in place (#624): an opened item's chat (its session's, #744), the lead's and a session's. Each draw used to take the
 // chat out of the window and put it back (WebKit has no moveBefore, so it left the page each time): the row under the
 // pointer lost its hover, its scroll box was a new one, and the chat blinked several times a second while its session
 // worked. Now the window is drawn around it: the chat and everything it sits in stay in the page, and only messages
@@ -42,7 +42,7 @@ const changed = (page, sel, keep) => page.evaluate(([sel, keep]) => {
 }, [sel, keep]);
 
 for (const scheme of ["light", "dark"]) {
-  test(`an item page's chat updates in place as steps, messages and its state stream in (${scheme}) (#624)`, async ({ page, cue }) => {
+  test(`an opened item's chat updates in place as steps, messages and its state stream in (${scheme}) (#624)`, async ({ page, cue }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await page.setViewportSize({ width: 1400, height: 800 });
     await cue.open("desk");
@@ -57,18 +57,22 @@ for (const scheme of ["light", "dark"]) {
     }, [NOT_DONE, LONG.toString()]);
     await steps(cue, 1);
     await openDesk(page);
-    await page.locator('[data-desk-item="d5"]').first().click();
-    const chat = page.locator(".dk-right .dk-ichat"), pane = page.locator(".dk-right .dk-ipane");
+    await page.locator('.dkn-items [data-desk-item="d5"]').first().click();
+    // The item opens its session's chat (#744), which scrolls itself.
+    const SEL = '.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"]';
+    const chat = page.locator(SEL), pane = chat;
     await expect(chat).toContainText("Reply 5");
-    // Cue's "not done" message is the Desk's own (#688): a count line in the chat, Activity has it. A reply under the
-    // pointer, and the page scrolled up to read.
-    const cnt = chat.locator(".dk-cnt");
-    await expect(cnt).toHaveText(/^1 Desk update · .*Activity ›$/);
-    await expect(chat.locator(".cue-msg")).toHaveCount(0);
+    // Cue's "not done" message is a card in the chat (#744): opened with More. A reply under the pointer, and the
+    // chat scrolled up to read.
+    const cm = chat.locator(".mg.cue-msg");
+    await expect(cm).toHaveCount(1);
+    await cm.locator(".mg-lk", { hasText: "More" }).click();
+    await expect(cm.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
     await pane.evaluate((p) => { p.scrollTop = 300; });
     const read = chat.locator(".cv-agent").filter({ hasText: "Reply 2" });
     await read.hover();
-    await watch(page, ".dk-right .dk-ichat");
+    await watch(page, SEL);
+    const cmEl = await cm.elementHandle();
     const top = await pane.evaluate((p) => p.scrollTop);
 
     // Steps land, a status changes, a message comes, the session stops: several draws each.
@@ -77,16 +81,18 @@ for (const scheme of ["light", "dark"]) {
     await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "host"); s.thread.push({ role: "agent", text: "Reply 6: the tests pass.", at_ms: Date.now() }); s.state = "waiting"; });
     await expect(chat).toContainText("Reply 6: the tests pass.");
 
-    const c = await changed(page, ".dk-right .dk-ichat", "^[ay]:");
+    const c = await changed(page, SEL, "^[ay]:");
     expect(c.left, "the chat never left the page").toEqual([]);
     expect(c.same).toBe(true);
     expect(c.gone, "earlier messages are the same elements").toEqual([]);
     expect(c.reworded, "earlier messages keep their words").toEqual([]);
     // What you'd opened, where you were and the row under the pointer, as they were.
-    await expect(cnt).toHaveText(/^1 Desk update · .*Activity ›$/);
+    await expect(cm).toHaveCount(1);
+    expect(await cmEl.evaluate((el) => el.isConnected)).toBe(true);
+    await expect(cm.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
     expect(await pane.evaluate((p) => p.scrollTop)).toBe(top);
     expect(await read.evaluate((el) => el.matches(":hover"))).toBe(true);
-    expect(await page.evaluate(() => document.querySelector(".dk-right .dk-ipane") === window.__w.pane.closest(".dk-ipane"))).toBe(true);
+    expect(await page.evaluate(() => document.querySelector(".dk-right .dkn-sp .dkn-spm") === window.__w.pane)).toBe(true);
   });
 }
 

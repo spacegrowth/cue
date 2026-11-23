@@ -61,10 +61,10 @@ test("Progress pops up each item under way with its steps, what it's doing now, 
   await page.evaluate(() => deskProgToggle(true));
   await d3.locator(".dk-grtl").click();
   await expect(prog).toHaveCount(0);
-  // Its page, on the left in the lead's chat's place (B2, #666); no Progress button in the Items head.
+  // Its page in the lead's chat's place, its row lit; no Progress button in the Items head.
   await expect(page.locator(".dk-items [data-desk-prog-toggle]")).toHaveCount(0);
-  await expect(page.locator('.dk-panel[data-side-for="d3"]')).toBeVisible();
-  await expect(page.locator(".dk-right h1")).toContainText("Search stays centred");
+  await expect(page.locator('.dk-items .dkn-row.on[data-desk-item="d3"]')).toBeVisible();
+  await expect(page.locator(".dk-right .dkn-sp :is(.dkn-ih1, .dkn-smeta)")).toContainText("Search stays centred");
 });
 
 test("A reopened item shows a plain line under its steps, its round and your note's first words; a click shows the whole note (#421, #444)", async ({ page, cue }) => {

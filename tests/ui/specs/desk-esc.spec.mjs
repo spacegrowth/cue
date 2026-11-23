@@ -66,7 +66,7 @@ test("a session's page: Esc twice stops it; once it's stopped, Esc goes back as 
   await openDesk(page);
   await deskAllSessions(page);
   await page.locator(".dk-sessions .dk-srow:not(.crew)", { hasText: "host-lead" }).first().click();
-  const sp = page.locator('.dk-right .dk-pg[data-desk-page="session"]');
+  const sp = page.locator('.dk-right .dkn-sp[data-desk-page="session"]');
   await expect(sp).toHaveCount(1);
   await hold(cue, "host", "and the logs");
   await page.keyboard.press("Escape");
