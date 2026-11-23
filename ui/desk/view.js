@@ -48,7 +48,13 @@ function deskBox(d, o = deskOpen) {
     const sid = o.kind === "crew" ? o.lead : o.sid;
     if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
     if (o.kind !== "crew") { to = { sid }; ph = `Talk to ${deskHolderName(sid, d.items.find((i) => i.holder?.kind !== "crew" && i.holder?.sid === sid)?.holder.name)}…`; }
-    else { const t = deskMate(o.lead, o.agent); to = { sid, mate: t?.name || "" }; ph = `Tell ${deskHolderName(sid)} about ${t?.name || "it"}…`; }
+    else {
+      const t = deskMate(o.lead, o.agent);
+      to = { sid, mate: t?.name || "" };
+      ph = `Tell ${deskHolderName(sid)} about ${t?.name || "it"}…`;
+      // A crew member has no box of its own: what you type goes to its lead, said over the box.
+      pre = `To ${deskHolderName(sid)}, its lead`;
+    }
   }
   const key = deskBoxKey(to);
   // The lead's own box is a session's chat box, as on the Board (#688, chat/compose.js box): two lines, Queue while the
