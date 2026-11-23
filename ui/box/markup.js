@@ -37,7 +37,7 @@ function boxHtml(o) {
     const mic = o.mic === false ? "" : `<button class="icon-btn mic ${on ? "on" : ""}" data-mic="${k}" aria-label="Dictate">${MIC_ICON}</button>`;
     const attach = o.drop && o.attach !== false ? `<button class="icon-btn" data-attach="${k}" aria-label="Add image">${IMAGE_ICON}</button>` : "";
     return `<div class="composer"><div class="field ${o.drop ? "drop" : ""} ${o.bang ? "bang" : ""}" data-drop="${o.drop ? k : ""}">${o.cmd || ""}${o.top || ""}${o.drop ? chips : ""}<div class="field-row">
-    <div class="ta-wrap">${ta}${sugLineHtml(sug)}</div>
+    ${o.pre ? `<span class="field-to">${esc(o.pre)}</span>` : ""}<div class="ta-wrap">${ta}${sugLineHtml(sug)}</div>
     ${mic}
     ${attach}
     ${o.clock || ""}
