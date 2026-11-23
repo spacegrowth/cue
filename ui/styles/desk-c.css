@@ -98,6 +98,9 @@
 /* Under a list that scrolls: how many rows are below its edge (desk/c.js deskCMore); a click scrolls a page. */
 .dkn-more { all: unset; flex: none; padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: var(--type-pill); color: var(--muted); cursor: pointer; }
 .dkn-more:hover { color: var(--ink); }
+/* Its line's height whether or not it has words yet: the lists are cut to whole rows while it's still empty
+   (desk/c.js deskCFitLists), and its words coming in later mustn't cut the last row. */
+.dkn-more::before { content: "\200b"; }
 .dkn-more[hidden] { display: none; }
 /* Scrolled to the end: the line keeps its room (the list doesn't jump), just shows nothing. */
 .dkn-more.end { visibility: hidden; }

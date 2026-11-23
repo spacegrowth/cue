@@ -257,6 +257,8 @@ test("a list that overflows ends on a whole row with \"↓ N more\" under it; a 
     await expect(more).toHaveClass(/\bdkn-more\b/);
     await expect(more).toBeVisible();
     await expect(more).toHaveText(/^↓ \d+ more$/);
+    // The lists are cut while this line is still empty: it's as tall without its words as with them, or they'd cut the last row.
+    expect(await more.evaluate((el) => { const full = el.offsetHeight, t = el.textContent; el.textContent = ""; const empty = el.offsetHeight; el.textContent = t; return empty - full; })).toBe(0);
     expect(await wholeRows(list), name).toEqual([]);
     // Its count is the rows below the edge.
     const below = await list.evaluate((el) => { const e = el.getBoundingClientRect().bottom; return [...el.querySelectorAll(":scope > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > e + 1).length; });
