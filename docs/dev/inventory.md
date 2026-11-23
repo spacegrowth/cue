@@ -16,10 +16,10 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 179 (3 sync) |
 | Lock declarations (static or field) | 122 |
-| Lock acquisitions | 291 |
+| Lock acquisitions | 292 |
 | Lock-graph edges | 54 |
-| Spawn sites | 94 |
-| External calls: fs / db / process / notify / login / socket | 533 / 232 / 61 / 4 / 1 / 4 |
+| Spawn sites | 95 |
+| External calls: fs / db / process / notify / login / socket | 534 / 232 / 61 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -253,7 +253,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hosted/on_machines.rs::OnMachines.links` | `Mutex<HashMap<String,Arc<HostLink>>>` | "machine hosts: links" (4 sites), "machine tails: links" (2 sites) |
 | `hosted/on_machines.rs::OnMachines.looked` | `Mutex<HashSet<String>>` | "machine hosts: looked" (1 sites) |
 | `hosted/remote.rs::RUN` | `std::sync::OnceLock<u128>` | — |
-| `hosted/remote.rs::Remote.cursor` | `Mutex<Cursor>` | "hosts: a session's cursor" (3 sites) |
+| `hosted/remote.rs::Remote.cursor` | `Mutex<Cursor>` | "hosts: a session's cursor" (4 sites) |
 | `hosted/remote.rs::Remote.queue` | `Mutex<Option<Sender<Event>>>` | — |
 | `hosted/remote.rs::Remote.outbox` | `Mutex<VecDeque<Pending>>` | "hosts: a session's outbox" (3 sites) |
 | `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (5 sites) |
@@ -470,6 +470,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `notify/mod.rs::show` | thread::spawn | 1 |
 | `quit.rs::on_signals` | async_runtime::spawn | 2 |
 | `safe_git.rs::on_machine` | thread::spawn | 1 |
+| `self_watch.rs::start` | Builder::spawn | 1 |
 | `server/mod.rs::handle` | tokio::spawn | 1 |
 | `server/mod.rs::serve` | tokio::spawn | 1 |
 | `startup/mod.rs::setup` | async_runtime::spawn | 1 |
@@ -502,7 +503,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (533)
+### fs (534)
 
 | In | Call | Times |
 |---|---|---|
@@ -909,6 +910,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `notify/sounds.rs::install_in` | write | 1 |
 | `safe_git.rs::developer_git` | Path::is_file | 1 |
 | `safe_git.rs::git_bin` | Path::is_file | 1 |
+| `self_watch.rs::log` | OpenOptions::new | 1 |
 | `server/mod.rs::move_from_old_folder` | Path::exists | 1 |
 | `server/mod.rs::move_from_old_folder` | Path::is_dir | 2 |
 | `server/mod.rs::move_from_old_folder` | create_dir_all | 1 |
