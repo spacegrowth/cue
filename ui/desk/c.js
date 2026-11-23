@@ -271,7 +271,8 @@ function deskCFitLists() {
       if (el.scrollHeight <= el.clientHeight + 1) return 0;
       const top = el.getBoundingClientRect().top - el.scrollTop;
       let fit = 0;
-      for (const r of el.children) {
+      // Row by row, into each group's band (option A wraps a group in one): a cut never falls mid-row.
+      for (const r of el.querySelectorAll(":scope > :not(.dkn-band), :scope > .dkn-band > *")) {
         const bottom = r.getBoundingClientRect().bottom - top;
         if (bottom > el.clientHeight) break;
         fit = bottom;
@@ -301,7 +302,7 @@ function deskCMore() {
     const more = el.nextElementSibling;
     if (more.hidden) continue;
     const edge = el.getBoundingClientRect().bottom;
-    const n = [...el.querySelectorAll(":scope > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > edge + 1).length;
+    const n = [...el.querySelectorAll(":scope > .dk-it, :scope > .dkn-band > .dk-it, :scope > .dkn-band > .dk-prows")].filter((r) => r.getBoundingClientRect().bottom > edge + 1).length;
     more.textContent = `↓ ${n} more`;
     more.classList.toggle("end", !n);
   }
@@ -402,13 +403,18 @@ function deskCList(project, taskApprovals) {
   const queued = new Set(g.queued), next = [...g.queued, ...g.held];
   const doneToday = deskB2DoneToday(d);
   // Each group folds to its heading with a click on it, as Up next and Done today do (remembered with them).
+  // Option A ("Items: working, waiting, asking", picked 23 Nov): each kind in its own band, the heading with a dot,
+  // its count and a plain line saying what it means for you; asking you on the soft red, Working on white, the rest on
+  // the card's grey.
+  const GRP_SAY = { blocked: "nothing moves till you answer", working: "at work · nothing for you", you: "done · ready for you to check" };
   const grp = (key, label, list, extra = "", n = list.length, first = "") => {
     if (!list.length && !extra && !first) return "";
     const open = !deskCFolds.has(key);
     const rows = first + list.map(deskCRow).join("") + extra;
     // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
     const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
-    return `<button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span>${n}</span></button>${open ? body : ""}`;
+    const say = GRP_SAY[key] ? `<em class="dkn-gsay">${GRP_SAY[key]}</em>` : "";
+    return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}<i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? body : ""}</section>`;
   };
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;

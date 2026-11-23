@@ -287,3 +287,14 @@
 .dkn-crew .dk-crewpg { padding: 12px 16px; }
 /* Its status line sits centred under the chat, as a session's does (messages.css .mg-status centres in a flex column). */
 .dkn-crew .dk-crewpg > .mg-status { width: fit-content; margin: 14px auto 4px; }
+/* Option A: a band per kind of group in Items (desk/c.js grp). Asking you on the soft red, Working on the white card,
+   Waiting on you on the card's grey. Its heading: a dot in the kind's colour, the name, the count, a plain line. */
+.dkn-band { padding-bottom: 6px; }
+.dkn-band + .dkn-band { border-top: 1px solid var(--line); }
+.dkn-band.dkn-b-blocked { background: color-mix(in srgb, var(--deny) 9%, var(--panel)); }
+.dkn-band.dkn-b-you { background: var(--panel-2); }
+.dkn-gdot { width: 7px; height: 7px; border-radius: 50%; flex: none; align-self: center; background: var(--muted); }
+.dkn-band.dkn-b-blocked .dkn-gdot { background: var(--deny); }
+.dkn-band.dkn-b-working .dkn-gdot { background: var(--accent); }
+.dkn-band.dkn-b-blocked .dkn-gh { color: var(--deny); }
+.dkn-gsay { margin-left: 4px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: var(--type-pill); }
