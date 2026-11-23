@@ -298,3 +298,6 @@
 .dkn-band.dkn-b-working .dkn-gdot { background: var(--accent); }
 .dkn-band.dkn-b-blocked .dkn-gh { color: var(--deny); }
 .dkn-gsay { margin-left: 4px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: var(--type-pill); }
+/* Working stays in sight while you scroll on through Waiting on you: its band sticks to the top of the list (it's at
+   most DESK_C_WORK_ROWS rows tall). */
+.dkn-band.dkn-b-working { position: sticky; top: 0; z-index: 2; background: var(--panel); box-shadow: 0 1px 0 var(--line); }
