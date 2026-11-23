@@ -411,7 +411,7 @@ function deskCList(project, taskApprovals) {
   // Option A ("Items: working, waiting, asking", picked 23 Nov): each kind in its own band, the heading with a dot,
   // its count and a plain line saying what it means for you; asking you on the soft red, Working on white, the rest on
   // the card's grey.
-  const GRP_SAY = { blocked: "nothing moves till you answer", working: "at work · nothing for you", you: "done · ready for you to check" };
+  const GRP_SAY = { blocked: "nothing moves till you answer", working: "at work · nothing for you", you: "done · ready for you to check", kept: "copies of dropped work", away: "what the lead decided while you were away" };
   const grp = (key, label, list, extra = "", n = list.length, first = "") => {
     if (!list.length && !extra && !first) return "";
     const open = !deskCFolds.has(key);
@@ -431,9 +431,10 @@ function deskCList(project, taskApprovals) {
   const blocked = grp("blocked", "BLOCKED ON YOU", [], (ask?.one_way ? "" : leadAsk) + (aw.more || ""), blockedN, hf.html);
   const you = grp("you", "WAITING ON YOU", hf.rest);
   const work = grp("working", "WORKING", working);
-  const kept = (d?.kept || []).length ? `<div class="dkn-gh" data-desk2b-group="kept">KEPT COPIES <span>${d.kept.length}</span></div>${d.kept.map(deskKeptRow).join("")}` : "";
+  // Kept copies and Calls while away are bands too: their headings stick and stack with the rest.
+  const kept = (d?.kept || []).length ? grp("kept", "KEPT COPIES", [], d.kept.map(deskKeptRow).join(""), d.kept.length) : "";
   const calls = d?.away?.on ? deskAwayCalls(d) : [];
-  const away = d?.away?.on ? deskB2Fold("away", "CALLS WHILE AWAY", calls.length, deskAwayCallsHtml(d)) : "";
+  const away = d?.away?.on && calls.length ? grp("away", "CALLS WHILE AWAY", [], deskAwayCallsHtml(d), calls.length) : "";
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskCRow).join("")).join("");
