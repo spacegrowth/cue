@@ -75,7 +75,9 @@ function crewWaitLine(sid) {
     return `<span class="cv-what">Waiting on you: <b>${esc(t.name)}</b> ${mateAsk(sid, t) ? "asks you something" : t.needs ? "needs you" : "is ready for review"}${more}</span>`;
   }
   const working = mateList(sid).filter((t) => t.state === "working");
-  return working.length ? `<span class="dot-live"></span><span class="cv-what">Crew working: ${working.map((t) => esc(t.name)).join(", ")}</span>` : "";
+  // Named and timed like the chat's other lines: "Waiting on inbox-removal and 1 more · 12m".
+  const first = working[0], since = Math.min(...working.map((t) => t.started_ms || Infinity));
+  return working.length ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(first.name)}${working.length > 1 ? ` and ${working.length - 1} more` : ""}</span>${Number.isFinite(since) ? `<span class="dim"> · <span data-ago="${since}">${ago(since)}</span></span>` : ""}` : "";
 }
 
 /** How long: at work, since it started; finished, how long it took. In whole minutes ("<1m" before the first), so a

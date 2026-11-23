@@ -514,7 +514,13 @@ function whereNow(it, s, steps = true) {
   // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
   const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";
   if (crew) return `<div class="mg-status cv-status">${/^<span class="cv-what">Waiting on you/.test(crew) ? `<i class="sw z live"></i>` : ""}${crew}${tipFor(it, s, "working")}</div>`;
-  if (s?.state === "agent") return `<div class="mg-status cv-status">${s.helpers ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(s.driven_by)}</span>` : `<span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>`}${tipFor(it, s, "working")}</div>`;
+  // Waiting on its background agents: named and timed like any other line ("Waiting on inbox-removal and 1 more · 12m").
+  if (s?.state === "agent" && s.helpers) {
+    const run = helpersOf(s.session_id).filter(helperRunning), first = run[0];
+    const who = first ? `${bgName(first)}${run.length > 1 ? ` and ${run.length - 1} more` : ""}` : s.driven_by;
+    return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Waiting on ${esc(who)}</span>${s.since_ms ? `<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>` : ""}${tipFor(it, s, "working")}</div>`;
+  }
+  if (s?.state === "agent") return `<div class="mg-status cv-status"><span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>${tipFor(it, s, "working")}</div>`;
   if (s?.state === "limited" && s.limit) {
     const l = s.limit, what = prompt ? `“${esc(prompt.length > 80 ? prompt.slice(0, 80) + "…" : prompt)}”` : "Your last message";
     if (lifted(l)) return `<div class="mg-status cv-status limit"><span class="lim-dot back"></span><span><b>${esc(scopeName(l))} is back.</b> ${what} didn't run.</span><button class="btn small" data-usage="resend-one" data-sid="${esc(s.session_id)}">Resend</button></div>`;
