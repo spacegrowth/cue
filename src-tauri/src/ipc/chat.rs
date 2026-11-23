@@ -385,10 +385,7 @@ fn restart_ends_when_running(h: Arc<Hub>, session_id: String) {
     let here = h.session_origin(&session_id).is_some_and(|o| o.machine.is_empty() && o.harness == "claude");
     std::thread::spawn(move || {
         if here {
-            crate::clock::within(20_000, 300, || {
-                live::refresh();
-                live::claude().iter().any(|q| q.session_id == session_id)
-            });
+            crate::clock::within(20_000, 300, || live::listed_now(&session_id));
         }
         h.restart_end(&session_id, None);
     });

@@ -114,6 +114,13 @@ pub fn refresh() -> bool {
     true
 }
 
+/// Whether Claude's registry lists `session_id` now, read fresh but not kept: a watch waiting on one session
+/// (a restart's) leaves the list Cue keeps to the ticker. Kept, a watch outliving its test wrote this Mac's
+/// real list over the one the next test had set.
+pub fn listed_now(session_id: &str) -> bool {
+    scan_claude(&claude_sessions_dir()).iter().any(|q| q.session_id == session_id)
+}
+
 /// When a live Claude session's process started (ms, its registry entry's `startedAt`); None when it
 /// isn't running here.
 pub fn started_ms(session_id: &str) -> Option<u64> {
