@@ -101,12 +101,11 @@
 .dkn-more[hidden] { display: none; }
 /* Scrolled to the end: the line keeps its room (the list doesn't jump), just shows nothing. */
 .dkn-more.end { visibility: hidden; }
-.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(252px, 1.5fr) 136px; gap: 0 12px; align-items: center; }
+/* Strip (K, #751): Item, Progress (a 180px strip), Now. Line (T): Item and Now, the line along each row's foot. */
+.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 136px; gap: 0 12px; align-items: center; }
+.dkn-line :is(.dkn-th, .dkn-row) { grid-template-columns: minmax(130px, 1fr) minmax(200px, .8fr); }
 .dkn-th { align-items: end; padding: 10px 16px 8px; border-bottom: 1px solid var(--line); font-size: var(--type-tag); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .dkn-th > span:last-child { text-align: right; }
-.dkn-ths { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); text-align: center; }
-.dkn-ths { text-transform: none; letter-spacing: 0; font-weight: 600; }
-.dkn-ths span { padding: 0 2px; font-size: 10.5px; line-height: 1.15; overflow-wrap: normal; }
 .dkn-gh { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer; padding: 18px 16px 4px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; }
 .dkn-gh:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
 .dkn-gh span { color: var(--muted); font-weight: 500; }
@@ -114,7 +113,7 @@
 .dkn-row:hover { background: var(--panel-2); }
 .dkn-row.on { background: var(--sel); color: var(--on-sel); }
 .dkn-id { font: 600 var(--type-tag) var(--mono); color: inherit; white-space: nowrap; }
-.dkn-row.on :is(.dkn-id, .dkn-sub, .dkn-tm, .dkn-nw) { color: var(--on-sel); }
+.dkn-row.on :is(.dkn-id, .dkn-sub, .dkn-kt, .dkn-tl, .dkn-nw, .dkn-sofar) { color: var(--on-sel); }
 .dkn-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .dkn-tt { font-weight: 600; font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-sub { font-size: var(--type-pill); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -130,7 +129,7 @@
 .dkn-now .dk-ok.on { background: var(--accent); color: var(--on-accent); }
 /* …and the rest of the row greys out at once, as a row that's done: nothing on it but Undo takes a click. */
 .dkn-row.soon { pointer-events: none; }
-.dkn-row.soon :is(.dkn-id, .dkn-t, .dkn-steps, .dkn-bar) { opacity: 0.4; }
+.dkn-row.soon :is(.dkn-id, .dkn-t, .dkn-pl, .dkn-sofar, .dkn-tline) { opacity: 0.4; }
 .dkn-row.soon .dk-undo-c { pointer-events: auto; }
 .dkn-now .dk-soon { margin-left: 0; order: -1; }
 .dkn-row.dk-leave { animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
@@ -139,39 +138,57 @@
   to { height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; }
 }
 
-/* Its six steps: a dot on a line, done filled, the one it's at in the Board's waiting stripes, how long each took. */
-.dkn-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.dkn-stp { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.dkn-stp::before { content: ""; position: absolute; top: 6px; left: -50%; right: 50%; height: 2px; background: var(--line); }
-.dkn-stp.first::before { display: none; }
-.dkn-stp:is(.done, .cur)::before { background: var(--accent); }
-.dkn-stp i { position: relative; width: 13px; height: 13px; border-radius: 50%; box-sizing: border-box; background: var(--panel); box-shadow: inset 0 0 0 2px var(--line); }
-.dkn-stp.done i { background: var(--accent); box-shadow: none; }
-.dkn-stp.cur i { background: repeating-linear-gradient(45deg, var(--accent) 0 2px, var(--panel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: 0 0 0 1.5px var(--accent); }
-.dkn-stp.cur.live i { animation: dkn-march .9s linear infinite; }
-.dkn-tm { font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
-.dkn-stp.cur .dkn-tm { color: var(--ink); font-weight: 700; }
-.dkn-row.on .dkn-stp::before { background: color-mix(in srgb, var(--on-sel) 25%, transparent); }
-.dkn-row.on .dkn-stp:is(.done, .cur)::before, .dkn-row.on .dkn-stp.done i { background: var(--on-sel); }
-.dkn-row.on .dkn-stp i { background: var(--sel); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--on-sel) 30%, transparent); }
-.dkn-row.on .dkn-stp.cur i { background: repeating-linear-gradient(45deg, var(--on-sel) 0 2px, var(--sel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: 0 0 0 1.5px var(--on-sel); }
-.dkn-row.on .dkn-stp.cur .dkn-tm { color: var(--on-sel); }
+/* Strip (K): one 6px strip, each step's piece as long as it took (desk/c.js deskCStrip sets its share), done ones and
+   the one it's at never under 18px, steps to come 8px stubs; the one it's at in the Board's waiting stripes; each time
+   under its own piece, the one it's at in bold. */
+.dkn-ks { display: flex; gap: 2px; width: 180px; min-width: 0; }
+.dkn-kp { flex: 0 1 0; min-width: 18px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.dkn-kp.todo { flex: 0 0 8px; min-width: 8px; }
+.dkn-kp i { align-self: stretch; height: 6px; border-radius: 3px; background: var(--line); }
+.dkn-kp.done i { background: var(--accent); }
+.dkn-kt { font: var(--type-tag) var(--mono); line-height: 1.2; color: var(--muted); white-space: nowrap; min-height: 1.2em; }
+.dkn-kp.cur .dkn-kt { color: var(--ink); font-weight: 700; }
+/* Line (T): along the row's foot, its pieces sized the same way, each time just over its piece. */
+.dkn-line .dkn-row { position: relative; padding-bottom: 26px; }
+.dkn-tline { position: absolute; left: 16px; right: 16px; bottom: 6px; display: flex; gap: 3px; align-items: flex-end; }
+.dkn-tp { flex: 0 1 0; min-width: 6px; display: flex; flex-direction: column; gap: 2px; }
+.dkn-tp.todo { flex: 0 0 14px; }
+.dkn-tp i { height: 3px; border-radius: 2px; background: var(--line); }
+.dkn-tp.done i { background: var(--accent); }
+.dkn-tp.cur i { height: 4px; }
+.dkn-tl { font: var(--type-tag) var(--mono); line-height: 12px; height: 12px; color: var(--muted); white-space: nowrap; }
+.dkn-tp.cur .dkn-tl { color: var(--ink); font-weight: 700; }
+.dkn-line .dkn-now { flex-direction: column; align-items: flex-end; justify-content: center; gap: 3px; }
+.dkn-nl { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
+.dkn-sofar { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dkn-sofar:empty { display: none; }
+.dkn-sofar b { color: var(--ink); font-weight: 600; }
+.dkn-row.on .dkn-sofar b { color: var(--on-sel); }
+/* The step it's at, in either: the Board's waiting stripes, moving while a session works on it right now. */
+:is(.dkn-kp, .dkn-tp).cur i { background: repeating-linear-gradient(45deg, var(--accent) 0 2px, var(--panel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: inset 0 0 0 1px var(--accent); }
+:is(.dkn-kp, .dkn-tp).cur.live i { animation: dkn-march .9s linear infinite; }
+.dkn-row.on :is(.dkn-kp, .dkn-tp) i { background: color-mix(in srgb, var(--on-sel) 25%, transparent); }
+.dkn-row.on :is(.dkn-kp, .dkn-tp).done i { background: var(--on-sel); }
+.dkn-row.on :is(.dkn-kp, .dkn-tp).cur i { background: repeating-linear-gradient(45deg, var(--on-sel) 0 2px, var(--sel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: inset 0 0 0 1px var(--on-sel); }
+.dkn-row.on :is(.dkn-kp, .dkn-tp).cur :is(.dkn-kt, .dkn-tl) { color: var(--on-sel); }
 @keyframes dkn-march { to { background-position: 5.66px 0; } }
-/* Today's short bars (narrow Items, an item's page): the step it's at in the same stripes. */
+/* An item's page (today's short bars): the step it's at in the same stripes. */
 .dk-c :is(.dk2b-trk i.cur, .dk2b-step.cur i) { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); background-size: 8.49px 8.49px; box-shadow: inset 0 0 0 1px var(--accent); }
 .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: dkn-zmarch .9s linear infinite; }
 @keyframes dkn-zmarch { to { background-position: 8.49px 0; } }
-@media (prefers-reduced-motion: reduce) { .dkn-stp.cur.live i, .dkn-d.work, .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: none; } }
-.dkn-bar { display: none; align-items: center; gap: 8px; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; }
-.dkn-bar .dk2b-trk { width: 84px; }
-.dkn-row.on .dkn-bar { color: var(--on-sel); }
-/* Narrow Items: the steps are today's short bar with "3/6 · Tests" (#734's review). */
+@media (prefers-reduced-motion: reduce) { :is(.dkn-kp, .dkn-tp).cur.live i, .dkn-d.work, .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: none; } }
+/* The Strip · Line switch in Items' head. */
+.dkn-lsw { flex: none; align-self: center; display: inline-flex; padding: 2px; border-radius: var(--radius-pill); background: var(--panel-2); }
+.dkn-lsb { all: unset; padding: 2px 10px; border-radius: var(--radius-pill); color: var(--muted); font: 650 var(--type-pill) var(--sans); cursor: pointer; }
+.dkn-lsb:hover { color: var(--ink); }
+.dkn-lsb.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px color-mix(in srgb, var(--shade) 18%, transparent); }
+.dkn-lsb:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+/* Narrow Items: no heading row; Strip goes on its own line under the title, Now under it; Line keeps its foot. */
 @container dkn (max-width: 620px) {
   .dkn-th { display: none; }
-  .dkn-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .dkn-steps { display: none; }
-  .dkn-bar { display: flex; }
-  .dkn-now { grid-column: 1 / -1; }
+  .dkn-card .dkn-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .dkn-now, .dkn-line .dkn-now { justify-content: flex-start; align-items: flex-start; }
+  .dkn-nl { justify-content: flex-start; }
   .dkn-now:has(.dkn-nw:empty) { display: none; }
 }
 
@@ -220,7 +237,7 @@
    when it's ready to check, what to try with Looks right and Send back. */
 .dkn-ib { flex: none; padding: 10px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .dkn-ib2 { display: flex; align-items: center; gap: 16px; }
-.dkn-ib2 .dkn-steps { flex: 1 1 auto; max-width: 420px; }
+.dkn-ib2 .dkn-ks { flex: none; width: 260px; }
 .dkn-ibacts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .dkn-ibsee { font-size: var(--type-small); color: var(--ink); }
 .dkn-ibsee b { font-weight: 600; margin-right: 4px; }

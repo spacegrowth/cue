@@ -3,6 +3,7 @@
 import { test, expect, openDesk } from "./cue.mjs";
 import { compareShot } from "./shots.mjs";
 import { pillProblems } from "./pills.mjs";
+import { stampSteps } from "./desk-steps.mjs";
 
 // The smallest the window goes (tauri.conf.json minWidth; Cue has no phone layout of its own).
 const NARROWEST = { width: 900, height: 600 };
@@ -44,10 +45,14 @@ const dropOn = (page, sel, text) => page.evaluate(([sel, text]) => {
 
 // A laptop's window (#734's review: every mock was drawn at 2560 wide).
 const LAPTOP = { width: 1440, height: 900 };
-/** The new Desk layout switched on, the Desk open on cue. */
-const deskLayout = async (page) => {
+/** The new Desk layout switched on, the Desk open on cue, its items' steps timed (desk-steps.mjs); `line`: its
+ *  progress as the line along each row's foot (Strip · Line, #751), else the strip. */
+const deskLayout = async (page, line = false) => {
   await page.evaluate(() => deskCTurn(true));
   await openDesk(page);
+  await stampSteps(page);
+  if (line) await page.locator('.dkn-ih [data-desk-c-line="line"]').click();
+  await page.locator(`.dkn-card .dkn-row[data-desk-item="d3"] ${line ? ".dkn-tline" : ".dkn-ks"} .cur`).waitFor();
 };
 /** The new layout drawn: its sessions, Items' card, Up next and Done today. */
 const deskLayoutDrawn = async (p) => { await p.locator(".dk-c .dkn-side").waitFor(); await p.locator(".dk-c .dkn-card .dkn-row").first().waitFor(); await p.locator('.dk-c [data-dkn-drawer="done"]').waitFor(); };
@@ -229,6 +234,13 @@ const SCREENS = {
   },
   "desk-layout-wide": { scenario: "desk", viewport: { width: 1800, height: 1095 }, setup: (p) => deskLayout(p), done: deskLayoutDrawn },
   "desk-layout-narrowest": { scenario: "desk", viewport: NARROWEST, setup: (p) => deskLayout(p), done: deskLayoutDrawn },
+  // Its progress (#751): the strip (K, above) and the line along each row's foot (T), at a laptop's size and the
+  // smallest window, light and dark.
+  "desk-layout-narrowest-dark": { scenario: "desk", viewport: NARROWEST, setup: async (p) => { await p.emulateMedia({ colorScheme: "dark" }); await deskLayout(p); }, done: deskLayoutDrawn },
+  "desk-line-laptop": { scenario: "desk", viewport: LAPTOP, setup: (p) => deskLayout(p, true), done: deskLayoutDrawn },
+  "desk-line-laptop-dark": { scenario: "desk", viewport: LAPTOP, setup: async (p) => { await p.emulateMedia({ colorScheme: "dark" }); await deskLayout(p, true); }, done: deskLayoutDrawn },
+  "desk-line-narrowest": { scenario: "desk", viewport: NARROWEST, setup: (p) => deskLayout(p, true), done: deskLayoutDrawn },
+  "desk-line-narrowest-dark": { scenario: "desk", viewport: NARROWEST, setup: async (p) => { await p.emulateMedia({ colorScheme: "dark" }); await deskLayout(p, true); }, done: deskLayoutDrawn },
 };
 
 for (const [name, s] of Object.entries(SCREENS)) {
