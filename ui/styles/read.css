@@ -15,7 +15,7 @@
 .rdv-item.on { background: var(--sel); color: var(--on-sel); }
 .rdv-open { flex: 1; min-width: 0; text-align: left; padding: 6px 8px; display: flex; flex-direction: column; align-items: stretch; gap: 1px; color: inherit; }
 .rdv-name { font: 600 var(--type-body) var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rdv-sub { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-sub { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rdv-item.on .rdv-sub { color: inherit; opacity: 0.75; }
 .rdv-x { flex: none; width: 22px; height: 22px; margin-right: 4px; border-radius: var(--radius-qp); color: var(--muted); font-size: var(--type-title); line-height: 1; opacity: 0; }
 .rdv-item:hover .rdv-x { opacity: 1; }
@@ -26,9 +26,9 @@
 .rdv-head { padding: 12px 18px 8px; gap: 6px; border-bottom: 1px solid var(--line); flex-wrap: nowrap; }
 /* The file's name, and under it its folder and when it last changed, quiet; both cut short before the buttons are. */
 .rdv-title { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; margin-left: 4px; line-height: 1.25; }
-.rdv-title .rd-file { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rdv-plain { font-size: var(--type-small); margin-right: 4px; }
-.rdv-where { font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-title .rd-file { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-plain { font-size: var(--type-small); line-height: var(--type-small-lh); margin-right: 4px; }
+.rdv-where { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The file: wider than the reader in a chat, but a line stays readable on a big window, with room either side. */
 /* Room under the end, so a heading near it can still come to the top when picked in Contents. */
 .rdv .rd { padding-top: 22px; max-width: 54em; margin: 0 auto; padding-bottom: 70vh; }
@@ -43,7 +43,7 @@
 
 .rdv-h { display: block; width: calc(100% - 12px); margin: 0 6px; text-align: left; padding: 5px 8px; border-radius: var(--radius-qp); font-size: var(--type-body); line-height: 1.35; color: var(--ink); }
 .rdv-h:hover { background: color-mix(in srgb, var(--line) 55%, transparent); }
-.rdv-h.l1 { font-weight: 650; }
+.rdv-h.l1 { font-weight: 600; }
 .rdv-h.l3 { padding-left: 20px; color: var(--muted); }
 .rdv-h.l4 { padding-left: 32px; color: var(--muted); }
-.rdv-h.on { background: var(--sel); color: var(--on-sel); font-weight: 650; }
+.rdv-h.on { background: var(--sel); color: var(--on-sel); font-weight: 600; }

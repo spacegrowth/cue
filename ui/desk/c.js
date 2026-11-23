@@ -182,7 +182,9 @@ function deskCFoot(i) {
   const ps = pieces.map(({ state, w, took }, k) => {
     const grow = Math.max(w, 1), say = state === "cur" || (state === "done" && grow / sum >= 0.065);
     const flex = state === "todo" ? "" : ` style="flex-grow:${grow.toFixed(2)}"`;
-    return `<span class="dkn-tp ${state}${state === "cur" && live ? " live" : ""}"${flex}><span class="dkn-tl">${say ? `<span class="dkn-tn">${esc(DESK_PROG_STEPS[k])} </span>${took}` : ""}</span><i></i></span>`;
+    // Drawn as it last fitted (deskCFitNames), so a redraw doesn't show the name for a frame before it's taken off.
+    const fit = say ? `${i.id}:${k}:${took}:${innerWidth}` : "", short = fit && deskCShortBy.get(fit) ? " short" : "";
+    return `<span class="dkn-tp ${state}${state === "cur" && live ? " live" : ""}"${flex}><span class="dkn-tl${short}"${fit ? ` data-dkn-fit="${esc(fit)}"` : ""}>${say ? `<span class="dkn-tn">${esc(DESK_PROG_STEPS[k])} </span>${took}` : ""}</span><i></i></span>`;
   }).join("");
   return `<div class="dkn-tline" role="img" aria-label="${esc(deskCLineSay(i))}">${ps}</div>`;
 }
@@ -243,7 +245,7 @@ function deskCDrawer(key, label, n, hint, rows, none) {
   const open = !deskCFolds.has(key);
   // Just opened: its rows slide in, already as far in as the time since (a redraw meanwhile doesn't start it again).
   const since = Date.now() - (deskCOpened.get(key) || 0), anim = open && since < DESK_C_OPEN_MS ? ` dkn-opening" style="animation-delay:-${since}ms` : "";
-  return `<section class="dkn-dr${open ? "" : " fold"}" data-dkn-drawer="${key}"><button class="dkn-dh" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span class="dkn-dn">${n}</span>${hint && open ? `<span class="dkn-hint">· ${hint}</span>` : ""}</button>${open ? `<div class="dkn-dl${anim}" data-dkn-list="${key}"${deskCFitStyle(key)}>${rows || `<div class="dkn-dnone">${none}</div>`}</div><button class="dkn-more" data-desk-c-all="${key}"${deskCFitBy.get(key) ? "" : " hidden"}></button>` : ""}</section>`;
+  return `<section class="dkn-dr${open ? "" : " fold"}" data-dkn-drawer="${key}"><button class="dkn-dh" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span class="dkn-dn">${n}</span>${hint && open ? `<span class="dkn-hint">· ${hint}</span>` : ""}</button>${open ? `<div class="dkn-dl${anim}" data-dkn-list="${key}"${deskCFitStyle(key)}>${rows || `<div class="dkn-dnone">${none}</div>`}</div><button class="dkn-more" data-desk-c-all="${key}"${deskCFitBy.get(key) ? "" : " hidden"}>${deskCMoreBy.get(key) || ""}</button>` : ""}</section>`;
 }
 /** Items' card, Up next and Done today each scroll, and at rest end on a whole row: a list's height is cut to the
  *  last row that fits (what's left goes below it). Under each, "↓ N more" says how many rows are below its edge as
@@ -288,7 +290,9 @@ function deskCFitLists() {
 }
 /** Where a list's "↓ N more" is sending it, by list, for as long as its slide takes (deskCAll, deskCFitLists). */
 const deskCGoing = new Map(), DESK_C_GOING_MS = 1000;
-/** "↓ N more" under each list that scrolls: the rows still below its edge. */
+/** "↓ N more" under each list that scrolls: the rows still below its edge. Kept by list, and drawn with it next time,
+ *  so a redraw doesn't show it empty for a frame. */
+const deskCMoreBy = new Map();
 function deskCMore() {
   for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-list]")) {
     const more = el.nextElementSibling;
@@ -296,17 +300,23 @@ function deskCMore() {
     const edge = el.getBoundingClientRect().bottom;
     const n = [...el.querySelectorAll(":scope > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > edge + 1).length;
     more.textContent = `↓ ${n} more`;
+    deskCMoreBy.set(el.dataset.dknList, more.textContent);
     more.classList.toggle("end", !n);
   }
 }
 window.addEventListener("resize", () => { if (view === "desk" && deskCOn()) { deskCFitLists(); deskCFitNames(); } });
-/** Line: a step's name goes with its time only where its piece has room for both; else just the time. */
+/** Line: a step's name goes with its time only where its piece has room for both; else just the time. What each
+ *  label came to is kept (by item, step, time and window width) and drawn with it next time (deskCFoot). */
+const deskCShortBy = new Map();
 function deskCFitNames() {
   for (const tl of document.querySelectorAll("#app .dk-c .dkn-tl")) {
     if (!tl.querySelector(".dkn-tn")) continue;
     tl.classList.remove("short");
-    if (tl.scrollWidth > tl.parentElement.clientWidth + 1) tl.classList.add("short");
+    const short = tl.scrollWidth > tl.parentElement.clientWidth + 1;
+    tl.classList.toggle("short", short);
+    if (tl.dataset.dknFit) deskCShortBy.set(tl.dataset.dknFit, short);
   }
+  if (deskCShortBy.size > 500) deskCShortBy.clear();
 }
 document.addEventListener("scroll", (e) => { if (e.target?.dataset?.dknList) deskCMore(); }, true);
 /** An item opened on the new layout: its session's chat (the same as clicking the session on the left), not a page of
@@ -399,7 +409,7 @@ function deskCList(project, taskApprovals) {
   const up = deskCDrawer("next", "UP NEXT", next.length, next.length > 1 ? "drag to reorder" : "", next.map(lowRow).join(""), "Nothing up next.");
   const done = deskCDrawer("done", "DONE TODAY", doneToday.length, "", doneToday.map((i) => deskCLow(i, esc(deskCDoneLine(i)))).join(""), "Nothing done today.");
   requestAnimationFrame(() => { deskCFitLists(); deskCFitNames(); });
-  return `<div class="dk-items dkn-items"><div class="dk-card dkn-card dkn-${deskCLine}"><div class="dk2b-ih dkn-ih"><b>Items</b>${deskCLineSwitch()}${deskQuickAdd()}${deskAwaySwitch(d)}${deskPausedTag(d)}${deskPauseButton(d)}</div>${body ? head : ""}<div class="dk-scroll dkn-body" data-scroll-key="desk-items:${esc(project)}" data-dkn-list="items"${deskCFitStyle("items")}>${body || `<div class="dk-empty">Nothing waits on you and nothing is working.</div>`}</div><button class="dkn-more" data-desk-c-all="items"${deskCFitBy.get("items") ? "" : " hidden"}></button></div><div class="dkn-low">${up}${done}</div></div>`;
+  return `<div class="dk-items dkn-items"><div class="dk-card dkn-card dkn-${deskCLine}"><div class="dk2b-ih dkn-ih"><b>Items</b>${deskCLineSwitch()}${deskQuickAdd()}${deskAwaySwitch(d)}${deskPausedTag(d)}${deskPauseButton(d)}</div>${body ? head : ""}<div class="dk-scroll dkn-body" data-scroll-key="desk-items:${esc(project)}" data-dkn-list="items"${deskCFitStyle("items")}>${body || `<div class="dk-empty">Nothing waits on you and nothing is working.</div>`}</div><button class="dkn-more" data-desk-c-all="items"${deskCFitBy.get("items") ? "" : " hidden"}>${deskCMoreBy.get("items") || ""}</button></div><div class="dkn-low">${up}${done}</div></div>`;
 }
 
 // ---------- clicks ----------

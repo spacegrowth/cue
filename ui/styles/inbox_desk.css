@@ -3,12 +3,12 @@
 
 /* A row's third line: what it's for on the Desk. */
 .ib-row:has(.ib-for) { grid-template-rows: auto auto auto; }
-.ib-for { grid-row: 3; grid-column: 2; min-width: 0; margin-top: 2px; color: var(--muted); font-size: var(--type-pill); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ib-for b { color: var(--ink); font-weight: 650; }
-.ib-pj { font: 650 var(--type-tag)/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.ib-for { grid-row: 3; grid-column: 2; min-width: 0; margin-top: 2px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-for b { color: var(--ink); font-weight: 600; }
+.ib-pj { font: 600 var(--type-label)/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 
 /* Over the brief: what it's for on the Desk, and Open in Desk. */
 .ib-forbar { flex: none; display: flex; align-items: center; gap: 8px; margin: 12px 20px; padding: 8px 8px 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); color: var(--muted); font-size: var(--type-body); min-width: 0; }
 .ib-forw { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ib-forbar b { color: var(--ink); font-weight: 650; }
-.ib-act.ib-desk { color: var(--accent); font-weight: 650; }
+.ib-forbar b { color: var(--ink); font-weight: 600; }
+.ib-act.ib-desk { color: var(--accent); font-weight: 600; }

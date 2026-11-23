@@ -407,7 +407,7 @@ function showRenderError(e) {
   const app = document.getElementById("app");
   if (!app || app.innerHTML.length > 0 && !app.querySelector(".render-error")) return; // an earlier good draw stays
   const detail = e && e.stack ? e.stack : String(e);
-  app.innerHTML = `<div class="render-error" style="padding:24px 28px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;user-select:text"><div style="font:600 15px system-ui;margin-bottom:10px">Cue can't draw its window</div>${esc(detail)}\n\nIf this came with a new build, reinstall the previous one or fix the error above and run ./install.sh --app again.</div>`;
+  app.innerHTML = `<div class="render-error" style="padding:24px 28px;font:var(--type-small)/1.5 var(--mono);white-space:pre-wrap;user-select:text"><div style="font:600 var(--type-body) var(--sans);margin-bottom:10px">Cue can't draw its window</div>${esc(detail)}\n\nIf this came with a new build, reinstall the previous one or fix the error above and run ./install.sh --app again.</div>`;
 }
 /** A redraw, its error shown rather than thrown (a window with its own draw: that draw, as it is). */
 const render = () => { if (windowDraw) return windowDraw(); try { renderMain(); } catch (e) { showRenderError(e); } };

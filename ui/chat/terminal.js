@@ -216,7 +216,7 @@ function termTyping(host, sid, shown = () => true) {
  *  from xterm's fixed 600ms to 700ms (keep that on an update), and the default renderer's in styles/shells.css. */
 function xterm(host) {
   const term = new Terminal({
-    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: parseFloat(cssVar("--type-label")), lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
     // ⌥-drag: a selection of the terminal's own, even with tmux taking the mouse.
     macOptionClickForcesSelection: true,
     theme: termTheme(),

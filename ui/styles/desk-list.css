@@ -33,20 +33,20 @@
 /* Its name, then its state at the right; the state on a line of its own, still at the right, when a narrow column
    has no room for both whole (#610: never squeezed to a letter). */
 .dk-s1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
-.dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: var(--type-body); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-tag) var(--mono); white-space: nowrap; }
+.dk-s1 .dk-nm { flex: 0 1 auto; min-width: 0; font-size: var(--type-body); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-label)/var(--type-label-lh) var(--mono); white-space: nowrap; }
 .dk-pill.loose { color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); text-transform: none; letter-spacing: 0; }
 .dk-srow.past { opacity: .6; }
-.dk-sfold { display: block; margin: 0; padding: 4px 20px 8px 44px; border: 0; background: none; color: var(--muted); font: 600 var(--type-small) var(--sans); cursor: pointer; }
+.dk-sfold { display: block; margin: 0; padding: 4px 20px 8px 44px; border: 0; background: none; color: var(--muted); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); cursor: pointer; }
 .dk-sfold:hover { color: var(--ink); }
 /* Older (#485): the cold sessions' group, shut by default; a click on its header opens it. At its right, once some sat
    there over a day, the offer to close them. */
 .dk-older-h { cursor: pointer; user-select: none; }
 .dk-older-h > .dk-gchev { flex: none; margin-left: -16px; transform: rotate(90deg); }
 .dk-older-h[aria-expanded="false"] > .dk-gchev { transform: none; }
-.dk-older-close { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-pill) var(--sans); letter-spacing: 0; text-transform: none; cursor: pointer; }
+.dk-older-close { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font: 600 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: 0; text-transform: none; cursor: pointer; }
 .dk-older-close:hover, .dk-older-close:focus-visible { background: var(--panel-2); }
-.dk-st { flex: 0 1 auto; max-width: 100%; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); white-space: nowrap; overflow: hidden; }
+.dk-st { flex: 0 1 auto; max-width: 100%; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); white-space: nowrap; overflow: hidden; }
 .dk-st > b { min-width: 0; font-weight: inherit; overflow: hidden; text-overflow: ellipsis; }
 .dk-st > i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--work); }
 .dk-st > i.ask { background: var(--deny); }
@@ -57,17 +57,17 @@
 .dk-lcard .dk-st > i.idle { box-shadow: inset 0 0 0 1.5px currentColor; }
 .dk-s2 { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--ink); font-size: var(--type-body); white-space: nowrap; }
 .dk-s2 > .dk-w { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-s3 { margin: 3px 0 0; color: var(--muted); font: var(--type-pill) var(--mono); }
+.dk-s3 { margin: 3px 0 0; color: var(--muted); font: var(--type-small)/var(--type-small-lh) var(--mono); }
 .dk-s3.hot { color: var(--amber); font-weight: 600; }
 .dk-s3.dk-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-srow.on .dk-st, .dk-srow.on .dk-s2, .dk-srow.on .dk-s3:not(.hot), .dk-srow.on .dk-id { color: var(--on-sel); }
 .dk-add-anchor { position: relative; flex: none; z-index: 1; }
 .dk-add-button.btn { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; font: 600 var(--type-title)/1 var(--sans); }
 .dk-add-picker { position: absolute; bottom: calc(100% + 5px); left: 0; width: 172px; max-height: min(180px, 38vh); overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel); box-shadow: var(--shadow); }
-.dk-add-picker > .dim { padding: 5px 6px; font-size: var(--type-small); }
+.dk-add-picker > .dim { padding: 5px 6px; font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* The light line between this Desk's sessions and the free ones to add (#189). */
 .dk-add-div { height: 1px; margin: 4px 6px; background: var(--line); }
-.dk-add-option { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 3px 6px; border: 0; border-radius: var(--radius-tag); background: none; color: var(--ink); text-align: left; font: var(--type-small) var(--sans); overflow-wrap: anywhere; cursor: pointer; }
+.dk-add-option { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 3px 6px; border: 0; border-radius: var(--radius-tag); background: none; color: var(--ink); text-align: left; font: var(--type-small)/var(--type-small-lh) var(--sans); overflow-wrap: anywhere; cursor: pointer; }
 .dk-add-option small { display: block; }
 .dk-add-option:has(input:disabled) { cursor: default; }
 .dk-add-option:hover, .dk-add-option:focus-within { background: var(--panel-2); }
@@ -80,7 +80,7 @@
 .dk-card { min-width: 0; min-height: 0; margin: 0 0 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); box-shadow: var(--shadow); overflow: clip; font-size: var(--type-body); }
 .dk-ch { flex: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px 0 20px; border-bottom: 1px solid var(--line); }
 .dk-ch b { font-size: var(--type-body); font-weight: 700; }
-.dk-sub { color: var(--muted); font-family: var(--mono); font-size: var(--type-pill); }
+.dk-sub { color: var(--muted); font-family: var(--mono); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-scroll, .dk-chat, .dk-pane, .dk-rd { flex: 1; min-height: 0; overflow-y: auto; }
 .dk-scroll { padding: 6px 0 14px; }
 /* The item list scrolls up and down only: nothing in it can slide it sideways and cut off its left edge (#405). */
@@ -88,9 +88,9 @@
 .dk-empty { padding: 28px 24px; color: var(--muted); font-size: var(--type-body); line-height: 1.5; }
 
 /* Group labels: Waiting on you, In progress, Queued, Done; all grey, whatever their count. */
-.dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 var(--type-pill) var(--sans); color: var(--muted); background: none; border: 0; text-align: left; }
+.dk-gh { display: flex; align-items: center; gap: 6px; margin: 14px 8px 4px; padding: 0 12px; font: 700 var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); background: none; border: 0; text-align: left; }
 /* The finished items' end: holds a row's room while the next ones load, so nothing below or above jumps. */
-.dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: var(--type-small); }
+.dk-more { min-height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-gh .n { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
 /* The light line between this Desk's sessions and the rest (#189). */
 
@@ -99,7 +99,7 @@
 .dk-holder:hover { background: var(--panel-2); }
 .dk-holder.on { background: var(--sel); }
 .dk-holder .dk-nm { font-weight: 700; font-size: var(--type-body); }
-.dk-holder .dk-s { color: var(--muted); font-size: var(--type-small); }
+.dk-holder .dk-s { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-holder .dk-go { color: var(--muted); font-size: var(--type-title); }
 .dk-holder.on, .dk-holder.on .dk-s, .dk-holder.on .dk-go { color: var(--on-sel); }
 
@@ -119,7 +119,7 @@
 .dk-it.on .dk-see { color: inherit; opacity: .8; }
 /* Its parts wrap, whole, to a next line when a narrow list has no room for them all, rather than squeezing its age or
    who holds it to a letter (#610). At least a line tall whatever it holds: a row keeps its height as its doing line comes and goes (#285). */
-.dk-i2 { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; min-width: 0; min-height: 1lh; color: var(--muted); font-size: var(--type-small); }
+.dk-i2 { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; min-width: 0; min-height: 1lh; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-i2 .dk-who { flex: 0 1 auto; min-width: 0; max-width: none; }
 /* A queued row's words of what it waits for (#576) wrap, whole, rather than cut; its age keeps its room. */
 .dk-i2 .dk-who.dk-qw { white-space: normal; overflow: visible; }
@@ -130,7 +130,7 @@
 .dk-kid { flex: none; display: inline-flex; align-items: center; }
 .dk-i2 .dk-kid + .dk-who:empty { display: none; }
 /* The model its session runs on (#620), beside its holder: quiet, in the row's own color. */
-.dk-i2 .dk-model { margin-left: 6px; font: var(--type-pill) var(--mono); opacity: .75; white-space: nowrap; }
+.dk-i2 .dk-model { margin-left: 6px; font: var(--type-small)/var(--type-small-lh) var(--mono); opacity: .75; white-space: nowrap; }
 .dk-i2 .dk-kid + .dk-who:not(:empty)::before, .dk-i2 .dk-kid + .dk-who:empty + .dk-age::before { content: "· "; }
 .dk-i2 .dk-age:empty { display: none; }
 /* A long age ("committed 2f2448c7 ef66ab27 · Thu 9:45pm") gives way, cut at "…", so Undo stays on the row and the list
@@ -143,7 +143,7 @@
 .dk-i2 .dk-rskip { flex: none; margin-left: 6px; }
 /* Undo on a done row: back to waiting on you (nothing in the work changes). */
 /* Shown only while the row is hovered (or Undo has the keyboard's focus). */
-.dk-i2 .dk-undo { all: unset; margin-left: auto; flex: none; cursor: pointer; color: var(--accent); font-size: var(--type-small); visibility: hidden; }
+.dk-i2 .dk-undo { all: unset; margin-left: auto; flex: none; cursor: pointer; color: var(--accent); font-size: var(--type-small); line-height: var(--type-small-lh); visibility: hidden; }
 .dk-it:hover .dk-undo, .dk-i2 .dk-undo:focus-visible { visibility: visible; }
 .dk-undo:hover { text-decoration: underline; }
 .dk-it.on .dk-undo { color: var(--on-sel); }
@@ -162,31 +162,31 @@
 /* A tag's words (only a stuck one has any) lead its title. */
 .dk-i1 > .dk-tag { display: inline-block; margin-right: 7px; vertical-align: 1px; }
 .dk-i1 > .dk-tag:empty { display: none; }
-.dk-tag { min-width: 46px; margin-top: 1px; padding: 2px 6px; white-space: nowrap; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); font: 600 var(--type-tag) var(--mono); text-align: center; }
+.dk-tag { min-width: 46px; margin-top: 1px; padding: 2px 6px; white-space: nowrap; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); font: 600 var(--type-label)/var(--type-label-lh) var(--mono); text-align: center; }
 .dk-tag.ask { background: var(--deny); color: var(--on-accent); }
 .dk-it.on, .dk-it.on .dk-t { color: var(--on-sel); }
 .dk-tag.now { color: var(--ink); }
 .dk-tag.done { background: none; }
-.dk-id { color: var(--muted); font: var(--type-pill) var(--mono); }
+.dk-id { color: var(--muted); font: var(--type-small)/var(--type-small-lh) var(--mono); }
 /* The whole title, wrapping as long as it needs: never cut at "…". */
 .dk-t { flex: 1; min-width: 0; font-size: var(--type-body); line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
-.dk-who { max-width: 140px; color: var(--muted); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-who { max-width: 140px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-who:has(.dk-givewrap) { overflow: visible; }
-.dk-age { color: var(--muted); font-family: var(--mono); font-size: var(--type-pill); white-space: nowrap; }
+.dk-age { color: var(--muted); font-family: var(--sans); font-size: var(--type-label); line-height: var(--type-label-lh); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* At work (#285): what its holder is doing now, and how long since, in ink after its name; one line, cut at "…" so the
    row keeps its height: the rest of its line, the holder's name giving way to it down to a few words. Stalled: the word in bold, the rest and the title muted. A word and a tone, never a stripe. */
 .dk-i2:has(> .dk-doing) { flex-wrap: nowrap; }
-.dk-doing { flex: 1 1 0; min-width: 6em; color: var(--ink); font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-doing { flex: 1 1 0; min-width: 6em; color: var(--ink); font-size: var(--type-small); line-height: var(--type-small-lh); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-doing::before { content: "· "; color: var(--muted); }
-.dk-doing [data-ago] { color: var(--muted); font: var(--type-pill) var(--mono); }
+.dk-doing [data-ago] { color: var(--muted); font: var(--type-label)/var(--type-label-lh) var(--sans); font-variant-numeric: tabular-nums; }
 .dk-it.stalled:not(.on) .dk-t, .dk-it.stalled:not(.on) .dk-doing { color: var(--muted); }
 .dk-stw { font-weight: 700; color: var(--ink); }
 .dk-it.on .dk-doing, .dk-it.on .dk-doing [data-ago], .dk-it.on .dk-stw { color: var(--on-sel); }
 /* "6 moving · 3 stalled" at the right of In progress (#285). */
-.dk-gh .dk-split, .dk-gh .dk-qhint { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; font-size: var(--type-small); }
-.dk-gh .dk-split .n { font-size: var(--type-pill); }
+.dk-gh .dk-split, .dk-gh .dk-qhint { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-gh .dk-split .n { font-size: var(--type-label); line-height: var(--type-label-lh); }
 /* Looks right on a row: a quiet outlined ✓ that fills in when you hover the row (or focus it). */
-.dk-ok { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--accent); border-radius: 50%; background: none; color: var(--accent); font: 700 var(--type-small) var(--sans); cursor: pointer; }
+.dk-ok { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--accent); border-radius: 50%; background: none; color: var(--accent); font: 700 var(--type-small)/var(--type-small-lh) var(--sans); cursor: pointer; }
 .dk-ok::before { content: "✓"; }
 .dk-it:hover .dk-ok, .dk-ok:focus-visible { background: var(--accent); color: var(--on-accent); }
 .dk-ok:hover { filter: brightness(1.15); }
@@ -194,7 +194,7 @@
    wait for the next install, the Items header says when, with Install now: a small outlined button at its right. */
 .dk-fstep { color: var(--amber); }
 .dk-it.on .dk-fstep { color: inherit; }
-.dk-instnow { flex: none; margin-left: auto; padding: 2px 8px; border: 1px solid var(--amber); border-radius: var(--radius-pill); background: none; color: var(--amber); font: 600 var(--type-pill) var(--sans); white-space: nowrap; cursor: pointer; }
+.dk-instnow { flex: none; margin-left: auto; padding: 2px 8px; border: 1px solid var(--amber); border-radius: var(--radius-pill); background: none; color: var(--amber); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); white-space: nowrap; cursor: pointer; }
 .dk-instnow:hover, .dk-instnow:focus-visible { background: color-mix(in srgb, var(--amber) 14%, transparent); }
 .dk-it.on .dk-instnow { border-color: currentColor; color: var(--on-sel); }
 .dk-next + .dk-instnow { margin-left: 0; }
@@ -202,7 +202,7 @@
 .dk-gh .dk-next { font-weight: 600; letter-spacing: 0; text-transform: none; }
 .dk-gh .dk-instnow { letter-spacing: 0; text-transform: none; }
 /* A row's place in the landing line. */
-.dk-rn { display: inline-grid; place-items: center; flex: none; min-width: 16px; height: 16px; margin-right: 6px; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); font: 600 var(--type-tag) var(--mono); vertical-align: 1px; }
+.dk-rn { display: inline-grid; place-items: center; flex: none; min-width: 16px; height: 16px; margin-right: 6px; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); font: 600 var(--type-label)/var(--type-label-lh) var(--sans); vertical-align: 1px; font-variant-numeric: tabular-nums; }
 .dk-it.on .dk-rn { background: color-mix(in srgb, currentColor 18%, transparent); color: inherit; }
 .dk-ask-row { grid-column: 2; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .dk-row-decisions { display: flex; flex-wrap: wrap; justify-content: flex-end; flex: 0 1 auto; max-width: 70%; gap: 4px; margin-left: auto; }
@@ -221,11 +221,11 @@
 .dk-it.ask .dk-h { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 /* Links to what an item's holder made, in its pane. */
 .dk-mades { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
-.dk-made { padding: 3px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font-size: var(--type-small); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-made { padding: 3px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font-size: var(--type-small); line-height: var(--type-small-lh); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-made:hover { border-color: var(--accent); }
 
 /* Items' header: Run by <lead> · Change. */
-.dk-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; }
+.dk-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
 .dk-link:hover { text-decoration: underline; }
 
 /* The quick-add line at the top of Items: the title, the kind switch; Done when under it. */
@@ -244,7 +244,7 @@
 .dk-givemenu button:hover { background: var(--panel-2); }
 .dk-givemenu button > span:first-child { font-weight: 600; }
 /* The "N older" line in a menu or picker (#363): quiet, shut by default; the idle sessions with no recent item under it. */
-.dk-givemenu button.dk-older-mi, .dk-older-mi { display: block; width: 100%; padding: 5px 10px; border: 0; border-radius: var(--radius-qp); background: none; color: var(--muted); font: 600 var(--type-small) var(--sans); text-align: left; cursor: pointer; }
+.dk-givemenu button.dk-older-mi, .dk-older-mi { display: block; width: 100%; padding: 5px 10px; border: 0; border-radius: var(--radius-qp); background: none; color: var(--muted); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); text-align: left; cursor: pointer; }
 .dk-older-mi:hover { color: var(--ink); background: var(--panel-2); }
 .dk-givemenu button:last-child { margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0 0 var(--radius-qp) var(--radius-qp); }
 
@@ -265,7 +265,7 @@
 .dk-whorow .dk-lt { overflow-wrap: anywhere; line-height: 1.35; }
 .dk-whorow .dk-ls { overflow-wrap: anywhere; }
 .dk-whorow > .btn { justify-self: end; white-space: nowrap; }
-.dk-whos > .dk-older { display: flex; align-items: center; width: 100%; padding: 8px 14px; border: 0; border-radius: 0; background: none; color: var(--muted); font: 600 var(--type-small) var(--sans); text-align: left; cursor: pointer; }
+.dk-whos > .dk-older { display: flex; align-items: center; width: 100%; padding: 8px 14px; border: 0; border-radius: 0; background: none; color: var(--muted); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); text-align: left; cursor: pointer; }
 .dk-whos > .dk-older:not(:first-child) { border-top: 1px solid var(--line); }
 .dk-whos > .dk-older:hover { color: var(--ink); background: var(--panel-2); }
 @container dkcard (max-width: 460px) { .dk-pick { padding: 24px 16px; } }

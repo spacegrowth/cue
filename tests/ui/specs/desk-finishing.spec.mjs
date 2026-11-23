@@ -485,7 +485,8 @@ test("the lead's MERGE line reads as a short line: the copy folded into the item
   const ln = page.locator(".dk-moves .dk-mv-ln .dk-ln");
   await expect(ln).toHaveCount(1);
   await expect(ln.locator(".mg-lh")).toHaveText(/^Folded #x9 into \w+ #d2$/);
-  await ln.locator(".mg-line").click();
+  // A click on the line's words (not its middle: at 13px the #id link can sit there, and opens the item, #767).
+  await ln.locator(".mg-line .mg-v").first().click();
   await expect(ln.locator(".mg-full")).toContainText("the same ask again");
 });
 

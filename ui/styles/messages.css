@@ -7,12 +7,12 @@
    Colours are base.css's tokens, so light, dark and a project's tint all follow from there. work/501-spec.md says
    which kind, on which screen, takes which class. */
 :root {
-  /* The type scale itself (--type-tag … --type-figure) is in base.css; these name its jobs in a message. */
+  /* The type scale itself (--type-label … --type-figure) is in base.css; these name its jobs in a message. */
   --type-button: var(--type-small);   /* Mac "button", 650 */
   --type-meta: var(--type-small);     /* who → to, how it went, the status line (the head row of option B) */
   /* The family's two sizes, by name, so a screen never picks its own. */
   --mg-body: 400 var(--type-body) / var(--type-body-lh) var(--sans);   /* Slack's size and spacing (#703) */
-  --mg-meta: 400 var(--type-meta) / 18px var(--sans);   /* a whole-pixel line, like the body's: rows of them add up to whole pixels */
+  --mg-meta: 400 var(--type-meta) / var(--type-small-lh) var(--sans);   /* a whole-pixel line, like the body's: rows of them add up to whole pixels */
 }
 
 /* ---------- the card: Cue's message, a note, an item line set, another Desk's message, Ready to check ---------- */
@@ -27,29 +27,29 @@
    them all on one line (#610). */
 .mg-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; min-width: 0; font: var(--mg-meta); color: var(--muted); }
 .mg-mk { flex: none; width: 14px; height: 14px; color: var(--accent); }
-.mg-who { color: var(--ink); font-weight: 650; white-space: nowrap; }
+.mg-who { color: var(--ink); font-weight: 600; white-space: nowrap; }
 .mg-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mg-tag {
   flex: none; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--panel); color: var(--muted);
-  font: 600 var(--type-tag) var(--mono); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+  font: 600 var(--type-label)/var(--type-label-lh) var(--mono); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
 }
-.mg-age { flex: none; margin-left: auto; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
+.mg-age { flex: none; margin-left: auto; font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* An item's number: the same chip everywhere (head row, a line, a plain line); a button when it opens the item. */
 .mg-id {
   all: unset; display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; line-height: 17px; vertical-align: 1px;
   border-radius: var(--radius-pill); background: var(--panel-2); color: var(--ink);
-  font: 600 var(--type-pill) var(--mono); white-space: nowrap;
+  font: 600 var(--type-small) var(--mono); white-space: nowrap;
 }
 .mg .mg-id { background: var(--panel); }
 button.mg-id { cursor: pointer; }
 button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Another Desk's chip in the head: its tray, colour dot and name. */
-.mg-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font-weight: 650; white-space: nowrap; }
+.mg-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border-radius: var(--radius-pill); background: var(--panel); color: var(--ink); font-weight: 600; white-space: nowrap; }
 
 /* What it says: two lines, More opens the rest in place. */
 .mg-t { font: var(--mg-body); color: var(--ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .mg.open .mg-t, .mg-t.whole { display: block; -webkit-line-clamp: none; overflow: visible; }
-.mg-t b, .mg-line b { font-weight: 650; }
+.mg-t b, .mg-line b { font-weight: 600; }
 /* The full text Cue sent, under the line once opened. */
 .mg-full {
   padding: 8px 11px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink);
@@ -65,19 +65,19 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-full code, .mg-full .mono { font: var(--type-button) / 1.5 var(--mono); color: var(--muted); }
 
 /* The foot: how it went at the left, actions at the right. */
-.mg-f { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; font: var(--mg-meta); font-weight: 650; color: var(--muted); }
+.mg-f { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; font: var(--mg-meta); font-weight: 600; color: var(--muted); }
 .mg-st { min-width: 0; }
 .mg-st b, .mg-st .mg-mark { color: var(--accent); font-weight: 700; }
 .mg-st.failed b, .mg-st.failed .mg-mark { color: var(--deny); }
 .mg-acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 /* A quiet link (More, Less, Answer in words, Check it ›). */
-.mg-lk { all: unset; cursor: pointer; color: var(--accent); font: 650 var(--type-button) var(--sans); white-space: nowrap; }
+.mg-lk { all: unset; cursor: pointer; color: var(--accent); font: 600 var(--type-button) var(--sans); white-space: nowrap; }
 .mg-lk:focus-visible, .mg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
 /* An action: one small button size for every message (Open #461, Try again, Listen, Read, an ask's choices). */
 .mg-btn {
   all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
   height: 24px; padding: 0 10px; border-radius: var(--radius-btn); border: 1px solid var(--line);
-  background: var(--panel); color: var(--ink); font: 650 var(--type-button) var(--sans); white-space: nowrap;
+  background: var(--panel); color: var(--ink); font: 600 var(--type-button) var(--sans); white-space: nowrap;
 }
 .mg-btn svg { width: 13px; height: 13px; flex: none; }
 .mg-btn:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
@@ -137,7 +137,7 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 
 /* ---------- the status line under a chat (Working on…, Compacted…, Waiting on you…) ---------- */
 .mg-status { align-self: center; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 2px 0; font: var(--mg-meta); color: var(--muted); }
-.mg-status b { color: var(--ink); font-weight: 650; }
+.mg-status b { color: var(--ink); font-weight: 600; }
 /* A status line that needs you (out of usage, stuck, not started yet) is in ink; a button in one sits after its words. */
 .mg-status:is(.limit, .stuck) { color: var(--ink); }
 .mg-status .btn { margin-left: 6px; flex: none; }
@@ -145,7 +145,7 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 /* ---------- a plain line: the same message as text in a row (Inbox, a board card, Working on, the mini) ---------- */
 /* It takes the size of the row it sits in (a card's 12.5px), never a size of its own. */
 .mg-plain { font-size: inherit; line-height: inherit; color: var(--muted); min-width: 0; }
-.mg-plain .mg-who, .mg-plain b { color: var(--ink); font-weight: 650; }
+.mg-plain .mg-who, .mg-plain b { color: var(--ink); font-weight: 600; }
 .mg-plain .mg-w { color: var(--ink); }
 /* On a coloured background (a working card on the board's colour): that background's inks, the chip a tint of them. */
 .mg-plain.on-bg { color: var(--on-bg-muted); }

@@ -147,7 +147,7 @@ document.addEventListener("click", async (e) => {
   loadExtensions();
 }, true);
 
-const EXT_VARS = ["bg", "on-bg", "on-bg-muted", "panel", "panel-2", "line", "ink", "muted", "accent", "on-accent", "sel", "on-sel", "work", "deny", "star", "shadow", "sans", "mono"];
+const EXT_VARS = ["bg", "on-bg", "on-bg-muted", "panel", "panel-2", "line", "ink", "muted", "accent", "on-accent", "sel", "on-sel", "work", "deny", "star", "shadow", "sans", "mono", "type-label", "type-small", "type-body", "type-title"];
 function extTheme() {
   const cs = getComputedStyle(document.documentElement);
   const set = document.documentElement.dataset.theme;
