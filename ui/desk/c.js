@@ -382,7 +382,8 @@ function deskCList(project, taskApprovals) {
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskCRow).join("")).join("");
-  const body = you + work + kept + away + tail;
+  // Working first: it's what's live, and it stays short (the Desk runs only so many at once); Waiting on you under it.
+  const body = work + you + kept + away + tail;
   const head = `<div class="dkn-th" aria-hidden="true"><span>Item</span>${deskCLine === "line" ? "" : "<span>Progress</span>"}<span>Now</span></div>`;
   // Where it stands, in words only (deskB2Status is html, escaped already).
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");
