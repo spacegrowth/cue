@@ -336,6 +336,10 @@ pub fn not_done_words(id: &str) -> String {
     )
 }
 
+/// Which tests a session runs while it works (#778; docs/desk-routing-rules.md, "Tests while you work"), in every item's brief.
+pub const TESTS_RULE: &str = "Tests: while you work, run only the tests for the files you changed and for code that uses them, \
+not the whole suite. Run the full suite only before a push: once, just before your DONE, since Cue pushes your work from there.";
+
 /// What the session holding `it` is told when it's handed the item. `rule`: its Desk's Ask me before line
 /// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
 pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
@@ -373,6 +377,7 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
          A pick closes #{0}, and Cue files and routes what follows it.",
         it.id
     ));
+    out.push_str(&format!("\n{TESTS_RULE}"));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
     out.push_str(&format!("\n{}", check_words(&it.id)));
     out.push_str("\nTo ask the owner something (a pick, a yes or no, something only they can tell you), end your reply with that question as its last line, ending in \"?\".");

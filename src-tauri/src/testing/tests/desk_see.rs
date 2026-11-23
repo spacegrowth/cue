@@ -48,6 +48,18 @@ fn the_session_doing_it_is_told_both_lines() {
 }
 
 #[test]
+fn every_brief_says_to_run_only_the_tests_a_change_touches() {
+    let it = crate::desk::DeskItem { id: "7".into(), kind: "task".into(), title: "Faster".into(), ..Default::default() };
+    let told = crate::desk::handed_words(&it, "", "");
+    assert!(told.contains(crate::desk::TESTS_RULE), "{told}");
+    assert!(told.contains("only the tests for the files you changed and for code that uses them"), "{told}");
+    assert!(told.contains("full suite only before a push"), "{told}");
+    // The rule is written in the routing rules doc too.
+    let doc = include_str!("../../../../docs/desk-routing-rules.md");
+    assert!(doc.contains("## Tests while you work"), "the doc lost its tests rule");
+}
+
+#[test]
 fn an_item_you_add_keeps_what_youll_see() {
     let w = World::new();
     let it = w.hub().desk_add_with("web", "", "Header jumps", "it stays put", "", None, &[]).unwrap();
