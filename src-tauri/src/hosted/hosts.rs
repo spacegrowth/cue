@@ -173,15 +173,18 @@ impl Hosts {
             return None;
         }
         let r = Arc::new(Remote::new(&host_id, Driver::new(spec, sink(report)), link.clone(), &self.seen));
-        r.named(&sid);
         let from = info.run_first.saturating_sub(1);
         let upto = cursor.max(from);
+        // Its place is kept as it was before anything is written for it (#761): kept as 0 while its records were read
+        // back (a long run's take a while), a Cue quit then (an install) left it there, and the next one reported
+        // the whole run again as new: every old turn's TO LEAD lines went to the lead a second time.
+        r.read_to(upto);
+        r.named(&sid);
         let mut waiting = vec![];
         if upto > from {
             let read: Vec<Record> = link.request(json!({ "op": "read", "session": host_id, "after": from, "upto": upto })).ok().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
             waiting = r.driver.catch_up(read.into_iter().filter_map(|rec| logged(rec.what)));
         }
-        r.set_cursor(upto);
         r.running.store(info.running, Ordering::SeqCst);
         r.pid.store(info.pid.unwrap_or(0), Ordering::SeqCst);
         self.listen(&r, link);

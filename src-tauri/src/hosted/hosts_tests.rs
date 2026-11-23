@@ -453,3 +453,52 @@ fn starting_a_session_the_host_still_runs_picks_it_up() {
     assert_eq!(heard_times(&fake, "go"), 1, "the same run: not started a second time");
     again.close(&sid);
 }
+
+/// #761: picking a session up kept its place as 0 while its records were read back, so a Cue quit meanwhile (an
+/// install) left it there, and the next Cue reported the whole run again as new (old turns' TO LEAD lines went to the
+/// lead a second time). Its place is never kept lower than where Cue had read, and nothing it had read comes again.
+#[test]
+fn picking_a_session_up_never_keeps_its_place_lower_than_where_cue_had_read() {
+    let p = host("place");
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    // A long run (its records take a while to read back), its turn over, at its prompt.
+    let mut fake = FakeClaude::new().wait_for("go").say(init(&sid)).say(echo("go"));
+    for i in 0..3000 {
+        fake = fake.say(said(&format!("line {i}")));
+    }
+    let fake = fake.say(result("TO LEAD: an old line")).wait_for("never");
+    let s = spec(&fake, start);
+    let first = cue(&p);
+    let (r, rx) = report();
+    first.start(&s, r).unwrap();
+    first.send(&sid, "go").unwrap();
+    until_event(&rx, |e| matches!(e, HostedEvent::TurnEnded { .. }));
+    let read_to = || std::fs::read_to_string(p.seen.join(format!("{sid}.json"))).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v["seq"].as_u64());
+    let last = std::fs::read_to_string(p.home.join("sessions").join(&sid).join("log.jsonl")).unwrap().lines().count() as u64;
+    until("Cue's place kept at the end", || read_to() == Some(last));
+    first.close_all();
+    drop(first);
+    // Its place, looked at all through the next Cue's pick-up.
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watch = {
+        let (stop, file) = (stop.clone(), p.seen.join(format!("{sid}.json")));
+        std::thread::spawn(move || {
+            let mut lowest = u64::MAX;
+            while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                if let Some(seq) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v["seq"].as_u64()) {
+                    lowest = lowest.min(seq);
+                }
+            }
+            lowest
+        })
+    };
+    let again = cue(&p);
+    let (r2, rx2) = report();
+    let back = again.reattach(&Spec { start: Start::Resume(sid.clone()), ..s }, r2).expect("its agent still runs");
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(watch.join().unwrap(), last, "its place kept where Cue had read, all through the pick-up");
+    (back.go)();
+    assert!(rx2.recv_timeout(Duration::from_millis(500)).is_err(), "nothing it had read comes again");
+    again.close(&sid);
+}

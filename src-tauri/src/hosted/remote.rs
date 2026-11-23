@@ -80,6 +80,11 @@ impl Remote {
         crate::locking::lock(&self.cursor, "hosts: a session's cursor").set(seq);
     }
 
+    /// Read up to `seq`, not kept yet: `named` keeps it (one write, so its place is never kept as 0 meanwhile).
+    pub(super) fn read_to(&self, seq: u64) {
+        crate::locking::lock(&self.cursor, "hosts: a session's cursor").seq = seq;
+    }
+
     /// Known by the conversation's id now (Codex picks its own once it's open).
     pub(super) fn named(&self, session_id: &str) {
         let mut c = crate::locking::lock(&self.cursor, "hosts: a session's cursor");

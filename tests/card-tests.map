@@ -86,6 +86,7 @@ tests/ui/*.test.js                   node
 tests/card-tests.map                 node
 tests/card-pick.js                   node
 src-tauri/src/testing/tests/typing_support.rs   rust typing typing_edges typing_failures
+src-tauri/src/hosted/**             rust hosted::
 src-tauri/tests/hook_asks.rs         run cd src-tauri && cargo test -q --test hook_asks
 src-tauri/tests/hook_events.rs       run cd src-tauri && cargo test -q --test hook_events
 src-tauri/xtask/src/**               run cd src-tauri && cargo test -q -p xtask
