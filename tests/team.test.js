@@ -95,7 +95,7 @@ assert.equal(ctx.mateOpenLeads.has("L"), false, "the lead's own ask: not the tra
 const saved = world.items; world.items = [];
 const states = world.sessions.L.team.map((t) => t.state);
 world.sessions.L.team.forEach((t) => { if (t.state === "reviewed") t.state = "done"; });
-assert.match(ctx.crewWaitLine("L"), /dot-live.*Crew working: hub, rows/, "none waits on you: who's at work, by name");
+assert.match(ctx.crewWaitLine("L"), /dot-live.*Waiting on hub and 1 more/, "none waits on you: the first at work by name, and how many more");
 world.sessions.L.team.forEach((t) => { if (t.state === "working") t.state = "done"; });
 assert.equal(ctx.crewWaitLine("L"), "", "neither: no line of its own");
 assert.match(head("L"), /<span class="crew-dot"><\/span><span class="crew-w">Cue Crew · 4<\/span>/, "none at work, none waiting: how many, a still dot");

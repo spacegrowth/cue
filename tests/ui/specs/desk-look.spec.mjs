@@ -380,7 +380,10 @@ test("the dispatcher composer stays below the conversation and hides on Decision
   const dispatcher = page.locator('[data-desk-page="dispatcher"]');
   const chat = dispatcher.locator(".dk-chat");
   const box = dispatcher.locator(".foot:not(.held) .composer");
-  await expect(chat.locator("xpath=following-sibling::*[1]")).toHaveClass(/\bfoot\b/);
+  // The box has the page's own foot row, under the chat and the panel both (the panel stops above it).
+  await expect(dispatcher.locator(".dk-pgf > .foot:not(.held) .composer")).toHaveCount(1);
+  const [panel, foot] = await Promise.all([dispatcher.locator(".dk-panel").boundingBox(), dispatcher.locator(".dk-pgf").boundingBox()]);
+  if (panel) expect(panel.y + panel.height).toBeLessThanOrEqual(foot.y + 1);
   await box.locator("textarea").fill("Keep this draft");
   await dispatcher.locator('[data-desk-tab="decisions"]').click();
   await expect(box).toHaveCount(0);

@@ -98,15 +98,11 @@ scripts/full-run.sh                  run tests/release/full_run.test.sh
 tests/release/full_run.test.sh       run tests/release/full_run.test.sh
 
 # ---- the window, by area
-set desk-window = desk-* inbox-desk screens
+set desk-window = desk-* screens
 ui/desk/**                           window @desk-window
 ui/lands.js                          window @desk-window
 ui/styles/desk-*.css                 window @desk-window
-ui/styles/inbox_desk.css             window @desk-window
 tests/ui/specs/desk.mjs              window desk-*
-ui/inbox/**                          window inbox* screens
-ui/inbox_*.js                        window inbox* screens
-ui/styles/inbox.css                  window inbox* screens
 ui/mini.js                           window mini screens
 ui/mini.html                         window mini screens
 ui/styles/mini.css                   window mini screens

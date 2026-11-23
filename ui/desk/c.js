@@ -213,7 +213,8 @@ function deskCWhy(i) {
     const on = deskAfterName(i);
     return on.startsWith("#") ? `Waits for ${esc(on)} to finish first${then}` : `Waits for ${esc(on)}${then}`;
   }
-  if (i.machine_wait) return `Waits for room: ${esc(i.machine || i.machine_wait)} already runs all the items it can`;
+  // Nobody has it yet, so no machine of its own (#776): the ones it may start on, each full.
+  if (i.machine_wait) return `Waits for room on ${esc(i.machine_wait)}: ${/ or /.test(i.machine_wait) ? "each" : "it"} already runs all the items it can`;
   if (nf) return `Next for ${nf} once it finishes what it's on${i.fresh_at ? `; a fresh session takes it at ${deskQHm(i.fresh_at)} if not` : ""}`;
   if (i.state === "new") return "Not given out yet: the Desk lead hasn't picked it up";
   return "Waits for a free session";
@@ -248,6 +249,9 @@ const deskCFitBy = new Map();
 const deskCFitStyle = (name) => (deskCFitBy.get(name) ? ` style="max-height:${deskCFitBy.get(name)}px"` : "");
 /** How many of Working's rows show before it scrolls within (7 to 10 at once happens). */
 const DESK_C_WORK_ROWS = 4;
+/** Working's cut as last measured, drawn with it: a redraw lays it out at that height at once, as the card's own cut
+ *  (deskCFitBy) is, else for a frame it showed every row with the card cut to the shorter Working. */
+let deskCWorkCap = 0;
 function deskCFitLists() {
   // The bands' headings stack as they stick: each under the ones above it (desk-c.css .dkn-band > .dkn-gh).
   for (const list of document.querySelectorAll("#app .dkn-items [data-dkn-list=items]")) {
@@ -257,7 +261,9 @@ function deskCFitLists() {
   // Working first: cut to its first rows, so the card's own cut below counts it at that height.
   for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-cap]")) {
     const r = el.children[DESK_C_WORK_ROWS - 1];
-    if (r) el.style.maxHeight = `${Math.floor(r.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop)}px`;
+    if (!r) continue;
+    deskCWorkCap = Math.floor(r.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop);
+    el.style.maxHeight = `${deskCWorkCap}px`;
   }
   const lists = [...document.querySelectorAll("#app .dkn-items [data-dkn-list]:not([data-dkn-cap])")];
   const key = `${innerWidth}x${innerHeight}|${lists.map((el) => `${el.dataset.dknList}:${el.querySelectorAll(".dk-it").length}`).join(",")}`;
@@ -404,7 +410,7 @@ function deskCList(project, taskApprovals) {
     const open = !deskCFolds.has(key);
     const rows = first + list.map(deskCRow).join("") + extra;
     // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
-    const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
+    const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap${deskCWorkCap ? ` style="max-height:${deskCWorkCap}px"` : ""}>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
     const say = GRP_SAY[key] ? `<em class="dkn-gsay">${GRP_SAY[key]}</em>` : "";
     return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}"><i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? `<div class="dkn-bb">${body}</div>` : ""}</section>`;
   };

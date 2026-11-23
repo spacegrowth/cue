@@ -76,11 +76,13 @@ test("the sessions column: the lead on top under a line, a heading per machine, 
   await expect(page.locator(".dk-c > .dk2b-chat")).toHaveCount(1);
 });
 
-test("one count: the lead's strip and Waiting on you say the same, with no count in the header; the lead's panel is Now and Activity", async ({ page, cue }) => {
+test("one count: the lead's strip says Blocked on you and Waiting on you together, with no count in the header; the lead's panel is Now and Activity", async ({ page, cue }) => {
   await open(page, cue);
   await expect(page.locator(".top")).not.toContainText("wait on you");
-  const n = (await page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)').textContent()).trim();
-  expect(n).toMatch(/^\d+$/);
+  // Blocked on you (absent while nothing is) and Waiting on you: the strip counts both.
+  const counts = await page.locator('.dkn-card .dkn-gh:is([data-desk2b-group="you"], [data-desk2b-group="blocked"]) > span').allTextContents();
+  expect(counts.length).toBeGreaterThan(0);
+  const n = String(counts.reduce((a, c) => a + Number(c.trim()), 0));
   const panel = page.locator(".dk-c .dk2b-chat .dk-panel");
   await expect(panel.locator(".dk-pnow")).toHaveCount(1);
   await expect(panel.locator(".dk-psh")).not.toContainText([/Waits on you/, /^Working/]);
@@ -198,11 +200,13 @@ test("Waiting on you and Working fold to their headings with a click, remembered
   const card = page.locator(".dkn-card");
   const you = card.locator('.dkn-gh[data-desk-c-fold="you"]'), work = card.locator('.dkn-gh[data-desk-c-fold="working"]');
   await expect(you).toHaveAttribute("aria-expanded", "true");
-  await expect(you.locator(".dkn-fa")).toHaveText("▾");
+  // The heading keeps its dot, count and plain line, and no fold arrow (a click on it still folds).
+  await expect(you.locator(".dkn-gdot")).toHaveCount(1);
+  await expect(you.locator(".dkn-fa")).toHaveCount(0);
   await you.click();
   await expect(you).toHaveAttribute("aria-expanded", "false");
-  await expect(you.locator(".dkn-fa")).toHaveText("▸");
-  await expect(you.locator("span:not(.dkn-fa)")).toHaveText("2");
+  await expect(you.locator("> span")).toHaveText("2");
+  await expect(you.locator(".dkn-gsay")).toHaveText("done · ready for you to check");
   await expect(card.locator('.dkn-row[data-desk-item="d1"], .dkn-row[data-desk-item="d2"]')).toHaveCount(0);
   await expect(card.locator('.dkn-row[data-desk-item="d3"]')).toHaveCount(1);
   expect(JSON.parse(await page.evaluate(() => localStorage.getItem("cue.deskCFolds")))).toContain("you");
@@ -254,11 +258,13 @@ test("\"↓ N more\" scrolls its list on even when the Desk redraws just as it s
   }
 });
 
+/** A list's rows, into its bands (a band's heading counts as a row): as desk/c.js deskCFitLists cuts them. */
+const ROWS = ":scope > :not(.dkn-band), :scope > .dkn-band > .dkn-gh, :scope > .dkn-band > .dkn-bb > *";
 /** Each list ends on a whole row: none cut by its edge. */
-const wholeRows = (list) => list.evaluate((el) => {
+const wholeRows = (list) => list.evaluate((el, q) => {
   const edge = el.getBoundingClientRect().bottom;
-  return [...el.children].filter((r) => { const b = r.getBoundingClientRect(); return b.top < edge - 1 && b.bottom > edge + 1; }).map((r) => r.dataset.deskItem || r.className);
-});
+  return [...el.querySelectorAll(q)].filter((r) => { const b = r.getBoundingClientRect(); return b.top < edge - 1 && b.bottom > edge + 1; }).map((r) => r.dataset.deskItem || r.className);
+}, ROWS);
 test("a list that overflows ends on a whole row with \"↓ N more\" under it; a click scrolls on, at its end the line keeps its room", async ({ page, cue }) => {
   await open(page, cue, { width: 1440, height: 900 });
   await cue.change((st) => {
@@ -268,6 +274,10 @@ test("a list that overflows ends on a whole row with \"↓ N more\" under it; a 
     for (let k = 0; k < 10; k++) its.push({ ...d4, id: `q${k}`, title: `Queued item ${k}`, depends_on: [] });
   });
   await expect(page.locator('.dkn-card .dkn-row[data-desk-item="w13"]')).toHaveCount(1);
+  // Working (#d3, #d5 and 14 more) shows its first 4 rows and scrolls within, "↓ 12 more" under it.
+  const wl = page.locator('.dkn-card .dkn-b-working [data-dkn-list="working"]');
+  await expect.poll(() => wl.evaluate((el) => { const e = el.getBoundingClientRect().bottom; return [...el.children].filter((r) => r.getBoundingClientRect().bottom <= e + 1).length; })).toBe(4);
+  await expect(page.locator(".dkn-card .dkn-b-working .dkn-wmore")).toHaveText("↓ 12 more");
   for (const name of ["items", "next"]) {
     const list = page.locator(`[data-dkn-list="${name}"]`), more = list.locator("xpath=following-sibling::*[1]");
     await expect(more).toHaveClass(/\bdkn-more\b/);
@@ -277,7 +287,7 @@ test("a list that overflows ends on a whole row with \"↓ N more\" under it; a 
     expect(await more.evaluate((el) => { const full = el.offsetHeight, t = el.textContent; el.textContent = ""; const empty = el.offsetHeight; el.textContent = t; return empty - full; })).toBe(0);
     expect(await wholeRows(list), name).toEqual([]);
     // Its count is the rows below the edge.
-    const below = await list.evaluate((el) => { const e = el.getBoundingClientRect().bottom; return [...el.querySelectorAll(":scope > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > e + 1).length; });
+    const below = await list.evaluate((el) => { const e = el.getBoundingClientRect().bottom; return [...el.querySelectorAll(":scope > .dk-it, :scope > .dkn-band > .dkn-bb > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > e + 1).length; });
     expect(below).toBeGreaterThan(0);
     await expect(more).toHaveText(`↓ ${below} more`);
     // A click scrolls a page on; at the end it says nothing but keeps its place.
@@ -388,12 +398,13 @@ test("a laptop's window: the sessions a strip, Items never under 520; the smalle
   expect(n.y).toBeGreaterThanOrEqual(k.y + k.height);
 });
 
-test("progress: Strip unless you switch; each piece as long as its step took, its time under it", async ({ page, cue }) => {
+test("progress: a strip on every row, no switch; each piece as long as its step took, its time under it", async ({ page, cue }) => {
   await open(page, cue);
   await stampSteps(page);
-  const sw = page.locator(".dkn-ih .dkn-lsw");
-  await expect(sw.locator("button")).toHaveText(["Strip", "Line"]);
-  await expect(sw.locator('[data-desk-c-line="strip"]')).toHaveAttribute("aria-pressed", "true");
+  // Strip is the one view: no Strip · Line switch, no line along a row's foot; Item, Progress and Now over the rows.
+  await expect(page.locator(".dkn-ih .dkn-lsw, .dkn-ih [data-desk-c-line]")).toHaveCount(0);
+  await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item", "Progress", "Now"]);
+  await expect(page.locator(".dkn-card .dkn-tline")).toHaveCount(0);
   const d3 = page.locator('.dkn-card .dkn-row[data-desk-item="d3"]');
   // At its tests: 2m picked up, 21m building, 12m so far at tests (bold), three stubs to come.
   await expect(d3.locator(".dkn-ks")).toHaveAttribute("aria-label", "Step 3 of 6, Tests");
@@ -408,59 +419,67 @@ test("progress: Strip unless you switch; each piece as long as its step took, it
   const xs = await page.locator(".dkn-card .dkn-row .dkn-ks").evaluateAll((els) => els.map((el) => [Math.round(el.getBoundingClientRect().x), Math.round(el.getBoundingClientRect().width)]));
   expect(new Set(xs.map(String)).size).toBe(1);
   expect(xs[0][1]).toBe(180);
-  // Line: no Progress column; the line along each row's foot with its times on it, Now says the step and the time in all.
-  await sw.locator('[data-desk-c-line="line"]').click();
-  await expect(sw.locator('[data-desk-c-line="line"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item", "Now"]);
-  await expect(page.locator(".dkn-card .dkn-ks")).toHaveCount(0);
-  await expect(d3.locator(".dkn-tline .dkn-tp")).toHaveCount(6);
-  // Each piece says its step by name with its time where it has room.
-  await expect(d3.locator(".dkn-tl")).toHaveText(["Picked up 2m", "Building 21m", "Tests 12m", "", "", ""]);
-  await expect(d3.locator(".dkn-sofar")).toHaveText("Tests 12m · 35m in all");
-  // Along the foot: as wide as the row, less its sides, under the title and Now.
-  const [row, line, now] = await Promise.all([d3.boundingBox(), d3.locator(".dkn-tline").boundingBox(), d3.locator(".dkn-now").boundingBox()]);
-  expect(Math.round(line.width)).toBe(Math.round(row.width) - 32);
-  expect(line.y).toBeGreaterThanOrEqual(now.y + now.height);
-  // A step too short to say its time on its sliver leaves it off; the one it's at always says its own.
-  const d2 = page.locator('.dkn-card .dkn-row[data-desk-item="d2"]');
-  await expect(d2.locator(".dkn-tl")).toHaveText(["", "", "Tests 20m", "", "Landing 5m", "To check 9h"]);
-  // Remembered across a reload; Strip brings the strip back.
+  // Still the strip after a reload.
   await page.reload();
   await page.locator('#app [data-view="board"]').waitFor();
   await openDesk(page);
-  await expect(page.locator('.dkn-ih [data-desk-c-line="line"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".dkn-card .dkn-tline").first()).toBeVisible();
-  await page.locator('.dkn-ih [data-desk-c-line="strip"]').click();
-  await expect(page.locator(".dkn-card .dkn-tline")).toHaveCount(0);
   await expect(page.locator(".dkn-card .dkn-ks").first()).toBeVisible();
+  await expect(page.locator(".dkn-card .dkn-tline")).toHaveCount(0);
 });
 
-test("no tooltips and no stripes down a row's left edge, in Strip or Line", async ({ page, cue }) => {
+test("no tooltips and no stripes down a row's left edge", async ({ page, cue }) => {
   await open(page, cue);
   await stampSteps(page);
   // A stripe down the left: a left border wider than the right, or an inset shadow pushed in from the left only.
   const leftEdge = () => page.locator(".dkn-card .dkn-row").evaluateAll((els) => els.flatMap((el) => [el, ...el.querySelectorAll("*")]).filter((el) => { const c = getComputedStyle(el); return parseFloat(c.borderLeftWidth) > parseFloat(c.borderRightWidth) || /\b[1-9][\d.]*px 0px 0px (0px )?inset/.test(c.boxShadow); }).map((el) => el.className));
   expect(await leftEdge()).toEqual([]);
-  await page.locator('.dkn-ih [data-desk-c-line="line"]').click();
-  await expect(page.locator(".dkn-card .dkn-tline").first()).toBeVisible();
-  expect(await leftEdge()).toEqual([]);
-  await expect(page.locator(".dk-c [title]")).toHaveCount(0);
-  await page.locator('.dkn-ih [data-desk-c-line="strip"]').click();
   await expect(page.locator(".dk-c [title]")).toHaveCount(0);
 });
 
-test("the lead's own ask is in Waiting on you, and its count takes it in", async ({ page, cue }) => {
+test("Items in bands: Working, then Waiting on you, each heading with its dot, count and a plain line, stacked as they stick", async ({ page, cue }) => {
   await open(page, cue);
-  const count = page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)');
-  const n0 = Number((await count.textContent()).trim());
+  const heads = page.locator(".dkn-card .dkn-body > .dkn-band > .dkn-gh");
+  // Nothing is blocked on you here, so no band for it; #d3 and #d5 at work, #d1 and #d2 wait on you.
+  await expect(heads).toHaveText([/^WORKING 2\s*at work · nothing for you$/, /^WAITING ON YOU 2\s*done · ready for you to check$/]);
+  await expect(page.locator(".dkn-card .dkn-band > .dkn-gh .dkn-gdot")).toHaveCount(2);
+  await expect(page.locator('.dkn-card .dkn-b-working .dkn-row[data-desk-item]')).toHaveCount(2);
+  await expect(page.locator('.dkn-card .dkn-b-you .dkn-row[data-desk-item]')).toHaveCount(2);
+  // Each heading sticks, the next one under the ones above it (set once the list has measured itself).
+  await expect.poll(() => heads.evaluateAll((els) => els.map((el) => [getComputedStyle(el).position, el.style.top === `${els[0] === el ? 0 : els[0].offsetHeight}px`]))).toEqual([["sticky", true], ["sticky", true]]);
+});
+
+test("the lead's own ask is Blocked on you, over Working, and its count takes it in", async ({ page, cue }) => {
+  await open(page, cue);
+  const you = page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span');
+  await expect(you).toHaveText("2");
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="blocked"]')).toHaveCount(0);
   // The lead asks something of its own (not a crew member's ask).
   await cue.change((st) => {
     const a = st.items.find((i) => i.id === "n-focus-ask");
     st.items.push({ ...a, id: "n-lead-ask", agent_id: "", agent_name: "", tool_input: { questions: [{ question: "Ship the phrases today?", header: "Ship", multiSelect: false, options: [{ label: "Yes" }, { label: "No" }] }] } });
   });
-  const row = page.locator(".dkn-card .dkn-row[data-desk-c-lead]");
+  const row = page.locator(".dkn-card .dkn-b-blocked .dkn-row[data-desk-c-lead]");
   await expect(row).toContainText("web-lead");
-  await expect(count).toHaveText(String(n0 + 1));
+  await expect(page.locator(".dkn-card .dkn-body > .dkn-band > .dkn-gh")).toHaveText([/^BLOCKED ON YOU 1\s*nothing moves till you answer$/, /^WORKING 2/, /^WAITING ON YOU 2/]);
+  await expect(you).toHaveText("2");
+});
+
+test("Up next says in full why each item waits", async ({ page, cue }) => {
+  await open(page, cue);
+  await cue.change((st) => {
+    const its = st.desk.projects.find((d) => d.project === "cue").items;
+    const d4 = its.find((i) => i.id === "d4");
+    // Nobody has them yet (#776: the session is picked as an item starts).
+    const { holder, after, ...rest } = d4;
+    const add = (id, title, more) => its.push({ ...rest, id, title, ...more });
+    add("u1", "After the search fix", { after: "d3" });
+    add("u2", "Parked for later", { state: "held" });
+    add("u3", "Anyone can take this", {});
+  });
+  const line = (id) => page.locator(`[data-dkn-drawer="next"] .dkn-nx[data-desk-item="${id}"] .dkn-a2`);
+  await expect(line("u1")).toContainText("Waits for #d3 to finish first");
+  await expect(line("u2")).toContainText("Parked: press Start to begin it");
+  await expect(line("u3")).toContainText("Waits for a free session");
 });
 
 test("the lead's block brings its chat back from All sessions", async ({ page, cue }) => {

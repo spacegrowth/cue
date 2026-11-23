@@ -1,6 +1,6 @@
 // Run: node tests/box.test.js  (the one message box: ui/box/markup.js, send.js, end.js)
 // The box's markup is checked against what the builders drew before they moved onto it (chat/compose.js box, before 3b;
-// desk/view.js deskBox and deskItemFoot, desk/act.js deskBackHtml, desk/page.js deskGoBackHtml, before 3c; inbox.js inboxBox,
+// desk/view.js deskBox and deskItemFoot, desk/act.js deskBackHtml, desk/page.js deskGoBackHtml, before 3c;
 // mini.js's answer box, chat/send.js btwPanel's and sheets.js forwardPop's, before 3d), less their hover text, so moving a
 // box onto it changes nothing you see. Its send, against a fake invoke.
 const assert = require("assert");
@@ -32,12 +32,14 @@ const ctx = {
 ctx.draft = (id) => (ctx.drafts[id] ||= { text: "", choices: {}, images: [] });
 vm.createContext(ctx);
 // In the windows' order (index.html): desk/act.js puts its boxes on box/send.js BOX_OWNERS as it loads.
-for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk/clicks.js", "desk/page.js", "desk/away.js", "desk/view.js", "desk/act.js", "inbox/list.js", "inbox/box.js", "inbox/side.js", "inbox/keys.js", "sheets.js"]) {
+for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "chat/compose.js", "desk/clicks.js", "desk/page.js", "desk/away.js", "desk/view.js", "desk/act.js", "sheets.js"]) {
   vm.runInContext(fs.readFileSync(`${__dirname}/../ui/${f}`, "utf8").replace(/^(const|let) /gm, "var "), ctx, { filename: f });
 }
 // What the builders call that isn't theirs to draw.
 Object.assign(ctx, {
   cmdMenu: (k) => `<cmd ${k}>`, slashHint: (k) => `<hint ${k}>`, quickRow: (a) => `<quick ${a}>`, now: () => 1000,
+  // Today's Desk: the new layout's box (desk/view.js deskCBox) isn't one of the builders checked here.
+  deskCOn: () => false,
   deskBoxes: new Map(), deskSelection: () => "P", deskLeadName: () => "lead-1", deskLead: () => ({ sid: "L" }), deskLeadEnded: () => false, leadS: { session_id: "L", state: "waiting" }, deskLeadSession: () => ctx.leadS, deskOf: () => ({ project: "P" }), listenLine: (sid) => `<ls ${sid}>`,
   deskItem: (p, id) => ctx.items[id], items: {}, deskHolderSid: (it) => it?.holder?.sid || "", deskPickOptions: () => [],
   deskNum: (i) => `Task #${i.id}`, deskShort: (t) => t.split(" ").slice(0, 3).join(" "), deskItemRequest: () => null, deskHolderName: () => "holder",
@@ -145,15 +147,10 @@ ctx.deskGoBackOpen = null;
 same("gobackShut", ctx.deskGoBackHtml("dec", 1));
 for (const html of Object.values(OLD_DESK)) assert.doesNotMatch(html, /title=/, "no hover text");
 
-// ---- markup: the Inbox's box, the mini panel's, btw's and a forward's note (on boxHtml since step 3d) ----
-// What inbox.js inboxBox (and inboxReply), mini.js deskAskHtml's answer box, chat/send.js btwPanel and sheets.js
+// ---- markup: the mini panel's box, btw's and a forward's note (on boxHtml since step 3d) ----
+// What mini.js deskAskHtml's answer box, chat/send.js btwPanel and sheets.js
 // forwardPop drew before they moved onto boxHtml, word for word.
 const OLD_3D = {
-  inboxPics: "<div class=\"ib-box\" data-drop=\"s:A\"><div class=\"chips\"><span class=\"chip\"><button class=\"chip-img\" data-draft-lightbox=\"s:A:0\" aria-label=\"Open a.png\"><img src=\"data:image/png;base64,AA\" alt=\"a.png\"/></button><button class=\"chip-x\" data-unattach=\"s:A:0\" aria-label=\"Remove image\">×</button></span></div><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"s:A\" placeholder=\"Tell it what's next…\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">hi &lt;b&gt; &amp; &quot;c&quot;</textarea><div class=\"sug-line\" data-inbox-sug data-key=\"s:A\" data-sid=\"A\" aria-hidden=\"true\"></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-inbox-send=\"A\">Send</button><button class=\"icon-btn mic \" data-mic=\"s:A\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"s:A\" aria-label=\"Add an image\"><img/></button><x/><phr/></div></div>",
-  inboxSug: "<div class=\"ib-box\" data-drop=\"s:A\"><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"s:A\" class=\"sug\" data-sug-sid=\"A\" aria-label=\"Suggested: Go on. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\" data-inbox-sug data-key=\"s:A\" data-sid=\"A\" aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Go on</span><kbd>Tab</kbd><span class=\"sug-or\">or write your own</span></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-inbox-send=\"A\">Send</button><button class=\"icon-btn mic on\" data-mic=\"s:A\" aria-label=\"Stop dictating\"><mic/></button><button class=\"icon-btn\" data-attach=\"s:A\" aria-label=\"Add an image\"><img/></button><x/><phr/></div></div>",
-  inboxAnswer: "<div class=\"ib-box\" ><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"Q1\" class=\"sug\" data-sug-sid=\"A\" aria-label=\"Suggested: Go on. Tab types it in.\" placeholder=\" \" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">my &lt;answer&gt;</textarea><div class=\"sug-line\" data-inbox-sug data-key=\"Q1\" data-sid=\"A\" aria-hidden=\"true\"><span class=\"sug-k\">Suggested</span><span class=\"sug-t\">Go on</span><kbd>Tab</kbd><span class=\"sug-or\">or write your own</span></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-act=\"send\" data-id=\"Q1\">Use answer</button><button class=\"icon-btn mic \" data-mic=\"Q1\" aria-label=\"Dictate\"><mic/></button><button class=\"btn\" data-inbox-full=\"A\">Open chat</button><div class=\"ib-phr\"><div class=\"ib-phr-row\"><button class=\"ib-sug\" data-inbox-phrase=\"Yes\" data-i=\"0\" data-key=\"Q1\" data-sid=\"A\">Yes</button><button class=\"ib-sug\" data-inbox-phrase=\"No &lt;way&gt;\" data-i=\"1\" data-key=\"Q1\" data-sid=\"A\">No &lt;way&gt;</button></div><span class=\"ib-phr-more\" hidden><button class=\"ib-sug\" data-inbox-phr-more=\"Q1\" aria-expanded=\"false\">More<span class=\"ib-caret\">▴</span></button></span></div></div></div>",
-  inboxAnswerMic: "<div class=\"ib-box\" ><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"Q1\" placeholder=\"Or say something else…\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\"></textarea><div class=\"sug-line\" data-inbox-sug data-key=\"Q1\" data-sid=\"A\" aria-hidden=\"true\"></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-act=\"send\" data-id=\"Q1\">Send</button><button class=\"icon-btn mic on\" data-mic=\"Q1\" aria-label=\"Stop dictating\"><mic/></button><button class=\"btn\" data-inbox-full=\"A\">Open chat</button><div class=\"ib-phr\"><div class=\"ib-phr-row\"><button class=\"ib-sug\" data-inbox-phrase=\"Yes\" data-i=\"0\" data-key=\"Q1\" data-sid=\"A\">Yes</button><button class=\"ib-sug\" data-inbox-phrase=\"No &lt;way&gt;\" data-i=\"1\" data-key=\"Q1\" data-sid=\"A\">No &lt;way&gt;</button></div><span class=\"ib-phr-more\" hidden><button class=\"ib-sug\" data-inbox-phr-more=\"Q1\" aria-expanded=\"false\">More<span class=\"ib-caret\">▴</span></button></span></div></div></div>",
-  inboxWake: "<div class=\"ib-box\" data-drop=\"s:B\"><div class=\"ta-wrap\"><textarea rows=\"2\" data-text=\"s:B\" placeholder=\"Write to it… sending resumes it first\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"off\" autocomplete=\"off\">back</textarea><div class=\"sug-line\" data-inbox-sug data-key=\"s:B\" data-sid=\"\" aria-hidden=\"true\"></div></div><div class=\"ib-box-acts\"><button class=\"btn primary\" data-wake-send=\"B\" disabled>Resuming…</button><button class=\"icon-btn mic \" data-mic=\"s:B\" aria-label=\"Dictate\"><mic/></button><button class=\"icon-btn\" data-attach=\"s:B\" aria-label=\"Add an image\"><img/></button><button class=\"btn\" data-inbox-full=\"B\">Open chat</button></div></div>",
   btw: "<div class=\"btw-pop\">\n    <div class=\"btw-head\">BY THE WAY · NOT PART OF THE CHAT<button class=\"btw-clear\" data-act=\"btw-clear\" data-sid=\"A\">Clear</button><button class=\"btw-x\" data-act=\"btw-close\" aria-label=\"Close\">×</button></div>\n    <div class=\"btw-ask\"><textarea data-text=\"btw:A\" rows=\"1\" placeholder=\"Ask without interrupting it…  ↵\" spellcheck=\"false\">why &lt;so&gt;?</textarea></div>\n    <div class=\"btw-body\"><div class=\"btw-q\">third</div><div class=\"btw-a dim\"><span class=\"dot-live\"></span>Thinking…</div><div class=\"btw-q\">second</div><div class=\"btw-a bad\">boom</div><div class=\"btw-q\">first</div><div class=\"btw-a msg\"><md>an answer</md></div><div class=\"btw-a-acts\"><button class=\"btw-fork\" data-act=\"btw-fork\" data-sid=\"A\" data-i=\"0\" >Fork</button></div></div></div>",
   btwLead: "<div class=\"btw-pop\">\n    <div class=\"btw-head\">BY THE WAY · ASKS THE LEAD, NOT PART OF ITS CHAT<button class=\"btw-x\" data-act=\"btw-close\" aria-label=\"Close\">×</button></div>\n    <div class=\"btw-ask\"><textarea data-text=\"btw:A\" rows=\"1\" placeholder=\"Ask the lead without interrupting it…  ↵\" spellcheck=\"false\"></textarea></div>\n    <div class=\"btw-body\"><div class=\"dim btw-empty\">A copy of the lead's conversation answers, so neither the lead nor its crew sees it. Each question costs about one turn.</div></div></div>",
   fwd: "<div class=\"fwd-catch\" data-act=\"cancel-forward\"></div><div class=\"fwd-pop\" role=\"dialog\" aria-label=\"Send to another session\">\n    <div class=\"fwd-head\">SEND THIS MESSAGE TO</div>\n    <div class=\"fwd-list\"><button class=\"fwd-opt on\" data-fwd-to=\"A\">\n      <badge claude><span class=\"proj\">proj&lt;1&gt;</span><span class=\"grow\"></span><span class=\"fwd-st\">working</span></button></div>\n    <textarea rows=\"2\" class=\"fwd-note\" spellcheck=\"false\" data-text=\"fwd\" placeholder=\"Add a note (optional)\">a &lt;note&gt;</textarea>\n    <div class=\"fwd-foot\"><button class=\"btn\" data-act=\"cancel-forward\">Cancel</button><button class=\"btn primary\" data-act=\"send-forward\" >Send to proj&lt;1&gt;</button></div></div>",
@@ -163,19 +160,6 @@ const OLD_3D = {
 };
 const same3 = (name, html) => assert.strictEqual(html, OLD_3D[name], name);
 Object.assign(ctx, { phrases: () => ["Yes", "No <way>"], md: (t) => `<md>${esc(t)}</md>`, badge: (h) => `<badge ${h}>`, idleNote: () => false, crewPageOn: () => false });
-// The Inbox: a session's box (pictures), a word and a picture; then empty with a suggestion, dictating.
-D("s:A", "hi <b> & \"c\"", [PIC]);
-same3("inboxPics", ctx.inboxBox("s:A", "Tell it what's next…", "Send", 'data-inbox-send="A"', "<x/>", "A", "<phr/>"));
-ctx.suggestionFor = (sid) => (sid === "A" ? "Go on" : ""); ctx.dictating = { key: "s:A" }; D("s:A", "");
-same3("inboxSug", ctx.inboxBox("s:A", "Tell it what's next…", "Send", 'data-inbox-send="A"', "<x/>", "A", "<phr/>"));
-// An answer to its question (words only), its quick phrases and Open chat; then dictating, no suggestion.
-ctx.dictating = null; D("Q1", "my <answer>");
-same3("inboxAnswer", ctx.inboxReply("A", "Q1", "Or say something else…", "Use answer", 'data-act="send" data-id="Q1"'));
-ctx.suggestionFor = () => ""; ctx.dictating = { key: "Q1" }; D("Q1", "");
-same3("inboxAnswerMic", ctx.inboxReply("A", "Q1", "Or say something else…", "Send", 'data-act="send" data-id="Q1"'));
-// A parked one's box, resuming (its Send disabled), no phrases.
-ctx.dictating = null; ctx.phrases = () => []; D("s:B", "back");
-same3("inboxWake", ctx.inboxBox("s:B", "Write to it… sending resumes it first", "Resuming…", 'data-wake-send="B" disabled', '<button class="btn" data-inbox-full="B">Open chat</button>'));
 // btw's panel: asked, failed and answered; then the lead's, empty.
 ctx.btwFor = "A"; D("btw:A", "why <so>?");
 ctx.btwLog.set("A", [{ q: "first", a: "an answer", err: null }, { q: "second", a: null, err: "boom" }, { q: "third", a: null, err: null }]);
