@@ -8,9 +8,11 @@
 .dk-card.dk2b-chat { position: relative; container: dkcard / inline-size; }
 /* The lead's chat as the Board's session chat (#688): the same padding round its messages (.ap-chat), so Listen and Read
    under a reply sit where the Board's do, and Read is the Board's reader as it is there (its bar and column). */
-.dk2b-chat .dk-chat, .dk2b-chat .dk-rd { padding: 14px 18px 10px; }
+/* A session's chat on the Desk too: its bottom padding must be the 10px Listen and Read's sticky bar allows for, or
+   the reply shows through under that bar. */
+:is(.dk2b-chat, .dkn-sp) .dk-chat, :is(.dk2b-chat, .dkn-sp) .dk-rd { padding: 14px 18px 10px; }
 /* Another Desk's band still runs edge to edge of that chat. */
-.dk2b-chat .dk-chat .dk-band { margin-inline: -18px; padding-inline: 18px; }
+.dk2b-chat .dk-chat .dk-band, .dkn-sp .dk-chat .dk-band { margin-inline: -18px; padding-inline: 18px; }
 
 /* ---------- the strip: Working pill, how many wait on you, their chips, Check ---------- */
 .dk2b-strip { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-radius: var(--radius-tray); background: var(--panel-2); font-size: var(--type-small); }
