@@ -135,16 +135,25 @@ pub(crate) fn sweep(st: &mut Store, now: u64, fx: &mut Effects) {
     }
 }
 
-/// Items waiting for room on a machine (#711, `DeskItem::machine_wait`): each whose machine has fewer of its Desk's
-/// items at work than its number in Desk settings starts now, in your order then the one waiting longest. One taken
-/// by other means meanwhile (routed to a session) stops waiting. A paused Desk's wait.
+/// Items waiting for room (#711, `DeskItem::room_wait`): each starts as soon as one of the places it may start has
+/// fewer of its Desk's items at work than its number in Desk settings, in your order then the one waiting longest.
+/// Where is picked then, not when it was queued (#776): whichever place has room, so it never sits behind a busy one
+/// while another is free. One taken by other means meanwhile (routed to a session) stops waiting. A paused Desk's wait.
 pub(crate) fn machine_sweep(st: &mut Store, now: u64, fx: &mut Effects) {
+    use crate::desk::hub::landing::remote_item::{machine_cap, machine_load, start_places, start_place};
     move_off_full_mac(st, now, fx);
-    for it in st.desk.items.iter_mut().filter(|i| !i.machine_wait.is_empty() && (i.holder.is_some() || i.state != "queued" || i.next_for.is_some() || i.after.is_some())) {
-        it.machine_wait.clear();
+    for it in st.desk.items.iter_mut() {
+        // A save from before #776 named the machine: only that it waits is kept.
+        if !it.machine_wait.is_empty() {
+            it.machine_wait.clear();
+            it.room_wait = true;
+        }
+        if it.room_wait && (it.holder.is_some() || it.state != "queued" || it.next_for.is_some() || it.after.is_some()) {
+            it.room_wait = false;
+        }
     }
     let mut waiting: Vec<(u32, u64, String)> = st.desk.items.iter()
-        .filter(|i| !i.machine_wait.is_empty() && !st.desk.run.new_starts.contains(&i.id))
+        .filter(|i| i.room_wait && !st.desk.run.new_starts.contains(&i.id))
         .map(|i| (i.queue_order.unwrap_or(u32::MAX), i.queued_at, i.id.clone())).collect();
     if waiting.is_empty() {
         return;
@@ -158,21 +167,19 @@ pub(crate) fn machine_sweep(st: &mut Store, now: u64, fx: &mut Effects) {
         if crate::desk::hub::away::pause::is_paused(&project) {
             continue;
         }
-        let m = match crate::desk::hub::landing::remote_item::start_place(st, it) {
-            Ok(p) => p.map(|o| o.machine).unwrap_or_default(),
-            // It can't start there at all: its start says why.
-            Err(_) => crate::desk::hub::landing::remote_item::waited_machine(&it.machine_wait),
+        let mine = |m: &str| sent.iter().filter(|(p, x)| *p == project && x == m).count();
+        let room = |m: &str| machine_cap(st, &project, m).is_none_or(|n| machine_load(st, &project, m) + mine(m) < n);
+        // A place named for it that can't be used (no folder known there): it starts, and its start says why.
+        let place = match start_place(st, it) {
+            Ok(_) => start_places(st, it).into_iter().filter(|m| room(m)).min_by_key(|m| machine_load(st, &project, m) + mine(m)),
+            Err(_) => Some(String::new()),
         };
-        let mine = sent.iter().filter(|(p, x)| *p == project && *x == m).count();
-        let room = crate::desk::hub::landing::remote_item::machine_cap(st, &project, &m).is_none_or(|n| crate::desk::hub::landing::remote_item::machine_load(st, &project, &m) + mine < n);
-        if !room {
-            continue;
-        }
+        let Some(m) = place else { continue };
         sent.push((project.clone(), m));
         let lead = st.desk.lead.get(&project).cloned();
         let Some(it) = st.desk.item_mut(&id) else { continue };
         let why = it.after_why.clone();
-        (it.machine_wait, it.state, it.updated) = (String::new(), "new".into(), secs(now));
+        (it.room_wait, it.state, it.updated) = (false, "new".into(), secs(now));
         fx.items.push(id.clone());
         let (by, by_sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
         fx.starts.push(NewStart { project, id, why, by: by.into(), by_sid: by_sid.into() });

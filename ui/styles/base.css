@@ -1,6 +1,21 @@
 /* Cue — Moss. One hue: the window is drenched in it, cards sit on top, actions use it.
    Light by default; dark follows macOS (or Settings → Appearance). One project picked in the header,
    the window takes that project's hue instead (`.proj-theme`, after these). */
+/* The text sizes are registered lengths, so each reads back worked out ("15px", not its formula) wherever it's asked
+   for: getComputedStyle, the terminal's size, what extension pages are sent. The sizes themselves are set in :root below. */
+@property --type-scale { syntax: "<number>"; inherits: true; initial-value: 1; }
+@property --type-label { syntax: "<length>"; inherits: true; initial-value: 12px; }
+@property --type-label-lh { syntax: "<length>"; inherits: true; initial-value: 16px; }
+@property --type-small { syntax: "<length>"; inherits: true; initial-value: 13px; }
+@property --type-small-lh { syntax: "<length>"; inherits: true; initial-value: 18px; }
+@property --type-body { syntax: "<length>"; inherits: true; initial-value: 15px; }
+@property --type-body-lh { syntax: "<length>"; inherits: true; initial-value: 22px; }
+@property --type-title { syntax: "<length>"; inherits: true; initial-value: 17px; }
+@property --type-title-lh { syntax: "<length>"; inherits: true; initial-value: 24px; }
+@property --type-page { syntax: "<length>"; inherits: true; initial-value: 22px; }
+@property --type-page-lh { syntax: "<length>"; inherits: true; initial-value: 28px; }
+@property --type-figure { syntax: "<length>"; inherits: true; initial-value: 32px; }
+@property --type-figure-lh { syntax: "<length>"; inherits: true; initial-value: 36px; }
 :root {
   --bg: #3F4A22;
   --on-bg: #FFFFFF;
@@ -50,17 +65,27 @@
   --shell-bg: #16171A; --shell-line: #3A3C44; --shell-ink: #F2F3F5; --shell-hint: #A3A7B3; --shell-muted: #8B8F99; --shell-out: #D8DAE0;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
-  /* The type scale (#737): one size per job, whole pixels, built around the words people read, 15px on a 22px line
-     (Slack's size, #703). Every text size in the app is one of these; weight, caps and mono set things apart, never a
-     half-pixel step. Each step down is a clear one: 15 read, 13 press or glance, 12 meta, 11 tags. */
-  --type-tag: 11px;      /* caps tags and badges: NOTE, ASKS YOU, a count */
-  --type-pill: 12px;     /* small heads, mono meta: an item's number, an age, a column head */
-  --type-small: 13px;    /* buttons, secondary lines, the meta row of a message */
-  --type-body: 15px;     /* everything people read: card text, names, messages, what you type */
-  --type-body-lh: 22px;  /* the line a message's words sit on */
-  --type-title: 17px;    /* a pane's or a card's title, and the glyphs on small square buttons */
-  --type-page: 22px;     /* a page's heading */
-  --type-figure: 32px;   /* big numbers (Insights) */
+  /* The type scale (#737, sizes from docs/type-scale-review.md, #767): six sizes, whole pixels, built around the words
+     people read, 15px on a 22px line (Slack's size, #703). Every text size in the app is one of these; weight, caps and
+     mono set things apart, never an in-between step. Nothing is under 12px, and anything read as words is 13 or more:
+     labels and numbers 12, words 13. Weights are four: 400 reading, 500 status words and numbers, 600 names, titles and
+     buttons, 700 capital labels and page headings. Times and counts are the normal face with even-width digits
+     (tabular-nums); mono is for commands, code and #ids.
+     --type-scale raises or lowers everything at once: 1.07 is a 16px body with every size following, in whole pixels
+     (row and button heights are fixed px, so check them for more than one step). */
+  --type-scale: 1;
+  --type-label: round(calc(12px * var(--type-scale)), 1px);    /* section labels (caps, 700, 0.06em), progress-bar times, counts, badges, keys */
+  --type-label-lh: round(calc(16px * var(--type-scale)), 1px);
+  --type-small: round(calc(13px * var(--type-scale)), 1px);    /* buttons, tabs, side-panel text, meta lines (#id · session), status words */
+  --type-small-lh: round(calc(18px * var(--type-scale)), 1px);
+  --type-body: round(calc(15px * var(--type-scale)), 1px);     /* everything people read: chat, item titles, session names, what you type */
+  --type-body-lh: round(calc(22px * var(--type-scale)), 1px);  /* the line a message's words sit on */
+  --type-title: round(calc(17px * var(--type-scale)), 1px);    /* a pane's or a card's title, and the glyphs on small square buttons */
+  --type-title-lh: round(calc(24px * var(--type-scale)), 1px);
+  --type-page: round(calc(22px * var(--type-scale)), 1px);     /* a page's heading */
+  --type-page-lh: round(calc(28px * var(--type-scale)), 1px);
+  --type-figure: round(calc(32px * var(--type-scale)), 1px);   /* big numbers (Insights) */
+  --type-figure-lh: round(calc(36px * var(--type-scale)), 1px);
   /* The design system's corners (tokens.json): every border-radius in the app is one of these, or 50% for a circle.
      Every small label (a role, a mode, a state, a count, a chip) is a full capsule, --radius-pill
      (tests/ui/specs/pills.mjs checks every screen for one that isn't); --pill-radius is its older name. */
@@ -174,7 +199,7 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .wordmark svg { display: block; pointer-events: none; }
 /* Header chips: click to open the oldest of each kind (again for the next). */
 .hchips { display: flex; gap: 8px; align-items: center; }
-.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); font-size: var(--type-small); font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
+.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
 .hchip:hover { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
 /* Stronger = closer to the header's own text color, in either theme. */
 .hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }
@@ -192,13 +217,13 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 /* Waiting's dot: a session you wrote to came back and waits, not yet open. */
 .hdot.back { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .hdot.back { animation: none; } }
-.hall { font-size: var(--type-small); color: var(--on-bg-muted); }
+.hall { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); }
 .grow { flex: 1; }
-.top-btn { height: 32px; padding: 0 12px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font-size: var(--type-small); font-weight: 600; }
+.top-btn { height: 32px; padding: 0 12px; border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; }
 .top-btn:hover { filter: brightness(0.97); }
 /* Board | History */
 .switch-view { display: flex; gap: 3px; padding: 3px; background: var(--panel); border-radius: var(--radius-btn); }
-.switch-view button { height: 26px; padding: 0 12px; border-radius: var(--radius-qp); font-size: var(--type-small); font-weight: 600; color: var(--muted); }
+.switch-view button { height: 26px; padding: 0 12px; border-radius: var(--radius-qp); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .switch-view button.on { background: var(--accent); color: var(--on-accent); }
 /* The header's icon buttons (Find, Terminal, Extensions, Insights, Settings): just the icon, in the header's own colour
    (no box) until you point at it, then one soft rounded square, the same for each. flex: none keeps that square when
@@ -207,7 +232,7 @@ a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset:
 .top-btn.icon:hover { opacity: 1; filter: none; background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
 .top-btn.icon[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 
-.col-head { font-size: var(--type-pill); font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
+.col-head { font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
 .col-head span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
 .empty-col { border: 1px dashed var(--on-bg-muted); border-radius: var(--radius-pane); padding: 16px; color: var(--on-bg-muted); font-size: var(--type-body); text-align: center; }
 

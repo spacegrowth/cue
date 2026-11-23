@@ -1,11 +1,11 @@
 /* ---------- collapse to the rail + full-screen chat ---------- */
 .collapse-x { color: var(--on-bg-muted); font-size: var(--type-small); line-height: 1; cursor: pointer; opacity: 0; transition: opacity .14s ease; }
 .col-head:hover .collapse-x { opacity: 1; }
-.esc-hint { font-size: var(--type-tag); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-qp); padding: 2px 7px; font-weight: 600; }
+.esc-hint { font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-qp); padding: 2px 7px; font-weight: 600; }
 .rail-col { justify-content: flex-start; }
 .rail { display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
 .pin { color: var(--on-bg-muted); cursor: pointer; border-left: 1px solid color-mix(in srgb, var(--on-bg) 16%, transparent); padding-left: 10px; }
-.pin .vt { writing-mode: vertical-rl; transform: rotate(180deg); font-size: var(--type-pill); font-weight: 700; letter-spacing: .08em; white-space: nowrap; color: var(--on-bg-muted); }
+.pin .vt { writing-mode: vertical-rl; transform: rotate(180deg); font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; white-space: nowrap; color: var(--on-bg-muted); }
 @keyframes bubble-vt {
   0%   { transform: rotate(180deg) scale(1); }
   30%  { transform: rotate(180deg) scale(1.35); color: var(--sel); }

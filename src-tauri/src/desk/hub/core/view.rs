@@ -23,6 +23,8 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         out.copy_users = st.desk.items.iter().filter(|i| i.tree.as_ref().is_some_and(|t| t.repo == it.tree_wait_repo)).map(|i| i.id.clone()).collect();
         out.copy_users.sort_by_key(|x| (x.parse::<u64>().unwrap_or(u64::MAX), x.clone()));
     }
+    // Waiting for room (#776): where it may start, in words; the machine is picked as it starts.
+    out.machine_wait = if it.room_wait && it.holder.is_none() && it.state == "queued" { crate::desk::hub::landing::remote_item::room_words(st, it) } else { String::new() };
     // Start now would go past the limit on items at once (#712): the window warns first.
     out.start_full = crate::desk::hub::landing::remote_item::start_full(st, it);
     // Next for a busy session (#576): its name as shown now, and when it goes to a fresh session.

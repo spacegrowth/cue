@@ -5,12 +5,12 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 /* The literal fallbacks are Moss's light panel and ink, for the moment before cue.js has set Cue's colours. */
-body { background: var(--panel, #fff); color: var(--ink, #1e2410); font: 13px/1.45 var(--sans, -apple-system, sans-serif); -webkit-font-smoothing: antialiased; }
+body { background: var(--panel, #fff); color: var(--ink, #1e2410); font: var(--type-small, 13px)/1.45 var(--sans, -apple-system, sans-serif); -webkit-font-smoothing: antialiased; }
 button { font: inherit; font-weight: 600; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-btn); padding: 5px 11px; cursor: pointer; }
 button:hover { border-color: var(--muted); }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 input, select, textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-btn); padding: 5px 9px; }
-code, pre { font-family: var(--mono); font-size: 12px; }
+code, pre { font-family: var(--mono); font-size: var(--type-label, 12px); }
 .muted { color: var(--muted); }
 .cue-list { display: flex; flex-direction: column; gap: 2px; }
 .cue-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--radius-btn); cursor: pointer; }

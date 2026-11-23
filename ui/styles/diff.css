@@ -3,31 +3,31 @@
 .dv { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); color: var(--ink); font: var(--type-body)/1.45 var(--sans); }
 .dv-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex: none; }
 .dv-head .grow { flex: 1; }
-.dv-sum { font-size: var(--type-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dv-sum { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .dv-sum b { color: var(--ink); font-weight: 600; }
 .dv-seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--panel-2); border-radius: var(--radius-btn); flex: none; }
 .dv-seg[hidden] { display: none; }
-.dv-seg button { font: inherit; border: 0; background: none; padding: 3px 10px; border-radius: var(--radius-qp); font-size: var(--type-pill); font-weight: 600; color: var(--muted); cursor: pointer; }
+.dv-seg button { font: inherit; border: 0; background: none; padding: 3px 10px; border-radius: var(--radius-qp); font-size: var(--type-small); font-weight: 600; color: var(--muted); cursor: pointer; }
 .dv-seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
 .dv-seg button:disabled { opacity: .4; cursor: default; }
-.dv-refresh { font: 600 var(--type-pill) var(--sans); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-btn); padding: 3px 10px; cursor: pointer; }
+.dv-refresh { font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-btn); padding: 3px 10px; cursor: pointer; }
 .dv-refresh:hover { border-color: var(--muted); }
 /* A crew member's files: its chip, ✕ back to the whole diff. */
 .dv-chip-at:empty { display: none; }
-.dv-chip { display: inline-flex; align-items: center; gap: 6px; font: 600 var(--type-small) var(--sans); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; white-space: nowrap; }
-.dv-chip button { font: 600 var(--type-pill) var(--sans); color: var(--muted); background: none; border: 0; border-radius: var(--radius-pill); width: 18px; height: 18px; padding: 0; cursor: pointer; }
+.dv-chip { display: inline-flex; align-items: center; gap: 6px; font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 4px 2px 10px; white-space: nowrap; }
+.dv-chip button { font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--muted); background: none; border: 0; border-radius: var(--radius-pill); width: 18px; height: 18px; padding: 0; cursor: pointer; }
 .dv-chip button:hover { color: var(--ink); background: var(--panel); }
 .dv-add { color: var(--add-fg); }   /* the same diff colours as the chat (base.css --add-*/--del-*) */
 .dv-del { color: var(--del-fg); }
-.dv-n { font-family: var(--mono); font-size: var(--type-small); }
+.dv-n { font-family: var(--mono); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dv-body { flex: 1; overflow: auto; padding: 12px 16px 24px; }
 .dv-file { border: 1px solid var(--line); border-radius: var(--radius-tray); margin-bottom: 10px; overflow: hidden; }
-.dv-file > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 6px 10px; background: var(--panel-2); font: 600 var(--type-small) var(--mono); }
+.dv-file > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 6px 10px; background: var(--panel-2); font: 600 var(--type-small)/var(--type-small-lh) var(--mono); }
 .dv-file > summary::-webkit-details-marker { display: none; }
 .dv-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-chev { color: var(--muted); }
 .dv-file[open] > summary .dv-chev { transform: rotate(90deg); }
-.dv-tag { font: 600 var(--type-tag) var(--sans); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; }
+.dv-tag { font: 600 var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; white-space: nowrap; }
 .dv-repo { flex: none; color: var(--ink); }
 .dv-lines { padding: 4px 0; font: var(--type-small)/1.5 var(--mono); overflow-x: auto; }
 .dv-lines div { padding: 0 10px; white-space: pre; }
@@ -35,12 +35,12 @@
 .dv-lines .d { background: var(--del-bg); color: var(--del-ink); }
 .dv-lines .h { color: var(--muted); padding-top: 4px; }
 .dv-note { color: var(--muted); padding: 30px 4px; }
-.dv-quiet { margin-top: 14px; color: var(--muted); font-size: var(--type-small); }
-.dv-quiet-h { font-weight: 650; margin-bottom: 4px; }
+.dv-quiet { margin-top: 14px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dv-quiet-h { font-weight: 600; margin-bottom: 4px; }
 .dv-quiet-r { display: flex; gap: 10px; padding: 2px 0; }
 .dv-quiet-r code { font-family: var(--mono); color: var(--ink); }
-.dv-why { color: var(--muted); font-size: var(--type-small); margin: 0 0 10px; }
-.dv-by { color: var(--muted); font: 600 var(--type-pill) var(--sans); margin: 14px 0 6px; }
+.dv-why { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); margin: 0 0 10px; }
+.dv-by { color: var(--muted); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); margin: 14px 0 6px; }
 .dv-by:first-child { margin-top: 0; }
 
 /* A diff over the page (ui/diff_overlay.js): files left, the picked file's diff right; Esc closes. */
@@ -50,20 +50,20 @@
 .dov-head .grow { flex: 1; }
 .dov-title { font-size: var(--type-title); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dov-sub { font-size: var(--type-body); color: var(--muted); white-space: nowrap; }
-.dov-keys { display: inline-flex; align-items: center; gap: 5px; font-size: var(--type-small); color: var(--muted); white-space: nowrap; }
-.dov-keys kbd { font: 600 var(--type-pill) var(--mono); color: var(--muted); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--radius-tag); padding: 1px 6px; }
+.dov-keys { display: inline-flex; align-items: center; gap: 5px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; }
+.dov-keys kbd { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); color: var(--muted); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--radius-tag); padding: 1px 6px; }
 .dov-x { width: 28px; height: 28px; border: 0; border-radius: var(--radius-btn); background: var(--panel-2); color: var(--ink); font-size: var(--type-title); line-height: 1; cursor: pointer; flex: none; }
 .dov-x:hover { background: color-mix(in srgb, var(--ink) 10%, var(--panel-2)); }
 .dov-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); }
 .dov-list { overflow: auto; padding: 12px 10px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px; }
-.dov-k { font: 700 var(--type-tag) var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 6px 6px; }
+.dov-k { font: 700 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 6px 6px; }
 .dov-k .dv-n { letter-spacing: 0; }
 .dov-f { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 6px; border: 0; border-radius: var(--radius-qp); background: none; color: var(--ink); font: var(--type-small)/1.6 var(--mono); text-align: left; cursor: pointer; }
 .dov-f:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .dov-f.on { background: var(--sel); color: var(--on-sel); }
 .dov-f:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 .dov-p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dov-new { font: 600 var(--type-tag) var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.dov-new { font: 600 var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .dov-diff { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .dov-fh { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px; font: 600 var(--type-body) var(--mono); border-bottom: 1px solid var(--panel-2); flex: none; }
 /* Long lines scroll sideways; the rows take the widest one's width, so a tint goes on past the first screen. */
@@ -97,7 +97,7 @@
 
 /* A short list of changed files (diff_overlay.js fileListHtml), as the Desk's panel shows them: each path with its
    +/−, "and N more files ›" under them. */
-.ib-file code { font: var(--type-pill) var(--mono); }
+.ib-file code { font: var(--type-small)/var(--type-small-lh) var(--mono); }
 .ib-files { display: flex; flex-direction: column; gap: 2px; font-size: var(--type-small); }
 .ib-file { display: flex; justify-content: space-between; gap: 8px; }
 .ib-file code { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
@@ -105,7 +105,7 @@
 /* The counts in one column (#394): right-aligned at the row's end, each a fixed width; "new" by the path. */
 .ib-file > .ib-nums { margin-left: auto; }
 .ib-nums > span { display: inline-block; min-width: 3.5ch; text-align: right; }
-.ib-file > .ib-new { color: var(--muted); font-size: var(--type-pill); }
+.ib-file > .ib-new { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 button.ib-file { width: calc(100% + 12px); padding: 1px 6px; margin: 0 -6px; box-sizing: border-box; border: 0; border-radius: var(--radius-qp); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .ib-add { color: color-mix(in srgb, var(--accent) 80%, var(--ink)); font-variant-numeric: tabular-nums; }

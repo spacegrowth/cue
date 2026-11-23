@@ -209,7 +209,8 @@ function deskB2Row(i) {
   const [st, mono] = deskB2Status(i);
   const right = i.state === "to_check" && !deskInstallWait(i) ? `<button class="dk2b-chk" data-desk-chk-item="${esc(i.id)}">Check</button>`
     : i.state === "working" || deskFinishing(i) ? `<span class="dk2b-ok">${deskB2Tests(i)}</span>` : "<span></span>";
-  return `<div class="dk-it dk2b-row${on ? " on" : ""}${deskFeat(i) ? " dk-feat" : ""}${i.state === "needs_you" ? " ask" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><span class="dk2b-n">#${esc(i.id)}</span><div class="dk2b-t"><div class="dk2b-tt"><span>${esc(i.title)}</span>${deskMachTag(i)}</div><div class="dk2b-ts${mono ? " mono" : ""}">${st}</div></div><div class="dk2b-st">${deskB2Track(i)}<span>${deskB2StepWord(i)}</span></div>${right}</div>`;
+  // A row nobody has yet shows no machine (#776): that's picked as it starts.
+  return `<div class="dk-it dk2b-row${on ? " on" : ""}${deskFeat(i) ? " dk-feat" : ""}${i.state === "needs_you" ? " ask" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><span class="dk2b-n">#${esc(i.id)}</span><div class="dk2b-t"><div class="dk2b-tt"><span>${esc(i.title)}</span>${i.holder ? deskMachTag(i) : ""}</div><div class="dk2b-ts${mono ? " mono" : ""}">${st}</div></div><div class="dk2b-st">${deskB2Track(i)}<span>${deskB2StepWord(i)}</span></div>${right}</div>`;
 }
 /** A group: its head (WORKING 7) and its rows, the first 3 in the All tab and Show all N; each drawn by `row`. */
 function deskB2Group(key, label, list, extra = "", n = list.length, row = deskB2Row, first = "") {

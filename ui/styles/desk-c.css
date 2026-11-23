@@ -31,35 +31,35 @@
 :root[data-theme="dark"]:not(.proj-theme):has(.board.dk-c) { --bg: #27301A; --on-bg-muted: #B4BA9C; }
 
 /* ---------- the sessions column, on the green ---------- */
-.dkn-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; color: var(--on-bg); font-size: var(--type-small); }
+.dkn-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; color: var(--on-bg); font-size: var(--type-small); line-height: var(--type-small-lh); }
 :where(.dkn-side button) { all: unset; box-sizing: border-box; cursor: pointer; }
 .dkn-side :where(button):focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-btn); }
 .dkn-head { padding: 4px 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .dkn-dn { display: flex; align-items: center; gap: 8px; font-size: var(--type-body); }
 .dkn-side .dk-kic { color: inherit; flex: none; }
 .dkn-dn b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-cnt { font: var(--type-pill) var(--mono); color: var(--on-bg-muted); }
+.dkn-cnt { font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--on-bg-muted); font-variant-numeric: tabular-nums; }
 /* The lead at rest is a plain row like the sessions under it (a fill read as selected); its Lead tag sets it apart. */
 .dkn-lead { margin: 0 0 2px; padding: 10px 12px; border-radius: var(--radius-card); display: flex; flex-direction: column; }
 .dkn-lead:hover { background: color-mix(in srgb, var(--on-bg) 9%, transparent); }
 .dkn-lead.on { background: color-mix(in srgb, var(--sel) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sel) 55%, transparent); }
 .dkn-lead .dkn-n { font-size: var(--type-body); }
-.dkn-lp { flex: none; font-size: var(--type-tag); font-weight: 700; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--on-bg); color: var(--bg); }
+.dkn-lp { flex: none; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--on-bg); color: var(--bg); }
 .dkn-lead.on .dkn-lp { background: var(--sel); color: var(--on-sel); }
 /* The thin line under the lead. */
 .dkn-rule { height: 1px; margin: 12px 0 2px; background: color-mix(in srgb, var(--on-bg-muted) 75%, transparent); flex: none; }
 .dkn-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; }
-.dkn-mg { display: flex; align-items: center; gap: 6px; padding: 14px 10px 6px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; color: var(--on-bg-muted); }
+.dkn-mg { display: flex; align-items: center; gap: 6px; padding: 14px 10px 6px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; color: var(--on-bg-muted); }
 .dkn-mg b { color: var(--on-bg); }
 .dkn-mg span { font-weight: 500; letter-spacing: 0; }
 .dkn-ss { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: var(--radius-tray); }
 .dkn-ss:hover, .dkn-cr:hover { background: color-mix(in srgb, var(--on-bg) 9%, transparent); }
 .dkn-n { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--type-body); font-weight: 700; }
 .dkn-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-st { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: var(--type-pill); color: var(--on-bg-muted); }
+.dkn-st { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); }
 .dkn-lead .dkn-st { color: inherit; }
 .dkn-chev { margin-left: auto; font-size: var(--type-title); line-height: 1; }
-.dkn-s { margin-left: 16px; font-size: var(--type-pill); color: var(--on-bg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkn-s { margin-left: 16px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-ask { color: color-mix(in srgb, var(--deny) 40%, #fff); }
 .dkn-ss.on, .dkn-cr.on { background: var(--sel); color: var(--on-sel); }
 .dkn-ss.on :is(.dkn-s, .dkn-st), .dkn-cr.on :is(.dkn-s, .dkn-st) { color: var(--on-sel); }
@@ -69,7 +69,7 @@
 .dkn-d.work { animation: dkn-pulse 1.6s ease-in-out infinite; }
 .dkn-d.ask { background: transparent; box-shadow: inset 0 0 0 2px currentColor; }
 .dkn-d.idle { opacity: .45; }
-.dkn-cr { display: flex; flex-direction: column; gap: 2px; padding: 5px 10px 6px 30px; border-radius: var(--radius-btn); font-size: var(--type-pill); }
+.dkn-cr { display: flex; flex-direction: column; gap: 2px; padding: 5px 10px 6px 30px; border-radius: var(--radius-btn); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dkn-cr .dkn-n { gap: 7px; font-weight: 600; }
 .dkn-cr .dkn-d { width: 6px; height: 6px; }
 .dkn-cr .dkn-s { margin-left: 20px; }
@@ -83,8 +83,8 @@
 @media (max-width: 1499px) {
   .dkn-head, .dkn-cr, .dkn-s, .dkn-st, .dkn-lp, .dkn-chev, .dkn-mg :is(b, span), .dkn-none, .dkn-alls .dkn-w { display: none; }
   .dkn-lead, .dkn-ss { align-items: center; padding: 8px 2px; }
-  .dkn-n { flex-direction: column; gap: 4px; font-size: var(--type-tag); width: 100%; }
-  .dkn-lead .dkn-n { font-size: var(--type-tag); }
+  .dkn-n { flex-direction: column; gap: 4px; font-size: var(--type-label); line-height: var(--type-label-lh); width: 100%; }
+  .dkn-lead .dkn-n { font-size: var(--type-label); line-height: var(--type-label-lh); }
   .dkn-nm { max-width: 100%; text-align: center; }
   .dkn-mg { justify-content: center; padding: 12px 0 4px; }
   .dkn-foot { text-align: center; padding: 10px 0 2px; }
@@ -98,7 +98,7 @@
 .dkn-body { flex: 1; min-height: 0; overflow-y: auto; padding-top: 0; padding-bottom: 0; }
 /* (No padding over the list: a heading stuck at its top would show rows scrolling past above it.) */
 /* Under a list that scrolls: how many rows are below its edge (desk/c.js deskCMore); a click scrolls a page. */
-.dkn-more { all: unset; flex: none; padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: var(--type-pill); color: var(--muted); cursor: pointer; }
+.dkn-more { all: unset; flex: none; padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); cursor: pointer; }
 .dkn-more:hover { color: var(--ink); }
 /* Its line's height whether or not it has words yet: the lists are cut to whole rows while it's still empty
    (desk/c.js deskCFitLists), and its words coming in later mustn't cut the last row. */
@@ -111,23 +111,23 @@
 .dkn-wmore { display: block; padding: 4px 16px 8px; border-top: 0; }
 /* Strip (K, #751): Item, Progress (a 180px strip), Now. */
 .dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 136px; gap: 0 12px; align-items: center; }
-.dkn-th { align-items: end; padding: 10px 16px 8px; border-bottom: 1px solid var(--line); font-size: var(--type-tag); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.dkn-th { align-items: end; padding: 10px 16px 8px; border-bottom: 1px solid var(--line); font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .dkn-th > span:last-child { text-align: right; }
-.dkn-gh { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer; padding: 18px 16px 4px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; }
+.dkn-gh { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer; padding: 18px 16px 4px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; }
 .dkn-gh:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
 .dkn-gh span { color: var(--muted); font-weight: 500; }
 .dkn-row { padding: 10px 16px; cursor: pointer; }
 .dkn-row:hover { background: var(--panel-2); }
 .dkn-row.on { background: var(--sel); color: var(--on-sel); }
-.dkn-id { font: 600 var(--type-tag) var(--mono); color: inherit; white-space: nowrap; }
+.dkn-id { font: 600 var(--type-small)/var(--type-small-lh) var(--mono); color: inherit; white-space: nowrap; }
 .dkn-row.on :is(.dkn-id, .dkn-sub, .dkn-kt, .dkn-nw) { color: var(--on-sel); }
 .dkn-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .dkn-tt { font-weight: 600; font-size: var(--type-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-sub { font-size: var(--type-pill); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkn-sub { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-k { display: inline-flex; vertical-align: -2px; margin-right: 4px; }
 /* On a selected row the icon takes the row's text colour: the accent it has elsewhere is the selection's own fill. */
 :is(.dkn-row, .dkn-nx).on .dk-kic { color: var(--on-sel); }
-.dkn-now { min-width: 0; font-size: var(--type-pill); display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow: hidden; }
+.dkn-now { min-width: 0; font-size: var(--type-small); line-height: var(--type-small-lh); display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow: hidden; }
 .dkn-nw { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .dkn-nw.mono { font-family: var(--mono); }
 .dkn-nask { color: var(--deny); white-space: nowrap; }
@@ -153,14 +153,14 @@
 .dkn-kp.todo { flex: 0 0 8px; min-width: 8px; }
 .dkn-kp i { align-self: stretch; height: 6px; border-radius: 3px; background: var(--line); }
 .dkn-kp.done i { background: var(--accent); }
-.dkn-kt { font: var(--type-tag) var(--mono); line-height: 1.2; color: var(--muted); white-space: nowrap; min-height: 1.2em; }
+.dkn-kt { font: var(--type-label) var(--sans); line-height: 1.2; color: var(--muted); white-space: nowrap; min-height: 1.2em; font-variant-numeric: tabular-nums; }
 .dkn-kp.cur .dkn-kt { color: var(--ink); font-weight: 700; }
 /* Strip: the piece under the pointer grows a little, and a small card over the page says its step and time
    (desk/c.js deskCStepPop). */
 .dkn-kp i { transition: transform .12s ease; }
 .dkn-kp:hover i { transform: scaleY(1.5); }
 .dkn-kp:hover .dkn-kt { color: var(--ink); }
-.dkn-steps-pop { position: fixed; z-index: 60; padding: 5px 10px; border-radius: var(--radius-btn); background: var(--panel); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / 0.16); font-size: var(--type-small); white-space: nowrap; pointer-events: none; }
+.dkn-steps-pop { position: fixed; z-index: 60; padding: 5px 10px; border-radius: var(--radius-btn); background: var(--panel); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / 0.16); font-size: var(--type-small); line-height: var(--type-small-lh); white-space: nowrap; pointer-events: none; }
 .dkn-steps-pop b { color: var(--ink); font-weight: 600; }
 /* The step it's at: the Board's waiting stripes, moving while a session works on it right now. */
 .dkn-kp.cur i { background: repeating-linear-gradient(45deg, var(--accent) 0 2px, var(--panel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: inset 0 0 0 1px var(--accent); }
@@ -190,13 +190,13 @@
 .dkn-low:not(:has(.dkn-dr:not(.fold))) { flex: none; min-height: 0; }
 @container dknl (max-width: 460px) { .dkn-low { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 14px; overflow-y: auto; } .dkn-dl { overflow: visible; } }
 /* The Board's drawer head: the arrow at the left, the name and count; the whole line folds it. */
-.dkn-dh { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; align-items: baseline; gap: 8px; padding: 0 6px 10px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; color: var(--on-bg); }
+.dkn-dh { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; align-items: baseline; gap: 8px; padding: 0 6px 10px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; color: var(--on-bg); }
 /* A drawer just opened: its rows slide down into place and fade in (desk/c.js DESK_C_OPEN_MS). */
 .dkn-dl.dkn-opening { animation: dkn-open 0.26s cubic-bezier(0.2, 0, 0, 1) both; }
 @keyframes dkn-open { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .dkn-dl.dkn-opening { animation: none; } }
 .dkn-dh:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-btn); }
-.dkn-fa { font-size: 10px; opacity: .7; }
+.dkn-fa { font-size: var(--type-label); line-height: var(--type-label-lh); opacity: .7; }
 .dkn-dh .dkn-dn { display: inline; font-size: inherit; color: var(--on-bg-muted); font-weight: 600; letter-spacing: .02em; }
 .dkn-hint { color: var(--on-bg-muted); font-weight: 500; letter-spacing: 0; }
 .dkn-dr, .dkn-dl, .dkn-nx { min-width: 0; }
@@ -206,7 +206,7 @@
 .dkn-dl { display: flex; flex-direction: column; gap: 2px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 .dkn-dr > .dkn-more { padding: 6px 6px 0; border-top: 0; color: var(--on-bg-muted); }
 .dkn-dr > .dkn-more:hover { color: var(--on-bg); }
-.dkn-dnone { padding: 4px 8px; color: var(--on-bg-muted); font-size: var(--type-small); }
+.dkn-dnone { padding: 4px 8px; color: var(--on-bg-muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dkn-nx { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 7px 28px 7px 8px; border-radius: var(--radius-tray); cursor: pointer; }
 .dkn-nx:hover { background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
 .dkn-nx.on { background: var(--sel); color: var(--on-sel); }
@@ -214,7 +214,7 @@
 .dkn-nx .dkn-id { flex: none; color: inherit; }
 .dkn-nx .dk-kic { color: inherit; }
 .dkn-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-a2 { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 0; font-size: var(--type-pill); color: var(--on-bg-muted); }
+.dkn-a2 { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); }
 .dkn-a2 > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 /* Up next says why it waits in full: the line wraps rather than cutting the reason off. */
 .dkn-nx .dkn-a2 { align-items: baseline; }
@@ -237,7 +237,7 @@
 .dkn-ib2 { display: flex; align-items: center; gap: 16px; }
 .dkn-ib2 .dkn-ks { flex: none; width: 260px; }
 .dkn-ibacts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.dkn-ibsee { font-size: var(--type-small); color: var(--ink); }
+.dkn-ibsee { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); }
 .dkn-ibsee b { font-weight: 600; margin-right: 4px; }
 
 /* A session's chat on the new layout (desk/c.js deskCSessChat): back, the Board's top bar, the item it's on, Chat and
@@ -245,10 +245,10 @@
 .dkn-sp { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .dkn-sback { flex: none; padding: 12px 16px 0; }
 .dkn-sp > .ap-head { flex: none; }
-.dkn-smeta { flex: none; padding: 4px 16px 0; font-size: var(--type-small); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkn-smeta { flex: none; padding: 4px 16px 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-sp > .dkn-ib { margin-top: 10px; border-top: 1px solid var(--line); }
 .dkn-stabs { flex: none; display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
-.dkn-stab { all: unset; cursor: pointer; padding: 6px 10px 8px; font-size: var(--type-small); font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dkn-stab { all: unset; cursor: pointer; padding: 6px 10px 8px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .dkn-stab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .dkn-stab .n { margin-left: 4px; font-weight: 500; color: var(--muted); }
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
@@ -256,7 +256,7 @@
 .dkn-sfiles { padding: 14px 20px; }
 /* A session's Files tab: this turn's, then each item it worked on, newest first (desk/c.js deskCSessTaskFiles). */
 .dkn-sfiles .dk-psec { display: block; margin-bottom: 20px; }
-.dkn-sfiles .dk-psh { margin: 0 0 6px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.dkn-sfiles .dk-psh { margin: 0 0 6px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 /* A crew member's page (desk/c.js deskCCrewPage): its name, state and buttons in one row, no panel. */
 .dkn-chead { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px 2px; min-width: 0; }
 .dkn-cname { font-size: var(--type-title); font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -279,7 +279,7 @@
 .dkn-band.dkn-b-blocked .dkn-gdot { background: var(--deny); }
 .dkn-band.dkn-b-working .dkn-gdot { background: var(--accent); }
 .dkn-band.dkn-b-blocked .dkn-gh { color: var(--deny); }
-.dkn-gsay { margin-left: 4px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: var(--type-pill); }
+.dkn-gsay { margin-left: 4px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* Each band's heading sticks at the top of the list once its rows scroll under it, stacked under the ones above, each
    in its band's own colour, with nothing showing behind it. */
 .dkn-band > .dkn-gh { position: sticky; top: 0; z-index: 2; background: var(--panel); padding-top: 10px; padding-bottom: 6px; }

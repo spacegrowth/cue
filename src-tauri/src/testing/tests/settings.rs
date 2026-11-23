@@ -21,6 +21,8 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("appearance.zoom", json!(1.15)),
         same("appearance.project", json!(true)),
         ("context.keep", json!(99), json!(50)),
+        same("hosted.rest_min", json!(15)),
+        ("hosted.rest_min", json!(100000), json!(1440)),
         same("turn.mode", json!("last")),
         same("agents.show_driven", json!(true)),
         ("quick.phrases", json!(["  ship   it ", "", "ok"]), json!(["ship it", "ok"])),

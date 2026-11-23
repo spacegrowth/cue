@@ -3,13 +3,13 @@
 .ins { margin: 10px 16px 0; padding: 12px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
 .ins-bulb { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ins-bulb path:first-child { fill: var(--accent); }   /* the bulb is lit: filled, its rays stroked */
-.ins-axis { display: flex; justify-content: space-between; font-size: var(--type-pill); color: var(--muted); }
+.ins-axis { display: flex; justify-content: space-between; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); }
 .ins-axis b { color: var(--ink); }
-.ins-n { flex: none; font: 700 var(--type-pill) var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: var(--radius-pill); padding: 2px 8px; }
+.ins-n { flex: none; font: 700 var(--type-label)/var(--type-label-lh) var(--sans); color: var(--ink); background: var(--panel-2); border: 0; border-radius: var(--radius-pill); padding: 2px 8px; font-variant-numeric: tabular-nums; }
 button.ins-n { cursor: pointer; }
 .ins-line .ins-n { margin-left: auto; }
 /* What you just tapped, on its way: in place of the actions. */
-.ins-busy { flex: none; font-size: var(--type-small); font-weight: 650; color: inherit; }
+.ins-busy { flex: none; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: inherit; }
 .ins-skill-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .ins-skill-row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .ins-skill-agent { width: 96px; color: var(--ink); }
@@ -22,13 +22,13 @@ button.ins-n { cursor: pointer; }
 .ins-pop-row { display: flex; flex-direction: column; gap: 1px; text-align: left; padding: 6px 8px; border: 0; border-radius: var(--radius-btn); background: none; color: var(--ink); font: inherit; cursor: pointer; }
 .ins-pop-row:hover, .ins-pop-row:first-child { background: var(--panel-2, var(--line)); }
 .ins-pop-row .mono { font-size: var(--type-body); }
-.ins-pop-row .dim { font-size: var(--type-small); }
+.ins-pop-row .dim { font-size: var(--type-small); line-height: var(--type-small-lh); }
 .ins-pop-row.on .mono::after { content: " · chosen"; color: var(--muted); font-family: inherit; }
 .ins-pop-empty { padding: 8px; font-size: var(--type-body); }
-.ins-pop-foot { display: flex; align-items: center; gap: 8px; font-size: var(--type-small); padding: 2px 2px 0; }
+.ins-pop-foot { display: flex; align-items: center; gap: 8px; font-size: var(--type-small); line-height: var(--type-small-lh); padding: 2px 2px 0; }
 .ins-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* The opened note's foot: hide them all for a while, or turn them off. */
-.ins-hide { font-size: var(--type-small); }
+.ins-hide { font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* Fresh session: the chip on the chat's title row (insights.js handoffChips), its plan dropping down under it. */
 .ins-chip-wrap { position: relative; display: inline-flex; flex: none; }
 .ap-head .ins-plan .dim { white-space: normal; overflow: visible; }
@@ -40,7 +40,7 @@ button.ins-n { cursor: pointer; }
 .mi-act .ins-bulb path:first-child, .mi-compact .ins-bulb path:first-child { fill: currentColor; }
 .ins-plan { width: min(460px, calc(100vw - 48px)); padding: 12px 14px; gap: 10px; cursor: default; }
 /* The plan: a head (what's wrong, how full its window is), then one row per way on, each with its own button. */
-.ins-plan-t { font-size: var(--type-body); font-weight: 650; color: var(--ink); }
+.ins-plan-t { font-size: var(--type-body); font-weight: 600; color: var(--ink); }
 .ins-plan-s { font-size: var(--type-body); line-height: 1.45; color: var(--muted); margin-top: 2px; }
 .ins-meter { height: 6px; border-radius: var(--radius-pill); background: var(--panel-2); overflow: hidden; margin-top: 8px; }
 .ins-meter i { display: block; height: 100%; background: var(--amber); }
@@ -53,17 +53,17 @@ button.ins-n { cursor: pointer; }
 .ins-way-n { font-size: var(--type-body); font-weight: 600; color: var(--ink); }
 .ins-way-n .mono { font-weight: 500; color: var(--muted); }
 .ins-way-d { font-size: var(--type-small); line-height: 1.4; color: var(--muted); margin-top: 1px; }
-.ins-tag-s { font: 600 var(--type-tag) var(--mono); padding: 1px 6px; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); margin-left: 4px; }
+.ins-tag-s { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); padding: 1px 6px; border-radius: var(--radius-tag); background: var(--panel-2); color: var(--muted); margin-left: 4px; }
 .ins-plan .ins-hide { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 9px; }
 .ins-seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-qp); overflow: hidden; }
-.ins-seg button { font: inherit; font-size: var(--type-pill); padding: 2px 9px; border: 0; border-left: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
+.ins-seg button { font: inherit; font-size: var(--type-small); padding: 2px 9px; border: 0; border-left: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
 .ins-seg button:first-child { border-left: 0; }
 .ins-seg button:hover { background: var(--panel-2); color: var(--ink); }
-.ins-plan .ins-acts .dim { font-size: var(--type-small); }
+.ins-plan .ins-acts .dim { font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* The meta line: how far the session has grown, while a fresh session is due; its cache's countdown (the ring and
    the minutes, amber in its last 5) or "cache gone". */
-.mi-grow { color: var(--amber); font-weight: 650; }
-.mi-cache { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-weight: 650; vertical-align: -1px; }
+.mi-grow { color: var(--amber); font-weight: 600; }
+.mi-cache { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-weight: 600; vertical-align: -1px; }
 .mi-cache .ins-ring { width: 15px; height: 15px; margin: 0; }
 .mi-cache .ins-bulb { width: 12px; height: 12px; }
 .mi-cache.soon { color: var(--amber); }
@@ -95,10 +95,10 @@ button.ins-n { cursor: pointer; }
    needed is the ink, in shades. */
 .itab { margin-top: 14px; flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 14px; display: flex; flex-direction: column; gap: 12px; }
 .itab-empty { padding: 18px; background: var(--panel); color: var(--muted); border-radius: var(--radius-pane); }
-.itab-fine { font-size: var(--type-pill); color: var(--on-bg-muted); line-height: 1.5; }
+.itab-fine { font-size: var(--type-small); color: var(--on-bg-muted); line-height: 1.5; }
 .itab-find { background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.itab-kicker { font: 600 var(--type-pill) var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 10px; }
-.itab-tag { font: 600 var(--type-tag) var(--mono); letter-spacing: .04em; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); padding: 2px 7px; border-radius: var(--radius-pill); }
+.itab-kicker { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 10px; }
+.itab-tag { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); letter-spacing: 0.06em; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); padding: 2px 7px; border-radius: var(--radius-pill); }
 .itab-claim { display: flex; align-items: baseline; gap: 16px; }
 .itab-big { font-size: var(--type-figure); font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .itab-says { margin: 0; font-size: var(--type-body); line-height: 1.45; max-width: 680px; }
@@ -112,7 +112,7 @@ button.ins-n { cursor: pointer; }
 .itab-fig { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .itab-fighead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .itab-figtitle { font-size: var(--type-body); font-weight: 700; }
-.itab-fignote { font-size: var(--type-pill); color: var(--muted); }
+.itab-fignote { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 
 /* Where it went: one bar split by kind; the avoidable kinds amber and hatched at its end. */
 .itab-split { display: flex; height: 30px; border-radius: var(--radius-btn); overflow: hidden; gap: 2px; background: var(--panel); }
@@ -124,18 +124,18 @@ button.ins-n { cursor: pointer; }
 .itab-k-rewrite { background: var(--amber); }
 .itab-k-long { background: repeating-linear-gradient(135deg, var(--amber) 0 3px, color-mix(in srgb, var(--amber) 45%, var(--panel)) 3px 6px); }
 .itab-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 18px; margin-top: -4px; }
-.itab-key { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 34px; align-items: center; gap: 8px; font-size: var(--type-small); color: var(--muted); }
+.itab-key { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 34px; align-items: center; gap: 8px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .itab-key > i { width: 10px; height: 10px; border-radius: 3px; /* thin: below the smallest token */ }
 .itab-key b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .itab-key.bad .itab-keyname, .itab-key.bad b { color: var(--amber); }
 .itab-keyname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.itab-keypct { text-align: right; font: var(--type-pill) var(--mono); }
+.itab-keypct { text-align: right; font: var(--type-label)/var(--type-label-lh) var(--sans); font-variant-numeric: tabular-nums; }
 /* Each day: a column per day, its avoidable part amber at the foot. */
 .itab-daily { position: relative; height: 110px; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); }
 .itab-col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; background: color-mix(in srgb, var(--ink) 18%, var(--panel)); border-radius: 2px 2px 0 0; /* thin: below the smallest token */ }
 .itab-col i { display: block; background: color-mix(in srgb, var(--amber) 70%, var(--panel)); }
 .itab-col.worst i { background: var(--amber); }
-.itab-callout { position: absolute; transform: translate(-50%, -4px); font: 600 var(--type-tag) var(--mono); color: var(--amber); background: var(--panel); padding: 1px 4px; white-space: nowrap; border-radius: var(--radius-pill); }
+.itab-callout { position: absolute; transform: translate(-50%, -4px); font: 600 var(--type-label)/var(--type-label-lh) var(--mono); color: var(--amber); background: var(--panel); padding: 1px 4px; white-space: nowrap; border-radius: var(--radius-pill); }
 .itab-callout.end { transform: translate(-100%, -4px); }
 .itab-callout.start { transform: translate(0, -4px); }
 .itab-daily .itab-top { transform: translateY(-50%); }
@@ -146,7 +146,7 @@ button.ins-n { cursor: pointer; }
 .itab-rtrack i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; /* thin: below the smallest token */ background: color-mix(in srgb, var(--ink) 60%, var(--panel)); }
 .itab-rtrack i.bad { background: var(--amber); }
 .itab-rmark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); z-index: 1; border-radius: var(--radius-pill); }
-.itab-rval { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--type-small); }
+.itab-rval { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .itab-rval b { color: var(--ink); font-weight: 600; margin-right: 4px; }
 
 /* Insights while Cue still reads the history: a thin bar and how far. */
@@ -161,18 +161,18 @@ button.ins-n { cursor: pointer; }
 .itab-week i { aspect-ratio: 1; min-height: 9px; border-radius: 2px; /* thin: below the smallest token */ background: var(--panel-2); }
 .itab-week i:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
 .itab-fignote.on { color: var(--ink); font-variant-numeric: tabular-nums; }
-.itab-wday { font: var(--type-tag) var(--mono); color: var(--muted); align-self: center; }
-.itab-hours { display: grid; grid-template-columns: 30px repeat(4, minmax(0, 1fr)); font: var(--type-tag) var(--mono); color: var(--muted); margin-top: -4px; }
+.itab-wday { font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); align-self: center; font-variant-numeric: tabular-nums; }
+.itab-hours { display: grid; grid-template-columns: 30px repeat(4, minmax(0, 1fr)); font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); margin-top: -4px; font-variant-numeric: tabular-nums; }
 .itab-hours::before { content: ""; }
 /* Each late answer: bands by how long it waited, the dots inside them. */
 .itab-bands { position: relative; height: 34px; }
-.itab-band { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; gap: 1px; padding-left: 6px; border-left: 1px dashed var(--line); font-size: var(--type-pill); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.itab-band { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; gap: 1px; padding-left: 6px; border-left: 1px dashed var(--line); font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .itab-band b { color: var(--amber); font-size: var(--type-body); font-weight: 700; font-variant-numeric: tabular-nums; }
 .itab-scatter { position: relative; height: 150px; border-bottom: 1px solid var(--line); margin-top: 6px; }
 .itab-dot2 { all: unset; position: absolute; border-radius: 50%; transform: translate(-50%, 50%); background: color-mix(in srgb, var(--amber) 45%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 80%, var(--panel)); cursor: pointer; }
 .itab-dot2:hover, .itab-dot2:focus-visible { background: var(--amber); z-index: 2; outline: 2px solid var(--ink); outline-offset: 1px; }
 .itab-scatter .itab-top { transform: none; top: -2px; z-index: 1; }
-.itab-ticks { position: relative; height: 14px; font: var(--type-tag) var(--mono); color: var(--muted); }
+.itab-ticks { position: relative; height: 14px; font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--muted); font-variant-numeric: tabular-nums; }
 .itab-ticks span { position: absolute; transform: translateX(-50%); }
 .itab-ticks span:first-child { transform: none; }
 .itab-ticks span:last-child { transform: translateX(-100%); }
@@ -187,20 +187,20 @@ button.ins-n { cursor: pointer; }
 .itab-bar { height: 8px; border-radius: 3px; /* thin: below the smallest token */ background: var(--panel-2); position: relative; }
 .itab-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; /* thin: below the smallest token */ background: var(--amber); }
 .itab-who { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.itab-proj { color: var(--muted); font-size: var(--type-pill); white-space: nowrap; flex: none; }
-.itab-ago { color: var(--muted); font-size: var(--type-pill); white-space: nowrap; flex: none; }
+.itab-proj { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); white-space: nowrap; flex: none; }
+.itab-ago { color: var(--muted); font-size: var(--type-label); line-height: var(--type-label-lh); white-space: nowrap; flex: none; }
 .itab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .itab-cell { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .itab-cell b { color: var(--ink); font-weight: 600; }
 .itab-do { margin: 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: var(--type-body); line-height: 1.5; display: flex; gap: 12px; align-items: baseline; }
-.itab-do-label { font: 600 var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; flex: none; }
+.itab-do-label { font: 600 var(--type-small)/var(--type-small-lh) var(--mono); color: var(--muted); white-space: nowrap; flex: none; }
 
 /* Long sessions: a tile per session, its context climbing turn by turn. */
 .itab-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
 .itab-tile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 9px; border-radius: var(--radius-tray); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; min-width: 0; }
 .itab-tilehead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--type-body); min-width: 0; }
 .itab-tilehead b { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; }
-.itab-tilefoot { display: flex; justify-content: space-between; gap: 8px; font-size: var(--type-pill); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.itab-tilefoot { display: flex; justify-content: space-between; gap: 8px; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .itab-climb { position: relative; height: 84px; margin-top: 12px; }
 .itab-climb svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .itab-climb .area { fill: color-mix(in srgb, var(--ink) 10%, transparent); }
@@ -209,8 +209,8 @@ button.ins-n { cursor: pointer; }
 .itab-climb .start { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 .itab-climb .limit { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1 3; vector-effect: non-scaling-stroke; }
 .itab-climb .mark { stroke: var(--amber); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.itab-limit { position: absolute; left: 0; transform: translateY(-110%); font-size: var(--type-tag); color: var(--muted); }
-.itab-handoff { position: absolute; top: -14px; transform: translateX(-3px); font: 600 var(--type-tag) var(--mono); color: var(--amber); white-space: nowrap; }
+.itab-limit { position: absolute; left: 0; transform: translateY(-110%); font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); }
+.itab-handoff { position: absolute; top: -14px; transform: translateX(-3px); font: 600 var(--type-label)/var(--type-label-lh) var(--mono); color: var(--amber); white-space: nowrap; }
 .itab-handoff.end { transform: translateX(calc(-100% + 3px)); }
 
 /* Corrections: what you asked, then what you said, the correction in ink behind an amber quote mark. */
@@ -218,27 +218,27 @@ button.ins-n { cursor: pointer; }
 .itab-more summary { cursor: pointer; margin-bottom: 8px; }
 .itab-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .itab-pair { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--radius-tray); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; min-width: 0; }
-.itab-meta { display: flex; justify-content: space-between; gap: 10px; font: var(--type-pill) var(--mono); color: var(--muted); }
+.itab-meta { display: flex; justify-content: space-between; gap: 10px; font: var(--type-small)/var(--type-small-lh) var(--mono); color: var(--muted); }
 .itab-q { font-size: var(--type-body); line-height: 1.45; overflow-wrap: anywhere; }
 .itab-asked { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .itab-then { display: flex; gap: 6px; }
 .itab-then > span:last-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .itab-qmark { font: 700 var(--type-figure)/0.9 Georgia, serif; color: var(--amber); flex: none; }
-.itab-qlabel { font: 600 var(--type-tag) var(--mono); color: var(--muted); margin-right: 8px; }
+.itab-qlabel { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); color: var(--muted); margin-right: 8px; }
 
 /* The trends: small line charts. */
-.itab-sub { margin-top: 6px; font: 600 var(--type-pill) var(--mono); color: var(--on-bg-muted); text-transform: uppercase; letter-spacing: .06em; }
+.itab-sub { margin-top: 6px; font: 600 var(--type-label)/var(--type-label-lh) var(--mono); color: var(--on-bg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .itab-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .itab-card { background: var(--panel); color: var(--ink); border-radius: var(--radius-pane); padding: 12px 16px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .itab-head { display: flex; align-items: baseline; gap: 10px; }
 .itab-title { font-size: var(--type-body); font-weight: 700; }
-.itab-note { margin-left: auto; font-size: var(--type-small); color: var(--muted); white-space: nowrap; }
+.itab-note { margin-left: auto; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; }
 .itab-chart { position: relative; height: 96px; }
 .itab-chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .itab-chart .fill { fill: var(--line); opacity: .55; }
 .itab-chart .base { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .itab-chart .line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.itab-top { position: absolute; left: 0; top: 0; transform: translateY(-40%); font-size: var(--type-tag); color: var(--muted); background: var(--panel); padding-right: 4px; }
+.itab-top { position: absolute; left: 0; top: 0; transform: translateY(-40%); font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); background: var(--panel); padding-right: 4px; }
 .itab-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); }
 @media (max-width: 900px) { .itab-evidence, .itab-evidence.itab-wide, .itab-evidence.itab-pics, .itab-pairs { grid-template-columns: minmax(0, 1fr); } .itab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .itab-grid { grid-template-columns: minmax(0, 1fr); } .itab-claim { flex-direction: column; gap: 6px; } .itab-list { grid-template-columns: minmax(0, 1fr) auto auto; } .itab-list:has(.itab-row-bar) { grid-template-columns: minmax(0, 1fr) minmax(40px, 0.6fr) auto auto; } .itab-minor, .itab-ago { display: none; } }
@@ -249,7 +249,7 @@ button.ins-n { cursor: pointer; }
 .bg-slot { flex: 1; min-height: 0; overflow-y: auto; }
 .bg-page { padding: 10px 16px 14px; display: flex; flex-direction: column; }
 .bg-empty { font-size: var(--type-body); color: var(--muted); padding: 10px 2px; }
-.bg-more { align-self: flex-start; margin-top: 12px; font-size: var(--type-body); font-weight: 650; color: var(--accent); padding: 3px 4px; border-radius: var(--radius-qp); }
+.bg-more { align-self: flex-start; margin-top: 12px; font-size: var(--type-body); font-weight: 600; color: var(--accent); padding: 3px 4px; border-radius: var(--radius-qp); }
 button.bg-more:hover { background: var(--panel-2); }
 /* In a tab its grey part says when too (started, ended, how long): it gives way on a narrow window. */
 .bg-page .bg-row .bg-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

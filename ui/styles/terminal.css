@@ -2,12 +2,12 @@
    its screen's last line, amber while it waits on something only the terminal can answer. Open: the real
    terminal (xterm.js) rises above the box; the chat makes room. */
 .tdock { margin: 0 12px; display: flex; flex-direction: column; border-radius: var(--radius-card) var(--radius-card) 0 0; overflow: hidden; background: var(--slab); color: var(--on-slab); flex: none; }
-.tstrip { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 12px; font: 600 var(--type-pill) var(--sans); color: inherit; width: 100%; text-align: left; cursor: pointer; }
+.tstrip { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 12px; font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: inherit; width: 100%; text-align: left; cursor: pointer; }
 .tstrip:hover { background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
 .tstrip:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
 .tlive { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); flex: none; }
 .tlbl { flex: none; }
-.tlast { font: var(--type-pill) var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.tlast { font: var(--type-small)/var(--type-small-lh) var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .tchev { opacity: .8; transition: transform .2s; }
 .tdock.open .tchev { transform: rotate(180deg); }
 .tdock.waiting .tstrip { background: color-mix(in srgb, var(--caution) 32%, var(--slab)); }
@@ -21,7 +21,7 @@
 /* A session in a terminal app instead: where it runs, set into the reply box's top right corner (the
    box's own corner on the outside, rounded where it meets the inside). Moss with white text in light
    mode; lime with dark moss text in dark (the accent's own pair). */
-.tplace-btn { position: absolute; top: 0; right: 0; height: 22px; padding: 0 10px; border-radius: 0 var(--radius-btn) 0 var(--radius-btn); font-size: var(--type-pill); font-weight: 650; white-space: nowrap; color: var(--on-accent); background: var(--accent); z-index: 1; }
+.tplace-btn { position: absolute; top: 0; right: 0; height: 22px; padding: 0 10px; border-radius: 0 var(--radius-btn) 0 var(--radius-btn); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; white-space: nowrap; color: var(--on-accent); background: var(--accent); z-index: 1; }
 /* Two in the corner (Move to Cue, then Open iTerm): side by side, the pair keeping the corner's shape. */
 .tplace { position: absolute; top: 0; right: 0; display: flex; gap: 1px; z-index: 1; }
 .tplace .tplace-btn { position: static; border-radius: 0; }
@@ -35,20 +35,20 @@
 /* "Move to Cue" under way: a small dialog over the window, the screen behind it untouched. */
 .move-scrim { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: color-mix(in srgb, var(--shade) 28%, transparent); }
 .move-dialog { width: min(420px, calc(100% - 40px)); padding: 18px 20px; border-radius: var(--radius-pane); background: var(--panel); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 10px; }
-.move-title { display: flex; align-items: center; gap: 9px; font-size: var(--type-body); font-weight: 650; }
+.move-title { display: flex; align-items: center; gap: 9px; font-size: var(--type-body); font-weight: 600; }
 .move-steps { margin: 0; padding-left: 18px; font-size: var(--type-body); color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
 .move-steps li.done { color: var(--muted); text-decoration: line-through; }
 .move-steps li.now { color: var(--ink); font-weight: 600; }
 .move-err { font-size: var(--type-body); color: var(--deny); line-height: 1.45; }
-.move-secs { font: var(--type-small) var(--mono); color: var(--muted); }
+.move-secs { font: var(--type-small)/var(--type-small-lh) var(--mono); color: var(--muted); }
 .end-text { font-size: var(--type-body); line-height: 1.45; color: var(--muted); }
 .set-confirm { display: flex; flex-direction: column; gap: 10px; margin: 2px 0 12px; padding: 12px 14px; border-radius: var(--radius-tray); background: var(--panel-2); }
-.end-text .mono { font: var(--type-small) var(--mono); color: var(--ink); }
+.end-text .mono { font: var(--type-small)/var(--type-small-lh) var(--mono); color: var(--ink); }
 .end-dialog kbd { margin-left: 4px; opacity: .7; }
 /* What quitting would end (the quit dialog): one line each, mid-turn ones marked. */
 .quit-list { margin: 2px 0 4px; padding-left: 18px; font-size: var(--type-body); line-height: 1.6; color: var(--ink); }
-.quit-mid { margin-left: 8px; padding: 1px 7px; border-radius: var(--radius-pill); font-size: var(--type-pill); font-weight: 650; color: var(--on-accent); background: color-mix(in srgb, var(--caution) 70%, var(--panel)); }
-.move-screen { font: var(--type-pill) var(--mono); color: var(--on-slab); background: var(--slab); border-radius: var(--radius-btn); padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quit-mid { margin-left: 8px; padding: 1px 7px; border-radius: var(--radius-pill); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--on-accent); background: color-mix(in srgb, var(--caution) 70%, var(--panel)); }
+.move-screen { font: var(--type-small)/var(--type-small-lh) var(--mono); color: var(--on-slab); background: var(--slab); border-radius: var(--radius-btn); padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tplace-btn:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-accent)); }
 .tplace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quick:has(.tplace-btn) { padding-right: 140px; }
@@ -74,27 +74,27 @@
 .btw-a.dim { display: flex; align-items: center; gap: 7px; color: var(--muted); }
 .btw-a.bad { color: var(--deny); }
 /* Fork, under an answer: quiet until wanted, like Clear. */
-.btw-fork { align-self: flex-start; margin: -4px 0 0 -6px; font-size: var(--type-pill); font-weight: 650; color: var(--muted); padding: 2px 6px; border-radius: var(--radius-qp); }
+.btw-fork { align-self: flex-start; margin: -4px 0 0 -6px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); padding: 2px 6px; border-radius: var(--radius-qp); }
 .btw-fork:hover:not(:disabled) { color: var(--ink); background: var(--panel-2); }
 /* Under a side answer: its actions (Fork). */
 .btw-a-acts { display: flex; align-items: center; gap: 2px; margin: -4px 0 0 -6px; }
 .btw-a-acts .btw-fork { margin: 0; }
 .btw-fork:disabled { opacity: 0.6; cursor: default; }
-.btw-empty { font-size: var(--type-small); padding: 2px 0 4px; }
-.copied { position: absolute; right: 12px; bottom: calc(100% + 8px); padding: 3px 10px; border-radius: var(--radius-qp); background: var(--accent); color: var(--on-accent); font-size: var(--type-small); font-weight: 650; pointer-events: none; z-index: 5; animation: copied 1.6s ease forwards; }
+.btw-empty { font-size: var(--type-small); line-height: var(--type-small-lh); padding: 2px 0 4px; }
+.copied { position: absolute; right: 12px; bottom: calc(100% + 8px); padding: 3px 10px; border-radius: var(--radius-qp); background: var(--accent); color: var(--on-accent); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; pointer-events: none; z-index: 5; animation: copied 1.6s ease forwards; }
 .active-pane > .copied { bottom: 12px; }
 @keyframes copied { 0% { opacity: 0; transform: translateY(4px); } 10%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
-.act-head { font-size: var(--type-small); font-weight: 650; color: var(--muted); }
+.act-head { font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .act-head .act-who { color: var(--ink); font-weight: 700; }
 .code-wrap { position: relative; }
-.code-copy { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: var(--radius-qp); font: 600 var(--type-pill) var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
+.code-copy { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: var(--radius-qp); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
 .code-wrap:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
 .code-copy:hover { background: color-mix(in srgb, var(--on-slab) 24%, var(--slab)); }
 /* Run, on a block of shell commands: left of Copy, shown with it. */
-.code-run { position: absolute; top: 6px; right: 58px; padding: 2px 8px; border-radius: var(--radius-qp); font: 600 var(--type-pill) var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
+.code-run { position: absolute; top: 6px; right: 58px; padding: 2px 8px; border-radius: var(--radius-qp); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
 .code-wrap:hover .code-run, .code-run:focus-visible { opacity: 1; }
 .code-run:hover { background: color-mix(in srgb, var(--on-slab) 24%, var(--slab)); }
 .msg pre.long { max-height: 18em; overflow-y: auto; margin-bottom: 2px; }
 .nowrap { white-space: nowrap; }
-.code-more { font-size: var(--type-pill); color: var(--muted); margin-bottom: 9px; }
+.code-more { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); margin-bottom: 9px; }
 

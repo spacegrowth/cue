@@ -9,7 +9,7 @@
 .dk2b-ipage:not(.hid) .dk2b-ipanel .dk-pfc { display: none; }
 .dk2b-ipage.hid > .dk-panel.dk2b-ipanel { padding: 8px 18px; }
 .dk2b-ipanel .dk-pacts { margin-top: 8px; min-height: 28px; }
-.dk2b-ipanel .dk-note { margin: 0; font-size: var(--type-small); color: var(--muted); }
+.dk2b-ipanel .dk-note { margin: 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .dk2b-ipanel > .dk-sfoot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0 0; border-top: 1px solid var(--line); }
 .dk2b-ichat { display: flex; flex-direction: column; min-width: 0; }
 .dk2b-ichd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -27,7 +27,7 @@
 /* Its chat's tabs beside its label (Chat, Record, Decisions). */
 .dk2b-ichd > .dk-itabs { display: flex; gap: 2px; margin: 0; padding: 0; border: 0; }
 /* The model an item's session started on, after Who (#620): the old row's tag. */
-.dk2b-iv .dk-model { margin-left: 8px; font: var(--type-pill) var(--mono); color: var(--muted); white-space: nowrap; }
+.dk2b-iv .dk-model { margin-left: 8px; font: var(--type-small)/var(--type-small-lh) var(--mono); color: var(--muted); white-space: nowrap; }
 /* Wide enough for both (#727; the card as it is on a 1440 window): the chat and its box at the left, the panel beside
    them the whole height, as the old page had it (desk-page.css .dk-pg "main panel"), as wide as a session's panel so
    its widest pair of buttons (Commit to main, Send back) sits on one line and Looks right's Done doesn't shift it. The card keeps its width, so the

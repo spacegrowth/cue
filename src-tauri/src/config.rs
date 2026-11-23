@@ -101,7 +101,7 @@ fn from_config(c: &Value) -> Value {
         // Tips (ui/tips.js): a key or command now and then on the line under the chat; on until turned off.
         "tips": { "on": b("/tips/on", true) },
         // Cue-hosted sessions (hub/hosted.rs): a trial, off until you turn it on.
-        "hosted": { "on": b("/hosted/on", false) },
+        "hosted": { "on": b("/hosted/on", false), "rest_min": rest_minutes_in(c) },
         // Updates (ipc/updates.rs): from the beta channel when `beta` is on; off until you turn it on.
         "updates": { "beta": beta_updates_in(c) },
         // The first-launch "Connect your agents" screen, closed with Done.
@@ -254,6 +254,15 @@ pub fn desk_handoff_tokens() -> u64 {
     load().pointer("/desk/handoff_k").and_then(Value::as_u64).unwrap_or(180).min(2_000) * 1000
 }
 
+/// How many minutes a session Cue runs sits idle before its agent's process is ended (hub/rest.rs; its next message
+/// starts it again on its conversation): 30 unless Settings → Agents says, 0 never.
+pub fn rest_minutes() -> u64 {
+    rest_minutes_in(&load())
+}
+fn rest_minutes_in(c: &Value) -> u64 {
+    c.pointer("/hosted/rest_min").and_then(Value::as_u64).unwrap_or(30).min(24 * 60)
+}
+
 pub fn context_keep() -> usize {
     load().pointer("/context/keep").and_then(Value::as_u64).unwrap_or(5).clamp(1, 50) as usize
 }
@@ -333,7 +342,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on", "hosted.rest_min"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -529,6 +538,7 @@ fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
         "history.keep" => json!(value.as_u64().ok_or("keep must be a number")?.max(10)),
         "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
         "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
+        "hosted.rest_min" => json!(value.as_u64().ok_or("the idle time must be a number of minutes")?.min(24 * 60)),
         "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
         // Your usage meters' CSV file (a path; ~ is your home folder). Empty: back to the default.
         "usage.file" => {

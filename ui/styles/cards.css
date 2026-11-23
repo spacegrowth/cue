@@ -47,7 +47,7 @@
 .nrow.answering { opacity: 0.6; pointer-events: none; transition: opacity 0.15s ease; }
 .nrow.ghost.fresh.soft { animation: none; }
 /* An interrupted turn: the one card state that's easy to miss and costs you the most. */
-.nrow .dim.intr { color: var(--deny); font-weight: 650; flex: none; }  /* the name truncates, not this */
+.nrow .dim.intr { color: var(--deny); font-weight: 600; flex: none; }  /* the name truncates, not this */
 .nrow.on .dim.intr { color: var(--on-sel); text-decoration: underline; text-decoration-color: var(--deny); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .pill.intr { background: var(--deny); color: var(--white); }
 /* The top of the chat: "Earlier messages", loading, or where Cue's log starts. */
@@ -56,13 +56,13 @@
 .cv-older { text-align: center; font-size: var(--type-small); line-height: 18px; color: var(--muted); padding: 8px 0 12px; }
 .cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 12px; margin: -4px 0; cursor: pointer; }
 .cv-older button:hover { color: var(--ink); border-color: var(--muted); }
-.nrow-done { font-size: var(--type-body); font-weight: 650; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nrow-done { font-size: var(--type-body); font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nrow-done.ok { color: var(--accent); }
 .nrow-done.no { color: var(--deny); }
 /* The session the Active pane shows, where it's listed in Sessions: a solid lime border, not a fill. */
 .working.on, .working.on:hover { border: 1px solid var(--sel); box-shadow: inset 0 0 0 1px var(--sel); opacity: 1; }
 /* In the drop-down the lime fill is the keyboard highlight, so the open session gets a tag instead. */
-.viewing-tag { flex: none; margin: 0 6px; font-size: var(--type-tag); font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--ink); color: var(--panel); }
+.viewing-tag { flex: none; margin: 0 6px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--ink); color: var(--panel); }
 .tl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .queued-note { margin-top: 6px; }
 /* A message's plain line in a picked row is on the selection's fill: its names and item take that row's ink (#501). */
@@ -70,7 +70,7 @@
 .nrow.on .mg-plain .mg-id { background: color-mix(in srgb, var(--on-sel) 16%, transparent); color: inherit; }
 
 /* ---------- "Sent" confirmation ---------- */
-.sent-check { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: var(--type-small); flex: none; }
+.sent-check { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: var(--type-small); line-height: var(--type-small-lh); flex: none; }
 @keyframes sentIn { from { opacity: 0; transform: translateY(-4px); } }
 .tl.fresh { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 

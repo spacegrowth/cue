@@ -154,3 +154,82 @@ fn start_now_on_an_item_waiting_for_room_on_a_machine_starts_it_only_once_you_ra
     assert_eq!(it["machine"].as_str(), Some("box"), "{it}");
     assert!(it["start_full"].is_null(), "{it}");
 }
+
+// Where a waiting item starts is picked as it leaves the queue, not when it joined it (#776): it keeps only that it
+// waits for room, and goes to whichever place frees up, not the one that looked best when it was queued.
+#[test]
+fn an_item_queued_while_its_first_machine_is_full_starts_on_another_that_frees_up() {
+    let w = World::new();
+    let ssh = crate::testing::FakeSsh::new();
+    ssh.host("box", crate::testing::RUNS_IT);
+    crate::machines::add("box", "").unwrap();
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    // This Mac's 3 folders held; box (ticked first, one at once) takes Header jumps: both full.
+    let (_, project, _, _) = super::desk_commit::routed_with(&w, |w, _, dir| {
+        with_remote(dir);
+        w.hub().desk_hold_copies(&top(w), &[1, 2, 3]);
+    }, |_, _, _| {});
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["box", ""], "machine_folders": { "box": "~/code/app" }, "machine_at_once": { "box": 1 } })).unwrap();
+    w.hub().desk_queue_tick();
+    w.advance(1000);
+    assert_eq!(item(&w, &project, "Header jumps")["machine"].as_str(), Some("box"));
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | why: next");
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    let id = it["id"].as_str().unwrap().to_string();
+    assert!(it["holder"].is_null(), "no room anywhere: {it}");
+    assert_eq!((it["state"].as_str(), it["room_wait"].as_bool()), (Some("queued"), Some(true)), "{it}");
+    // Shown: where it may start, in words, and no machine of its own.
+    assert_eq!(it["machine_wait"].as_str(), Some("box or This Mac"), "{it}");
+    assert!(it["machine"].as_str().unwrap_or("").is_empty(), "no machine picked while it waits: {it}");
+    // Kept: only that it waits for room, no machine or session.
+    let kept = w.hub().read(|st| st.desk.item(&id).cloned()).unwrap();
+    assert!(kept.room_wait && kept.machine_wait.is_empty() && kept.next_for.is_none() && kept.on_machine.is_none() && kept.start_on.is_none(), "{kept:?}");
+    assert!(w.hub().read(|st| !st.desk.run.start_machine.contains_key(&id)), "no start claimed while it waits");
+    let summary = w.hub().desk_summary(&project, "", false).0;
+    assert!(summary.contains("waiting for room on box or this Mac"), "{summary}");
+    // A folder here is let go of (box, the first ticked, still full): it starts on this Mac.
+    w.hub().desk_let_go_copy_quietly(2);
+    w.hub().desk_queue_tick();
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    assert!(it["holder"]["sid"].as_str().is_some(), "started on the place that freed up: {it}");
+    assert_eq!(it["machine"].as_str(), Some("This Mac"), "{it}");
+    assert!(it["room_wait"].is_null() && it["machine_wait"].is_null(), "{it}");
+}
+
+// A route that names the machine keeps it (#776): waiting for room there, it doesn't start elsewhere that frees up.
+#[test]
+fn an_item_routed_on_a_named_machine_waits_for_room_there_only() {
+    let w = World::new();
+    let ssh = crate::testing::FakeSsh::new();
+    ssh.host("box", crate::testing::RUNS_IT);
+    crate::machines::add("box", "").unwrap();
+    let top = |w: &World| {
+        let out = String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(w.home()).args(["worktree", "list", "--porcelain"]).output().unwrap().stdout).unwrap();
+        out.lines().next().and_then(|l| l.strip_prefix("worktree ")).unwrap().to_string()
+    };
+    let (_, project, _, _) = super::desk_commit::routed_with(&w, |w, _, dir| {
+        with_remote(dir);
+        w.hub().desk_hold_copies(&top(w), &[1, 2, 3]);
+    }, |_, _, _| {});
+    w.hub().desk_lands_set(&project, &serde_json::json!({ "machines": ["box", ""], "machine_folders": { "box": "~/code/app" }, "machine_at_once": { "box": 1 } })).unwrap();
+    w.hub().desk_queue_tick();
+    w.advance(1000);
+    let lead = w.hub().desk_lead_sid(&project).unwrap();
+    ends(&w, &lead, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> new | on: box | why: there");
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    assert_eq!((it["state"].as_str(), it["room_wait"].as_bool(), it["machine_wait"].as_str()), (Some("queued"), Some(true), Some("box")), "{it}");
+    // This Mac frees up: it stays waiting for box, as the route said.
+    w.hub().desk_let_go_copy_quietly(2);
+    w.hub().desk_queue_tick();
+    w.advance(1000);
+    let it = item(&w, &project, "Footer jumps");
+    assert!(it["holder"].is_null(), "still waits for box: {it}");
+    assert_eq!(it["machine_wait"].as_str(), Some("box"), "{it}");
+}

@@ -57,6 +57,7 @@ mod projects;
 mod quitting;
 mod redraw;
 mod resuming;
+mod rest;
 pub(crate) use resuming::{closed_record, end_session, resume_parked_session, resume_record, ALREADY_RUNNING, CLOSED_DAYS, CLOSED_MAX};
 mod reviews;
 mod saves;
