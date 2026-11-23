@@ -161,7 +161,7 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     // A hosted lead carries on hosted (its team with it: `carry_team`).
     let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), hosted: o.hosted, ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
-    let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd));
+    let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd), &h.desk_item_names(session_id), &h.names_taken());
     let started = super::start_session_with(h, &o.harness, &o.cwd, &first, &name, &opts)?;
     let new_id = started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     crate::config::carry_move(session_id, &new_id);
@@ -174,16 +174,22 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
 }
 
 /// The name of the session that carries on from one named `name` (else from its folder): "cue-ios" →
-/// "cue-ios-2", "cue-ios-2" → "cue-ios-3". A bracketed tag in front ("[WIP] …") isn't carried over.
-fn next_name(name: &str, folder: &str) -> String {
+/// "cue-ios-2", "cue-ios-2" → "cue-ios-3". A bracketed tag in front ("[WIP] …") isn't carried over. A session named
+/// after an item it holds (`items`: "cue-744") goes on as "cue-744-2": its number is the item's, not a count (#752).
+/// The number goes on past any name an open or parked session already has (`taken`), so no two share one.
+fn next_name(name: &str, folder: &str, items: &[String], taken: &[String]) -> String {
     let name = name.trim();
     let name = name.strip_prefix('[').and_then(|r| r.split_once(']')).map(|(_, rest)| rest.trim()).unwrap_or(name);
     let base = if name.is_empty() { folder.trim() } else { name };
-    match base.rsplit_once('-') {
-        Some((stem, n)) if !stem.is_empty() && !n.is_empty() && n.len() <= 3 && n.chars().all(|c| c.is_ascii_digit()) => format!("{stem}-{}", n.parse::<u32>().unwrap_or(1) + 1),
-        _ if base.is_empty() => String::new(),
-        _ => format!("{base}-2"),
+    if base.is_empty() {
+        return String::new();
     }
+    let (stem, from) = match base.rsplit_once('-') {
+        _ if items.iter().any(|i| i.eq_ignore_ascii_case(base)) => (base, 2),
+        Some((stem, n)) if !stem.is_empty() && !n.is_empty() && n.len() <= 3 && n.chars().all(|c| c.is_ascii_digit()) => (stem, n.parse::<u32>().unwrap_or(1) + 1),
+        _ => (base, 2),
+    };
+    (from..).map(|n| format!("{stem}-{n}")).find(|n| !taken.iter().any(|t| t.eq_ignore_ascii_case(n))).unwrap_or_default()
 }
 
 /// Hand-offs continuing right now: a second click while the new session starts doesn't start another.
@@ -432,10 +438,27 @@ mod tests {
 
     #[test]
     fn the_next_session_is_numbered_on_from_the_old_ones_name() {
-        assert_eq!(next_name("cue-ios", "cue"), "cue-ios-2");
-        assert_eq!(next_name("cue-ios-2", "cue"), "cue-ios-3");
-        assert_eq!(next_name("", "cue"), "cue-2");
-        assert_eq!(next_name("[Lead] cue-9", "cue"), "cue-10");
-        assert_eq!(next_name("", ""), "");
+        assert_eq!(next_name("cue-ios", "cue", &[], &[]), "cue-ios-2");
+        assert_eq!(next_name("cue-ios-2", "cue", &[], &[]), "cue-ios-3");
+        assert_eq!(next_name("", "cue", &[], &[]), "cue-2");
+        assert_eq!(next_name("[Lead] cue-9", "cue", &[], &[]), "cue-10");
+        assert_eq!(next_name("", "", &[], &[]), "");
+    }
+
+    /// #752: cue-744 handed #744 off while cue-745 (another item's session) was open, and the new one was named
+    /// "cue-745" too. It goes on under its item's name, at the next number no session has.
+    #[test]
+    fn a_hand_off_takes_its_items_name_and_never_an_open_sessions() {
+        let items = ["cue-744".to_string()];
+        let taken: Vec<String> = ["cue-744", "cue-745", "cue-lead"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(next_name("cue-744", "cue", &items, &taken), "cue-744-2");
+        let mut more = taken.clone();
+        more.push("cue-744-2".into());
+        assert_eq!(next_name("cue-744", "cue", &items, &more), "cue-744-3");
+        // Handed off again, it counts on from its own number.
+        assert_eq!(next_name("cue-744-2", "cue", &items, &more), "cue-744-3");
+        // Not an item's name: still numbered on, but past one already open.
+        assert_eq!(next_name("cue-ios", "cue", &[], &["cue-ios-2".into()]), "cue-ios-3");
+        assert_eq!(next_name("CUE-9", "cue", &[], &["cue-10".into()]), "CUE-11");
     }
 }

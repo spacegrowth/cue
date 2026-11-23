@@ -134,6 +134,16 @@ fn carry_queue(st: &mut Store, project: &str, (old, new, name): (&str, &str, &st
 
 /// The items session `sid` holds on `project`'s Desk (itself, or its crew), not done; one None when it holds none
 /// (a step then goes on the Desk itself).
+impl Hub {
+    /// The names of the items session `sid` holds, as a session started for one is named ("<Desk>-<id>",
+    /// desk_start_new): a hand-off of "cue-744" goes on as "cue-744-2", not as the next item's "cue-745" (#752).
+    pub(crate) fn desk_item_names(&self, sid: &str) -> Vec<String> {
+        self.read(|st| {
+            st.desk.items.iter().filter(|i| i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| format!("{}-{}", st.desk.name_of(&i.project), i.id)).collect()
+        })
+    }
+}
+
 fn held_items(st: &Store, project: &str, sid: &str) -> Vec<Option<String>> {
     let held: Vec<Option<String>> = st.desk.items.iter().filter(|i| i.project == project && i.state != "done" && i.holder.as_ref().is_some_and(|h| h.is(sid))).map(|i| Some(i.id.clone())).collect();
     if held.is_empty() {

@@ -132,9 +132,14 @@ impl Hub {
         self.free_name(&format!("{}-lead", self.read(|st| st.desk.name_of(project).to_string())))
     }
 
+    /// Every name an open or parked session goes by on the Desk and Board.
+    pub(crate) fn names_taken(&self) -> Vec<String> {
+        self.read(|st| st.sessions.iter().chain(st.parked.iter().map(|p| &p.session)).map(shown_name).collect())
+    }
+
     /// `base`, else "<base>-2"…: the first no open or parked session goes by.
     fn free_name(&self, base: &str) -> String {
-        let taken: Vec<String> = self.read(|st| st.sessions.iter().chain(st.parked.iter().map(|p| &p.session)).map(shown_name).collect());
+        let taken = self.names_taken();
         (1..).map(|n| if n == 1 { base.to_string() } else { format!("{base}-{n}") }).find(|n| !taken.iter().any(|t| t.eq_ignore_ascii_case(n))).unwrap_or(base.to_string())
     }
 
