@@ -355,7 +355,7 @@ function deskCSessChat(sid, from, d, foot, bar = "") {
   const on = deskSessItems(d, sid)[0];
   const meta = on ? `<div class="dkn-smeta">on ${deskItemLink(on)} · ${esc(on.title)}</div>` : "";
   // This turn's files and each of its items' (its Files tab lists them all).
-  const n = (inboxTurnDiff(sid)?.files || s.changes?.files || []).length + deskCSessTasks(d, sid).reduce((k, i) => k + (deskDiffs.get(deskDiffId(i))?.files || deskFilesOn(i)).length, 0);
+  const n = (deskTurnDiff(sid)?.files || s.changes?.files || []).length + deskCSessTasks(d, sid).reduce((k, i) => k + (deskDiffs.get(deskDiffId(i))?.files || deskFilesOn(i)).length, 0);
   const tab = deskCSessTabs.get(sid) === "files" ? "files" : "chat";
   const t = (k, label) => `<button class="dkn-stab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-c-stab="${k}" data-sid="${esc(sid)}">${label}</button>`;
   const tabs = `<div class="dkn-stabs" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}</div>`;

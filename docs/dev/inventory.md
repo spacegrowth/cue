@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 179 (3 sync) |
+| `#[tauri::command]` | 177 (3 sync) |
 | Lock declarations (static or field) | 122 |
 | Lock acquisitions | 292 |
 | Lock-graph edges | 54 |
 | Spawn sites | 96 |
-| External calls: fs / db / process / notify / login / socket | 538 / 232 / 62 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 536 / 232 / 62 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -169,8 +169,6 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `send_at_now` | async | `ipc/state.rs::send_at_now` | ipc::with_hub |
 | `set_later` | async | `ipc/state.rs::set_later` | ipc::with_hub |
 | `set_watch` | async | `ipc/state.rs::set_watch` | ipc::with_hub |
-| `set_pinned` | async | `ipc/state.rs::set_pinned` | ipc::with_hub |
-| `set_snooze` | async | `ipc/state.rs::set_snooze` | ipc::with_hub |
 | `set_starred` | async | `ipc/state.rs::set_starred` | ipc::with_hub |
 | `answer_terminal` | async | `ipc/state.rs::answer_terminal` | ipc::blocking |
 | `reply` | async | `ipc/state.rs::reply` | ipc::with_hub |
@@ -504,7 +502,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (538)
+### fs (536)
 
 | In | Call | Times |
 |---|---|---|
@@ -699,8 +697,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/log_paths.rs::codex_log` | read_dir | 4 |
 | `hub/log_paths.rs::pi_log` | Path::is_file | 1 |
 | `hub/log_paths.rs::pi_log` | read_dir | 2 |
-| `hub/open.rs::look` | Path::is_dir | 1 |
-| `hub/open.rs::look` | Path::is_file | 1 |
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
 | `hub/starting.rs::start_session_with` | Path::is_dir | 1 |
 | `hub/team/mod.rs::remove_file` | remove_file | 1 |

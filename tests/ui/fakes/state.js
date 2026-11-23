@@ -106,13 +106,6 @@ CueBridge.area("state", (w) => {
     set_later: flag("later_ms"),
     set_watch: flag("watch_ms"),
     set_starred: flag("starred_ms"),
-    set_pinned: flag("pinned_ms"),
-    set_snooze: ({ sessionId, untilMs }) => {
-      const s = w.session(sessionId);
-      if (s) { s.snooze_ms = untilMs || 0; s.snoozed_at_ms = untilMs ? w.now() : 0; }
-      w.changed();
-      return null;
-    },
     // Send at… (hub/send_at.rs): the message kept on its session as `send_at`, dropped (its text back), or sent now.
     send_at: ({ sessionId, text, atMs }) => {
       const s = w.session(sessionId);

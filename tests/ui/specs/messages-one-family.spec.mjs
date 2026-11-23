@@ -162,22 +162,6 @@ for (const scheme of ["light", "dark"]) {
       await noHover(page);
     });
 
-    test("the Inbox: a session's messages as the family's plain line at the row's size", async ({ page, cue }) => {
-      await cue.open("board-waiting");
-      await cue.change((st) => {
-        const t0 = Date.now() - 3600000;
-        st.sessions.find((x) => x.session_id === "sec").thread = Array.from({ length: 4 }, (_, n) => ({ role: n % 2 ? "agent" : "you", text: n % 2 ? `Reply ${n}: did part ${n}.\n\nMore on it.` : `Message ${n}`, at_ms: t0 + n * 60000 }));
-      });
-      await page.locator('.switch-view [data-view="inbox"]').click();
-      await page.locator('.ib-row[data-inbox-open="sec"]').click();
-      const lines = page.locator('.inbox-page[data-inbox-page="sec"] .ib-msg-line.mg-plain');
-      await expect(lines.first()).toBeVisible();
-      // The plain line takes its row's size (messages.css .mg-plain inherits), whatever the row.
-      for (const [own, row] of await onPage(lines, (es) => es.map((e) => [getComputedStyle(e).fontSize, getComputedStyle(e.closest(".ib-msg")).fontSize]), true)) expect(own).toBe(row);
-      await readsOn(lines);
-      await noHover(page);
-    });
-
     test("the notch: a crew lead's chat draws What Cue sent as the family's card", async ({ page, cue }) => {
       await page.setViewportSize({ width: 560, height: 700 });
       await cue.openMini("world-team", "notch", { frozen: true });

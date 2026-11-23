@@ -1,5 +1,5 @@
 // What Cue itself sends a session or a Desk lead shows as one short plain line (#478): "Asked host-lead · #d5 not
-// done: “…”" where a line is all there's room for (the Inbox), and in a chat as the family's card (#501): its head
+// done: “…”" where a line is all there's room for, and in a chat as the family's card (#501): its head
 // "Cue → host-lead · NOT DONE · #d5 · 3m", the line's words under it, More opening its full text. In the lead's own
 // chat on the Desk, one quiet line instead (#616, desk-lead-cue-folded.spec).
 // The session still gets the full text. Every kind is listed in docs/cue-messages.md.

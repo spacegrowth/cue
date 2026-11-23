@@ -94,3 +94,21 @@
 .fv-img img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-btn); }
 .fv-none { padding: 40px; text-align: center; color: var(--muted); }
 @media (max-width: 720px) { .fv-meta { display: none; } }
+
+/* A short list of changed files (diff_overlay.js fileListHtml), as the Desk's panel shows them: each path with its
+   +/−, "and N more files ›" under them. */
+.ib-file code { font: var(--type-pill) var(--mono); }
+.ib-files { display: flex; flex-direction: column; gap: 2px; font-size: var(--type-small); }
+.ib-file { display: flex; justify-content: space-between; gap: 8px; }
+.ib-file code { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.ib-file > span { flex: none; font-variant-numeric: tabular-nums; }
+/* The counts in one column (#394): right-aligned at the row's end, each a fixed width; "new" by the path. */
+.ib-file > .ib-nums { margin-left: auto; }
+.ib-nums > span { display: inline-block; min-width: 3.5ch; text-align: right; }
+.ib-file > .ib-new { color: var(--muted); font-size: var(--type-pill); }
+button.ib-file { width: calc(100% + 12px); padding: 1px 6px; margin: 0 -6px; box-sizing: border-box; border: 0; border-radius: var(--radius-qp); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.ib-file:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.ib-add { color: color-mix(in srgb, var(--accent) 80%, var(--ink)); font-variant-numeric: tabular-nums; }
+.ib-del { color: var(--deny); font-variant-numeric: tabular-nums; }
+.ib-link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; text-align: left; }
+.ib-dim { color: var(--muted); font-weight: 400; font-size: var(--type-body); }

@@ -920,7 +920,7 @@ test("the panel lists the files an item and a crew member changed, three then th
   await expect(page.locator(".dov-fh .dov-p")).toHaveText("ui/styles/header.css");
   await expect(page.locator(".dov-title")).toHaveText("search-centre");
   await page.keyboard.press("Escape");
-  // A session: what its turn changed, as Inbox's Changed this turn.
+  // A session: what its turn changed (desk/files.js deskTurnDiff).
   const diff = "diff --git a/cache.ts b/cache.ts\n--- a/cache.ts\n+++ b/cache.ts\n@@ -1,2 +1,3 @@\n const key = sku;\n+const hit = cache.get(key);\n";
   await cue.override("diff_git", ({ op, against }, d) => (op === "toplevel" ? { code: 0, stdout: "/x\n" } : op === "diff" ? { code: 0, stdout: against === "abc123" ? d : "" } : { code: 0, stdout: "" }), diff);
   // B2 (#666): the lead's chat is always the left card, with no session page of its own; a crew session's page is.

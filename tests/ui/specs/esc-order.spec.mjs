@@ -1,6 +1,6 @@
 // Esc, one step a press, in the order the window takes it (app/keys.js KEY_STEPS): what's over the window first (the
 // pop-ups: + New Desk's sheet and menu, the diff overlay, the file viewer), then the crew's tray and page, the
-// Settings chooser, the Inbox, the Desk's away sheet, an add-on's panel, the Desk, the dialogs (delete, quit, How work
+// Settings chooser, the Desk's away sheet, an add-on's panel, the Desk, the dialogs (delete, quit, How work
 // lands), then the Board's own (the "/" menu, lists, a picture, btw, a sheet, the open session). Each test opens one
 // state (or two, stacked), presses Esc and checks what closed and what stayed. These write down how Esc behaved before
 // the listeners became one chain (refactor step 3e), so the chain keeps every step; since #521 an Esc that closes the
@@ -213,15 +213,6 @@ test("the crew's page: Esc closes btw first, then the page; a sheet over it clos
   await page.evaluate(() => document.activeElement?.blur());
   await esc(page);
   await expect(page.locator(".crew-page")).toHaveCount(0);
-});
-
-// ---------- the Inbox ----------
-
-test("the Inbox: Esc closes the Snooze menu, and then nothing else that press", async ({ page, cue }) => {
-  await cue.open("board-waiting");
-  await page.evaluate(() => { view = "inbox"; renderMain(); inboxOpen("relay"); inboxSnoozeAt = "relay"; renderMain(); document.activeElement?.blur(); });
-  await esc(page);
-  expect(await get(page, () => [inboxSnoozeAt, inboxSid, view])).toEqual(["", "relay", "inbox"]);
 });
 
 // ---------- the Board's own ----------

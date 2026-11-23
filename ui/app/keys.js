@@ -46,8 +46,8 @@ function keyInBox(e) {
     else pickCmd(mk, m[cmdSel].name, e.key === "Enter");
     return true;
   }
-  // Tab in an empty box with Claude's suggestion types it in (a session's box; or the Inbox's answer to a question, which
-  // names its session); otherwise Tab moves on as usual.
+  // Tab in an empty box with Claude's suggestion types it in (a session's box, or one that names its session);
+  // otherwise Tab moves on as usual.
   const sugSid = mk?.startsWith("s:") ? sidOfKey(mk) : e.target.dataset?.sugSid;
   if (sugSid && e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && takeSuggestion(mk, sugSid, e.target)) { e.preventDefault(); return true; }
   // ↑ ↓ bring back what you sent: in a session's box, and in a box of the window's own that goes to one (BOX_OWNERS recall).
@@ -167,7 +167,7 @@ function enterInSessionBox(e, key) {
 /** Enter in a box (keyTyping: not ⇧↵, never while an input method composes): what that box is for. Every box's Enter
  *  comes here: first the boxes the window's parts own (box/send.js BOX_OWNERS: the Desk's lead's, an item's, an ask's,
  *  Send back's and Go back on ticked decisions'; the mini window's Desk rows), then the Board's, btw, the forward
- *  note, + New and the renames, the Inbox's (a session's or an item's key). */
+ *  note, + New and the renames. */
 function enterInBox(e, key) {
   const own = boxOwner(key, e.target);
   if (own) return own.enter ? own.enter(e, key) : own.send(key);
@@ -247,7 +247,7 @@ const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
 /** The views' own keys, before anything in the page sees them (a box, a terminal, the steps above): Esc closes the
  *  nearest thing first. In order: the header's open Desks or Show menu (app/head_view.js), what's over the window (+ New Desk's sheet and menu, desk/home.js; the diff
  *  overlay, diff_overlay.js; the file viewer, file_view.js), the crew's tray (team.js), the crew's page
- *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the Inbox (inbox/), the
+ *  (team_page.js), the crew's bar (team_bar.js), Settings → Insights' chooser (insights.js), the
  *  Desk's Away sheet (desk/away.js), an add-on's panel (extensions.js), then the Desk (desk/view.js notes the key,
  *  desk/act.js deskKey). Each of the last three closes only itself: an Esc that shut a sheet or a panel never goes on
  *  to arm Stop on the open item's session (#521). A step that takes the key (true) is the last to see it; one may instead keep it from KEY_STEPS
@@ -256,7 +256,7 @@ const keyTook = (step) => (e) => (step(e) ? (e.preventDefault(), true) : false);
 const KEY_FIRST = [
   keyTook(headViewKey), deskHomeKey, diffOverlayKey, fileViewKey,
   keyTook(crewEsc), keyTook((e) => crewPageEsc(e) || crewListKey(e)), keyTook(crewBarKey),
-  insChooserKey, keyTook(inboxKey), deskAwayKey, extKey, deskKeyNote, keyTook(deskKey),
+  insChooserKey, deskAwayKey, extKey, deskKeyNote, keyTook(deskKey),
 ];
 /** The first of KEY_FIRST that takes a key keeps it from everything after it. A step that throws is reported and
  *  the rest still run, as when each was a listener of its own. */

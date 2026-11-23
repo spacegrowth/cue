@@ -18,7 +18,7 @@ let chatOpenTold;
 // The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
-const SCROLLERS = [".col", ".cp-scroll", ".cpv-scroll", ".cpm-body", ".ib-scroll", ".ib-brief", ".ib-page-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc", ".dk-scroll", ".dk-pane", ".dk-chat", ".dk-rd", ".dk-desks", ".dk-givemenu"];
+const SCROLLERS = [".col", ".cp-scroll", ".cpv-scroll", ".cpm-body", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rdv-scroll", ".rdv-list", ".rdv-toc", ".dk-scroll", ".dk-pane", ".dk-chat", ".dk-rd", ".dk-desks", ".dk-givemenu"];
 /** The lists that keep their place while they're off the window, by key: the Desk's Items list, which an open item's
  *  column takes the place of till "‹ Items" (#418). */
 const AWAY_KEPT = /^\.dk-scroll:desk-items/;
@@ -33,7 +33,7 @@ function scrollerKeys() {
 }
 
 // Every other box that scrolls (#309): SCROLLERS above are the ones with their own rules, and anything not on it was
-// built afresh at its start on every update (a Desk picker, an ask, the Inbox's side, a menu, a wide table scrolled
+// built afresh at its start on every update (a Desk picker, an ask, a menu, a wide table scrolled
 // sideways). Before each draw every element in the window that's scrolled is noted (a few hundred reads, well under
 // a millisecond; a scroll event comes a frame late, and an update in between would miss it), and put back by where it
 // sits: each step down from #app named by its tag, first class and data-* attributes (a different item's or session's
@@ -164,19 +164,17 @@ function beforeDraw() {
   return was;
 }
 
-/** The header: + New, the waiting count and the area that follows the view (app/head_view.js); usage, search, the terminal, Extensions, Insights and Settings; then the views (Inbox, Board, Desk, the add-on's, Read) at the right edge. */
+/** The header: + New, the waiting count and the area that follows the view (app/head_view.js); usage, search, the terminal, Extensions, Insights and Settings; then the views (Board, Desk, the add-on's, Read) at the right edge. */
 function topBarHtml(counts) {
   return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${headViewHtml()}</span><span class="grow" data-tauri-drag-region></span>${awayHead()}
       ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon insights-btn" data-view="insights" aria-pressed="${view === "insights"}" aria-label="Insights">${INSIGHTS_ICON}</button><button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
-      <div class="switch-view">${inboxBtn()}<button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
+      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
 }
 /** While a Desk is away, its mark in the middle of the head (desk/away.js), with room either side. */
 const awayHead = () => { const m = typeof deskAwayHeadMark === "function" ? deskAwayHeadMark() : ""; return m ? `${m}<span class="grow" data-tauri-drag-region></span>` : ""; };
-/** Inbox in the header's switch, with how many need you in every project ("Inbox 3"), whatever it shows. */
-const inboxBtn = () => { const n = inboxCountAll(); return `<button class="${view === "inbox" ? "on" : ""}" data-view="inbox">Inbox${n ? `<span class="ib-count">${n}</span>` : ""}</button>`; };
 /** The view picked in the header. */
 // A lead's crew on its own page (team_page.js) takes the board's place while it's open.
-const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "inbox" ? inboxView() : view === "desk" ? deskView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
+const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) || (view === "history" ? historyView() : view === "desk" ? deskView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : addOn.views.find((v) => v.id === view)?.html() ?? boardView());
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window. */
 function overlaysHtml() {
@@ -287,12 +285,12 @@ function replayMotion(was, kept) {
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
   // land (several a second just after a Send). Not the kept chat's dots: those elements live on, and
-  // their pulse with them. The Inbox's "Thinking" dots and its live step too.
+  // their pulse with them.
   const liveChat = kept ? document.querySelector("[data-chat]") : null;
   // A Desk chat kept in place (chat/patch.js drawAround): a dot it had already is left as it runs; a new one is set once.
   const inPlace = (el) => el._phased && keptInPlace.some((c) => c.contains(el));
   // Each looping animation a redraw would restart, and its length (as its CSS has it).
-  for (const [sel, ms] of [[".dot-live, .pdot.live, .lv-chip .hdot", PULSE_MS], [".ib-dots i", 1200], [".ib-step.now i", 1600]]) {
+  for (const [sel, ms] of [[".dot-live, .pdot.live, .lv-chip .hdot", PULSE_MS]]) {
     const phase = `-${Date.now() % ms}ms`;
     document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el) && !inPlace(el)) { el.style.animationDelay = phase; el._phased = true; } });
   }
@@ -369,8 +367,7 @@ function restoreFocus(was) {
   // nothing scrolls it back: the item's box moved at the first redraw after it opened.
   if (focusKey) {
     const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`);
-    // Gone: on the Inbox (Allow moved it on to the next row), the box on screen now takes it.
-    if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } else if (view === "inbox") focusComposer(undefined, { home: "inbox", end: false });
+    if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); }
   }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(...caret); } }
   else if (focusBtn && !was.focused.isConnected && document.activeElement === document.body) {
@@ -397,8 +394,6 @@ function fitAfterDraw(focused) {
   showCopied();
   fitTop();
   placeColors();
-  if (typeof inboxFitPhrases === "function") inboxFitPhrases();
-  if (typeof inboxKeepEnd === "function") inboxKeepEnd();   // the open Inbox thread at its newest, unless you scrolled up
 }
 // A draw that throws must not leave the window empty: what went wrong is shown where the board would be, so a bad
 // build is seen as an error and not as "Cue didn't start".
@@ -411,7 +406,7 @@ function showRenderError(e) {
 }
 /** A redraw, its error shown rather than thrown (a window with its own draw: that draw, as it is). */
 const render = () => { if (windowDraw) return windowDraw(); try { renderMain(); } catch (e) { showRenderError(e); } };
-addEventListener("resize", () => { if (windowDraw) return; fitHead(); fitTips(); fitTop(); markMore(); if (typeof inboxFitPhrases === "function") inboxFitPhrases(); });
+addEventListener("resize", () => { if (windowDraw) return; fitHead(); fitTips(); fitTop(); markMore(); });
 document.addEventListener("scroll", (e) => { if (windowDraw) return; if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
 document.addEventListener("click", (e) => {
   if (windowDraw) return;

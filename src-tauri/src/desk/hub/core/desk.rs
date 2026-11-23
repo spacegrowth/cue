@@ -356,7 +356,7 @@ impl Hub {
         self.desk_done(fx);
     }
 
-    /// A lead asks you something: a question card of its session's in the Inbox, marked as its project's Desk's.
+    /// A lead asks you something: a question card of its session's, marked as its project's Desk's.
     /// Your answer goes back to it as a message (`desk_answered`).
     /// `using`: a route waiting on your yes (`UseAsk`), kept on the card for `desk_answered`.
     /// `item`: the item it's about (ASK: #id | …), which then waits on you with it.

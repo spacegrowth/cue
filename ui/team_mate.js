@@ -2,7 +2,7 @@
 // A row in the list picks its teammate: it lights, and the left shows it in the chat's place, the Needs you bar and the
 // box staying under it; the page gives the left all but a narrow list (team_page.js). One head line (‹ The lead's chat,
 // its name and state, what it's doing now, Talk, Stop); what it was asked on one line with its size and time; its files
-// as chips (a click opens that file's whole diff over the page, as the Inbox does: diff_overlay.js); then the reading area, the left's whole width, with three tabs: Diff so far, Full review, Full task. Its
+// as chips (a click opens that file's whole diff over the page: diff_overlay.js); then the reading area, the left's whole width, with three tabs: Diff so far, Full review, Full task. Its
 // steps and what its review found unfold under its own card in the list (crewMateExp). Esc, ‹ The lead's chat or The
 // lead's row go back to the chat where you left it.
 

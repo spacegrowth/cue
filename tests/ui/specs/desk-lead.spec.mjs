@@ -7,7 +7,7 @@ import { listOrder, openSessions, openMore } from "./desk.mjs";
 test("the Desk is in the header after Board, and lists Waiting on you, then a group a holder", async ({ page, cue }) => {
   await cue.open("desk");
   const views = await page.locator(".switch-view button").evaluateAll((els) => els.map((el) => el.dataset.view));
-  expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
+  expect(views.slice(0, 2)).toEqual(["board", "desk"]);
   await openDesk(page);
   // B2 (#666): WAITS ON YOU (its ask, then what's ready to check), WORKING, UP NEXT; DONE TODAY folded to a line.
   expect(await listOrder(page)).toEqual(["# WAITS ON YOU", "d1", "d2", "# WORKING", "d3", "d5", "# UP NEXT", "d4", "d6", "# DONE TODAY"]);

@@ -81,7 +81,7 @@ function qFoldBtns(it, choose, cls = "btn", sendAttr = `data-act="submit-answers
  *  (its key, a radio or a box, its label, a Recommended tag, what it does). `attr`: the click that picks. */
 function questionHtml(it, attr = "data-pick") {
   const qs = questions(it), lit = stepOf(it), many = qs.length > 1;
-  const tabAttr = attr === "data-inbox-pick" ? "data-inbox-step" : "data-qstep";
+  const tabAttr = "data-qstep";
   const tabs = many ? `<div class="qc-tabs" role="tablist">${qs.map((q, qi) => {
     const done = isAnswered(it, q);
     return `<button role="tab" class="qc-tab${qi === lit ? " on" : ""}${done ? " done" : ""}" aria-selected="${qi === lit}" ${tabAttr}="${esc(it.id)}:${qi}" aria-label="${esc(`Question ${qi + 1}${done ? ", answered" : ""}`)}"><span class="qc-tn">${done ? "✓" : qi + 1}</span>${esc(q.header || `Question ${qi + 1}`)}</button>`;

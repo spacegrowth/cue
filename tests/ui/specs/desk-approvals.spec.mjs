@@ -15,7 +15,7 @@ async function setup(cue, page) {
   await openDesk(page);
 }
 
-test("a checked Cue fix without a commit hash waits for verification in both Inbox and Desk", async ({ cue, page }) => {
+test("a checked Cue fix without a commit hash waits for verification on the Desk", async ({ cue, page }) => {
   await setup(cue, page);
   await cue.change((st) => {
     st.items = [];
@@ -35,22 +35,16 @@ test("a checked Cue fix without a commit hash waits for verification in both Inb
   await expect(page.locator('[data-desk-item="265"] .dk2b-chk')).toHaveText("Check");
   expect(await groupOf(page, "awaits-install")).toBe("WORKING");
   await expect(page.locator('[data-desk-item="awaits-install"] .dk2b-chk')).toHaveCount(0);
-  await expect(page.locator('[data-view="inbox"] .ib-count')).toHaveText("1");
-  await page.locator('[data-view="inbox"]').click();
-  const verify = page.locator('.ib-scroll [data-inbox-desk][data-item="265"]');
-  await expect(page.locator(".ib-counts")).toContainText("1 need you");
-  await expect(page.locator('.ib-scroll [data-inbox-desk][data-item]')).toHaveCount(1);
-  await verify.click();
+  await page.locator('[data-desk-item="265"]').click();
   await expect(page.locator(".dk-right h1")).toContainText("265");
   await page.locator(".dk-panel[data-side-for]").getByRole("button", { name: "Close" }).click();
   await cue.called("desk_looks_right", { id: "265" });
   // Back to the Items list (#418: it's hidden while an item is open).
   await page.locator(".dk-right .dk-back").click();
   await expect(page.locator('.dk-items [data-desk-item="265"]')).toHaveCount(0);
-  await expect(page.locator('[data-view="inbox"] .ib-count')).toHaveCount(0);
 });
 
-test("Inbox and Desk count the same open decisions, excluding resolved requests and reviews", async ({ cue, page }) => {
+test("the Desk counts its open decisions, excluding resolved requests and reviews", async ({ cue, page }) => {
   await setup(cue, page);
   await cue.change((st) => {
     st.items = st.items.filter((i) => ["n-focus-ask", "codex-approval"].includes(i.id));
@@ -62,23 +56,15 @@ test("Inbox and Desk count the same open decisions, excluding resolved requests 
   const deskRows = async () => { const o = await listOrder(page), at = o.indexOf("# WAITS ON YOU"); const rows = []; for (const x of o.slice(at + 1)) { if (x.startsWith("# ")) break; rows.push(x); } return rows; };
   const deskAsks = async () => { const out = []; for (const id of await deskRows()) if (await page.locator(`.dk-items [data-desk-item="${id}"]`).evaluate((e) => e.classList.contains("ask"))) out.push(id); return out; };
   const deskCount = async () => (await deskAsks()).length;
-  const inboxBadge = page.locator('[data-view="inbox"] .ib-count');
   await expect.poll(deskCount).toBe(2);
   expect((await deskAsks()).sort()).toEqual(["d1", "d5"]);
   expect((await deskRows()).slice(0, 2).sort()).toEqual(["d1", "d5"]);
   expect(await groupOf(page, "d2")).toBe("WAITS ON YOU");
   await expect(page.locator('.dk-items [data-desk-item="d2"]')).not.toHaveClass(/\bask\b/);
   await expect(page.locator('[data-desk-request="codex-approval"]')).toHaveCount(0);
-  await expect(inboxBadge).toHaveText("2");
-  await page.locator('[data-view="inbox"]').click();
-  await expect(page.locator(".ib-counts")).toContainText("2 need you");
-  await expect(page.locator(".ib-scroll .ib-row.ask")).toHaveCount(2);
 
   // The card can resolve before refreshed item metadata arrives.
   await cue.change((st) => { st.items.find((i) => i.id === "codex-approval").status = "answered"; });
-  await expect(inboxBadge).toHaveText("1");
-  await expect(page.locator(".ib-scroll .ib-row.ask")).toHaveCount(1);
-  await page.locator('[data-view="desk"]').click();
   await expect.poll(deskCount).toBe(1);
   expect(await deskAsks()).toEqual(["d1"]);
   await expect(statusOf(page, "d5")).not.toContainText("Asks");

@@ -216,7 +216,8 @@ impl Hub {
         }
     }
 
-    /// Pin a session to the top of the Inbox, or unpin it. Kept with the session, like Later.
+    /// Pin a session to the top of a list, or unpin it (the add-on's). Kept with the session, like Later.
+    #[cfg_attr(not(feature = "ext"), allow(dead_code))]
     pub fn set_pinned(&self, session_id: &str, on: bool) {
         let changed = self.write(|st| st.sessions.set_pinned(session_id, on));
         if changed {
@@ -224,7 +225,8 @@ impl Hub {
         }
     }
 
-    /// Snooze a session in the Inbox until `until_ms` (0: back now). Kept with the session, like Later.
+    /// Snooze a session until `until_ms` (0: back now), for the add-on's list. Kept with the session, like Later.
+    #[cfg_attr(not(feature = "ext"), allow(dead_code))]
     pub fn set_snooze(&self, session_id: &str, until_ms: u64) {
         let changed = self.write(|st| st.sessions.set_snooze(session_id, until_ms));
         if changed {
@@ -768,7 +770,7 @@ mod tests {
         assert_eq!(starred_ms(&hub), at, "starring it again keeps when it was first starred");
         hub.set_starred("s2", false);
         assert_eq!(starred_ms(&hub), 0);
-        // The Inbox's pin and snooze: kept with the session the same way.
+        // Pin and snooze: kept with the session the same way.
         let marks = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| (s.pinned_ms, s.snooze_ms)).unwrap());
         hub.set_pinned("s2", true);
         let (pinned, _) = marks(&hub);

@@ -176,7 +176,7 @@ function restoreSpot() {
   try { spot = JSON.parse(localStorage.getItem(SPOT) || "null"); } catch {}
   if (!spot) return;
   // Any view the header switch opens (Desk, Read, an add-on's), and the lists; not the terminal, which was a moment.
-  const views = ["board", "inbox", "desk", "read", "insights", "sessions", "history", ...addOn.views.map((v) => v.id)];
+  const views = ["board", "desk", "read", "insights", "sessions", "history", ...addOn.views.map((v) => v.id)];
   if (views.includes(spot.view)) view = spot.view;
   // Only if that session is still around; otherwise the usual oldest-first pick stands.
   const card = state.items.find((i) => i.session_id === spot.sid);

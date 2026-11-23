@@ -11,18 +11,20 @@ const threeQuestions = (st) => {
     { question: "Which tests should it run after?", header: "Tests", multiSelect: false, options: [{ label: "Band only" }, { label: "Whole UI suite" }] },
   ];
 };
-/** The Inbox, open on the session with the three questions. */
+/** The Board, open on the session with the three questions. */
 async function open(cue, page) {
   await cue.open("board-waiting");
   await cue.change(threeQuestions);
-  await page.locator('.switch-view [data-view="inbox"]').click();
-  await page.locator('.ib-row[data-inbox-open="api"]').click();
-  const pg = page.locator(".inbox-page");
+  await page.evaluate(() => setActive("n6", "api"));
+  const pg = page.locator(".active-pane");
+  // The Board's card shows its answer box once Type answer… is clicked; it stays open for the next tab.
+  const typing = async () => { if (!(await pg.locator('textarea[data-text="n6"]').count())) await pg.locator('[data-act="redirect"][data-id="n6"]').click(); };
   return {
     tabs: pg.locator(".qc-tab"),
     tab: (n) => pg.locator(".qc-tab").nth(n).click(),
     pick: (label) => pg.locator(".qc-opt", { hasText: label }).click(),
-    type: async (text) => { await pg.locator('textarea[data-text="n6"]').fill(text); await pg.locator('[data-act="send"][data-id="n6"]').click(); },
+    typing,
+    type: async (text) => { await typing(); await pg.locator('textarea[data-text="n6"]').fill(text); await pg.locator('[data-act="send"][data-id="n6"]').click(); },
     send: pg.locator('[data-act="submit-answers"]'),
     shown: pg.locator(".qc-sec .qtext"),
   };
@@ -38,9 +40,9 @@ test("one tab per question, the open one's choices under them; one Send; no hove
   await c.tab(1);
   await expect(c.shown).toHaveText([Q[1]]);
   await expect(c.tabs.nth(1)).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator('.inbox-page [data-act="submit-answers"]')).toHaveCount(1);
-  await expect(page.locator(".inbox-page .qc [title]")).toHaveCount(0);
-  for (const el of [".qc-tabs", ".qc-tab", ".qc-sec"]) expect(await page.locator(`.inbox-page ${el}`).first().evaluate((e) => getComputedStyle(e).borderLeftWidth)).toBe("0px");
+  await expect(page.locator('.active-pane [data-act="submit-answers"]')).toHaveCount(1);
+  await expect(page.locator(".active-pane .qc [title]")).toHaveCount(0);
+  for (const el of [".qc-tabs", ".qc-tab", ".qc-sec"]) expect(await page.locator(`.active-pane ${el}`).first().evaluate((e) => getComputedStyle(e).borderLeftWidth)).toBe("0px");
 });
 
 test("pick only: each tab's pick goes with its own question, its tab ticked", async ({ cue, page }) => {
@@ -59,7 +61,7 @@ test("pick only: each tab's pick goes with its own question, its tab ticked", as
 test("type only: each typed answer goes with the question whose tab is open", async ({ cue, page }) => {
   const c = await open(cue, page);
   await c.type("only if it fits");
-  await expect(page.locator(".inbox-page .typed-answer")).toHaveText("Your answer: “only if it fits”");
+  await expect(page.locator(".active-pane .typed-answer")).toHaveText("Your answer: “only if it fits”");
   await c.tab(1); await c.type("above, smaller");
   await c.tab(2); await c.type("none yet");
   await expect(ticked(c)).toHaveCount(3);
@@ -72,8 +74,8 @@ test("pick on one tab, pick on another, type on a third: each with its own quest
   const c = await open(cue, page);
   await c.pick("Keep it");
   await c.tab(1); await c.pick("Sit above");
-  await c.tab(2);
-  await expect(page.locator('.inbox-page textarea[data-text="n6"]')).toHaveAttribute("placeholder", "Your own answer to question 3…");
+  await c.tab(2); await c.typing();
+  await expect(page.locator('.active-pane textarea[data-text="n6"]')).toHaveAttribute("placeholder", "Your own answer to question 3…");
   await c.type("the band's and the chat's");
   await expect(c.shown).toHaveText([Q[2]]);
   await c.send.click();
@@ -86,11 +88,11 @@ test("changing an answer: back on its tab, the new pick (or typed answer) replac
   await c.tab(1); await c.pick("Replace it");
   await c.tab(2); await c.pick("Band only");
   await c.tab(0); await c.pick("Drop it");
-  await expect(page.locator(".inbox-page .qc-opt.on .qc-lt")).toHaveText(["Drop it"]);
+  await expect(page.locator(".active-pane .qc-opt.on .qc-lt")).toHaveText(["Drop it"]);
   await c.tab(1); await c.type("ask me later");
-  await expect(page.locator(".inbox-page .qc-opt.on")).toHaveCount(0);
+  await expect(page.locator(".active-pane .qc-opt.on")).toHaveCount(0);
   await c.tab(2);
-  await expect(page.locator(".inbox-page .qc-opt.on .qc-lt")).toHaveText(["Band only"]);
+  await expect(page.locator(".active-pane .qc-opt.on .qc-lt")).toHaveText(["Band only"]);
   await c.send.click();
   expect(await answers(cue)).toEqual({ [Q[0]]: "Drop it", [Q[1]]: "ask me later", [Q[2]]: "Band only" });
 });

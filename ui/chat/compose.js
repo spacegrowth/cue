@@ -420,11 +420,11 @@ const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
   return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
-/** Claude's suggestion laid over an empty box's first line: "Suggested", the text, a Tab keycap and `tail` (the Inbox's
- *  "or write your own"); `attrs` on the line (the Inbox's click takes it). Empty when there's none. */
+/** Claude's suggestion laid over an empty box's first line: "Suggested", the text, a Tab keycap and `tail`; `attrs` on
+ *  the line. Empty when there's none. */
 const sugLineHtml = (sug, tail = "", attrs = "") => `<div class="sug-line" ${attrs} aria-hidden="true">${sug ? `<span class="sug-k">Suggested</span><span class="sug-t">${esc(sug)}</span><kbd>Tab</kbd>${tail}` : ""}</div>`;
 /** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). `sid`
- *  for a box whose draft isn't the session's own (an Inbox answer to a question); `el` that box, when it's known. */
+ *  for a box whose draft isn't the session's own; `el` that box, when it's known. */
 function takeSuggestion(key, sid = sidOfKey(key), el = null) {
   const sug = suggestionFor(sid);
   const d = draft(key);
@@ -452,7 +452,7 @@ let phraseLast = { key: "", phrase: "", at: 0 };
 let phraseSending = false;
 /** A quick phrase clicked under box `key`: sent at once as its own message, the way that box's Send sends (#477).
  *  Anything typed in the box stays there as it was; a repeat click on the same phrase straight after is ignored.
- *  `button` finds the box's Send when it isn't a Desk box (the Inbox has its own). */
+ *  `button` finds the box's Send when it isn't a Desk box. */
 function sendPhrase(key, phrase, button = (k) => document.querySelector(`textarea[data-text="${CSS.escape(k)}"]`)?.closest(".composer")?.querySelector(".btn.send")) {
   const t = Date.now();
   if (phraseLast.key === key && phraseLast.phrase === phrase && t - phraseLast.at < 1500) return;

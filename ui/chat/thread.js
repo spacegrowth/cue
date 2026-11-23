@@ -145,7 +145,7 @@ function yourBubble(e, key, style = "", later = false, head = "") {
 }
 // ---------- a message's state, the same words wherever it shows (#422) ----------
 /** The one line under a message you, the Desk lead or Cue passed on: a session's chat, the Desk lead's chat, an item's
- *  thread and the Inbox all draw it with this. `m`: { st: "sending" | "held" | "queued" | "delivered" | "failed", to:
+ *  thread all draw it with this. `m`: { st: "sending" | "held" | "queued" | "delivered" | "failed", to:
  *  who it's for, from: who wrote it when not you, at: when it was delivered (ms), why: why it couldn't send (html),
  *  by: who wrote it on a delivered line ("You" unless given; "" on Cue's own messages, whose head names it),
  *  note: Sending's own words when it says more (html), say: a held or queued line's own words (html, an item's page's

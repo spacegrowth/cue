@@ -145,9 +145,9 @@
 .dk-name-ic { display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--accent); }
 .pdot[style*="var(--pc0)"] ~ .dk-name-ic { color: var(--ink); }
 .working .card-head .dk-name-ic { color: var(--on-bg); }
-:is(.nrow, .tl, .working, .ib-row, .dk-srow, .dk-lcard).on .dk-name-ic { color: inherit; }
+:is(.nrow, .tl, .working, .dk-srow, .dk-lcard).on .dk-name-ic { color: inherit; }
 /* The project's dot on a lit card: a ring of the card's text color, or a dot as light as the lime (dark) is lost on it. */
-:is(.nrow, .ib-row).on .pdot { box-shadow: 0 0 0 1.5px var(--on-sel); }
+.nrow.on .pdot { box-shadow: 0 0 0 1.5px var(--on-sel); }
 .dk-name-ic > .dk-kic { margin: 0; vertical-align: 0; color: inherit; }
 /* Its line under the name on a Board card (deskCardLine), the shape of a loop's. */
 .dk-chip-line { display: flex; margin-top: 4px; min-width: 0; }

@@ -1,5 +1,5 @@
 // The header's area after + New and the waiting count follows the view (#666, app/head_view.js): Board and Read the
-// projects; Desk the Desks (chips, and a Desks menu with New Desk… and Desk settings…); Inbox a Show filter; an add-on's
+// projects; Desk the Desks (chips, and a Desks menu with New Desk… and Desk settings…); an add-on's
 // view what its head() gives, else nothing.
 import { test, expect, openDesk } from "./cue.mjs";
 
@@ -118,49 +118,6 @@ test("the Desks menu: a long Desk name stops before its count, fades at its end 
   await long.hover();
   expect(await slides()).toBe(true);
   expect(await menu.locator("[title]").count()).toBe(0);
-});
-
-test("Inbox: Show filters the list to one project, each with how many need you; All shows every one", async ({ cue, page }) => {
-  await cue.open("desk-inbox");
-  await goView(page, "inbox");
-  await expect(area(page).locator(".hv-lbl")).toHaveCount(0);
-  await expect(area(page).locator(".hv-segs")).toHaveAttribute("aria-label", "Show");
-  await expect(area(page).locator('[data-pj="toggle"]')).toHaveCount(0);
-  const by = await page.evaluate(() => inboxCountsBy());
-  expect(by.length, "the scenario's asks are in more than one project").toBeGreaterThan(1);
-  const total = await page.evaluate(() => inboxCountAll());
-  const all = area(page).locator('[data-hv-inbox=""]');
-  await expect(all).toHaveClass(/\bon\b/);
-  await expect(all.locator("em")).toHaveText(String(total));
-  await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText(String(total));
-  const [p, n] = by[0];
-  await expect(area(page).locator(`[data-hv-inbox="${p}"] em`)).toHaveText(String(n));
-  const rowsProjects = () => page.evaluate(() => [...document.querySelectorAll(".inbox .ib-row[data-inbox-open]")].map((el) => sessionOf(el.dataset.inboxOpen)?.project));
-  expect(new Set(await rowsProjects()).size).toBeGreaterThan(1);
-  await area(page).locator(`[data-hv-inbox="${p}"]`).click();
-  await expect(area(page).locator(`[data-hv-inbox="${p}"]`)).toHaveClass(/\bon\b/);
-  await expect.poll(async () => [...new Set(await rowsProjects())]).toEqual([p]);
-  // The switch's count stays every project's; the Board's projects aren't touched.
-  await expect(page.locator('.switch-view [data-view="inbox"] .ib-count')).toHaveText(String(total));
-  expect(await page.evaluate(() => projFilter)).toBe("");
-  await all.click();
-  await expect.poll(async () => new Set(await rowsProjects()).size).toBeGreaterThan(1);
-});
-
-test("Inbox: past four projects the rest are under More, with their counts; one picked there shows as its own part", async ({ cue, page }) => {
-  await cue.open("board-waiting");
-  await goView(page, "inbox");
-  const by = await page.evaluate(() => inboxCountsBy());
-  expect(by.length, "the scenario has asks in more than four projects").toBeGreaterThan(4);
-  await expect(area(page).locator(".hv-segs > [data-hv-inbox]")).toHaveCount(5);   // All and four
-  await area(page).locator('[data-hv-menu="inbox"]').click();
-  const rest = by.slice(4);
-  const rows = page.locator(".top .hv-menu [data-hv-inbox]");
-  expect(await rows.evaluateAll((els) => els.map((el) => [el.dataset.hvInbox, +el.querySelector(".hv-rs").textContent]))).toEqual(rest);
-  await rows.first().click();
-  await expect(page.locator(".top .hv-menu")).toHaveCount(0);
-  await expect(area(page).locator(`.hv-segs > [data-hv-inbox="${rest[0][0]}"]`)).toHaveClass(/\bon\b/);
-  expect(await page.evaluate(() => inboxProj)).toBe(rest[0][0]);
 });
 
 test("an add-on's view shows what its head() gives there, and nothing when it has none", async ({ cue, page }) => {

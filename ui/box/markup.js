@@ -1,5 +1,5 @@
 // Cue UI box — the message box's markup: the words, the mic, a picture, Send. One builder for every box that sends
-// (a session's chat box, the Desk's boxes, the Inbox's, the mini panel's, btw's, a forward's note); each says how it
+// (a session's chat box, the Desk's boxes, the mini panel's, btw's, a forward's note); each says how it
 // looks through its options (docs/refactor-plan.md, Phase 3).
 
 /** A message box's HTML. `o`:
@@ -18,8 +18,6 @@
  *  - "composer" only: bang (a "!" line typed), cmd (the "/" menu's slot), clock (the "Send at" button), below (under
  *    the row: the "Send at" bar and the "/" hint).
  *  Other looks, each the box of one place:
- *  - "inbox": the Inbox's reply (.ib-box; rows 2): Send first in the row under the box, then the mic, the picture
- *    button (with `drop`), `extra`. sugSid, sugLine: the suggestion's session and its line (sugLineHtml's by default).
  *  - "mini": an answer in the mini panel's Desk row (.m-dk-box; rows 1): the words and Send, no mic or pictures.
  *    attrs: more of the textarea's attributes.
  *  - "btw": the by-the-way panel's question (.btw-ask; rows 1), "forward": the note on a forwarded message (.fwd-note;
@@ -52,11 +50,7 @@ function boxHtml(o) {
   const attach = o.attach === false ? "" : `<button class="icon-btn" data-attach="${k}" aria-label="Add an image">${IMAGE_ICON}</button>`;
   const go = `<button class="btn primary small" ${send.attrs || ""}${send.disabled ? " disabled" : ""}>${send.label ?? "Send"}</button>`;
   if (o.look === "mini") return `<div class="m-dk-box"><textarea rows="${o.rows || 1}" data-text="${k}"${o.attrs ? ` ${o.attrs}` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>${go}</div>`;
-  if (o.look === "inbox") {
-    const ta = `<textarea rows="${o.rows || 2}" data-text="${k}"${sug ? ` class="sug" data-sug-sid="${esc(o.sugSid)}"` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>`;
-    return `<div class="ib-box" ${o.drop ? `data-drop="${k}"` : ""}>${o.drop ? chips : ""}<div class="ta-wrap">${ta}${o.sugLine ?? sugLineHtml(sug)}</div><div class="ib-box-acts"><button class="btn primary" ${send.attrs || ""}>${send.label ?? "Send"}</button>${mic}${o.drop ? attach : ""}${o.extra || ""}</div></div>`;
-  }
-  const ta = `<textarea rows="${o.rows || 1}" data-text="${k}"${sug ? ` class="sug"${o.sugSid != null ? ` data-sug-sid="${esc(o.sugSid)}"` : ""}` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>`;
+   const ta = `<textarea rows="${o.rows || 1}" data-text="${k}"${sug ? ` class="sug"${o.sugSid != null ? ` data-sug-sid="${esc(o.sugSid)}"` : ""}` : ""}${label} placeholder="${placeholder}" ${fixed}>${esc(text)}</textarea>`;
   const field = o.wrap ? `<div class="ta-wrap">${ta}${sugLineHtml(sug)}</div>` : ta;
   const inner = `<div class="dk-box${o.head ? " dk-sb-box" : ""}"${o.drop === false ? "" : ` data-drop="${k}"`}>${o.top || ""}${chips}<div class="dk-box-row">${field}${mic}${attach}${o.extra || ""}${go}</div></div>`;
   if (!o.head) return inner;
