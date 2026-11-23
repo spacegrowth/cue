@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 179 (3 sync) |
 | Lock declarations (static or field) | 122 |
-| Lock acquisitions | 292 |
+| Lock acquisitions | 294 |
 | Lock-graph edges | 54 |
 | Spawn sites | 96 |
 | External calls: fs / db / process / notify / login / socket | 538 / 232 / 62 / 4 / 1 / 4 |
@@ -339,7 +339,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `voice/talk.rs::LAUNCH` | `Mutex<Option<Launch>>` | "talk launch" (2 sites) |
 | `voice/talk/colors.rs::OWN` | `std::sync::Mutex<(f64,f64)>` | "talk own hue" (2 sites) |
 
-Lock names not matched to a declaration: "FOUND" (4 sites), "agent checks passed" (2 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "ended sessions read for their edits" (2 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "leads sweeping for Away" (4 sites), "logs read for their edits" (4 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (6 sites), "watchers" (2 sites).
+Lock names not matched to a declaration: "FOUND" (4 sites), "agent checks passed" (2 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "ended sessions read for their edits" (2 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "leads sweeping for Away" (4 sites), "logs read for their edits" (4 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (8 sites), "watchers" (2 sites).
 
 ## Lock graph
 

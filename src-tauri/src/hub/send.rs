@@ -30,6 +30,15 @@ pub(super) fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()
     }
 }
 
+/// This session's typing turn when nothing is being sent to it right now; None when something is (never waited on).
+pub(super) fn turn_if_free(gate: &Mutex<()>) -> Option<std::sync::MutexGuard<'_, ()>> {
+    match gate.try_lock() {
+        Ok(g) => Some(g),
+        Err(std::sync::TryLockError::Poisoned(e)) => Some(e.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
 impl Hub {
     /// Typed into its terminal, and the agent hasn't said it took it. A command may have opened a dialog
     /// (it ran: a card with its choices). The text may still sit in its box (the Enter didn't take: the

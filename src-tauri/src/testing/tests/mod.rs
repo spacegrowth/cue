@@ -100,6 +100,7 @@ mod parking;
 mod probe;
 mod redraw;
 mod relaunch;
+mod rest;
 mod reply_saves;
 mod sessions;
 mod sessions_edges;

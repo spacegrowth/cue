@@ -158,6 +158,8 @@ impl Hub {
         self.note_retries();
         self.catch_dead_turns(stuck, now);
         self.cache_tick();
+        // Sessions idle long enough have their agent ended; a message starts it again (rest.rs).
+        self.rest_idle();
         self.open_tick(now);
         self.tell_limits_back(&limited, now);
         self.send_at_tick();

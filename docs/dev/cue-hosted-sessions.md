@@ -177,6 +177,13 @@ still runs. Built in M1 (`hook.rs`).
   it stays in the Board, paused. The first message you send resumes it (`--resume`, on the model it last used
   and its MCP selection), not before: resuming re-reads the conversation (cache cost), so nothing is resumed
   that you don't use. It resumes in Claude's own default permission mode (the one + New picked isn't kept yet).
+- **Idle (hub/rest.rs):** a session that has sat at its prompt for Settings → Agents' "Free an idle session's memory
+  after" (30 minutes unless you say; Never turns it off) has its agent ended, by the port that started it and
+  nothing else, and is paused as above: the session, its card and its chat stay, and the next message resumes
+  it. Only one on this Mac, and never one at work, asking you something, compacting, with a message on its way
+  or kept for it, with a teammate, a background agent or a background command still going, or holding a Desk
+  item that is landing. One whose cache is still warm waits until it runs out, since a resume re-reads the
+  conversation.
 - **Claude exits unexpectedly:** `Exited` → its asks finish as gone; mid-turn, the turn ends with a card saying
   why (its last words); it's paused. Garbage or unknown lines are logged, never fatal.
 - **Close, Park, Resume:** as for any session; a parked or closed hosted session resumes hosted.
