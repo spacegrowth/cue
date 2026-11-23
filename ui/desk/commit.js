@@ -19,13 +19,13 @@ const DESK_LOOKS_WAIT = 3000;
 /** Looks right on item `id`: "Done · Undo" for a moment (on the item and in a toast), then it goes (deskLooksGo). */
 function deskLooksRight(id) {
   if (deskLooksSoon.has(id)) return;
-  deskLooksSoon.set(id, setTimeout(() => { deskLooksSoon.delete(id); deskLooksGo(id); }, DESK_LOOKS_WAIT));
-  toast("Done", DESK_LOOKS_WAIT);
+  deskLooksSoon.set(id, setTimeout(() => { deskLooksSoon.delete(id); deskLooksGo(id); }, deskLooksWaitMs()));
+  toast("Done", deskLooksWaitMs());
   const t = document.querySelector(".toast"), u = document.createElement("button");
   u.className = "toast-undo"; u.textContent = DESK_UNDO_WORDS; u.onclick = () => deskLooksUndo(id);
   t?.append(" · ", u);
   t?.classList.add("acts");
-  setTimeout(() => t?.classList.remove("acts"), DESK_LOOKS_WAIT);
+  setTimeout(() => t?.classList.remove("acts"), deskLooksWaitMs());
   renderMain();
 }
 /** Undo in that moment: it stays to check, nothing sent, nothing committed. */
@@ -44,10 +44,15 @@ const deskLooksSoonHtml = (id) => `<span class="dk-soon">Done · <button class="
  *  with its fold already `now - at` in (a negative animation delay), so a redraw meanwhile doesn't start it again. */
 const deskLeaving = new Map();
 const DESK_LEAVE_MS = 280;
+/** How long a row takes to fold away: a full second on the new Desk layout (desk/c.js), so you see it go. */
+const deskLeaveMs = () => (deskLooksC() ? 300 : DESK_LEAVE_MS);
+/** On the new Desk layout (desk/c.js) a row you tick stays for the wait, its ✓ filled, then folds away. */
+const deskLooksC = () => typeof deskCOn === "function" && deskCOn();
+const deskLooksWaitMs = () => DESK_LOOKS_WAIT;
 /** The style a leaving row draws with, "" for any other. */
 function deskLeaveStyle(id) {
   const l = deskLeaving.get(id);
-  return l ? ` dk-leave" style="--h:${l.h}px;animation-delay:-${Math.min(Date.now() - l.at, DESK_LEAVE_MS)}ms` : "";
+  return l ? ` dk-leave" style="--h:${l.h}px;animation-delay:-${Math.min(Date.now() - l.at, deskLeaveMs())}ms` : "";
 }
 /** Looks right sent: its row in the list folds away first, then it goes; committed (or just done), said in a toast
  *  and on its card and item. */
@@ -56,7 +61,7 @@ async function deskLooksGo(id) {
   if (row && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     deskLeaving.set(id, { at: Date.now(), h: row.offsetHeight });
     renderMain();
-    await new Promise((r) => setTimeout(r, DESK_LEAVE_MS));
+    await new Promise((r) => setTimeout(r, deskLeaveMs()));
   }
   try {
     const r = await invoke("desk_looks_right", { id });

@@ -800,7 +800,7 @@ test("an item's page is a Thread under Thread, Decisions and Steps tabs: every m
   await expect(msgs.nth(who.length - 2).locator("strong")).toHaveText("who sent");
   const back = msgs.last();
   await expect(back.locator(".cv-you-text")).toHaveText("Still blinks after a reply from someone else");
-  await expect(back.locator(".msg-line")).toContainText("Delivered to cue-117");
+  await expect(back.locator(".msg-line")).toContainText(/^You · .+ ago/);
   await expect(back.locator(".ml-back")).toHaveText("sent back");
   await expect(pane.locator(".dk-thread .dk-ttag", { hasText: "Hand-off" })).toHaveCount(0);   // "Gave it…" isn't a hand-off line
   // The answer box is the pane's foot.

@@ -65,9 +65,10 @@ test("the sessions column: the lead on top under a line, a heading per machine, 
   await host.click();
   await expect(host).toHaveClass(/\bon\b/);
   await expect(side.locator(".dkn-lead")).not.toHaveClass(/\bon\b/);
-  // Its item is lit in the list, and its chat is in the middle.
+  // Its item is lit in the list, and its chat is in the middle: the Board's top bar for it, no panel (#744).
   await expect(page.locator('.dkn-card .dkn-row.on[data-desk-item="d5"]')).toHaveCount(1);
-  await expect(page.locator(".dk-c > .dk-right .dk-ph")).toContainText("host-lead");
+  await expect(page.locator(".dk-c > .dk-right .dkn-sp .ap-head")).toContainText("host-lead");
+  await expect(page.locator(".dk-c > .dk-right .dk-panel")).toHaveCount(0);
   // The lead's block brings its chat back.
   await side.locator(".dkn-lead").click();
   await expect(side.locator(".dkn-lead")).toHaveClass(/\bon\b/);
@@ -79,20 +80,21 @@ test("one count: the header, the lead's strip and Waiting on you say the same; t
   const head = page.locator(".top [data-desk-c-head]");
   await expect(head).toHaveText(/^\d+ wait on you$/);
   const n = (await head.textContent()).match(/^\d+/)[0];
-  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] span')).toHaveText(n);
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText(n);
   const panel = page.locator(".dk-c .dk2b-chat .dk-panel");
   await expect(panel.locator(".dk-pnow")).toHaveCount(1);
   await expect(panel.locator(".dk-psh")).not.toContainText([/Waits on you/, /^Working/]);
-  // The header's count opens the first that waits on you.
+  // The header's count opens the first that waits on you: #d1, whose session's chat it is (#744).
   await head.click();
-  await expect(page.locator('.dk-c > .dk-right [data-desk-page="item"]')).toHaveCount(1);
+  await expect(page.locator('.dkn-card .dkn-row.on[data-desk-item="d1"]')).toHaveCount(1);
+  await expect(page.locator('.dk-c > .dk-right .dkn-sp[data-desk-page="session"] .dkn-ib')).toHaveCount(1);
   // Hidden panel: the strip says the same number.
   await page.locator(".dk-c .dk-right .dk-back, .dk-c .dk-right [data-desk-back]").first().click();
   await page.locator('.dk2b-chat [data-desk-panel="dispatcher-hidden"]').click();
   await expect(page.locator(".dk2b-chat .dk2b-wn")).toHaveText(`${n} wait on you`);
 });
 
-test("Items: a row per item with its six steps, the one it's at striped; Check opens it", async ({ page, cue }) => {
+test("Items: a row per item with its six steps, the one it's at striped; ready to check is a ✓, asking is red words, no buttons", async ({ page, cue }) => {
   await open(page, cue);
   const card = page.locator(".dkn-card");
   await expect(card.locator(".dkn-th")).toContainText("Picked up");
@@ -103,9 +105,230 @@ test("Items: a row per item with its six steps, the one it's at striped; Check o
   // The step it's at in the Board's waiting stripes.
   const bg = await d2.locator(".dkn-stp.cur i").evaluate((el) => getComputedStyle(el).backgroundImage);
   expect(bg).toContain("repeating-linear-gradient");
-  await d2.locator("[data-desk-chk-item]").click();
-  await expect(page.locator(".dk-c > .dk-right .dk-ph")).toContainText("#d2");
-  await expect(d2).toHaveClass(/\bon\b/);
+  // No number column: the title on top, the kind's icon and number at the head of the line under it (#744).
+  await expect(card.locator(".dkn-th > span")).toHaveText(["Item", /Picked up/, "Now"]);
+  expect(await d2.evaluate((el) => el.firstElementChild.className)).toBe("dkn-t");
+  await expect(d2.locator(".dkn-tt")).toHaveText("Quick phrases at the right of Send");
+  await expect(d2.locator(".dkn-sub")).toHaveText("#d2 · web-lead");
+  await expect(d2.locator(".dkn-sub > .dkn-id:first-child .dkn-k")).toHaveAttribute("aria-label", "feature");
+  await expect(card.locator('.dkn-row[data-desk-item="d1"] .dkn-sub .dkn-k')).toHaveAttribute("aria-label", "bug");
+  await expect(card.locator(".dkn-row")).not.toContainText([/\b(Bug|Feature|Task)\b/]);
+  // Now, right-aligned in its 136px: ready to check is the words and a round ✓; asking, just red words.
+  const now = d2.locator(".dkn-now");
+  expect(await now.evaluate((el) => [Math.round(el.getBoundingClientRect().width), getComputedStyle(el).justifyContent])).toEqual([136, "flex-end"]);
+  await expect(now.locator(".dkn-nw")).toHaveText("Ready to check");
+  await expect(now.locator('.dk-ok[data-desk-act="looks_right"]')).toHaveAttribute("aria-label", "Looks right");
+  const ask = card.locator('.dkn-row[data-desk-item="d1"] .dkn-now');
+  await expect(ask).toHaveText("Asks you");
+  await expect(ask.locator(".dkn-nask")).toHaveCSS("color", await page.evaluate(() => { const p = document.createElement("i"); p.style.color = "var(--deny)"; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }));
+  await expect(card.locator("[data-desk-chk-item], .dkn-now .btn")).toHaveCount(0);
+  await expect(card).not.toContainText(/Choose…|\bCheck\b/);
+  // The row opens it: its session's chat.
+  await card.locator('.dkn-row[data-desk-item="d1"] .dkn-tt').click();
+  await expect(page.locator('.dkn-card .dkn-row.on[data-desk-item="d1"]')).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dk-right .dkn-sp")).toHaveCount(1);
+});
+
+test("a machine pill only when it isn't This Mac, at the end of the line; Up next and Done today put the icon and number first", async ({ page, cue }) => {
+  await open(page, cue);
+  await cue.change((st) => {
+    const its = st.desk.projects.find((d) => d.project === "cue").items;
+    its.find((i) => i.id === "d2").machine = "This Mac";
+    its.find((i) => i.id === "d3").machine = "studio";
+    its.find((i) => i.id === "d4").machine = "studio";
+  });
+  const card = page.locator(".dkn-card");
+  await expect(card.locator('.dkn-row[data-desk-item="d3"] .dkn-sub')).toHaveText("#d3 · web-lead → search-centre · studio");
+  await expect(card.locator('.dkn-row[data-desk-item="d3"] .dkn-sub > :last-child')).toHaveClass("mach");
+  await expect(card.locator('.dkn-row[data-desk-item="d2"] .dkn-sub .mach')).toHaveCount(0);
+  await expect(card.locator('.dkn-row[data-desk-item="d2"] .dkn-sub')).not.toContainText("This Mac");
+  const d4 = page.locator('[data-dkn-drawer="next"] .dkn-nx[data-desk-item="d4"]');
+  await expect(d4.locator(".dkn-a1")).toHaveText("Rail dot blinks for a reply you didn't send");
+  await expect(d4.locator(".dkn-a2 > :first-child")).toHaveClass("dkn-id");
+  await expect(d4.locator(".dkn-a2 > .dkn-id")).toHaveText("#d4");
+  await expect(d4.locator(".dkn-a2 > .dkn-id .dkn-k")).toHaveAttribute("aria-label", "bug");
+  await expect(d4.locator(".dkn-a2 .mach")).toHaveText("studio");
+  const d7 = page.locator('[data-dkn-drawer="done"] .dkn-nx[data-desk-item="d7"]');
+  await expect(d7.locator(".dkn-a2 > :first-child .dkn-k")).toHaveAttribute("aria-label", "task");
+  await expect(d7.locator(".dkn-a2 .mach")).toHaveCount(0);
+});
+
+test("the ✓: it fills, the row greys with Done · Undo where it was, then folds away; Undo leaves it to check", async ({ page, cue }) => {
+  await open(page, cue);
+  await cue.override("desk_looks_right", ({ id }) => {
+    const it = CueBridge.world.state.desk.projects[0].items.find((i) => i.id === id);
+    Object.assign(it, { state: "done", done_at: Math.floor(Date.now() / 1000) });
+    CueBridge.emit("state", CueBridge.world.snapshot());
+    return { commit: "", files: 0, waiting: [] };
+  });
+  const card = page.locator(".dkn-card");
+  const ids = () => card.locator(".dkn-row[data-desk-item]").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
+  const order = await ids();
+  const d2 = card.locator('.dkn-row[data-desk-item="d2"]'), at = await d2.boundingBox();
+  await d2.locator(".dk-ok").click();
+  await expect(d2.locator(".dk-ok.on")).toHaveCount(1);
+  expect(await d2.locator(".dk-ok.on").evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(d2).toHaveClass(/\bsoon\b/);
+  expect(Number(await d2.locator(".dkn-t").evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(1);
+  await expect(d2.locator(".dk-soon")).toHaveText("Done · Undo");
+  // It keeps its place while it shows, and isn't opened by the click.
+  expect(await ids()).toEqual(order);
+  expect(await d2.boundingBox()).toEqual(at);
+  await expect(d2).not.toHaveClass(/\bon\b/);
+  // Undo: back to its ✓, nothing sent.
+  await d2.locator('.dk-soon [data-desk-act="looks_undo"]').click();
+  await expect(d2.locator(".dk-ok:not(.on)")).toHaveCount(1);
+  await expect(d2).not.toHaveClass(/\bsoon\b/);
+  await page.clock.runFor(3500);
+  expect(await cue.calls("desk_looks_right")).toEqual([]);
+  // Left alone after the ✓, it's sent once the 3 s are up, and the row folds away.
+  await d2.locator(".dk-ok").click();
+  await expect(d2.locator(".dk-soon")).toHaveText("Done · Undo");
+  await page.clock.runFor(2500);
+  expect(await cue.calls("desk_looks_right")).toEqual([]);
+  await expect(d2).toHaveClass(/\bsoon\b/);
+  await page.clock.runFor(1000);
+  await page.clock.runFor(400);
+  await cue.called("desk_looks_right", { id: "d2" });
+  await expect(d2).toHaveCount(0);
+  await expect(page.locator('[data-dkn-drawer="done"] .dkn-nx[data-desk-item="d2"]')).toHaveCount(1);
+});
+
+test("Waiting on you and Working fold to their headings with a click, remembered with the drawers", async ({ page, cue }) => {
+  await open(page, cue);
+  const card = page.locator(".dkn-card");
+  const you = card.locator('.dkn-gh[data-desk-c-fold="you"]'), work = card.locator('.dkn-gh[data-desk-c-fold="working"]');
+  await expect(you).toHaveAttribute("aria-expanded", "true");
+  await expect(you.locator(".dkn-fa")).toHaveText("▾");
+  await you.click();
+  await expect(you).toHaveAttribute("aria-expanded", "false");
+  await expect(you.locator(".dkn-fa")).toHaveText("▸");
+  await expect(you.locator("span:not(.dkn-fa)")).toHaveText("2");
+  await expect(card.locator('.dkn-row[data-desk-item="d1"], .dkn-row[data-desk-item="d2"]')).toHaveCount(0);
+  await expect(card.locator('.dkn-row[data-desk-item="d3"]')).toHaveCount(1);
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem("cue.deskCFolds")))).toContain("you");
+  await work.click();
+  await expect(card.locator(".dkn-row[data-desk-item]")).toHaveCount(0);
+  await page.reload();
+  await page.locator('#app [data-view="board"]').waitFor();
+  await openDesk(page).catch(() => {});
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk-c-fold="you"]')).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk-c-fold="working"]')).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".dkn-card .dkn-row[data-desk-item]")).toHaveCount(0);
+  await page.locator('.dkn-card .dkn-gh[data-desk-c-fold="you"]').click();
+  await expect(page.locator('.dkn-card .dkn-row[data-desk-item="d2"]')).toHaveCount(1);
+  await expect(page.locator('.dkn-card .dkn-row[data-desk-item="d3"]')).toHaveCount(0);
+});
+
+test("a selected row fills the card edge to edge; the card fills its column, Up next and Done today a 35% share under it", async ({ page, cue }) => {
+  await open(page, cue);
+  const card = page.locator(".dkn-card");
+  await card.locator('.dkn-row[data-desk-item="d3"]').click();
+  const row = card.locator('.dkn-row.on[data-desk-item="d3"]');
+  const [r, b] = await Promise.all([row.boundingBox(), card.locator(".dkn-body").evaluate((el) => { const x = el.getBoundingClientRect(); return { x: x.x, w: el.clientWidth }; })]);
+  expect(Math.round(r.x)).toBe(Math.round(b.x));
+  expect(Math.round(r.width)).toBe(Math.round(b.w));
+  // Few rows: the card still reaches down to Up next and Done today, which take 35% of the column.
+  const [col, c, low] = await Promise.all([".dk-c > .dkn-items", ".dkn-card", ".dkn-low"].map((q) => page.locator(q).boundingBox()));
+  expect(Math.abs(low.height - col.height * 0.35)).toBeLessThan(2);
+  expect(Math.abs(c.y + c.height + 18 - low.y)).toBeLessThan(2);
+  // Both folded: the card takes the room.
+  await page.locator('[data-dkn-drawer="next"] [data-desk-c-fold]').click();
+  await page.locator('[data-dkn-drawer="done"] [data-desk-c-fold]').click();
+  await expect.poll(async () => (await page.locator(".dkn-card").boundingBox()).height).toBeGreaterThan(c.height + low.height * 0.6);
+});
+
+/** Each list ends on a whole row: none cut by its edge. */
+const wholeRows = (list) => list.evaluate((el) => {
+  const edge = el.getBoundingClientRect().bottom;
+  return [...el.children].filter((r) => { const b = r.getBoundingClientRect(); return b.top < edge - 1 && b.bottom > edge + 1; }).map((r) => r.dataset.deskItem || r.className);
+});
+test("a list that overflows ends on a whole row with \"↓ N more\" under it; a click scrolls on, at its end the line keeps its room", async ({ page, cue }) => {
+  await open(page, cue, { width: 1440, height: 900 });
+  await cue.change((st) => {
+    const its = st.desk.projects.find((d) => d.project === "cue").items;
+    const d3 = its.find((i) => i.id === "d3"), d4 = its.find((i) => i.id === "d4");
+    for (let k = 0; k < 14; k++) its.push({ ...d3, id: `w${k}`, title: `Working item ${k}` });
+    for (let k = 0; k < 10; k++) its.push({ ...d4, id: `q${k}`, title: `Queued item ${k}`, depends_on: [] });
+  });
+  await expect(page.locator('.dkn-card .dkn-row[data-desk-item="w13"]')).toHaveCount(1);
+  for (const name of ["items", "next"]) {
+    const list = page.locator(`[data-dkn-list="${name}"]`), more = list.locator("xpath=following-sibling::*[1]");
+    await expect(more).toHaveClass(/\bdkn-more\b/);
+    await expect(more).toBeVisible();
+    await expect(more).toHaveText(/^↓ \d+ more$/);
+    expect(await wholeRows(list), name).toEqual([]);
+    // Its count is the rows below the edge.
+    const below = await list.evaluate((el) => { const e = el.getBoundingClientRect().bottom; return [...el.querySelectorAll(":scope > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > e + 1).length; });
+    expect(below).toBeGreaterThan(0);
+    await expect(more).toHaveText(`↓ ${below} more`);
+    // A click scrolls a page on; at the end it says nothing but keeps its place.
+    await more.click();
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    const h = (await more.boundingBox()).height;
+    await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect(more).toHaveClass(/\bend\b/);
+    expect(await more.evaluate((el) => [getComputedStyle(el).visibility, Math.round(el.getBoundingClientRect().height)])).toEqual(["hidden", Math.round(h)]);
+  }
+  // Done today fits: no line under it.
+  await expect(page.locator('[data-dkn-drawer="done"] .dkn-more')).toBeHidden();
+});
+
+test("an item a session holds opens that session's chat: back, its top bar, the item, its steps, Chat and Files; no panel", async ({ page, cue }) => {
+  await open(page, cue);
+  await page.locator('.dkn-card .dkn-row[data-desk-item="d5"]').click();
+  const sp = page.locator('.dk-c > .dk-right .dkn-sp[data-desk-page="session"]');
+  await expect(sp.locator(".dkn-sback .dk-back")).toHaveCount(1);
+  await expect(sp.locator(".ap-head")).toContainText("host-lead");
+  await expect(sp.locator(".dkn-smeta")).toHaveText("on #d5 · Hosted sessions can't open the canvas");
+  // Its steps; working, nothing to press.
+  await expect(sp.locator(".dkn-ib .dkn-stp")).toHaveCount(6);
+  await expect(sp.locator(".dkn-ib [data-desk-act]")).toHaveCount(0);
+  await expect(sp.locator(".dkn-ib")).not.toHaveClass(/\bcheck\b/);
+  // Its parts in order, then the chat and the box.
+  expect(await sp.evaluate((el) => [...el.children].map((c) => c.className.split(" ")[0]))).toEqual(["dkn-sback", "ap-head", "dkn-smeta", "dkn-ib", "dkn-stabs", "dkn-spm"]);
+  await expect(sp.locator(".dkn-stab")).toHaveText(["Chat", /^Files \d+$/]);
+  await expect(sp.locator('.dkn-stab[data-desk-c-stab="chat"]')).toHaveAttribute("aria-selected", "true");
+  await expect(sp.locator('.dkn-spm [data-desk-chat="host"]')).toHaveCount(1);
+  await expect(sp.locator(".dkn-spm textarea")).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dk-right .dk-panel")).toHaveCount(0);
+  await expect(page.locator(".dk-c > .dk-right")).not.toContainText("Open its session");
+  // Files: its tab shows what it changed instead of the chat.
+  await sp.locator('.dkn-stab[data-desk-c-stab="files"]').click();
+  await expect(sp.locator('.dkn-stab[data-desk-c-stab="files"]')).toHaveAttribute("aria-selected", "true");
+  await expect(sp.locator(".dkn-sfiles")).toBeVisible();
+  await expect(sp.locator('[data-desk-chat="host"]')).toHaveCount(0);
+  await sp.locator('.dkn-stab[data-desk-c-stab="chat"]').click();
+  await expect(sp.locator('[data-desk-chat="host"]')).toHaveCount(1);
+  // Ready to check: Looks right, Send back and what to try in its bar.
+  await page.locator('.dkn-card .dkn-row[data-desk-item="d2"] .dkn-tt').click();
+  const bar = page.locator(".dk-c > .dk-right .dkn-sp .dkn-ib.check");
+  await expect(bar.locator('[data-desk-act="looks_right"]')).toHaveText("Looks right");
+  await expect(bar.locator('[data-desk-act="send_back"]')).toHaveText("Send back");
+  await expect(bar.locator(".dkn-ibsee")).toHaveText(/^Try: \S/);
+  // An item no session has keeps its own page.
+  await page.locator('[data-dkn-drawer="next"] .dkn-nx[data-desk-item="d6"]').click();
+  await expect(page.locator('.dk-c > .dk-right [data-desk-page="item"]')).toHaveCount(1);
+  await expect(page.locator(".dk-c > .dk-right .dkn-sp")).toHaveCount(0);
+});
+
+test("in a session's chat on the new layout its replies show as written: its IF PICKED and CHECK lines are text, not cards", async ({ page, cue }) => {
+  await open(page, cue);
+  await cue.change((st) => {
+    st.sessions.find((x) => x.session_id === "host").thread.push({ role: "agent", at_ms: Date.now(), text: [
+      "Built it and the tests pass.",
+      "",
+      "IF PICKED: B | a task follows | You'll see: the switch",
+      "CHECK: #d5 | Where: the Desk | Do: open a chat | Expect: a switch in its head",
+    ].join("\n") });
+  });
+  await page.locator('.dkn-side [data-desk-chat-of="host"]').click();
+  const chat = page.locator('.dk-c > .dk-right .dkn-sp [data-desk-chat="host"]');
+  await expect(chat).toContainText("Built it and the tests pass.");
+  await expect(chat).toContainText("IF PICKED: B | a task follows");
+  await expect(chat).toContainText("CHECK: #d5 | Where: the Desk");
+  await expect(chat.locator(".dk-sg, .dk-ln")).toHaveCount(0);
+  await expect(chat).not.toContainText(/If you pick B|How to check/);
 });
 
 test("Up next and Done today sit side by side on the green and fold to their headings, remembered", async ({ page, cue }) => {
@@ -162,7 +385,7 @@ test("the lead's own ask is in Waiting on you, and the header counts the same", 
   await expect(row).toContainText("web-lead");
   const head = page.locator(".top [data-desk-c-head]");
   const n = (await head.textContent()).match(/^\d+/)[0];
-  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] span')).toHaveText(n);
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText(n);
 });
 
 test("the lead's block brings its chat back from All sessions", async ({ page, cue }) => {

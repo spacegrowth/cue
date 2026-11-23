@@ -29,6 +29,6 @@ test("while your message to an idle lead is on its way, nothing says the lead wa
   });
   await page.evaluate(() => window.letGo());
   await expect(page.locator(".dk-chat .msg-sending")).toHaveCount(0);
-  await expect(page.locator(".dk-chat .cv-you", { hasText: "Is the footer done?" }).locator(".msg-line")).toContainText("Delivered");
+  await expect(page.locator(".dk-chat .cv-you", { hasText: "Is the footer done?" }).locator(".msg-line")).toHaveText(/^You · .+ ago$/);
   await expect(live).toContainText("Reading footer.js");
 });

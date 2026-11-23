@@ -147,22 +147,24 @@ function yourBubble(e, key, style = "", later = false, head = "") {
 /** The one line under a message you, the Desk lead or Cue passed on: a session's chat, the Desk lead's chat, an item's
  *  thread and the Inbox all draw it with this. `m`: { st: "sending" | "held" | "queued" | "delivered" | "failed", to:
  *  who it's for, from: who wrote it when not you, at: when it was delivered (ms), why: why it couldn't send (html),
+ *  by: who wrote it on a delivered line ("You" unless given; "" on Cue's own messages, whose head names it),
  *  note: Sending's own words when it says more (html), say: a held or queued line's own words (html, an item's page's
  *  "Waiting: …", #419), acts: its controls (html), extra: after it all (html), sid: the
  *  session it goes to (a copy's progress updates the line in place, chat/send.js onUpload) }. */
 function msgLine(m) {
   const to = esc(m.to || "it"), from = m.from ? `From <b>${esc(m.from)}</b> · ` : "";
-  const mark = { delivered: "✓", failed: "!" }[m.st] || "◌";
+  // Delivered reads as it did before #422: "You · 2m ago" (who wrote it, how long ago), no mark.
+  const mark = { delivered: "", failed: "!" }[m.st] ?? "◌";
   let words = {
     sending: m.note || "Sending…",
     held: "<b>Not sent yet</b> · Cue sends it when its turn ends",
     queued: `<b>Queued for ${to}</b> · it reads this after its current step`,
-    delivered: `<b>Delivered to ${to}</b>${m.at ? ` · ${esc(clockAt(m.at))}` : ""}`,
+    delivered: [m.from ? "" : m.by ?? "You", m.at ? `<span data-ago="${m.at}">${ago(m.at)}</span> ago` : ""].filter(Boolean).join(" · "),
     failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
   }[m.st];
   if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
   // The foot of the message (#501, messages.css): how it went at the left (.mg-st), its actions at the right (.mg-acts).
-  return `<div class="mg-f msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="mg-st${m.st === "failed" ? " failed" : ""}"><span class="mg-mark ml-mark" aria-hidden="true">${mark}</span> ${from}<span class="ml-words">${words}</span>${m.acts ? "" : m.extra || ""}</span>${m.acts ? `<span class="mg-acts ml-acts"><span class="ml-sep" aria-hidden="true"> · </span>${m.acts}${m.extra || ""}</span>` : ""}</div>`;
+  return `<div class="mg-f msg-line ml-${m.st}"${m.sid ? ` data-sid="${esc(m.sid)}"` : ""}><span class="mg-st${m.st === "failed" ? " failed" : ""}">${mark ? `<span class="mg-mark ml-mark" aria-hidden="true">${mark}</span> ` : ""}${from}<span class="ml-words">${words}</span>${m.acts ? "" : m.extra || ""}</span>${m.acts ? `<span class="mg-acts ml-acts"><span class="ml-sep" aria-hidden="true"> · </span>${m.acts}${m.extra || ""}</span>` : ""}</div>`;
 }
 /** Your message typed into session `s`'s box while it's mid-turn (#531): its agent takes it in when it's free, so it
  *  says Queued, not Sending (that's for one still on its way to the box). Its line, as msgLine takes it; null when

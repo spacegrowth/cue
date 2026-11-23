@@ -101,13 +101,14 @@ function deskOpenCard(project, taskApprovals) {
   let tail = "";
   if (o?.kind === "item") {
     const i = item;
-    if (i) { delete o.fresh; body = deskB2On() ? deskB2ItemFull(i, d, foot()) : deskItemPane(i, d, foot()); }
+    // The new layout (desk/c.js): an item with a session is that session's chat, its bar on top (#744).
+    if (i) { delete o.fresh; body = (deskCOn() && deskCItemChat(i, d, foot())) || (deskB2On() ? deskB2ItemFull(i, d, foot()) : deskItemPane(i, d, foot())); }
     // Just added: it opens once Cue's state has it (the chat shows till then); not there in a few seconds, it won't.
     else if (o.fresh && now() - o.fresh < 5000) return null;
   }
   else if (o?.kind === "holder") body = deskHolderPane(o.sid, d, foot());
   // A reply open in Read: read-only, as in a session's chat, so no box under it (Reply brings it back).
-  else if (o?.kind === "chat") { const rd = deskReader(sessionOf(o.sid)); body = rd || deskSessChat(o.sid, o.from, d, foot()); }
+  else if (o?.kind === "chat") { const rd = deskReader(sessionOf(o.sid)); body = rd || (deskCOn() && deskCSessChat(o.sid, o.from, d, foot())) || deskSessChat(o.sid, o.from, d, foot()); }
   else if (o?.kind === "crew") body = deskCrewPane(o.lead, o.agent, d, foot());
   else if (o?.kind === "addon") {
     const h = deskGroups(project).extra.find((x) => (x.key || x.name) === o.key);

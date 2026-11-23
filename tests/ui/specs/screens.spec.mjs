@@ -225,7 +225,7 @@ const SCREENS = {
       await p.locator('.dkn-side [data-desk-chat-of="host"]').click();
       await p.locator('[data-desk-c-fold="done"]').click();
     },
-    done: async (p) => { await deskLayoutDrawn(p); await p.locator(".dk-c .dk-right .dk-ph").waitFor(); await p.locator('[data-desk-c-fold="done"][aria-expanded="false"]').waitFor(); },
+    done: async (p) => { await deskLayoutDrawn(p); await p.locator(".dk-c .dk-right .dkn-sp .ap-head").waitFor(); await p.locator('[data-desk-c-fold="done"][aria-expanded="false"]').waitFor(); },
   },
   "desk-layout-wide": { scenario: "desk", viewport: { width: 1800, height: 1095 }, setup: (p) => deskLayout(p), done: deskLayoutDrawn },
   "desk-layout-narrowest": { scenario: "desk", viewport: NARROWEST, setup: (p) => deskLayout(p), done: deskLayoutDrawn },

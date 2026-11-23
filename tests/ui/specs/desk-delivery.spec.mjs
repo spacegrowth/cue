@@ -40,7 +40,7 @@ for (const kind of ["task", "feature", "bug"]) {
     await expect(chat.locator(".cue-msg", { hasText: "Fix the spacing" })).toHaveCount(0);
     const went = sent.locator(".msg-line");
     await expect(went).toHaveClass(/ml-delivered/);
-    await expect(went).toContainText("✓ Delivered to");
+    await expect(went).toHaveText(/^You · .+ ago$/);
     await expect(went).not.toContainText(/queued|not sent/i);
     await expect(chat.locator(".cv-you.msg-sending")).toHaveCount(0);
   });

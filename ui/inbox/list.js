@@ -206,11 +206,11 @@ function inboxRunLines(r, card = false, html = false) {
   const cueHtml = !answered && !you && cue ? `<span class="mg-plain">${cueMsgPlainHtml(s.prompt, to)}</span>` : "";
   return [cueHtml || esc(subj), !s.compacting_ms && !preStart(s) && !stuck && pending ? inboxPendingLine(s, true) : esc(line)];
 }
-/** Your last message to session `s`, once it took it: "Delivered to <name> 14:12" (#422); "" before that. */
+/** Your last message to session `s`, once it took it: "You · 2m ago" (#744: as before #422); "" before that. */
 function inboxTaken(s) {
   const e = (s.thread || []).findLast((x) => x.role === "you");
   if (!e || e.pending || e.unsent || outbox.some((o) => o.sid === s.session_id && !landed(o))) return "";
-  return `Delivered to ${nameOf(s.session_id, s.project)} ${clockAt(msgTaken(e))}`;
+  return `You · ${ago(msgTaken(e))} ago`;
 }
 /** A finished row's lines: how it ended and what it said, then what it did. */
 function inboxDoneLines(r) {

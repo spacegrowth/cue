@@ -847,13 +847,13 @@ test("a held message in the brief: under Yours as its chat draws it, Edit puts i
   await expect(page.locator('.inbox-page[data-inbox-page="eng"] .ib-box textarea')).toHaveValue("check the retry path");
 });
 
-test("a row whose last message it took says Delivered to it, with the time, not Sent (#422)", async ({ cue, page }) => {
+test("a row whose last message it took says You and how long ago, not Sent (#422, #744)", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const line = await page.evaluate(() => {
     const s = { session_id: "eng", project: "eng", thread: [{ role: "you", text: "go", at_ms: new Date(2026, 0, 1, 14, 12).getTime() }] };
     return [inboxTaken(s), inboxTaken({ ...s, thread: [{ ...s.thread[0], pending: true }] })];
   });
-  expect(line[0]).toMatch(/^Delivered to \S+ .*12/);
+  expect(line[0]).toMatch(/^You · .+ ago$/);
   expect(line[1]).toBe("");
 });
 

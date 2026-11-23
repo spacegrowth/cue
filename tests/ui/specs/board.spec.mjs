@@ -1032,7 +1032,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     const asked = page.locator(".cue-you", { hasText: "Asked for handoff's review" });
     await expect(asked).toHaveCount(1);
     await expect(asked.locator(".mg-h")).toHaveText(/^Cue.*Crew$/);
-    await expect(asked.locator(".mg-st")).toHaveText(/^✓ Delivered to /);
+    await expect(asked.locator(".mg-st")).toHaveText(/^\S+ ago$/);
     await expect(asked.locator(".mg-full")).toHaveCount(0);
     await asked.locator("[data-ask-open]").first().click();
     await expect(asked.locator("[data-ask-open]").first()).toHaveText("− What Cue sent");

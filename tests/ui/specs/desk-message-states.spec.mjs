@@ -52,7 +52,7 @@ test("Not done is your own bubble in the item's chat, in every state, never Cue'
   // Delivered.
   await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "host"); s.thread.at(-1).pending = false; });
   await expect(mine.locator(".msg-line")).toHaveClass(/ml-delivered/);
-  await expect(mine.locator(".ml-words")).toContainText("Delivered to host-lead");
+  await expect(mine.locator(".ml-words")).toHaveText(/^You · .+ ago$/);
   await expect(mine.locator(".dk-about")).toContainText("#d5");
   // Couldn't go: the board's Send again.
   await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "host"); s.thread.at(-1).unsent = true; });

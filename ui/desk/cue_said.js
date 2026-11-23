@@ -239,7 +239,7 @@ function cueMsgHtml(e, s, key, m = null) {
   const what = c.what || c.verb;
   const words = `${esc(what[0].toUpperCase() + what.slice(1))}${c.more ? ` <span class="cue-more">· ${esc(c.more)}</span>` : ""}`;
   const lk = `<button class="mg-lk" data-ask-open="${esc(key)}" aria-expanded="${open}">${open ? "Less" : "More"}</button>`;
-  const foot = m ? msgLine({ ...m, acts: `${m.acts ? `${m.acts} ` : ""}${lk}` }) : `<div class="mg-f"><span class="mg-acts">${lk}</span></div>`;
+  const foot = m ? msgLine({ ...m, by: "", acts: `${m.acts ? `${m.acts} ` : ""}${lk}` }) : `<div class="mg-f"><span class="mg-acts">${lk}</span></div>`;
   return `<div class="mg cue-msg${open ? " open" : ""}${m && m.st !== "delivered" ? ` ${m.st}` : ""}"><div class="mg-h">${head}</div><div class="mg-t">${words}</div>`
     + `${open ? cueFoldHtml(c, full, who, it?.title || "") : ""}${foot}</div>`;
 }

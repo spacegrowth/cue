@@ -91,28 +91,53 @@
 
 /* ---------- Items: one white card ---------- */
 .dkn-items { display: flex; flex-direction: column; gap: 18px; min-width: 0; min-height: 0; container: dknl / inline-size; }
-.dk-card.dkn-card { flex: 0 1 auto; min-height: 120px; margin: 0; container: dkn / inline-size; }
-.dkn-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
-.dkn-th, .dkn-row { display: grid; grid-template-columns: 40px minmax(130px, 1.3fr) minmax(252px, 1.5fr) minmax(150px, 1fr); gap: 0 12px; align-items: center; }
+.dk-card.dkn-card { flex: 1 1 0; min-height: 120px; margin: 0; container: dkn / inline-size; }
+/* The card keeps its size however few rows it has (no jumping when a group folds or the list is short): its "↓ N more" sits at its foot. */
+.dkn-card > .dkn-more { margin-top: auto; }
+.dkn-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 0; }
+/* Under a list that scrolls: how many rows are below its edge (desk/c.js deskCMore); a click scrolls a page. */
+.dkn-more { all: unset; flex: none; padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: var(--type-pill); color: var(--muted); cursor: pointer; }
+.dkn-more:hover { color: var(--ink); }
+.dkn-more[hidden] { display: none; }
+/* Scrolled to the end: the line keeps its room (the list doesn't jump), just shows nothing. */
+.dkn-more.end { visibility: hidden; }
+.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(252px, 1.5fr) 136px; gap: 0 12px; align-items: center; }
 .dkn-th { align-items: end; padding: 10px 16px 8px; border-bottom: 1px solid var(--line); font-size: var(--type-tag); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.dkn-th > span:last-child { text-align: right; }
 .dkn-ths { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); text-align: center; }
 .dkn-ths { text-transform: none; letter-spacing: 0; font-weight: 600; }
 .dkn-ths span { padding: 0 2px; font-size: 10.5px; line-height: 1.15; overflow-wrap: normal; }
-.dkn-gh { padding: 18px 16px 4px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; }
+.dkn-gh { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer; padding: 18px 16px 4px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; }
+.dkn-gh:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
 .dkn-gh span { color: var(--muted); font-weight: 500; }
 .dkn-row { padding: 10px 16px; cursor: pointer; }
 .dkn-row:hover { background: var(--panel-2); }
-.dkn-row.on { background: var(--sel); color: var(--on-sel); border-radius: var(--radius-tray); margin: 0 6px; padding: 10px; }
-.dkn-id { font: 600 var(--type-tag) var(--mono); color: var(--muted); }
+.dkn-row.on { background: var(--sel); color: var(--on-sel); }
+.dkn-id { font: 600 var(--type-tag) var(--mono); color: inherit; white-space: nowrap; }
 .dkn-row.on :is(.dkn-id, .dkn-sub, .dkn-tm, .dkn-nw) { color: var(--on-sel); }
 .dkn-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .dkn-tt { font-weight: 600; font-size: var(--type-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-sub { font-size: var(--type-pill); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-now { min-width: 0; font-size: var(--type-pill); display: flex; align-items: center; gap: 4px; overflow: hidden; }
+.dkn-k { display: inline-flex; vertical-align: -2px; margin-right: 4px; }
+/* On a selected row the icon takes the row's text colour: the accent it has elsewhere is the selection's own fill. */
+:is(.dkn-row, .dkn-nx).on .dk-kic { color: var(--on-sel); }
+.dkn-now { min-width: 0; font-size: var(--type-pill); display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow: hidden; }
 .dkn-nw { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .dkn-nw.mono { font-family: var(--mono); }
 .dkn-nask { color: var(--deny); white-space: nowrap; }
-.dkn-now .btn { flex: none; }
+.dkn-now :is(.btn, .dk-ok) { flex: none; }
+/* Ticked: its ✓ filled and "Done · Undo" for a second, then the row folds and fades in one move (commit.js deskLooksGo). */
+.dkn-now .dk-ok.on { background: var(--accent); color: var(--on-accent); }
+/* …and the rest of the row greys out at once, as a row that's done: nothing on it but Undo takes a click. */
+.dkn-row.soon { pointer-events: none; }
+.dkn-row.soon :is(.dkn-id, .dkn-t, .dkn-steps, .dkn-bar) { opacity: 0.4; }
+.dkn-row.soon .dk-undo-c { pointer-events: auto; }
+.dkn-now .dk-soon { margin-left: 0; order: -1; }
+.dkn-row.dk-leave { animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
+@keyframes dkn-leave {
+  from { height: var(--h); opacity: 1; }
+  to { height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; }
+}
 
 /* Its six steps: a dot on a line, done filled, the one it's at in the Board's waiting stripes, how long each took. */
 .dkn-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -143,32 +168,45 @@
 /* Narrow Items: the steps are today's short bar with "3/6 · Tests" (#734's review). */
 @container dkn (max-width: 620px) {
   .dkn-th { display: none; }
-  .dkn-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .dkn-row { grid-template-columns: minmax(0, 1fr) auto; }
   .dkn-steps { display: none; }
   .dkn-bar { display: flex; }
-  .dkn-now { grid-column: 2 / -1; }
+  .dkn-now { grid-column: 1 / -1; }
   .dkn-now:has(.dkn-nw:empty) { display: none; }
 }
 
 /* ---------- Up next and Done today, side by side on the green ---------- */
-.dkn-low { flex: 1 1 0; min-height: 96px; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; align-items: start; color: var(--on-bg); }
-@container dknl (max-width: 460px) { .dkn-low { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
+.dkn-low { flex: 0 0 35%; min-height: 96px; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 0 28px; align-items: stretch; color: var(--on-bg); }
+/* With Up next or Done today open they take 35% of the column; the card has the rest. */
+/* Both folded: just their two headings, right under the card, which takes all the room above them. */
+.dkn-low:not(:has(.dkn-dr:not(.fold))) { flex: none; min-height: 0; }
+@container dknl (max-width: 460px) { .dkn-low { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 14px; overflow-y: auto; } .dkn-dl { overflow: visible; } }
 /* The Board's drawer head: the arrow at the left, the name and count; the whole line folds it. */
 .dkn-dh { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; align-items: baseline; gap: 8px; padding: 0 6px 10px; font-size: var(--type-tag); font-weight: 700; letter-spacing: .08em; color: var(--on-bg); }
+/* A drawer just opened: its rows slide down into place and fade in (desk/c.js DESK_C_OPEN_MS). */
+.dkn-dl.dkn-opening { animation: dkn-open 0.26s cubic-bezier(0.2, 0, 0, 1) both; }
+@keyframes dkn-open { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dkn-dl.dkn-opening { animation: none; } }
 .dkn-dh:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-btn); }
 .dkn-fa { font-size: 10px; opacity: .7; }
 .dkn-dh .dkn-dn { display: inline; font-size: inherit; color: var(--on-bg-muted); font-weight: 600; letter-spacing: .02em; }
 .dkn-hint { color: var(--on-bg-muted); font-weight: 500; letter-spacing: 0; }
 .dkn-dr, .dkn-dl, .dkn-nx { min-width: 0; }
-.dkn-dl { display: flex; flex-direction: column; gap: 2px; }
+/* Each list scrolls on its own under its heading, which stays put. */
+.dkn-dr { display: flex; flex-direction: column; min-height: 0; }
+.dkn-dr > .dkn-dh { flex: none; }
+.dkn-dl { display: flex; flex-direction: column; gap: 2px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.dkn-dr > .dkn-more { padding: 6px 6px 0; border-top: 0; color: var(--on-bg-muted); }
+.dkn-dr > .dkn-more:hover { color: var(--on-bg); }
 .dkn-dnone { padding: 4px 8px; color: var(--on-bg-muted); font-size: var(--type-small); }
 .dkn-nx { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 7px 28px 7px 8px; border-radius: var(--radius-tray); cursor: pointer; }
 .dkn-nx:hover { background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
 .dkn-nx.on { background: var(--sel); color: var(--on-sel); }
 .dkn-a1 { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; font-size: var(--type-small); font-weight: 600; }
-.dkn-nx .dkn-id { width: 44px; flex: none; color: var(--on-bg-muted); }
+.dkn-nx .dkn-id { flex: none; color: inherit; }
+.dkn-nx .dk-kic { color: inherit; }
 .dkn-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-a2 { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 54px; font-size: var(--type-pill); color: var(--on-bg-muted); }
+.dkn-a2 { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 0; font-size: var(--type-pill); color: var(--on-bg-muted); }
 .dkn-a2 > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .dkn-a2 .mach { color: var(--on-bg); border-color: var(--on-bg-muted); }
 .dkn-nx.on :is(.dkn-id, .dkn-a2, .dkn-a2 .mach) { color: var(--on-sel); border-color: var(--on-sel); }
@@ -177,3 +215,27 @@
 
 /* The strip over the lead's chat (panel hidden, or a narrow chat): its item chips as full capsules, as every small label. */
 .dk-c .dk2b-chip { border-radius: var(--radius-pill); }
+
+/* An item opened on the new layout is its session's chat (desk/c.js deskCItemChat): this bar over it, its steps, and
+   when it's ready to check, what to try with Looks right and Send back. */
+.dkn-ib { flex: none; padding: 10px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.dkn-ib2 { display: flex; align-items: center; gap: 16px; }
+.dkn-ib2 .dkn-steps { flex: 1 1 auto; max-width: 420px; }
+.dkn-ibacts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.dkn-ibsee { font-size: var(--type-small); color: var(--ink); }
+.dkn-ibsee b { font-weight: 600; margin-right: 4px; }
+
+/* A session's chat on the new layout (desk/c.js deskCSessChat): back, the Board's top bar, the item it's on, Chat and
+   Files as tabs, then the chat (or its files) and the box. No panel. */
+.dkn-sp { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.dkn-sback { flex: none; padding: 12px 16px 0; }
+.dkn-sp > .ap-head { flex: none; }
+.dkn-smeta { flex: none; padding: 4px 16px 0; font-size: var(--type-small); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkn-sp > .dkn-ib { margin-top: 10px; border-top: 1px solid var(--line); }
+.dkn-stabs { flex: none; display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
+.dkn-stab { all: unset; cursor: pointer; padding: 6px 10px 8px; font-size: var(--type-small); font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dkn-stab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.dkn-stab .n { margin-left: 4px; font-weight: 500; color: var(--muted); }
+.dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
+.dkn-spm { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.dkn-sfiles { padding: 14px 20px; }

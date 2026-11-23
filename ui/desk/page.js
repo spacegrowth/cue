@@ -116,9 +116,12 @@ function deskChatRows(s, page) {
   const any = (s.thread || []).length || older.get(sid)?.msgs.length;
   // Nothing in its thread yet: only what you sent from the Desk's box (`page.pending`), drawn as the chat draws it.
   if (!any) return (page?.pending || []).map((o) => outboxRow(o, s, o.key || `p:${o.at}`, page)).join("");
-  // Its Desk lines out, a count line for each run of them (desk/runs.js, #688). A lead's chat draws Cue's notes as its
-  // short lines (#616) wherever it shows, an item's page too, so one message is drawn one way.
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: deskLineHtml, you: (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid) ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
+  // A lead's chat: its Desk lines out, a count line for each run of them (desk/runs.js, #688), and Cue's notes as its
+  // short lines (#616) wherever it shows, so one message is drawn one way. On the new layout (desk/c.js), any other
+  // session's chat shows its replies as it wrote them (#744): IF PICKED:, CHECK: and its other lines for Cue as plain
+  // text, not dressed up as cards.
+  const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead || !deskCOn() ? deskLineHtml : undefined, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -412,7 +415,7 @@ function deskChatBack(from, d) {
   const label = i ? deskNum(i) : from?.kind === "sessions" ? "All sessions" : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskB2On() ? deskB2ItemsWord(d) : deskLeadName(d) || "Back";
   return `<button class="dk-back" data-desk-chat-back>‹ ${esc(label)}</button>`;
 }
-function deskSessChat(sid, from, d, foot = "") {
+function deskSessChat(sid, from, d, foot = "", top = "") {
   const s = sessionOf(sid);
   if (!s) return null;
   // A Desk's lead opened as a session: Cue's messages to it folded to a line, as in the Desk's chat (#616).
@@ -434,7 +437,7 @@ function deskSessChat(sid, from, d, foot = "") {
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),
-    main: `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`, foot });
+    main: `${top}<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`, foot });
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */

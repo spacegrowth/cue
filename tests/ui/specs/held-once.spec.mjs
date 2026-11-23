@@ -32,7 +32,7 @@ async function once(page, cue, pane, text, sid) {
   await expect(pane.locator(".cv-you.msg-sending")).toHaveCount(0);
   // It goes: the same one, now sent.
   await goes(cue, sid);
-  await expect(mine.locator(".msg-line")).toContainText("Delivered to");
+  await expect(mine.locator(".msg-line")).toContainText(/^You · .+ ago/);
   await expect(mine).toHaveCount(1);
 }
 

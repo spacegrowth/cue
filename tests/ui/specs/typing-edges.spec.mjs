@@ -156,7 +156,7 @@ test("A kept message stays where you wrote it: drawn in time order, and its line
     delete s.held;
     s.thread.push({ role: "you", text: "Run the queue tests too.", at_ms: t - 1000, written_ms: t - 200000, delivery: [{ at_ms: t - 900, what: "taken: it started a turn" }] });
   }, t);
-  await expect(bubble.locator(".msg-line")).toContainText("Delivered to");
+  await expect(bubble.locator(".msg-line")).toHaveText(/^You · .+ ago$/);
   await expect.poll(order).toEqual(written);
   expect(await bubble.evaluate((el) => el._same === true), "the same bubble, its line changed in place").toBe(true);
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/chat-held-taken.png` });

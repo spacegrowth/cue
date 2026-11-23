@@ -501,7 +501,7 @@ function cueSaidLine(said, key, text, meta, review = null) {
   const lks = folds.map(([k, label]) => `<button class="mg-lk" data-ask-open="${esc(k)}" aria-expanded="${isOpen(k)}">${isOpen(k) ? "−" : "+"} ${label}</button>`).join("");
   const full = folds.filter(([k]) => isOpen(k)).map(([, , t]) => `<div class="mg-full">${esc(t)}</div>`).join("");
   const head = `${cueMark()}<span class="mg-who">Cue</span>${st?.to ? `<span class="mg-to">→ ${esc(st.to)}</span>` : ""}<span class="mg-tag">Crew</span>`;
-  const foot = st ? msgLine({ ...st, acts: `${st.acts ? `${st.acts} ` : ""}${lks}` }) : `<div class="mg-f"><span class="mg-st">${meta}</span>${lks ? `<span class="mg-acts">${lks}</span>` : ""}</div>`;
+  const foot = st ? msgLine({ ...st, by: "", acts: `${st.acts ? `${st.acts} ` : ""}${lks}` }) : `<div class="mg-f"><span class="mg-st">${meta}</span>${lks ? `<span class="mg-acts">${lks}</span>` : ""}</div>`;
   return `<div class="mg cue-you${st && st.st !== "delivered" ? ` ${st.st}` : ""}"><div class="mg-h">${head}</div><div class="mg-t">${cueWords(said.html)}</div>${full}${foot}</div>`;
 }
 /** Cue's ring mark at the head of its own messages (window.js's small mark, accent through .mg-mk). */

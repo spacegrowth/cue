@@ -90,9 +90,9 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await expect(mine).toHaveClass(/msg-queued/);
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").thread.at(-1).pending = false; });
   await expect(mine).toHaveCount(1);
-  // The same line as under any message (#422): delivered, to whom, when; its bubble filled.
+  // The same line as under any message (#422): delivered says who and how long ago (#744); its bubble filled.
   const line = mine.locator(".msg-line");
-  await expect(line).toContainText("✓ Delivered to host-lead ·");
+  await expect(line).toHaveText(/^You · .+ ago$/);
   if (process.env.SHOT_DIR) await line.locator("xpath=..").screenshot({ path: `${process.env.SHOT_DIR}/took.png` });
   // (Polled: a redraw between finding the line and reading it would leave a detached one, with no style.)
   await expect.poll(() => line.evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopWidth, c.backgroundColor, c.cursor, e.tagName]; })).toEqual(["0px", "rgba(0, 0, 0, 0)", "auto", "DIV"]);
