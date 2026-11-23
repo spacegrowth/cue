@@ -15,7 +15,9 @@ use crate::desk::hub::landing::git::git;
 use crate::desk::hub::landing::main_line::{main_checkout, same_dir};
 use crate::desk::hub::landing::unlanded::{own_branches, rev_left};
 use crate::desk::hub::prelude::*;
-use crate::desk::DeskItem;
+use crate::desk::hub::core::desk::Effects;
+use crate::desk::hub::landing::trees::Landed;
+use crate::desk::{DeskItem, ItemTree};
 
 /// Its holder's work outside its own copy, not on main.
 #[derive(Default)]
@@ -269,6 +271,59 @@ impl Hub {
             }
         }
         out
+    }
+}
+
+impl Hub {
+    /// Item `id`'s holder changed files in the main folder that its copy `t` doesn't have (#653): any not named to it
+    /// yet, it's sent back naming those (its turn ends); all named before, it lands without them and the lead is told
+    /// which (they stay in the folder, uncommitted). Each file is named to it once and to the lead once (#770: a
+    /// landing tried again after a wait or a failed check said them again). None: nothing left there, it lands.
+    pub(super) fn land_main_left(&self, id: &str, it: &DeskItem, t: &ItemTree) -> Option<Landed> {
+        let left = self.main_leftovers(it, t);
+        if left.is_empty() {
+            return None;
+        }
+        let unnamed: Vec<String> = left.iter().filter(|p| !it.main_left.contains(p)).cloned().collect();
+        if !unnamed.is_empty() {
+            self.write(|st| {
+                if let Some(i) = st.desk.item_mut(id) {
+                    i.main_left.extend(unnamed.iter().cloned());
+                }
+            });
+            let words = crate::desk::hub::landing::own_work::main_left_words(&unnamed, t);
+            self.finish_back(it, &words, "main_left", "", true);
+            return Some(Landed::Done);
+        }
+        let fx = self.write(|st| {
+            let mut fx = Effects::default();
+            let Some(i) = st.desk.item_mut(id) else { return fx };
+            let title = i.title.clone();
+            if let Some(f) = i.finish.as_mut() {
+                for p in left.iter().map(|p| format!("{}/{p}", t.repo.trim_end_matches('/'))) {
+                    if !f.without.contains(&p) {
+                        f.without.push(p);
+                    }
+                }
+            }
+            let untold: Vec<String> = left.iter().filter(|p| !i.main_left_told.contains(p)).cloned().collect();
+            if untold.is_empty() {
+                return fx;
+            }
+            i.main_left_told.extend(untold.iter().cloned());
+            let project = i.project.clone();
+            if let Some(lead) = st.desk.lead_sid(&project) {
+                let words = format!(
+                    "#{id} ({title}) lands from its copy without these files its session changed in the main folder ({}), named to it once already: {}. They stay there, uncommitted; tell the user whose they are.",
+                    t.repo,
+                    untold.join(", ")
+                );
+                fx.sends.push((lead.to_string(), words));
+            }
+            fx
+        });
+        self.desk_done(fx);
+        None
     }
 }
 

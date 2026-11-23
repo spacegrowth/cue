@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 292 |
 | Lock-graph edges | 54 |
 | Spawn sites | 95 |
-| External calls: fs / db / process / notify / login / socket | 534 / 232 / 61 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 535 / 232 / 61 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -503,7 +503,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (534)
+### fs (535)
 
 | In | Call | Times |
 |---|---|---|
@@ -830,6 +830,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/edits.rs::edited_between_named` | read_to_string | 1 |
 | `logs/steps/edits.rs::edited_files_by` | read_to_string | 2 |
 | `logs/steps/edits.rs::worked_between` | read_to_string | 1 |
+| `logs/steps/edits.rs::writes_between` | read_to_string | 1 |
 | `logs/steps/feed.rs::Head::read` | metadata | 1 |
 | `logs/steps/feed.rs::start_of` | File::open | 1 |
 | `logs/steps/helper.rs::helper_meta` | read | 1 |
