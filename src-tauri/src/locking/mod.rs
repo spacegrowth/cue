@@ -7,7 +7,8 @@
 //!   then by the waiter with its backtrace once it has the lock; in debug and test builds a wait of five
 //!   seconds is a panic (nothing in Cue holds a lock that long: two threads each wait on the other's
 //!   lock, or one held across slow work).
-//! - `probe` watches the main thread and logs every lock held while it's stalled.
+//! - `probe` watches the main thread and logs every lock held while it's stalled; `sample` then samples
+//!   the window's page process, for what the page was busy with.
 //! - `stats` counts every wait for a busy lock and every main-thread answer time, for a long run to judge.
 //!
 //! A lock another thread panicked while holding is taken anyway: what's in it is whole (each change is
@@ -19,6 +20,7 @@ mod held;
 mod lint;
 pub mod probe;
 mod report;
+pub mod sample;
 pub mod stats;
 mod watchdog;
 
