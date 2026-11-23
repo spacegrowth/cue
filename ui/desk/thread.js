@@ -701,7 +701,7 @@ function deskCrewPane(lead, agent, d, foot = "") {
   const size = t.stat || (shown.length ? plural(shown.length, "file") : ""), sofar = [size, diff].filter(Boolean).join(" · ");
   const files = shown.length ? `<div class="dk-files">${shown.map(esc).join(" · ")}</div>` : "";
   // data-bg-scroll (app/render.js): it opens at its end and follows new steps there; scrolled up, it keeps your place.
-  const main = `<div class="dk-pane dk-crewpg" data-scroll-key="${skey}" data-bg-scroll="${skey}">${chat}${(sofar || files) && !deskCOn() ? `<div class="dk-csofar">${sofar ? `<p class="dk-quiet">${working ? "So far" : "Changed"}: ${sofar}</p>` : ""}${files}</div>` : ""}</div>`;
+  const main = `<div class="dk-pane dk-crewpg" data-scroll-key="${skey}" data-bg-scroll="${skey}">${chat}${deskCOn() && working ? `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(t.step || "Working")}</span><span class="dim"> · <span data-ago="${t.step_ms || t.started_ms}">${ago(t.step_ms || t.started_ms)}</span></span></div>` : ""}${(sofar || files) && !deskCOn() ? `<div class="dk-csofar">${sofar ? `<p class="dk-quiet">${working ? "So far" : "Changed"}: ${sofar}</p>` : ""}${files}</div>` : ""}</div>`;
   const back = deskOpen?.kind === "crew" && deskOpen.from?.kind === "sessions" ? `<button class="dk-back" data-desk-chat-back>‹ All sessions</button>` : deskBack(leadName, lead);
   // The new layout: no panel. Its name and where it stands over Chat · Files · Activity tabs, Stop it and ⋯ by its name.
   if (deskCOn()) return deskCCrewPage({ lead, key, t, it, leadName, back, word, dot, acts: `${stop}${more}`, main, files: deskCrewFiles(lead, t), d, foot });
