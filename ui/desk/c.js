@@ -227,6 +227,23 @@ function deskCRow(i) {
   return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${i.state === "to_check" && deskLooksSoon.has(i.id) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div>${deskCLine === "line" ? `<div class="dkn-now"><span class="dkn-nl">${deskCNow(i)}</span><span class="dkn-sofar">${deskCSoFar(i)}</span></div>${deskCFoot(i)}` : `<div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>`}</div>`;
 }
 /** A row in Up next or Done today, on the green: #id and title (a grip on the ones you can drag), and a line under it. */
+/** Why an Up next item waits, in full plain words (html, escaped): what it waits for and what starts it. "" when it
+ *  isn't waiting on anything Cue knows (then its status line says where it stands). */
+function deskCWhy(i) {
+  if (i.state === "held") return "Parked: press Start to begin it";
+  if (i.state !== "queued" && i.state !== "new") return "";
+  if (i.holder || i.start_failed || deskCopyWaits(i) || (i.route_failed && !i.next_for)) return "";
+  const nf = i.next_for ? esc(deskHolderOf({ holder: i.next_for })) : "";
+  const then = nf ? `, then goes to ${nf}` : "";
+  if (i.after) {
+    const on = deskAfterName(i);
+    return on.startsWith("#") ? `Waits for ${esc(on)} to finish first${then}` : `Waits for ${esc(on)}${then}`;
+  }
+  if (i.machine_wait) return `Waits for room: ${esc(i.machine || i.machine_wait)} already runs all the items it can`;
+  if (nf) return `Next for ${nf} once it finishes what it's on${i.fresh_at ? `; a fresh session takes it at ${deskQHm(i.fresh_at)} if not` : ""}`;
+  if (i.state === "new") return "Not given out yet: the Desk lead hasn't picked it up";
+  return "Waits for a free session";
+}
 function deskCLow(i, line) {
   const on = deskOpen?.kind === "item" && deskIdIs(i, deskOpen.id);
   const mach = deskCMach(i);
@@ -443,7 +460,8 @@ function deskCList(project, taskApprovals) {
   const head = `<div class="dkn-th" aria-hidden="true"><span>Item</span>${deskCLine === "line" ? "" : "<span>Progress</span>"}<span>Now</span></div>`;
   // Where it stands, in words only (deskB2Status is html, escaped already).
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");
-  const qRow = deskQRow((i) => deskCLow(i, said(i))), lowRow = (i) => (queued.has(i) ? qRow(i) : deskCLow(i, said(i)));
+  const why = (i) => deskCWhy(i) || said(i);
+  const qRow = deskQRow((i) => deskCLow(i, why(i))), lowRow = (i) => (queued.has(i) ? qRow(i) : deskCLow(i, why(i)));
   const up = deskCDrawer("next", "UP NEXT", next.length, next.length > 1 ? "drag to reorder" : "", next.map(lowRow).join(""), "Nothing up next.");
   const done = deskCDrawer("done", "DONE TODAY", doneToday.length, "", doneToday.map((i) => deskCLow(i, esc(deskCDoneLine(i)))).join(""), "Nothing done today.");
   requestAnimationFrame(() => { deskCFitLists(); deskCFitNames(); });
