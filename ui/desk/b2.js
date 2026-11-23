@@ -212,10 +212,10 @@ function deskB2Row(i) {
   return `<div class="dk-it dk2b-row${on ? " on" : ""}${deskFeat(i) ? " dk-feat" : ""}${i.state === "needs_you" ? " ask" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><span class="dk2b-n">#${esc(i.id)}</span><div class="dk2b-t"><div class="dk2b-tt"><span>${esc(i.title)}</span>${deskMachTag(i)}</div><div class="dk2b-ts${mono ? " mono" : ""}">${st}</div></div><div class="dk2b-st">${deskB2Track(i)}<span>${deskB2StepWord(i)}</span></div>${right}</div>`;
 }
 /** A group: its head (WORKING 7) and its rows, the first 3 in the All tab and Show all N; each drawn by `row`. */
-function deskB2Group(key, label, list, extra = "", n = list.length, row = deskB2Row) {
-  if (!list.length && !extra) return "";
+function deskB2Group(key, label, list, extra = "", n = list.length, row = deskB2Row, first = "") {
+  if (!list.length && !extra && !first) return "";
   const [rows, more] = deskB2Cap(key, list);
-  return `<div class="dk2b-gh" data-desk2b-group="${key}">${label} <i>${n}</i></div>${rows.map(row).join("")}${more}${extra}`;
+  return `<div class="dk2b-gh" data-desk2b-group="${key}">${label} <i>${n}</i></div>${first}${rows.map(row).join("")}${more}${extra}`;
 }
 /** The folded groups that are open, by key ("done", "away"), the same on every Desk; kept across restarts (#430). */
 const deskB2Folds = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.desk2bFolds") || "[]")); } catch { return new Set(); } })();
@@ -247,7 +247,9 @@ function deskB2List(project, taskApprovals) {
   const next = [...g.queued, ...g.held];
   const doneToday = deskB2DoneToday(d), calls = d?.away?.on ? deskAwayCalls(d) : [];
   const tabs = deskB2Tabs(g, taskApprovals);
-  const you = deskB2Group("you", "WAITS ON YOU", waits, aw.html || "", waits.length + (aw.n || 0));
+  // Steps held for your OK at the very top, oldest first, never behind Show all (#749).
+  const hf = deskHeldFirst(aw, waits, deskB2Row);
+  const you = deskB2Group("you", "WAITS ON YOU", hf.rest, aw.more || "", waits.length + (aw.n || 0), deskB2Row, hf.html);
   const work = deskB2Group("working", "WORKING", working);
   // Queued rows drag into your order by their grip (#387, #424: list.js deskQRow, deskQPress); parked ones don't.
   const qRow = deskQRow(deskB2Row), queued = new Set(g.queued);

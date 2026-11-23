@@ -196,10 +196,12 @@ const deskFeatBar = (f, cls = "") => `<span class="dk-fp${cls}"><span>${deskFeat
 function deskGroups(project, taskApprovals) {
   const d = deskOf(project);
   const items = deskItemsWithRequests(d, taskApprovals).sort((a, b) => deskMs(a.created) - deskMs(b.created));
-  // What asks you something before what's ready to check; then what unblocks the most first, then the oldest (#182).
+  // A step Cue holds for your OK first, oldest first (#749); then what asks you something before what's ready to
+  // check; then what unblocks the most first, then the oldest (#182).
   const waiting = items.filter(deskWaits);
-  const ub = new Map(waiting.map((i) => [i.id, deskUnblocks(i, items).length]));
-  waiting.sort((a, b) => (a.state === "needs_you" ? 0 : 1) - (b.state === "needs_you" ? 0 : 1) || ub.get(b.id) - ub.get(a.id));
+  const ub = new Map(waiting.map((i) => [i.id, deskUnblocks(i, items).length])), ha = new Map(waiting.map((i) => [i.id, deskHeldAt(i)]));
+  const heldOrder = (a, b) => (!!ha.get(b.id) - !!ha.get(a.id)) || (ha.get(a.id) && ha.get(b.id) ? ha.get(a.id) - ha.get(b.id) : 0);
+  waiting.sort((a, b) => heldOrder(a, b) || (a.state === "needs_you" ? 0 : 1) - (b.state === "needs_you" ? 0 : 1) || ub.get(b.id) - ub.get(a.id));
   const review = items.filter((i) => deskReadyToReview(i) && !deskWaits(i));
   // A piece of a feature that's listed shows under it (#282), not in a group of its own; one waiting on you or ready
   // to review stays in those groups too, so nothing you're asked is hidden.
@@ -512,8 +514,10 @@ function deskList(project, taskApprovals) {
   // landing lanes, nearly done, over it and what stopped under it), Queue, Parked (folded), Done (folded).
   // Today's page (B2, desk/b2.js): the long groups show their first 3, then Show all N.
   const cap = (k, list) => (deskB2On() ? deskB2Cap(k, list) : [list, ""]);
-  const [asks, asksMore] = cap("you", g.asks), [check, checkMore] = cap("check", g.check), [queued, queuedMore] = cap("queued", g.queued);
-  put("you", group("you", `Waiting on you <span class="n">${nWait}</span>`, `${asks.map(row).join("")}${asksMore}${aw.html}${none}`, `you${nWait ? "" : " none"}`));
+  // Steps held for your OK at the very top, oldest first, never behind Show all (#749).
+  const hf = deskHeldFirst(aw, g.asks, row);
+  const [asks, asksMore] = cap("you", hf.rest), [check, checkMore] = cap("check", g.check), [queued, queuedMore] = cap("queued", g.queued);
+  put("you", group("you", `Waiting on you <span class="n">${nWait}</span>`, `${hf.html}${asks.map(row).join("")}${asksMore}${aw.more}${none}`, `you${nWait ? "" : " none"}`));
   // Ready to check: what finished and waits for your Looks right or Send back (split out of Waiting on you, #602).
   if (g.check.length) put("check", group("check", `Ready to check <span class="n">${g.check.length}</span>`, check.map(row).join("") + checkMore));
   // The landing line (above In progress, #468), numbered in the order it lands (one at a time), then what's on main for the next install, with

@@ -366,15 +366,17 @@ function deskCList(project, taskApprovals) {
   const queued = new Set(g.queued), next = [...g.queued, ...g.held];
   const doneToday = deskB2DoneToday(d);
   // Each group folds to its heading with a click on it, as Up next and Done today do (remembered with them).
-  const grp = (key, label, list, extra = "", n = list.length) => {
-    if (!list.length && !extra) return "";
+  const grp = (key, label, list, extra = "", n = list.length, first = "") => {
+    if (!list.length && !extra && !first) return "";
     const open = !deskCFolds.has(key);
-    return `<button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span>${n}</span></button>${open ? list.map(deskCRow).join("") + extra : ""}`;
+    return `<button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span>${n}</span></button>${open ? first + list.map(deskCRow).join("") + extra : ""}`;
   };
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
   const leadAsk = ask ? `<div class="dk-it dkn-row ask" role="button" tabindex="0" data-desk-c-lead><div class="dkn-t"><span class="dkn-tt">${esc(deskLeadName(d))}</span><span class="dkn-sub">The Desk lead</span></div>${deskCLine === "line" ? "" : `<div class="dkn-pl"></div>`}<div class="dkn-now"><span class="dkn-nask">${esc(deskOneLine(summary(ask) || "Asks you something"))}</span></div></div>` : "";
-  const you = grp("you", "WAITING ON YOU", waits, leadAsk + (aw.html || ""), waits.length + (aw.n || 0) + (ask ? 1 : 0));
+  // Steps held for your OK at the very top, oldest first (#749): the lead's own too when it asks one.
+  const hf = deskHeldFirst(aw, waits, deskCRow, ask?.one_way && leadAsk ? [[ask.created_ms || 0, leadAsk]] : []);
+  const you = grp("you", "WAITING ON YOU", hf.rest, (ask?.one_way ? "" : leadAsk) + (aw.more || ""), waits.length + (aw.n || 0) + (ask ? 1 : 0), hf.html);
   const work = grp("working", "WORKING", working);
   const kept = (d?.kept || []).length ? `<div class="dkn-gh" data-desk2b-group="kept">KEPT COPIES <span>${d.kept.length}</span></div>${d.kept.map(deskKeptRow).join("")}` : "";
   const calls = d?.away?.on ? deskAwayCalls(d) : [];
