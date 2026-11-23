@@ -371,7 +371,8 @@ function deskCSessChat(sid, from, d, foot, bar = "") {
     const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Nothing said yet.</div>` : "";
     main = `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
   }
-  return `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${meta}${bar}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
+  // Its crew's tray on its box, as on the Board (team.js crewTray): who's at work for it, open to see each.
+  return `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${meta}${bar}${tabs}<div class="dkn-spm">${main}${crewTray(sid)}${foot}</div></div>`;
 }
 /** Waiting on you's order as it was last drawn. */
 let deskCWaitOrder = [];
