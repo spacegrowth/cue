@@ -30,7 +30,7 @@ impl Sessions {
         true
     }
 
-    /// Pin it to the top of the Inbox, or unpin it (`on` false). True if that changed anything.
+    /// Pin it to the top of a list, or unpin it (`on` false). True if that changed anything.
     pub fn set_pinned(&mut self, session_id: &str, on: bool) -> bool {
         let Some(s) = self.0.get_mut(session_id) else { return false };
         if (s.pinned_ms > 0) == on {
@@ -40,7 +40,7 @@ impl Sessions {
         true
     }
 
-    /// Snooze it in the Inbox until `until_ms`, or wake it (0). True if that changed anything.
+    /// Snooze it until `until_ms`, or wake it (0). True if that changed anything.
     pub fn set_snooze(&mut self, session_id: &str, until_ms: u64) -> bool {
         let Some(s) = self.0.get_mut(session_id) else { return false };
         if s.snooze_ms == until_ms {

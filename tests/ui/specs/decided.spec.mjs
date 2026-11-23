@@ -1,5 +1,5 @@
 // An agent's judgment calls (`DECIDED: what — why` lines; core/md.js decidedHtml): one quiet block in its message, in the
-// chat and the Inbox alike, each call a line with its reason under it; a one-line preview says "Decided:".
+// chat, each call a line with its reason under it; a one-line preview says "Decided:".
 import { test, expect } from "./cue.mjs";
 
 const TEXT = "Done.\n\nDECIDED: Kept per-key limits — keys are what the docs promise\n- DECIDED: skipped the flaky date test -- it needs a fixed clock\nDECIDED: no reason given here\n\nInstalling now.";

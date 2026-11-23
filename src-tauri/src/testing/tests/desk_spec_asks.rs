@@ -6,7 +6,7 @@ use crate::hosted::HostedEvent;
 use crate::testing::World;
 use serde_json::json;
 
-/// The lead's ASK card in the Inbox: its id.
+/// The lead's ASK card: its id.
 fn lead_card(w: &World, lead: &str) -> String {
     let snap = w.snapshot();
     let card = snap.card(lead);

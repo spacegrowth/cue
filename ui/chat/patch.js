@@ -149,9 +149,9 @@ function morphAttrs(a, b) {
 let escArmed = 0;           // when Esc was last pressed on a working session (twice within 1.5s stops it)
 let focusedTarget = null;   // the Active target whose text box last got the cursor
 let overWas = false;        // something covered the chat at the last draw (a sheet, the live list, an image…)
-/** Where a view's open chat keeps its box: the Board's Active pane, the Desk's right side, the Inbox's open row. */
-const BOX_HOMES = { board: ".active-pane", desk: ".dk-right :is(.dk-box, .foot:not(.held) .composer)", inbox: ".inbox-page .ib-box" };
-/** Every box takes the cursor through here (opening something, Esc Esc, Send back opening, the Inbox moving on):
+/** Where a view's open chat keeps its box: the Board's Active pane, the Desk's right side. */
+const BOX_HOMES = { board: ".active-pane", desk: ".dk-right :is(.dk-box, .foot:not(.held) .composer)" };
+/** Every box takes the cursor through here (opening something, Esc Esc, Send back opening):
  *  `key`'s box (a box's draft key; a session's "s:…" is the Active pane's), else the box of view `home`'s open chat
  *  (BOX_HOMES). The cursor goes to the end of what's in it, unless `end` is false (left where the browser puts it);
  *  `scroll` false keeps the page from scrolling to it. False when there's no such box. */

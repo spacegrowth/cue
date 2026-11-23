@@ -1,7 +1,7 @@
 // Enter and the cursor in every message box (refactor step 3f, one Enter and one focus). Per box: Enter while an
 // input method is composing (isComposing, or WebKit's keyCode 229) never sends, ⇧↵ makes a new line, ↵ sends where
 // that box sends. Then where the cursor lands after the main actions: opening a session or a Desk item, Send back
-// opening and closing, the Inbox moving on to another row, the mini window opening. These write down how each box
+// opening and closing, the mini window opening. These write down how each box
 // behaved before Enter and focus went through one path each, so moving a box keeps it.
 import { test, expect, openDesk } from "./cue.mjs";
 
@@ -138,28 +138,6 @@ test("Go back on ticked decisions: the box takes the cursor; composing Enter nev
   await expect(box).toBeFocused();
   await enterKeys(page, cue, box, "desk_undo", { decisionId: "c1", answer: "keep the old one" });
   await expect(box).toHaveCount(0);
-});
-
-// ---------- the Inbox ----------
-
-test("the Inbox's reply box: composing Enter never sends, ⇧↵ a new line, ↵ sends", async ({ page, cue }) => {
-  await cue.open("board-waiting");
-  await page.locator('.switch-view [data-view="inbox"]').click();
-  await page.locator('[data-inbox-fold="run"]').click();
-  await page.locator('.ib-row[data-inbox-open="eng"]').click();
-  const box = page.locator('.inbox-page[data-inbox-page="eng"] .ib-box textarea');
-  await enterKeys(page, cue, box, "send_to_session", { sessionId: "eng", text: "keep the old one" });
-});
-
-test("the Inbox: the box the cursor was in goes away, the box on screen now takes it", async ({ page, cue }) => {
-  await cue.open("board-waiting");
-  await page.locator('.switch-view [data-view="inbox"]').click();
-  await page.locator('[data-inbox-fold="run"]').click();
-  await page.locator('.ib-row[data-inbox-open="eng"]').click();
-  await page.locator('.inbox-page[data-inbox-page="eng"] .ib-box textarea').focus();
-  // Another row opens under the cursor (as Allow moving on to the next does): its box takes the cursor.
-  await page.evaluate(() => { inboxSid = "sec"; renderMain(); });
-  await expect(page.locator('.inbox-page[data-inbox-page="sec"] .ib-box textarea')).toBeFocused();
 });
 
 // ---------- the mini window ----------

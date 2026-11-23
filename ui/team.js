@@ -424,14 +424,13 @@ const TRAY_LEAVES = 80;
  *  under a row scrolled into the body, its row with it. */
 function placeTeamRows() {
   // The crew's page too (team_page.js): its parts scroll inside themselves, so only its menu is placed.
-  // The Inbox's crew blocks too (inbox/): only their menu is placed.
-  for (const tray of document.querySelectorAll(".crew-tray.open, .crew-page, .ib-crew, .ib-mates")) {
+  for (const tray of document.querySelectorAll(".crew-tray.open, .crew-page")) {
     const pane = tray.closest(".active-pane"), body = tray.querySelector(".crew-body");
     const head = tray.querySelector(".crew-head")?.offsetHeight || 0;
     // What's under the tray in the pane's flow: the box, or the ask's card.
     const under = [...(pane?.children || [])].filter((el) => el.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_PRECEDING && getComputedStyle(el).position !== "absolute").reduce((n, el) => n + el.offsetHeight, 0);
     if (pane && body) body.style.maxHeight = `${Math.max(60, Math.min(Math.max(120, Math.round(pane.clientHeight / 2) - head), pane.clientHeight - under - head - TRAY_LEAVES))}px`;
-    const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more], .cp-body [data-mt-more], .ib-crew [data-mt-more], .ib-mates [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
+    const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more], .cp-body [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
     if (menu && name) {
       const t = tray.getBoundingClientRect(), r = name.getBoundingClientRect();
       menu.style.left = `${Math.round(r.left - t.left)}px`;

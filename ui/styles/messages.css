@@ -142,7 +142,7 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-status:is(.limit, .stuck) { color: var(--ink); }
 .mg-status .btn { margin-left: 6px; flex: none; }
 
-/* ---------- a plain line: the same message as text in a row (Inbox, a board card, Working on, the mini) ---------- */
+/* ---------- a plain line: the same message as text in a row (a board card, Working on, the mini) ---------- */
 /* It takes the size of the row it sits in (a card's 12.5px), never a size of its own. */
 .mg-plain { font-size: inherit; line-height: inherit; color: var(--muted); min-width: 0; }
 .mg-plain .mg-who, .mg-plain b { color: var(--ink); font-weight: 650; }

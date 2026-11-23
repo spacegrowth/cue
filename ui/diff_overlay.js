@@ -1,5 +1,5 @@
-// A diff over the page: a click on a changed file (a Desk item's Files changed, a turn's "Changed this turn" in the
-// Inbox) opens it here instead of leaving for the session's Diff tab. Files on the left, the picked file's diff on the
+// A diff over the page: a click on a changed file (a Desk item's Files changed, a session's "Changed this turn" on
+// the Desk) opens it here instead of leaving for the session's Diff tab. Files on the left, the picked file's diff on the
 // right; ↑ ↓ step through the files, Esc (or a click outside, or ×) closes it and you're where you were.
 // Drawn on its own element over the window, apart from renderMain, so a redraw under it doesn't touch it.
 
@@ -71,7 +71,7 @@ function diffOverlayKey(e) {
   return true;
 }
 
-/** A short list of changed files, as Inbox's side and the Desk's panel show them: each path with its +/−, the first
+/** A short list of changed files, as the Desk's panel shows them: each path with its +/−, the first
  *  `max`, then "and N more files ›". `files`: diffParse's, or { path } alone while their lines are on the way.
  *  `attrs(n)`: the click attributes that open file n's diff, "" for a plain row; `more`: the "more" link's ("" leaves
  *  it out). */

@@ -181,10 +181,10 @@ pub struct Session {
     /// wherever Cue lists them.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub starred_ms: u64,
-    /// You pinned it to the top of the Inbox: since when; 0 = it isn't. Kept, like a star.
+    /// You pinned it to the top of a list: since when; 0 = it isn't. Kept, like a star.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub pinned_ms: u64,
-    /// You snoozed it in the Inbox: hidden there until this time; 0 = it isn't.
+    /// You snoozed it: hidden until this time; 0 = it isn't.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub snooze_ms: u64,
     /// When you snoozed it: anything it asks after this brings it back before its time.

@@ -1105,7 +1105,7 @@ test("the Board Desk link uses the tray and omits repeated task details", async 
   // (Read on the chip as drawn now: a redraw between finding it and reading it would leave a detached one.)
   await expect(lead).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(lead).toHaveCSS("border-top-width", "0px");
-  await expect(lead).toHaveAttribute("data-inbox-desk", "desk-feature");
+  await expect(lead).toHaveAttribute("data-desk-hand", "desk-feature");
   await expect(lead.locator("svg path").first()).toHaveAttribute("d", /^M4 13l3-7/);
   await expect(card("host-lead")).not.toContainText("Hosted sessions can't open the canvas");
   await expect(lead.locator("svg.dk-kic")).toHaveCount(1);
@@ -1172,7 +1172,7 @@ test("Board Waiting: a Desk session's your-turn row folds with Desk at the foot;
   await expect(fold).toHaveAttribute("aria-expanded", "true");
 });
 
-test("the Desk's mark is on the session's chat title and its Inbox page head too, never twice on a card (#156)", async ({ page, cue }) => {
+test("the Desk's mark is on the session's chat title, never twice on a card (#156)", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="board"]').click();
   // Each card has it once (nameSpan carries it), never doubled.

@@ -107,18 +107,6 @@ pub(crate) async fn set_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: 
     with_hub(&hub, move |h| h.set_watch(&session_id, on)).await
 }
 
-/// Pin a session to the top of the Inbox, or unpin it.
-#[tauri::command]
-pub(crate) async fn set_pinned(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
-    with_hub(&hub, move |h| h.set_pinned(&session_id, on)).await
-}
-
-/// Snooze a session in the Inbox until `until_ms` (0: bring it back now).
-#[tauri::command]
-pub(crate) async fn set_snooze(hub: State<'_, Arc<Hub>>, session_id: String, until_ms: u64) -> Result<(), String> {
-    with_hub(&hub, move |h| h.set_snooze(&session_id, until_ms)).await
-}
-
 /// Star a session (you're following it), or unstar it.
 #[tauri::command]
 pub(crate) async fn set_starred(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {

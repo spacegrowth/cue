@@ -50,7 +50,6 @@ mod kept_history;
 mod live_writes;
 mod log_paths;
 pub(crate) use log_paths::{codex_sessions_dir, pi_sessions_dir, steps_path};
-mod open;
 pub(crate) mod page_look;
 mod picking_up;
 pub(crate) mod ports;
@@ -201,12 +200,6 @@ pub(crate) struct Store {
     shown_seq: u64,
     /// Each project's Desk: its items, decisions and lead (desk.rs, desk/hub/lead/run.rs).
     pub(crate) desk: crate::desk::Desk,
-    /// What git last said of each crew folder on this Mac (open.rs), for the Inbox side's Open rows; when it was
-    /// last read, whether a read is under way, and whether another was asked for meanwhile.
-    open_git: HashMap<String, open::GitLook>,
-    open_scan_ms: u64,
-    open_scanning: bool,
-    open_again: bool,
     /// When each Desk holder's conversation on this Mac was last written (ms), read every second with the store let
     /// go (activity.rs note_holder_logs): a holder that wrote in the last minute is at work (#291).
     pub(crate) holder_logs: HashMap<String, u64>,
@@ -355,7 +348,7 @@ impl Hub {
 
     fn new_item(st: &mut Store, kind: &str, origin: Origin) -> Item {
         st.next += 1;
-        // It asks something new: a snooze on it in the Inbox ends here (as a new reply wakes a snoozed mail).
+        // It asks something new: a snooze on it ends here (as a new reply wakes a snoozed mail).
         st.sessions.set_snooze(&origin.session_id, 0);
         Item {
             id: format!("n{}", st.next),
@@ -556,8 +549,6 @@ impl Hub {
             "today": today::today(&st.answers, now),
             // Each project's Desk (desk.rs), "the owner" in it as your name (owner.rs).
             "desk": desk,
-            // Each lead's loose ends (open.rs): the Inbox side's Open rows.
-            "open": Self::open_view(st),
         });
         // Not a question its Desk lead has first (desk/hub/lead/cleanup.rs).
         let items = st.items.iter().filter(|i| i.lead_has.is_none()).cloned().collect();

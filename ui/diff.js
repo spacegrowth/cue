@@ -7,7 +7,7 @@
 //   Uncommitted           everything not committed in the session's folder, whoever changed it
 // A crew member's Diff (team.js) opens it on that member's files only, its diff as the hub reads it (team_action
 // "diff"), a chip on top to go back to the whole diff. A changed file clicked elsewhere (a Desk item's Files changed,
-// the Inbox's Changed this turn) opens over the page instead (diff_overlay.js), so you stay where you were.
+// a session's Changed this turn) opens over the page instead (diff_overlay.js), so you stay where you were.
 // The page is one element kept across redraws (so a file you opened stays open and the list stays where you scrolled),
 // moved into its slot after each draw (placeDiff). It follows the open session whether it shows or not, so the tab
 // and its count show before it's opened.
@@ -148,7 +148,7 @@ async function dvLoad() {
 
 /** What session `s`'s folder changed since `base` (a commit and the files git wasn't tracking then; none: since
  *  HEAD), as { files, bulk }: new files git isn't tracking come with their content (the first 20; the rest by name).
- *  Null when the folder isn't in a git repository (or its machine can't be reached). The Inbox reads a turn's this way. */
+ *  Null when the folder isn't in a git repository (or its machine can't be reached). The Desk reads a turn's this way (desk/files.js). */
 async function diffSince(s, base) {
   const top = await dvGit(s, "toplevel");
   if (top.code !== 0) return null;

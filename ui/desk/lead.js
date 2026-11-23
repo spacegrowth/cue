@@ -92,7 +92,7 @@ function deskBand({ d, label, to = false, who = "", id = "", title = "", at = nu
   const tile = `<span class="dk-band-tile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-3-3"/><path d="M20 16H6l3 3"/></svg></span>`;
   const sub = [who ? `<b class="dk-band-who">${esc(who)}</b>` : "", id ? `<span class="dk-band-sub">#${esc(id)}${title ? ` ${esc(title)}` : ""}</span>` : ""].filter(Boolean).join(" · ");
   const head = `${tile}<span class="dk-band-desk">${to ? "To " : ""}${name}</span>${sub ? `<span class="dk-band-by">· ${sub}</span>` : ""}${at != null ? `<span class="dk-band-age">${ago(at)}</span>` : ""}`;
-  const open = d ? `<button class="dk-band-open" data-inbox-desk="${esc(d.project)}">Open ${esc(deskName(d))} Desk</button>` : "";
+  const open = d ? `<button class="dk-band-open" data-desk-hand="${esc(d.project)}">Open ${esc(deskName(d))} Desk</button>` : "";
   return `<div class="dk-band${to ? " out" : ""}" data-band="${to ? "to" : "from"}" data-from-desk="${esc(d ? d.project : label)}"${d ? ` style="${projStyle(d.project)}"` : ""}><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(text || "")}</div>${foot || open ? `<div class="dk-band-f">${foot}${open}</div>` : ""}</div>`;
 }
 /** One message of the family (#501, option B, ui/styles/messages.css): the card on panel-2, its head row (Cue's mark
@@ -127,7 +127,7 @@ function deskNameMark(sid) {
 function deskCardLine(sid) {
   const d = deskForSession(sid);
   if (!d) return "";
-  return `<div class="dk-chip-line"><button class="dk-chip" data-inbox-desk="${esc(d.project)}">${deskKindIcon("tray")}<span class="dk-chip-k">Desk</span><span class="dk-chip-t">${esc(deskName(d))}</span><span aria-hidden="true">›</span></button></div>`;
+  return `<div class="dk-chip-line"><button class="dk-chip" data-desk-hand="${esc(d.project)}">${deskKindIcon("tray")}<span class="dk-chip-k">Desk</span><span class="dk-chip-t">${esc(deskName(d))}</span><span aria-hidden="true">›</span></button></div>`;
 }
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);

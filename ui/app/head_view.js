@@ -1,27 +1,22 @@
 // Cue UI app — the header's area after the waiting count follows the view (#666). Loaded before app/render.js.
 // Board and Read (and the views not in the switch): the projects, as before. Desk: a Desks ▾
 // menu first, with every Desk (each with a pin), All Desks, New Desk… and Desk settings…, then the pinned Desks as chips in
-// the order pinned (a dot when that Desk waits on you), never reordered by use; a chip opens its Desk, the one open brings its lead's chat back. Inbox: a Show filter, All or one project,
-// each with how many need you. An add-on's view: what its optional head() gives, else nothing.
+// the order pinned (a dot when that Desk waits on you), never reordered by use; a chip opens its Desk, the one open brings its lead's chat back.
+// An add-on's view: what its optional head() gives, else nothing.
 
-/** The menu open in this area: "desks", "inbox" (the Inbox filter's other projects), or "" for none. */
+/** The menu open in this area: "desks", or "" for none. */
 let hvMenu = "";
 /** The view that menu was opened on: another view drawn means it closed (headViewHtml). */
 let hvMenuView = "";
-/** The project the Inbox shows ("" for all of them), its own, apart from the Board's: kept across launches. */
-let inboxProj = (() => { try { return localStorage.getItem("cue.inboxProj") || ""; } catch { return ""; } })();
 /** The Desks menu's lit row (↑ ↓ move it, Enter opens it); what's typed in its find box is the "hv-desk-find" draft. */
 let hvAt = 0;
 /** How many Desk chips the header shows at most. */
 const HV_DESK_CHIPS = 3;
-/** How many projects the Inbox filter shows as chips before the rest go under More. */
-const HV_INBOX_CHIPS = 4;
 
 /** The area for the view shown. */
 function headViewHtml() {
   if (hvMenu && hvMenuView !== view) { hvMenu = ""; delete drafts["hv-desk-find"]; }
   if (view === "desk") return headDesks();
-  if (view === "inbox") return headInbox();
   const v = addOn.views.find((x) => x.id === view);
   if (v) { const h = typeof v.head === "function" ? v.head() : ""; return h ? `<span class="hv-area">${h}</span>` : ""; }
   return projChip();
@@ -102,51 +97,6 @@ const hvB2 = () => typeof deskB2On === "function" && deskB2On();
 /** What opens a Desk's settings: the Desk page's own (deskSettingsOpen), else the drawer of the v2 page. */
 const hvSettingsOpener = () => (typeof deskSettingsOpen === "function" ? deskSettingsOpen : typeof deskV2Open === "function" ? deskV2Open : null);
 
-// ---------- Inbox ----------
-
-/** Whether the Inbox shows a session of `project`. */
-const inboxIn = (project) => !inboxProj || project === inboxProj;
-/** `fn` run as if the Inbox showed every project. */
-function inboxUnfiltered(fn) {
-  const was = inboxProj;
-  inboxProj = "";
-  try { return fn(); } finally { inboxProj = was; }
-}
-/** The Desks' items waiting on you to check them in Cue, in the projects the Inbox shows. */
-const inboxVerifications = () => typeof inboxDeskProjects === "function"
-  ? inboxDeskProjects().flatMap((p) => inboxIn(deskWorkspace(p)) ? deskWaitingItems(deskOf(p.project)).filter(deskNeedsVerification) : []) : [];
-/** How many need you in every project: the header's "Inbox 29". */
-const inboxCountAll = () => inboxUnfiltered(inboxCount);
-/** project → how many need you there, most first. */
-function inboxCountsBy() {
-  const m = new Map();
-  const add = (p) => { if (p) m.set(p, (m.get(p) || 0) + 1); };
-  inboxUnfiltered(() => {
-    for (const r of inboxNeedRows()) add(r.project);
-    for (const i of inboxVerifications()) add(deskWorkspace(deskOf(i.project)));
-  });
-  return [...m.entries()].sort((a, b) => b[1] - a[1] || projLabel(a[0]).localeCompare(projLabel(b[0])));
-}
-function headInbox() {
-  const by = inboxCountsBy();
-  if (inboxProj && !by.some(([p]) => p === inboxProj)) by.push([inboxProj, 0]);
-  const total = inboxCountAll();
-  const seg = (p, label, n) => `<button class="hv-seg${inboxProj === p ? " on" : ""}" data-hv-inbox="${esc(p)}" aria-pressed="${inboxProj === p}">${esc(label)}<em>${n}</em></button>`;
-  // The picked one always shows; the rest by how many need you, the overflow under More.
-  const shown = by.slice(0, HV_INBOX_CHIPS);
-  if (inboxProj && !shown.some(([p]) => p === inboxProj)) shown.push(by.find(([p]) => p === inboxProj));
-  const rest = by.filter((e) => !shown.includes(e));
-  const open = hvMenu === "inbox";
-  const menu = open ? `<div class="hv-menu" role="menu">${rest.map(([p, n]) => `<button class="hv-row" role="menuitem" data-hv-inbox="${esc(p)}"><span class="hv-rn">${esc(projLabel(p))}</span><span class="hv-rs">${n}</span></button>`).join("")}</div>` : "";
-  const more = rest.length ? `<span class="hv-wrap"><button class="hv-seg hv-more" data-hv-menu="inbox" aria-expanded="${open}">More<em>${rest.length}</em></button>${menu}</span>` : "";
-  return `<span class="hv-segs" role="group" aria-label="Show">${seg("", "All", total)}${shown.map(([p, n]) => seg(p, projLabel(p), n)).join("")}${more}</span>`;
-}
-/** The Inbox shows project `p` ("" for all), remembered. */
-function setInboxProj(p) {
-  inboxProj = p;
-  try { localStorage.setItem("cue.inboxProj", p); } catch {}
-}
-
 // ---------- clicks ----------
 
 /** A click in the area (a rule for app/clicks.js's list): true when it took it. An open menu closes on a click
@@ -158,13 +108,12 @@ function headViewClick(t) {
   // A Desk's pin in the menu: pinned to the header, or not; the menu stays open.
   const pinEl = t.closest("[data-hv-pin]");
   if (pinEl && pinEl.closest(".top")) { hvPinToggle(pinEl.dataset.hvPin); renderMain(); return true; }
-  const el = t.closest("[data-hv-menu], [data-hv-desk], [data-hv-desk-set], [data-hv-desk-home], [data-hv-new-desk], [data-hv-desk-sessions], [data-hv-desk-ren], [data-hv-inbox]");
+  const el = t.closest("[data-hv-menu], [data-hv-desk], [data-hv-desk-set], [data-hv-desk-home], [data-hv-new-desk], [data-hv-desk-sessions], [data-hv-desk-ren]");
   if (!el || !el.closest(".top")) return false;
   const d = el.dataset;
   if (d.hvMenu) { hvMenuSet(hvMenu === d.hvMenu ? "" : d.hvMenu); return true; }
   hvMenu = "";
   delete drafts["hv-desk-find"];
-  if ("hvInbox" in d) { setInboxProj(d.hvInbox); renderMain(); return true; }
   // All Desks: the page of every Desk (desk/home.js), as the Desk switcher's foot had it before B2.
   if ("hvDeskHome" in d) { DESK_CLICKS.deskHome?.(); renderMain(); return true; }
   if ("hvNewDesk" in d) { renderMain(); if (typeof deskNewOpen === "function") deskNewOpen(); return true; }

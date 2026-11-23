@@ -1,12 +1,13 @@
-// The header's switch: Inbox first, then Board, then Desk, then the rest. The terminal isn't in it: its
+// The header's switch: Board first, then Desk, then the rest. No Inbox. The terminal isn't in it: its
 // button opens the full view on a click (held pressed), and ⌘J keeps to the small peek.
 import { test, expect } from "./cue.mjs";
 
-test("the switch reads Inbox, Board, Desk, Read, and no Terminal or Insights", async ({ cue, page }) => {
+test("the switch reads Board, Desk, Read, and no Inbox, Terminal or Insights", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const views = await page.locator(".switch-view button").evaluateAll((bs) => bs.map((b) => b.dataset.view));
-  expect(views.slice(0, 3)).toEqual(["inbox", "board", "desk"]);
+  expect(views.slice(0, 2)).toEqual(["board", "desk"]);
   expect(views).toContain("read");
+  expect(views).not.toContain("inbox");
   expect(views).not.toContain("terminal");
   expect(views).not.toContain("insights");
 });

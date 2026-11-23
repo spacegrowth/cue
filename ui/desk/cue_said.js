@@ -1,5 +1,5 @@
 // Cue UI desk — what Cue itself sends a session or a Desk lead (#478), as one short plain line wherever the message
-// shows: a session's chat, an item's page (its holder's chat), the lead's chat, and the Inbox. "Cue · Asked cue-383 ·
+// shows: a session's chat, an item's page (its holder's chat), and the lead's chat. "Cue · Asked cue-383 ·
 // #461 not done: “Are we done here completely?” · 3m", Cue's full text folded under it (a click on the line opens it).
 // The session still gets the full text; only how the chat draws it changes. Every kind is listed in
 // docs/cue-messages.md, with where it shows. Loaded after desk/lead.js (index.html, mini.html).
@@ -206,7 +206,7 @@ function cueMsgOf(text) {
   return null;
 }
 
-/** That line in plain words, for a one-line place (the Inbox, a session's card, "Working on: …"): "Asked cue-383 · #461
+/** That line in plain words, for a one-line place (a session's card, "Working on: …"): "Asked cue-383 · #461
  *  not done: “Are we done here completely?”". `to`: who it went to (its session's name). null for any other text. */
 function cueMsgPlain(text, to = "") {
   const c = cueMsgOf(text);

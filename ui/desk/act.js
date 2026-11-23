@@ -247,11 +247,19 @@ async function deskHeldCancel(sid) {
   toast(h ? "It won't be sent" : "Too late: it had already gone");
   renderMain();
 }
-/** Item `id` of the project picked, open in the chat card (the Inbox's Open in Desk). */
+/** Item `id` of the project picked, open in the chat card (openInDesk). */
 function deskOpenItem(id) {
   deskSeeItem(id);
   deskOpen = { kind: "item", id, project: deskSelection(), fresh: now() };
   deskDropArm = deskGiveFor = null;
+}
+/** The Desk on `project` (the header's project picked), item `itemId` open when given: a notification, a hand-off's
+ *  item number, the lead's band and chip, a session opened where it lives (window.js openWhereItLives). */
+function openInDesk(project, itemId = "") {
+  if (project) deskSelect(project);
+  view = "desk";
+  if (itemId) deskOpenItem(itemId);
+  renderMain();
 }
 async function deskAct(id, act, el = null) {
   // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk/commit.js).
@@ -623,7 +631,7 @@ function deskKey(e) {
   if (e.key === "Escape" && deskProgShown) { deskProgToggle(false); document.querySelector("[data-desk-prog-toggle]")?.focus(); return true; }
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
-  // list, a menu, a rename, a dialog: How work lands, Ask me before, quitting, trusting a folder), as the Inbox's keys do.
+  // list, a menu, a rename, a dialog: How work lands, Ask me before, quitting, trusting a folder).
   const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || deskFullAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
   if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !over) {
     if (deskAddingSession && deskAddingSession === deskSelection()) {

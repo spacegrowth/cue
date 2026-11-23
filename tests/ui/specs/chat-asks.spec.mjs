@@ -4,12 +4,9 @@ import { test, expect } from "./cue.mjs";
 
 const ASK_CMD = "cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next\n- tests pass\nEOF";
 
-/** eng's chat open (from its Inbox brief's Open chat). */
+/** eng's chat open on the Board. */
 const openEngChat = async (page) => {
-  await page.locator('.switch-view [data-view="inbox"]').click();
-  await page.locator('[data-inbox-fold="run"]').click();
-  await page.locator('.ib-row[data-inbox-open="eng"]').click();
-  await page.locator('.inbox-page[data-inbox-page="eng"] [data-inbox-full="eng"]').first().click();
+  await page.evaluate(() => setActive(null, "eng"));
   return page.locator(".active-pane");
 };
 

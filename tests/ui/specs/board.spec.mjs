@@ -614,7 +614,7 @@ test.describe("a hosted lead's crew on its own page", () => {
     expect(nums.every(([o, n]) => o || n)).toBe(true);
     await expect(v.locator(".cpm-lit")).toHaveText("src-tauri/src/hub/handoff.rs");
     await expect(v.getByText("Whole diff in the Diff view"), "no way out to the Diff view").toHaveCount(0);
-    // A chip clicked: its whole diff over the page, as the Inbox opens one (diff_overlay.js), its files listed beside
+    // A chip clicked: its whole diff over the page (diff_overlay.js), its files listed beside
     // it; ↑ the one before; Esc and the teammate is where it was, that chip lit.
     await v.locator('.cpm-chip[data-cp-file="ui/core.js"]').click();
     const ov = page.locator(".dov");
