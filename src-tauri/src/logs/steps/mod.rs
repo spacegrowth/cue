@@ -43,7 +43,7 @@ mod windows;
 mod tests;
 
 pub use detail::detail;
-pub use edits::{agent_logs, edited_between, edited_between_named, edited_files_by, worked_between, writes_between, Wrote};
+pub use edits::{agent_logs, edited_between, edited_between_named, edited_files_by, worked_between, writes_between};
 pub(crate) use edits::script_writes_in;
 #[cfg(test)]
 pub use helper::helper_path_for_test;
