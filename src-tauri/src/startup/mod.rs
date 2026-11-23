@@ -73,6 +73,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let hub = Arc::new(Hub::new(Some(app.handle().clone())));
     app.manage(hub.clone());
     quit::on_signals(app.handle().clone());
+    // Past its memory limit, or with the test run that started it gone, Cue quits itself (self_watch.rs).
+    let quitting = app.handle().clone();
+    crate::self_watch::start(move || quitting.exit(0));
     // Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them
     // (a send meanwhile waits), on a thread of their own: with many it takes seconds, and the window takes no
     // click or key while this thread waits (#456). What came after them still does, in the same order.

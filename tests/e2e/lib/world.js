@@ -50,7 +50,8 @@ export class World {
     // Built from nothing, not from this process's environment; withoutTmux says so for the one thing
     // that must never come along: a $TMUX naming the server you work in.
     return withoutTmux({ PATH: process.env.PATH, LANG: "en_US.UTF-8", HOME: this.home, CUE_HOME: this.cueHome, CUE_QUIET: "1",
-      TMUX_TMPDIR: this.tmux.dir, ...extra });
+      // It quits itself once this test process is gone, so a cut-off run leaves no Cue behind (#764).
+      CUE_EXIT_WITH: String(process.pid), TMUX_TMPDIR: this.tmux.dir, ...extra });
   }
 
   /** A child process to end with the world. */

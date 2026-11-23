@@ -48,6 +48,9 @@ unit() {
   export TMUX_TMPDIR="$CUE_HOME/tmux"
   mkdir -p "$TMUX_TMPDIR"
   (cd "$ROOT/src-tauri" && cargo test -q --workspace 2>&1 | grep -E "test result|FAILED|panicked" ; cargo build -q)
+  # The private Cue (and the one test_protocol.py restarts) quits itself once this run is gone: a run killed before
+  # end_unit could run (a SIGKILL skips the EXIT trap) once left its Cue running for days, until it grew to 54 GB (#764).
+  export CUE_EXIT_WITH=$$
   "$CUE_BIN" >/dev/null 2>&1 &
   CUE_PID=$!
   trap end_unit EXIT
