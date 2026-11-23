@@ -241,7 +241,11 @@
 .dkn-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-a2 { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 0; font-size: var(--type-pill); color: var(--on-bg-muted); }
 .dkn-a2 > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.dkn-a2 .mach { color: var(--on-bg); border-color: var(--on-bg-muted); }
+/* Where it runs, quiet: the same outlined tag, in the line's own muted colour and a faint edge, not white, so it
+   doesn't outshine the title. */
+.dkn-a2 .mach { color: var(--on-bg-muted); border-color: color-mix(in srgb, var(--on-bg-muted) 40%, transparent); font-weight: 500; }
+.dkn-a2 .mach::before { opacity: 0.6; }
+.dkn-sub .mach { color: var(--muted); border-color: color-mix(in srgb, var(--muted) 40%, transparent); font-weight: 500; }
 .dkn-nx.on :is(.dkn-id, .dkn-a2, .dkn-a2 .mach) { color: var(--on-sel); border-color: var(--on-sel); }
 .dkn-nx > .dk-grip { top: 12px; margin-top: 0; right: 9px; color: var(--on-bg-muted); }
 .dkn-nx:hover > .dk-grip { color: var(--on-bg); }
