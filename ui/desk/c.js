@@ -384,7 +384,10 @@ function deskCList(project, taskApprovals) {
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
   const leadAsk = ask ? `<div class="dk-it dkn-row ask" role="button" tabindex="0" data-desk-c-lead><div class="dkn-t"><span class="dkn-tt">${esc(deskLeadName(d))}</span><span class="dkn-sub">The Desk lead</span></div>${deskCLine === "line" ? "" : `<div class="dkn-pl"></div>`}<div class="dkn-now"><span class="dkn-nask">${esc(deskOneLine(summary(ask) || "Asks you something"))}</span></div></div>` : "";
-  const you = grp("you", "WAITING ON YOU", waits, leadAsk + (aw.html || ""), waits.length + (aw.n || 0) + (ask ? 1 : 0));
+  // What's blocked on you (the lead asking, steps held for your OK, asks while away) goes first, over Working: nothing
+  // moves till you answer. Then Working, then the rest that waits on you.
+  const blocked = grp("blocked", "BLOCKED ON YOU", [], leadAsk + (aw.html || ""), (aw.n || 0) + (ask ? 1 : 0));
+  const you = grp("you", "WAITING ON YOU", waits);
   const work = grp("working", "WORKING", working);
   const kept = (d?.kept || []).length ? `<div class="dkn-gh" data-desk2b-group="kept">KEPT COPIES <span>${d.kept.length}</span></div>${d.kept.map(deskKeptRow).join("")}` : "";
   const calls = d?.away?.on ? deskAwayCalls(d) : [];
@@ -392,8 +395,8 @@ function deskCList(project, taskApprovals) {
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskCRow).join("")).join("");
-  // Working first: it's what's live, and it stays short (the Desk runs only so many at once); Waiting on you under it.
-  const body = work + you + kept + away + tail;
+  // Working next: it's what's live, and it stays short (the Desk runs only so many at once); Waiting on you under it.
+  const body = blocked + work + you + kept + away + tail;
   const head = `<div class="dkn-th" aria-hidden="true"><span>Item</span>${deskCLine === "line" ? "" : "<span>Progress</span>"}<span>Now</span></div>`;
   // Where it stands, in words only (deskB2Status is html, escaped already).
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");
