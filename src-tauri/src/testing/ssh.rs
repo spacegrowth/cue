@@ -14,7 +14,11 @@ use std::sync::{Mutex, MutexGuard};
 pub const RUNS_IT: &str = r#"mkdir -p "$FAKE_HOME" && HOME="$FAKE_HOME" SHELL=/bin/sh exec /bin/sh -c "$1""#;
 
 /// The ssh every call runs: the host is the word after -T (or -tt, the built-in terminal's), the command the
-/// one after it.
+/// one after it. What it runs leads a process group of its own (`perl`'s setpgrp, a no-op where it already
+/// does, as in the built-in terminal), and a watcher beside it ends that group, by its exact id, once the run
+/// that started it is gone or this FakeSsh is (its folder removed): a machine's `tail -F` copying a log
+/// (machines/log_mirror.rs) would otherwise run on after the test, left to launchd. A call that ends by
+/// itself leaves its watcher nothing to do.
 const SHIM: &str = r#"#!/bin/sh
 fake="$(dirname "$0")"
 while [ $# -gt 0 ] && [ "$1" != -T ] && [ "$1" != -tt ]; do shift; done
@@ -25,7 +29,18 @@ if [ ! -f "$fake/hosts/$host" ]; then
   echo "ssh: connect to host $host port 22: Connection refused" >&2
   exit 255
 fi
-FAKE_HOME="$fake/home/$host" exec /bin/sh "$fake/hosts/$host" "$cmd"
+if ! command -v perl >/dev/null 2>&1; then
+  FAKE_HOME="$fake/home/$host" exec /bin/sh "$fake/hosts/$host" "$cmd"
+fi
+perl -e "$WATCH" "$$" "$PPID" "$fake" </dev/null >/dev/null 2>&1 &
+FAKE_HOME="$fake/home/$host" exec perl -e 'setpgrp(0, 0); exec @ARGV or exit 127' /bin/sh "$fake/hosts/$host" "$cmd"
+"#;
+
+/// The watcher: (the call's pid, the run that started it, the FakeSsh's folder). It waits while all three are
+/// there; once the call ends by itself it's done, else it ends the call's group.
+const WATCH: &str = r#"my ($me, $up, $dir) = @ARGV;
+select(undef, undef, undef, 0.25) while kill(0, $me) && kill(0, $up) && -d $dir;
+kill("TERM", -$me) if kill(0, $me);
 "#;
 
 static PROGRAM: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -45,7 +60,7 @@ impl FakeSsh {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("hosts")).unwrap();
         let program = dir.join("ssh");
-        std::fs::write(&program, SHIM).unwrap();
+        std::fs::write(&program, SHIM.replacen("#!/bin/sh\n", &format!("#!/bin/sh\nWATCH={}\n", crate::machines::shq(WATCH)), 1)).unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         *PROGRAM.lock().unwrap_or_else(|e| e.into_inner()) = Some(program);
