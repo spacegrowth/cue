@@ -106,7 +106,9 @@ test("an item opens in the middle, its row lit in place in the Items list; ‹ I
   await pre.click();
   await expect(ph).toBeFocused();
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "to_check", holder: { kind: "session", sid: "s-new", name: "cue-117" } }));
-  await expect(pre).toHaveText("To cue-117 · Bug #d4");
+  // Two lines since #803 (9b04c8119a): who gets it, over the item.
+  await expect(pre.locator(".field-to1")).toHaveText("To cue-117");
+  await expect(pre.locator(".field-to2")).toHaveText("#d4");
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "queued", holder: { kind: "lead", sid: "lead", name: "web-lead" } }));
   // Put it before the one it waits on: in its bar's ⋯ (#669).
   const bar = page.locator(".dk-right .dkn-ib");
@@ -510,7 +512,8 @@ test("Decisions (#420): a call on an item you've checked is settled, behind Show
   await right.locator(".dk-showall").click();
   await expect(right).toContainText("The count shows as a tint");
   await right.locator('.dk-tab[data-desk-tab="moves"]').click();
-  await expect(right.locator(".dk-moves .dk-mv").first()).toContainText("Away mode mocks go to web · it made the last ones");
+  // Activity has Ready to check rows too since #789 (22a2d7c9a8): the call is the newest of the lead's own moves.
+  await expect(right.locator(".dk-moves .dk-mv:not(.dk-mv-ln)").first()).toContainText("Away mode mocks go to web · it made the last ones");
 });
 
 test("an item page's back link is one line above its title", async ({ page, cue }) => {

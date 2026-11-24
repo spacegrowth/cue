@@ -1,6 +1,6 @@
 // The Desk's lead's chat card and what opens in its place (B2 #666, kept on the one layout #738/#748): Now and Waits
 // on you in one strip over the chat (the Working pill unfolds the sessions at work, a chip per item that waits, Check);
-// an item opening in the chat's place with back to the lead's chat, Items staying beside it; the lead's panel; dark.
+// an item opening in the chat's place with back to the lead's chat, Items staying beside it; no lead's panel (692dc421); dark.
 import { test, expect, openDesk, deskShowStrip } from "./cue.mjs";
 import { listOrder, statusOf, openDone } from "./desk.mjs";
 
@@ -142,20 +142,19 @@ test("opening the lead's chat (⌘K) with an item open goes back to the lead's c
   await expect(page.locator(".dk-c > .dkn-items")).toHaveCount(1);
 });
 
-test("the lead's panel shows as the page opens; Hide panel puts the strip in its place, Show panel brings it back", async ({ page, cue }) => {
+// 692dc421: the lead's chat has no panel and no Hide panel; its Now and Waits on you are always the strip over the chat,
+// even at the Board's design width where the panel used to show.
+test("the lead's chat has no panel and no Hide panel: the strip is over its chat from the moment the page opens", async ({ page, cue }) => {
   await page.setViewportSize({ width: 1800, height: 1095 });
   await cue.open("desk");
   await openDesk(page);
-  const tog = chat(page).locator('[data-desk-panel="dispatcher-hidden"]');
-  await expect(tog).toHaveText("Hide panel");
-  await expect(chat(page).locator(".dk-panel .dk-pnow")).toBeVisible();
-  await expect(chat(page).locator(".dk-panel .dk-psec", { hasText: "Just did" })).toHaveCount(0);
-  await expect(chat(page).locator(".dk2b-strip")).toHaveCount(0);
-  await tog.click();
-  await expect(chat(page).locator('[data-desk-panel="dispatcher-hidden"]')).toHaveText("Show panel");
   await expect(chat(page).locator(".dk2b-strip")).toBeVisible();
-  await chat(page).locator('[data-desk-panel="dispatcher-hidden"]').click();
-  await expect(chat(page).locator(".dk-panel .dk-pnow")).toBeVisible();
+  await expect(chat(page).locator("[data-desk-panel]")).toHaveCount(0);
+  // The page's aside holds only the strip now: no Now of its own, none of the panel's sections (Activity) showing.
+  await expect(chat(page).locator(".dk-panel > .dk2b-strip")).toBeVisible();
+  await expect(chat(page).locator(".dk-pnow")).toHaveCount(0);
+  await expect(chat(page).locator(".dk-panel .dk-psec:visible")).toHaveCount(0);
+  await expect(chat(page).locator('[data-desk-page="dispatcher"]')).toHaveClass(/\bhid\b/);
   // No Conversation only | Everything switch in the lead's tab row: its chat shows everything.
   await expect(chat(page).locator(".dk-ptabs .seg2")).toHaveCount(0);
 });

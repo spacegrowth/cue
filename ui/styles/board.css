@@ -144,7 +144,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .btn.send { height: 30px; min-width: 64px; padding: 0 14px; border-radius: var(--radius-btn); font-size: var(--type-body); margin-left: 2px; }
 /* While it works, by Queue: stop its turn and send now (⌘↵). */
 /* Tips (tips.js), at the end of the line under the chat: in its grey, each with its own icon, never a second row
-   (fitTips drops one that would wrap). Tell me is the control, not a tip: it always fits, and the text before
+   (fitTips drops one that would wrap, or cut the status before it). Tell me is the control, not a tip: it always fits, and the text before
    it shortens with … instead. */
 .cv-tip { display: inline-flex; align-items: center; gap: 5px; flex: none; white-space: nowrap; color: var(--muted); }
 .cv-tip[hidden] { display: none; }

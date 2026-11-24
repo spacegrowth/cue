@@ -102,7 +102,9 @@ test("your own check: steps one per line, saved in order with a tick by one Save
   const call = await cue.called("desk_lands_set");
   expect(call.args.lands.check).toBe("command");
   expect(call.args.lands.check_steps).toEqual(["npm test", "npm run lint"]);
-  expect(call.args.lands.after_steps).toBeUndefined();
+  // After landing is named steps on every Desk (#796): Cue's own build, install and restart are its three, kept as they were.
+  expect(call.args.lands.after).toBe("command");
+  expect(call.args.lands.after_steps).toEqual(["[Build] app:build", "[Install] app:install", "[Restart] app:restart"]);
   const ab = await cue.called("ask_before_set");
   expect(ab.args.kinds).toContain("release");
   // Sessions never push main themselves: saving keeps a push to main asked.

@@ -88,7 +88,10 @@ function fitTips() {
   el.hidden = true;
   const without = line.getBoundingClientRect().height;
   el.hidden = false;
-  if (line.getBoundingClientRect().height > without + 2) { el.hidden = true; return; }
+  // It mustn't push the line onto a second row, nor (on a status line kept to one row, messages.css .cv-status) cut
+  // what the session is doing to "…": the status comes first, and the tip goes.
+  const cut = [...line.querySelectorAll(".cv-what")].some((w) => w.scrollWidth > w.clientWidth + 1);
+  if (line.getBoundingClientRect().height > without + 2 || cut) { el.hidden = true; return; }
   if (tipNow?.id !== el.dataset.tipId || tipNow.seen) return;
   tipNow.seen = true;
   const shown = tipsToday();

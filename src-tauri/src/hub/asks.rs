@@ -36,64 +36,10 @@ impl Hub {
         self.open_ask(origin, ask, request_id, true)
     }
 
-    fn open_ask(&self, origin: Origin, ask: NewAsk, request_id: Option<&str>, stopped: bool) -> Option<(String, oneshot::Receiver<Reply>)> {
-        let NewAsk { kind, tool_name, tool_input, suggestions, mut context, agent_id } = ask;
-        // One of its agents asks: what it goes by, from the session's steps feed (read before the lock is taken).
-        let agent_name = if agent_id.is_empty() || origin.transcript_path.is_empty() { String::new() } else { crate::steps::agent_name(&origin.transcript_path, &agent_id) };
-        if context.is_empty() && !origin.transcript_path.is_empty() {
-            context = transcript::recent_context(&origin.transcript_path, 4);
-        }
-        let scan_from = if origin.transcript_path.is_empty() { 0 } else { transcript::tail_offset(&origin.transcript_path) };
-        // A command its project counts one-way (a push to main, say): answered only with a click on the crew page.
-        // Read from its words alone (its command, or a patch deleting a file), the branch unknown here.
-        let one_way = stopped || kind == "permission" && {
-            let kinds = crate::desk::one_way::kinds(&super::crew_log::project_shown_for(&origin));
-            crate::desk::one_way::call_hits(&tool_input, &|_| None).iter().any(|k| kinds.contains(k))
-        };
+    fn open_ask(&self, origin: Origin, mut ask: NewAsk, request_id: Option<&str>, stopped: bool) -> Option<(String, oneshot::Receiver<Reply>)> {
+        let first = read_before_lock(&origin, &mut ask, stopped);
         let (tx, rx) = oneshot::channel();
-        let (id, title, to_lead) = self.write(|st| {
-            let sid = origin.session_id.clone();
-            let open = |i: &Item| i.status == "pending" && i.origin.session_id == sid && i.request_id.as_deref() == request_id;
-            if request_id.is_some() && st.items.iter().any(open) {
-                return None;
-            }
-            // A session asking for a decision is no longer "just waiting for you".
-            st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
-            // One of its agents asks while its own turn is over (at its prompt, or waiting on its agents, #787):
-            // answered, the agent goes on, and the session is still at its prompt, not at work.
-            let at_prompt = match st.sessions.state(&sid).as_deref() {
-                Some("agent") => true,
-                Some("waiting") => !agent_id.is_empty(),
-                _ => false,
-            };
-            st.sessions.mark(&origin, "deciding", None);
-            let thread = st.sessions.thread(&sid);
-            let mut it = Self::new_item(st, &kind, origin);
-            it.at_prompt = at_prompt;
-            it.thread = thread;
-            it.tool_name = tool_name;
-            it.tool_input = tool_input;
-            it.suggestions = suggestions;
-            it.context = context;
-            // A hosted lead's teammate goes by the name its lead gave it (team.rs).
-            it.agent_name = st.sessions.teammate_name(&sid, &agent_id).unwrap_or(agent_name);
-            it.agent_id = agent_id;
-            it.one_way = one_way;
-            it.request_id = request_id.map(str::to_string);
-            it.scan_from = scan_from;
-            // A Desk session's landing clean-up question goes to its Desk lead first (desk/hub/lead/cleanup.rs, #349).
-            let to_lead = crate::desk::hub::lead::cleanup::give_lead(st, &mut it);
-            let asked = match it.kind.as_str() {
-                "question" => format!("asked: {}", summary(&it)),
-                _ => format!("{}: {}", it.tool_name, summary(&it)),
-            };
-            st.sessions.note(&sid, "agent", &asked, crate::config::context_keep());
-            let id = it.id.clone();
-            let title = notify_title(&it);
-            st.items.push(it);
-            st.waiters.insert(id.clone(), tx);
-            Some((id, title, to_lead))
-        })?;
+        let (id, title, to_lead) = self.write(|st| Self::post_ask(st, origin, ask, first, request_id, tx))?;
         self.changed();
         match to_lead {
             Some((lead, words)) => self.cleanup_to_lead(&id, lead, words),
@@ -101,6 +47,44 @@ impl Hub {
             None => {}
         }
         Some((id, rx))
+    }
+
+    /// The ask's card, put up: none when a card for this `request_id` is already open. Returns its id, what its
+    /// notification says, and its Desk lead with the words for it when the lead answers it first.
+    fn post_ask(st: &mut Store, origin: Origin, ask: NewAsk, first: ReadFirst, request_id: Option<&str>, tx: oneshot::Sender<Reply>) -> Option<(String, (String, String), Option<(String, String)>)> {
+        let sid = origin.session_id.clone();
+        let open = |i: &Item| i.status == "pending" && i.origin.session_id == sid && i.request_id.as_deref() == request_id;
+        if request_id.is_some() && st.items.iter().any(open) {
+            return None;
+        }
+        // A session asking for a decision is no longer "just waiting for you".
+        st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
+        // One of its agents asks while its own turn is over (at its prompt, or waiting on its agents, #787):
+        // answered, the agent goes on, and the session is still at its prompt, not at work.
+        let at_prompt = match st.sessions.state(&sid).as_deref() {
+            Some("agent") => true,
+            Some("waiting") => !ask.agent_id.is_empty(),
+            _ => false,
+        };
+        st.sessions.mark(&origin, "deciding", None);
+        let thread = st.sessions.thread(&sid);
+        let mut it = Self::new_item(st, &ask.kind, origin);
+        it.at_prompt = at_prompt;
+        it.thread = thread;
+        // A hosted lead's teammate goes by the name its lead gave it (team.rs).
+        it.agent_name = st.sessions.teammate_name(&sid, &ask.agent_id).unwrap_or(first.agent_name);
+        fill_ask(&mut it, ask);
+        it.one_way = first.one_way;
+        it.request_id = request_id.map(str::to_string);
+        it.scan_from = first.scan_from;
+        // A Desk session's landing clean-up question goes to its Desk lead first (desk/hub/lead/cleanup.rs, #349).
+        let to_lead = crate::desk::hub::lead::cleanup::give_lead(st, &mut it);
+        st.sessions.note(&sid, "agent", &asked_line(&it), crate::config::context_keep());
+        let id = it.id.clone();
+        let title = notify_title(&it);
+        st.items.push(it);
+        st.waiters.insert(id.clone(), tx);
+        Some((id, title, to_lead))
     }
 
     /// Claude Code says a permission prompt is waiting in a session's terminal, one Cue has no card for
@@ -476,6 +460,51 @@ enum Starred {
 pub(super) fn waiting_words(waiting_for: &str) -> String {
     if waiting_for.is_empty() { "It's asking you something in its terminal".into() } else { format!("Waiting in its terminal: {waiting_for}") }
 }
+
+/// What an ask needs read before the store's lock is taken: the asking agent's name, where its transcript
+/// ends now, and whether its call is one-way.
+struct ReadFirst {
+    agent_name: String,
+    scan_from: u64,
+    one_way: bool,
+}
+
+/// Reads them, filling in what was said before the ask when the hook sent none.
+fn read_before_lock(origin: &Origin, ask: &mut NewAsk, stopped: bool) -> ReadFirst {
+    let path = &origin.transcript_path;
+    // One of its agents asks: what it goes by, from the session's steps feed.
+    let agent_name = if ask.agent_id.is_empty() || path.is_empty() { String::new() } else { crate::steps::agent_name(path, &ask.agent_id) };
+    if ask.context.is_empty() && !path.is_empty() {
+        ask.context = transcript::recent_context(path, 4);
+    }
+    let scan_from = if path.is_empty() { 0 } else { transcript::tail_offset(path) };
+    // A command its project counts one-way (a push to main, say): answered only with a click on the crew page.
+    // Read from its words alone (its command, or a patch deleting a file), the branch unknown here.
+    let one_way = stopped || ask.kind == "permission" && {
+        let kinds = crate::desk::one_way::kinds(&super::crew_log::project_shown_for(origin));
+        crate::desk::one_way::call_hits(&ask.tool_input, &|_| None).iter().any(|k| kinds.contains(k))
+    };
+    ReadFirst { agent_name, scan_from, one_way }
+}
+
+/// The card takes the ask's tool call, choices, context and agent.
+fn fill_ask(it: &mut Item, ask: NewAsk) {
+    let NewAsk { kind: _, tool_name, tool_input, suggestions, context, agent_id } = ask;
+    it.tool_name = tool_name;
+    it.tool_input = tool_input;
+    it.suggestions = suggestions;
+    it.context = context;
+    it.agent_id = agent_id;
+}
+
+/// The line the session's own feed gets for the ask.
+fn asked_line(it: &Item) -> String {
+    match it.kind.as_str() {
+        "question" => format!("asked: {}", summary(it)),
+        _ => format!("{}: {}", it.tool_name, summary(it)),
+    }
+}
+
 
 pub(crate) fn notify_title(it: &Item) -> (String, String) {
     // Moved to another project in Cue: that one.

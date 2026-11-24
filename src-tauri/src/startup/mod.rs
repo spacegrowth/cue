@@ -71,15 +71,7 @@ fn commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync +
 
 /// Everything that runs once the window exists, in the order it starts.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    // Another Cue already runs on this folder (a dev build started without a CUE_HOME of its own): this one goes
-    // before it touches anything there, its hooks, sessions or chats (#812).
-    if server::another_cue_runs(5_000) {
-        eprintln!(
-            "cue: another Cue already runs on {}; this one quits so it can't overwrite that Cue's chats and sessions. Quit the other first, or give this one its own folder with CUE_HOME.",
-            server::cue_dir().display()
-        );
-        std::process::exit(1);
-    }
+    quit_if_another_cue_runs();
     window::prepare(app);
     settle_folder_and_hooks();
     // The soak's chaos knobs that run on their own (debug builds, when set).
@@ -93,23 +85,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Past its memory limit, or with the test run that started it gone, Cue quits itself (self_watch.rs).
     let quitting = app.handle().clone();
     crate::self_watch::start(move || quitting.exit(0));
-    // Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them
-    // (a send meanwhile waits), on a thread of their own: with many it takes seconds, and the window takes no
-    // click or key while this thread waits (#456). What came after them still does, in the same order.
-    let handle = app.handle().clone();
-    hub.reattach_hosted_then(move |hub| {
-        #[cfg(feature = "ext")]
-        hub.ext_hub_up();
-        watchers::bring_back(hub);
-        // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
-        // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
-        if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
-            watchers::machines(hub);
-        }
-        tickers::serve_socket(hub, &handle);
-        tickers::local_reads(hub);
-        tickers::remote_reads(hub);
-    });
+    reattach_then_watch(&hub, app.handle().clone());
     talk::start(app, hub.clone());
     #[cfg(feature = "ext")]
     crate::ext::start(app, hub.clone());
@@ -133,6 +109,37 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         window::hide(app);
     }
     Ok(())
+}
+
+/// Another Cue already runs on this folder (a dev build started without a CUE_HOME of its own): this one goes
+/// before it touches anything there, its hooks, sessions or chats (#812).
+fn quit_if_another_cue_runs() {
+    if server::another_cue_runs(5_000) {
+        eprintln!(
+            "cue: another Cue already runs on {}; this one quits so it can't overwrite that Cue's chats and sessions. Quit the other first, or give this one its own folder with CUE_HOME.",
+            server::cue_dir().display()
+        );
+        std::process::exit(1);
+    }
+}
+
+/// Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them
+/// (a send meanwhile waits), on a thread of their own: with many it takes seconds, and the window takes no
+/// click or key while this thread waits (#456). What came after them still does, in the same order.
+fn reattach_then_watch(hub: &Arc<Hub>, handle: tauri::AppHandle) {
+    hub.reattach_hosted_then(move |hub| {
+        #[cfg(feature = "ext")]
+        hub.ext_hub_up();
+        watchers::bring_back(hub);
+        // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
+        // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
+        if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
+            watchers::machines(hub);
+        }
+        tickers::serve_socket(hub, &handle);
+        tickers::local_reads(hub);
+        tickers::remote_reads(hub);
+    });
 }
 
 /// Cue's folder where it belongs and the agents' hooks pointing at this copy of Cue.

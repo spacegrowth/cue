@@ -195,7 +195,10 @@ step_node() {
   done
   return $bad
 }
-step_window() { npx playwright test -c tests/ui/playwright.config.mjs "$@"; }
+# On a port free now, not the copy's own fixed one: a page server left running by a run that was stopped holds that
+# one, and then every run's window tests failed before any started ("is already used").
+free_port() { node -e 'const s = require("net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); })'; }
+step_window() { CUE_UI_PORT="${CUE_UI_PORT:-$(free_port)}" npx playwright test -c tests/ui/playwright.config.mjs "$@"; }
 
 if [ -n "${CUE_FULL_RUN_STEPS:-}" ]; then
   [ -f "$CUE_FULL_RUN_STEPS" ] || die "no steps file $CUE_FULL_RUN_STEPS"

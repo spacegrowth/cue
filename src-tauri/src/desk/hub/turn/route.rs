@@ -217,27 +217,39 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
         return start_fresh(st, project, by, id, after, why, now, fx);
     }
+    if let Some(h) = holder.as_ref() {
+        if let Some(waits) = waits_instead(st, project, by, id, h, after.clone(), unfinished, why, now, fx) {
+            return waits;
+        }
+    }
+    route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)
+}
+
+/// Routed to holder `h`, item `id` waits instead of going to it now: in the queue behind its work (#576), or for a
+/// free slot on its machine (#798). What the lead is told then; none when it goes on to `h` now.
+#[allow(clippy::too_many_arguments)]
+fn waits_instead(st: &mut Store, project: &str, by: &By, id: &str, h: &Holder, after: Option<String>, unfinished: bool, why: &str, now: u64, fx: &mut Effects) -> Option<Option<String>> {
     // One item per session (#576), at work or waiting for your check: to a session busy with another, or after another
     // item, or behind items already waiting for it (a paused Desk's), it waits in the queue with no holder, next for
     // that session. One it holds already stays as it is.
-    if let Some(h) = holder.as_ref().filter(|h| queues(st, h, id)) {
+    if queues(st, h, id) {
         let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
         let waits = after.clone().filter(|_| refused.is_empty());
         let q = crate::desk::hub::turn::queue::busy_with(st, h, id).is_some() || crate::desk::hub::turn::queue::ahead_for(st, h, id);
         if waits.is_some() || q {
-            return crate::desk::hub::turn::queue::queue_for(st, project, by, id, h, waits, refused, why, now, fx);
+            return Some(crate::desk::hub::turn::queue::queue_for(st, project, by, id, h, waits, refused, why, now, fx));
         }
     }
     // At once (#798): an item not begun yet, routed while every slot on its session's machine is taken, waits for
     // one with that session (not sent yet). One already at work, finishing or with you to check goes as it did.
-    if let Some(h) = holder.as_ref().filter(|_| after.is_none() && !unfinished) {
+    if after.is_none() && !unfinished {
         let begins = st.desk.item(id).is_some_and(|i| matches!(i.state.as_str(), "new" | "queued") && !crate::desk::hub::turn::slots::takes(st, i));
         let m = crate::desk::hub::turn::slots::holder_machine(st, h);
         if begins && !crate::desk::hub::turn::slots::free_on(st, project, &m, id) && may_route(st, project, h, id) {
-            return crate::desk::hub::turn::slots::hold_for(st, project, (by.name, by.sid), id, h, why, now, fx);
+            return Some(crate::desk::hub::turn::slots::hold_for(st, project, (by.name, by.sid), id, h, why, now, fx));
         }
     }
-    route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)
+    None
 }
 
 /// Item `id`'s holder, when `to` names it (by name, or the start of its id: six characters or more) and no session on

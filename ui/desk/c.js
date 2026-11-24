@@ -274,18 +274,9 @@ const DESK_C_WORK_ROWS = 4;
  *  (deskCFitBy) is, else for a frame it showed every row with the card cut to the shorter Working. */
 let deskCWorkCap = 0;
 function deskCFitLists() {
-  // The bands' headings stack as they stick: each under the ones above it (desk-c.css .dkn-band > .dkn-gh).
-  for (const list of document.querySelectorAll("#app .dkn-items [data-dkn-list=items]")) {
-    let top = 0;
-    for (const gh of list.querySelectorAll(":scope > .dkn-band > .dkn-gh")) { gh.style.top = `${top}px`; top += gh.offsetHeight; }
-  }
+  deskCStackHeadings();
   // Working first: cut to its first rows, so the card's own cut below counts it at that height.
-  for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-cap]")) {
-    const r = el.children[DESK_C_WORK_ROWS - 1];
-    if (!r) continue;
-    deskCWorkCap = Math.floor(r.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop);
-    el.style.maxHeight = `${deskCWorkCap}px`;
-  }
+  deskCCapWorking();
   const lists = [...document.querySelectorAll("#app .dkn-items [data-dkn-list]:not([data-dkn-cap])")];
   const key = `${innerWidth}x${innerHeight}|${lists.map((el) => `${el.dataset.dknList}:${el.querySelectorAll(".dk-it").length}`).join(",")}`;
   // Where each list was scrolled, and whether to its end (#791): a row folded shut and gone there must not pull the
@@ -322,6 +313,28 @@ function deskCFitLists() {
     deskCFitBy.clear();
     lists.forEach((el, k) => deskCFitBy.set(el.dataset.dknList, deskCFits[k]));
   }
+  deskCCutLists(lists, tops);
+  deskCMore();
+}
+/** The bands' headings stack as they stick: each under the ones above it (desk-c.css .dkn-band > .dkn-gh). */
+function deskCStackHeadings() {
+  for (const list of document.querySelectorAll("#app .dkn-items [data-dkn-list=items]")) {
+    let top = 0;
+    for (const gh of list.querySelectorAll(":scope > .dkn-band > .dkn-gh")) { gh.style.top = `${top}px`; top += gh.offsetHeight; }
+  }
+}
+/** Working cut to its first DESK_C_WORK_ROWS rows, kept in deskCWorkCap. */
+function deskCCapWorking() {
+  for (const el of document.querySelectorAll("#app .dkn-items [data-dkn-cap]")) {
+    const r = el.children[DESK_C_WORK_ROWS - 1];
+    if (!r) continue;
+    deskCWorkCap = Math.floor(r.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop);
+    el.style.maxHeight = `${deskCWorkCap}px`;
+  }
+}
+/** Each list cut to its measured height (deskCFits), "↓ N more" shown under the ones cut, and each put back where it
+ *  was scrolled (`tops`), or on along the slide a "↓ N more" click started. */
+function deskCCutLists(lists, tops) {
   lists.forEach((el, k) => {
     el.style.maxHeight = deskCFits[k] ? `${deskCFits[k]}px` : "";
     el.nextElementSibling.hidden = !deskCFits[k];
@@ -332,7 +345,6 @@ function deskCFitLists() {
     else deskCGoing.delete(el.dataset.dknList);
     if (!go && el.scrollTop !== tops[k]) el.scrollTop = tops[k];
   });
-  deskCMore();
 }
 /** Where a list's "↓ N more" is sending it, by list, for as long as its slide takes (deskCAll, deskCFitLists). */
 const deskCGoing = new Map(), DESK_C_GOING_MS = 1000;

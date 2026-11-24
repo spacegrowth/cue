@@ -1,6 +1,6 @@
 // The Desk: Add session, the lead's chat (its past, ↑ ↓, DONE lines, Read), an opened item (its session's chat with
 // its bar, or its bare page; questions, approvals), and the Desk's marks on the Board.
-import { test, expect, pick, openDesk, deskShowPanel } from "./cue.mjs";
+import { test, expect, pick, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 import { openSessions, statusOf, openMore } from "./desk.mjs";
 
@@ -148,13 +148,19 @@ test("↑ in the lead's box brings back what you sent it (without the Desk's sum
   await expect(box).toHaveValue("draft");
 });
 
-test("a DONE is one Ready to check card in the lead's chat: its item, its age, Check it › opens the item, whose bar has what to try, Looks right and Send back; once checked a quiet line says what you said", async ({ page, cue }) => {
+// #789 (22a2d7c9a8): Desk moves left the chats; a DONE's Ready to check card is in the Desk's Activity tab, not the
+// lead's chat, and so is the quiet line once it's checked.
+test("a DONE is one Ready to check card in the Desk's Activity, none in the lead's chat: its item, its age, Check it › opens the item, whose bar has what to try, Looks right and Send back; once checked a quiet line says what you said", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  // None in the lead's chat (#789).
+  await expect(page.locator('.dk-chat [data-mg="check"]')).toHaveCount(0);
+  await expect(page.locator(".dk-chat .dk-chk, .dk-chat .dk-chk-done")).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
   // The message family's card from Cue (#501): READY TO CHECK, the item, its age; its title; Check it › in the foot.
-  const line = page.locator('.dk-chat [data-mg="check"]');
+  const line = page.locator('.dk-right .dk-moves [data-mg="check"]');
   await expect(line).toHaveCount(1);
-  await expect(page.locator(".dk-chat .dk-chk")).toHaveCount(0);
+  await expect(page.locator(".dk-right .dk-moves .dk-chk")).toHaveCount(0);
   await expect(line.locator(".mg-tag")).toHaveText("Ready to check");
   await expect(line.locator(".mg-h .mg-id")).toHaveText("Feature #d2");
   await expect(line.locator(".mg-h .mg-id svg.dk-kic")).toHaveCount(1);
@@ -175,16 +181,21 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   await expect(statusOf(page, "d2")).toHaveText("Waiting for install");
   await expect(row.locator(".dk-ok")).toHaveCount(0);
   const lead = page.locator(".dk-right .foot:not(.held) .composer textarea");
+  const leadTab = page.locator('.dk-right .dk-tab[data-desk-tab="lead"]');
+  await leadTab.click();
   await lead.fill("a word for the lead");
+  await page.evaluate(() => deskOpenActivity());
   await line.locator(".mg-lk").click();
   // It opens its holder's chat with its bar (#744): while it waits, no Looks right there.
   const bar = itemPage(page).locator(".dkn-ib");
   await expect(bar).toHaveCount(1);
   await expect(bar).not.toHaveClass(/\bcheck\b/);
   await expect(bar.locator('[data-desk-act="looks_right"]')).toHaveCount(0);
-  // Closing it brings the lead's box back as you left it.
+  // Closing it, the lead's box is back as you left it.
   await page.evaluate(() => deskShow(null));
+  await leadTab.click();
   await expect(lead).toHaveValue("a word for the lead");
+  await page.evaluate(() => deskOpenActivity());
   // Installed before the DONE but after its work last changed (you install, then say DONE): it's in, too (#115).
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").checks[0].edited = 1793984280000 - 120000; });
   await page.evaluate(() => { state.desk.installed_ms = 1793984280000 - 60000; renderMain(); });
@@ -209,11 +220,14 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "The arrows still skip one" });
   expect(await cue.calls("desk_send")).toEqual([]);
   await page.evaluate(() => deskShow(null));
+  await leadTab.click();
   await expect(lead).toHaveValue("a word for the lead");
 
-  // Once checked, the lead's chat says what you said, quiet and centred; the last one's Undo after it.
+  // Once checked, Activity says what you said, quiet and centred; the last one's Undo after it (#789: not the chat).
   await cue.change((s) => { const d = s.desk.projects.find((x) => x.project === "cue"); Object.assign(d.items.find((i) => i.id === "d2"), { state: "to_check" }); d.checks[0].state = "done"; });
-  const said = page.locator(".dk-chat .dk-chk-done");
+  await expect(page.locator(".dk-chat .dk-chk-done")).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
+  const said = page.locator(".dk-right .dk-moves .dk-chk-done");
   await expect(line).toHaveCount(0);
   await expect(said).toHaveText("You · looked at #d2 and said it looks right · Undo · back to check");
   await expect(said.locator("svg.dk-kic")).toHaveCount(1);
@@ -229,13 +243,16 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
 
 // #779: #778 was finishing (Cue landing it) and nobody had pressed Send back, yet the chat said "You · sent #778 … back
 // · no note". A DONE past Ready to check shows under whoever moved it: Cue while it finishes, Cue or the lead when they
-// sent it back, You only for your own Send back.
+// sent it back, You only for your own Send back. Since #789 (22a2d7c9a8) these lines are in the Desk's Activity, not the
+// lead's chat.
 test("a DONE past Ready to check shows under who moved it: Cue while it finishes, Cue or the lead when they sent it back, You only for your Send back", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(page.locator('.dk-chat [data-mg="check"]')).toHaveCount(1);
+  await expect(page.locator('.dk-chat [data-mg="check"]')).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
+  await expect(page.locator('.dk-right .dk-moves [data-mg="check"]')).toHaveCount(1);
   const title = await page.evaluate(() => deskItem("cue", "d2").title);
-  const said = page.locator(".dk-chat .dk-chk-done");
+  const said = page.locator(".dk-right .dk-moves .dk-chk-done");
   const set = (c) => cue.change((s, c) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { back: "", back_pics: 0, back_by: "", ...c }); }, c);
   // Finishing, nobody sent it back: Cue is landing it, and no "You", no "sent back", no "no note".
   await set({ state: "finishing" });
@@ -656,7 +673,7 @@ test("an item no session has shows its You'll see on its page; its Done when isn
 test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions, Check #…); a session's chat has its top bar and what it's on (#200)", async ({ page, cue }) => {
   await cue.open("desk", { frozen: true });
   await openDesk(page);
-  await deskShowPanel(page);
+  await page.setViewportSize({ width: 1800, height: 900 });
   const dir = process.env.SHOT_DIR || process.env.TMPDIR || "/tmp";
   // For the shots: a new item from Cue, and the lead's own lines for it, as its chat shows them.
   await page.evaluate(() => {
@@ -666,17 +683,20 @@ test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions,
     renderMain();
   });
   // The Dispatcher's page (#200): its header names it; its tabs (its chat, named for the lead, and Decisions) over the
-  // chat; the panel's NOW says its state once, one sentence, and Check #… for the first that waits.
+  // chat. 692dc421c7: the lead's chat has no panel (no NOW of its own, no Hide panel), even this wide; the strip over
+  // the chat says how many wait on you, a chip each, and Check #… for the first that waits.
   const pg = page.locator('.dk-right .dk-pg[data-desk-page="dispatcher"]');
   await expect(pg.locator("h1")).toHaveText("Dispatcher · web-lead");
   await expect(pg.locator(".dk-ptabs .dk-tab.on")).toHaveText("web-lead");
   await expect(pg.locator(".dk-ptabs")).toContainText("Decisions");
-  const now = pg.locator(".dk-pnow");
-  await expect(now.locator(".dk-pdot")).toHaveCount(1);
-  await expect(now.locator(".dk-pword")).toHaveText(/^(Working|Idle|Needs you)$/);
+  await expect(pg.locator(".dk-pnow")).toHaveCount(0);
+  await expect(pg.locator("[data-desk-panel]")).toHaveCount(0);
+  const now = page.locator(".dk2b-chat .dk2b-strip");
+  await expect(now).toBeVisible();
   // What waits on you, as Items' WAITING ON YOU has it: #d1's question, then #d2 ready to check.
-  await expect(now.locator(".dk-psay")).toContainText("2 items wait on you.");
-  await expect(now.locator(".dk-pgo")).toHaveText("Check #d1");
+  await expect(now.locator(".dk2b-wn")).toHaveText("2 wait on you");
+  await expect(now.locator(".dk2b-chip[data-desk-chk-item]")).toHaveText(["#d1", "#d2"]);
+  await expect(now.locator(".dk2b-check")).toHaveText("Check #d1");
   await page.screenshot({ path: `${dir}/cue-desk-lead-chat-light.png` });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: `${dir}/cue-desk-lead-chat-dark.png` });
@@ -685,16 +705,16 @@ test("the chats' pages: the Dispatcher's NOW (its state, routing, with sessions,
   // The review stays available, and clearing the question removes the waiting action.
   await page.evaluate(() => { state.items = state.items.filter((i) => i.id !== "n-focus-ask"); renderMain(); });
   // #d1 leaves; #d2, ready to check, still waits: Check goes to it.
-  await expect(now.locator(".dk-pgo")).toHaveText("Check #d2");
-  // Working (its ask answered) with one new item no one has: "Routing #d6"; how many are with sessions.
+  await expect(now.locator(".dk2b-check")).toHaveText("Check #d2");
+  // Working (its ask answered): #d2 still waits, on its own (the strip has no "Routing #…" words since 692dc421c7).
   await page.evaluate(() => { sessionOf("lead").state = "working"; state.items = state.items.filter((i) => i.session_id !== "lead"); renderMain(); });
-  await expect(now.locator(".dk-pword")).toHaveText("Working");
-  await expect(now.locator(".dk-psay")).toContainText("Routing #d6 to a session.");
-  await expect(now.locator(".dk-psay")).toContainText(/\d+ items? (is|are) with sessions/);
+  await expect(now.locator(".dk2b-wn")).toHaveText("1 waits on you");
+  await expect(now.locator(".dk2b-check")).toHaveText("Check #d2");
   await expect(page.locator('.dkn-row[data-desk-item="d2"] .dk-ok')).toBeVisible();
-  // None waits: no Check button.
+  // None waits: no Check button; the strip's Working pill counts the sessions at work instead.
   await page.evaluate(() => { const d = deskOf("cue"); d.items.find((i) => i.id === "d2").state = "done"; renderMain(); });
-  await expect(now.locator(".dk-pgo")).toHaveCount(0);
+  await expect(now.locator(".dk2b-check")).toHaveCount(0);
+  await expect(now.locator("[data-desk2b-work]")).toHaveText(/^Working \d+/);
 
   // A session holding an item: its chat with the Board's top bar for it (#744); under it what it's on, its number
   // opening the item.
@@ -974,9 +994,15 @@ test("the Desk's hand-off shows in the session's chat as a card: from the lead a
     sessionOf("host").thread.push({ at_ms: Date.now() - 60_000, role: "you", text: words });
     deskShow({ kind: "chat", sid: "host" });
   });
-  // In a session's chat on the Desk (#744, no panel) the hand-off is its card, in the chat.
-  const card = page.locator('.dk-right [data-desk-chat="host"] .mg-hand');
+  // #789 (22a2d7c9a8): the hand-off left the session's chat (#744, no panel) for Activity: its session's Activity tab
+  // has it, as its card, from Cue to the session.
+  await expect(page.locator('.dk-right [data-desk-chat="host"]')).toHaveCount(1);
+  await expect(page.locator('.dk-right [data-desk-chat="host"] .mg-hand')).toHaveCount(0);
+  await expect(page.locator('.dk-right [data-desk-chat="host"] [data-mg="hand"]')).toHaveCount(0);
+  await page.locator('.dk-right [data-desk-c-stab="activity"]').click();
+  const card = page.locator(".dk-right .dkn-sact .dk-mv-ln .mg-hand");
   await expect(card).toHaveCount(1);
+  await expect(card.locator("xpath=following-sibling::*[contains(@class,'dk-act-why')]")).toHaveText("Cue to host-lead");
   await expect(card.locator(".mg-h")).toHaveText(/^web-lead\s*Hand-off\s*Bug #d5/);
   await expect(card.locator(".dk-hand-t")).toHaveText("Hosted sessions can't open the canvas");
   await expect(card.locator(".dk-dwl li")).toHaveText(["the canvas opens from a hosted session", "it says why when it can't", "light and dark", "Installed and committed"]);

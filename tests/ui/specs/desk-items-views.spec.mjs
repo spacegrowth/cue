@@ -79,7 +79,9 @@ test("the items with sessions in the card; Up next, Done today and the calls whi
   if ((await fold.getAttribute("aria-expanded")) !== "true") await fold.click();
   await expect(card(page)).toContainText(`${n} call${n === 1 ? "" : "s"} while away`);
   await expect(card(page)).toContainText(/since \d\d:\d\d/);
-  await expect(card(page)).toContainText(/till \d\d:\d\d/);
+  // Away has no end time (#790): the line says what it spent of its budget, and an end time saved earlier isn't shown.
+  await expect(card(page).locator(".dk-aw-fold .dk-aw-w:not(.dk-aw-since)")).toHaveText("$1 of $10");
+  await expect(card(page)).not.toContainText(/till \d\d:\d\d/);
   // Up next and Done today side by side, under the card.
   const [c, nx, dn] = await Promise.all([card(page).boundingBox(), box(page, "next").boundingBox(), box(page, "done").boundingBox()]);
   expect(nx.y).toBeGreaterThan(c.y + c.height - 1);

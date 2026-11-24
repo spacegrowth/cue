@@ -210,8 +210,13 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
-to = "mini reading"
-reason = "as quiet sessions: a leaf lock read while a card is notified under the typing gate (hub/send.rs wait_turn); nothing is taken under it"
+to = "chats open"
+reason = "a card notified under a send's typing gate (hub/send.rs settle_typed → terminal_ask_with → notify) first looks whether you're reading that chat already (notify::is_read, #799); chats open is a leaf, held only to read or change the list of open chats, nothing taken under it"
+
+[[lock_order]]
+from = "typing gate"
+to = "notification sessions"
+reason = "a card notified under a send's typing gate (hub/send.rs settle_typed → terminal_ask_with → notify) notes which session the notification is about (notify::note_about, #799); notification sessions is a leaf, held only to read or change that list, nothing taken under it"
 
 [[lock_order]]
 from = "typing gate"
@@ -313,11 +318,6 @@ reason = "desk_view reads the Desk's top line (desk/hub/landing/now_line.rs view
 
 [[lock_order]]
 from = "the hub's store"
-to = "landing last"
-reason = "desk_view reads the Desk's top line (desk/hub/landing/now_line.rs view) while the store is held; landing last is a leaf, held only to copy or change its own entries (#783)"
-
-[[lock_order]]
-from = "the hub's store"
 to = "landing full run"
 reason = "desk_view reads the Desk's top line (desk/hub/landing/now_line.rs view) while the store is held; landing full run is a leaf, held only to copy or change its own entries (#783)"
 
@@ -325,11 +325,6 @@ reason = "desk_view reads the Desk's top line (desk/hub/landing/now_line.rs view
 from = "typing gate"
 to = "landing now"
 reason = "a redraw (snapshot → desk_view → now_line::view) can run under a send's typing gate; landing now is a leaf, held only to copy or change its own entries (#783)"
-
-[[lock_order]]
-from = "typing gate"
-to = "landing last"
-reason = "a redraw (snapshot → desk_view → now_line::view) can run under a send's typing gate; landing last is a leaf, held only to copy or change its own entries (#783)"
 
 [[lock_order]]
 from = "typing gate"

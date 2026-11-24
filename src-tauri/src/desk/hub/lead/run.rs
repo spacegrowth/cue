@@ -301,10 +301,13 @@ impl Hub {
             let compacted = st.sessions.get(lead).map_or(0, |s| s.compacted_ms);
             let sent = st.desk.run.blocks.get(project);
             let kind = if first { block::Kind::First } else { block::kind_for(sent, lead, compacted) };
+            let mut quiet = false;
             let body = match (kind, sent) {
                 (block::Kind::Changes, Some(s)) => {
                     let ops = block::diff(&s.base, &p.lines);
-                    format!("{CHANGES_HEAD}\n{}", block::changes(&s.base, &p.lines, &ops))
+                    let said = block::changes(&s.base, &p.lines, &ops);
+                    quiet = said == block::NOTHING;
+                    format!("{CHANGES_HEAD}\n{said}")
                 }
                 _ => block::whole(&p.lines),
             };
@@ -317,10 +320,18 @@ impl Hub {
                     block::Kind::Whole => (s.base, s.since_full, s.full_next) = (p.lines.clone(), 0, false),
                     block::Kind::Changes => (s.base, s.since_full) = (p.lines.clone(), s.since_full + 1),
                 }
+                // Nothing changed and nothing to add about an item: no block at all (#820). One kept for the lead's
+                // turn end keeps its block, so it's made fresh as it goes (hub/send.rs `desk_fresh_held`).
+                if quiet && p.notes.trim().is_empty() {
+                    return (String::new(), String::new(), p.failed, false);
+                }
             }
             let open = block_open(st, project, if kind == block::Kind::Changes { "changes" } else { "" });
             (open, format!("{body}{}", p.notes), p.failed, kind == block::Kind::First)
         });
+        if open.is_empty() {
+            return (String::new(), failed);
+        }
         (wrapped(&open, &body, rules.then_some(first)), failed)
     }
 
@@ -489,13 +500,13 @@ pub(crate) fn start_failed(st: &mut Store, s: &crate::desk::hub::core::desk::New
 }
 
 /// How a block of changes only begins (#818).
-const CHANGES_HEAD: &str = "Only what changed since your last Desk block; everything it doesn't name stands as it was. SHOW: desk sends it whole, SHOW: #<id> an item in full.";
+const CHANGES_HEAD: &str = "Only what changed since your last Desk block; everything it doesn't name stands as it was, and an item given in one line keeps the done when, you'll see and files it had. SHOW: desk sends it whole, SHOW: #<id> an item in full.";
 
 /// How the lead reads its block (#818): sent with the rules.
 const BLOCK_GUIDE: &str = "Your Desk block gives items being routed, at work, finishing or paused in full; every other item is one line \
 (number, title, state, holder, after #X), and the item a message is about is added in full. Cold sessions too big for new work that hold \
 nothing are counted, not listed. Between whole blocks, a block marked changes=\"only\" carries only the lines that changed; anything it \
-doesn't name stands as in the block before. To see more, write a line of its own: SHOW: #<id> #<id> (those items in full, told at once) \
+doesn't name stands as in the block before, and an item whose details stand is one short line. A message with no block: nothing changed. To see more, write a line of its own: SHOW: #<id> #<id> (those items in full, told at once) \
 or SHOW: desk (the whole block, sent at once).";
 
 /// The parts of a Desk block (#818): its lines (compared from block to block), and what goes with each message
@@ -798,8 +809,15 @@ fn item_lines(st: &Store, it: &DeskItem, full: bool, failed: &mut Vec<(String, S
     if let Some((_, why)) = it.paused.as_ref().filter(|_| it.state == "paused") {
         out.push_str(&if why.is_empty() { " | RESUME it when it should go on".to_string() } else { format!(" | paused: {why}") });
     }
-    // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
-    // Waiting for a slot with its session, or next for one (#798); one with no session yet is said as waiting for room.
+    item_wait(st, it, &mut out);
+    if full { item_details(it, &mut out) } else { item_short(it, &mut out) }
+    item_refused(it, failed, told);
+    out
+}
+
+/// Item `it`'s own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
+/// Waiting for a slot with its session, or next for one (#798); one with no session yet is said as waiting for room.
+fn item_wait(st: &Store, it: &DeskItem, out: &mut String) {
     if crate::desk::hub::turn::slots::waits(st, it) && !(it.holder.is_none() && it.room_wait) {
         let m = crate::desk::hub::turn::slots::machine_of(st, it);
         let n = crate::desk::hub::landing::remote_item::machine_cap(st, &it.project, &m).unwrap_or(0);
@@ -821,9 +839,6 @@ fn item_lines(st: &Store, it: &DeskItem, full: bool, failed: &mut Vec<(String, S
         // At work without a copy (#566): in line for the next free one.
         out.push_str(&format!(" | at work where its holder is, in line for the next free copy of its repository ({}); COPY FIRST puts it first in that line", it.tree_wait_repo));
     }
-    if full { item_details(it, &mut out) } else { item_short(it, &mut out) }
-    item_refused(it, failed, told);
-    out
 }
 
 /// Item `it`'s short line, on (#818): only what the lead acts on without asking (SEE: for an item missing a line, a
