@@ -171,6 +171,12 @@ test("sessions no process runs any more fold under Closed at the bottom, muted a
   await expect(gone.locator(".dk-st")).toHaveText("closed");
   expect((await order(side)).slice(-2)).toEqual(["# Closed 1", "gone"]);
   await expect(side.locator(".dk-scroll [title]")).toHaveCount(0);
+  // Anywhere on the heading folds it shut again, and opens it once more.
+  await closedH.click({ position: { x: 200, y: 6 } });
+  await expect(closedH).toHaveAttribute("aria-expanded", "false");
+  await expect(gone).toHaveCount(0);
+  await closedH.click({ position: { x: 200, y: 6 } });
+  await expect(closedH).toHaveAttribute("aria-expanded", "true");
   if (process.env.SHOT_DIR) {
     for (const theme of ["light", "dark"]) {
       await page.evaluate((th) => { document.documentElement.dataset.theme = th; }, theme);
