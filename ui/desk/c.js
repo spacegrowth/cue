@@ -534,6 +534,13 @@ function deskCKeepPlace(list) {
   deskCWaitOrder = out.map((i) => i.id);
   return out;
 }
+/** The heading of Desk `d`'s group of items on main waiting for its update after landing (#824), from its own step
+ *  names: Cue's "Waiting to install"; a single step X, "Waiting for X"; "" when it has no such steps (no group). */
+function deskCInstallHead(d) {
+  const n = d?.lands?.set?.after_names || {}, name = n.installing || Object.values(n).at(-1);
+  if (!name) return "";
+  return /^install$/i.test(name) ? "WAITING TO INSTALL" : `WAITING FOR ${esc(name.toUpperCase())}`;
+}
 /** Items: one line at its head (Items, Add an item…, Away, Pause; no tabs: every group is on screen); the white card
  *  with the step names over Waiting on you and Working; then Up next and Done today side by side on the green. */
 function deskCList(project, taskApprovals) {
@@ -545,14 +552,17 @@ function deskCList(project, taskApprovals) {
   const inWait = new Set([...g.asks, ...g.check].map((i) => i.id));
   const held = (d?.items || []).filter((i) => !inWait.has(i.id) && deskCStays(i)), heldIds = new Set(held.map((i) => i.id));
   const waits = deskCKeepPlace([...g.asks, ...g.check, ...held]);
-  const working = [...g.landing, ...g.install, ...g.working, ...g.resume, ...g.paused].filter((i) => !heldIds.has(i.id));
+  // On main and waiting for the Desk's update after landing (#824): a group of its own under Waiting on you, named by
+  // that Desk's own steps; a Desk with none keeps them with Working.
+  const instHead = deskCInstallHead(d), inst = instHead ? g.install.filter((i) => !heldIds.has(i.id)) : [];
+  const working = [...g.landing, ...(instHead ? [] : g.install), ...g.working, ...g.resume, ...g.paused].filter((i) => !heldIds.has(i.id));
   const queued = new Set(g.queued), next = [...g.queued, ...g.held];
   const doneToday = deskB2DoneToday(d).filter((i) => !heldIds.has(i.id));
   // Each group folds to its heading with a click on it, as Up next and Done today do (remembered with them).
   // Option A ("Items: working, waiting, asking", picked 23 Nov): each kind in its own band, the heading with a dot,
   // its count and a plain line saying what it means for you; asking you on the soft red, Working on white, the rest on
   // the card's grey.
-  const GRP_SAY = { blocked: "nothing moves till you answer", working: "at work · nothing for you", you: "done · ready for you to check", kept: "copies of dropped work", away: "what the lead decided while you were away" };
+  const GRP_SAY = { blocked: "nothing moves till you answer", working: "at work · nothing for you", you: "done · ready for you to check", kept: "copies of dropped work", install: "on main · nothing for you", away: "what the lead decided while you were away" };
   const grp = (key, label, list, extra = "", n = list.length, first = "") => {
     if (!list.length && !extra && !first) return "";
     const open = !deskCFolds.has(key);
@@ -572,6 +582,7 @@ function deskCList(project, taskApprovals) {
   const blocked = grp("blocked", "BLOCKED ON YOU", [], (ask?.one_way ? "" : leadAsk) + (aw.more || ""), blockedN, hf.html);
   const you = grp("you", "WAITING ON YOU", hf.rest, "", hf.rest.filter((i) => !heldIds.has(i.id)).length);
   const work = grp("working", "WORKING", working);
+  const install = instHead ? grp("install", instHead, inst) : "";
   // Kept copies and Calls while away are bands too: their headings stick and stack with the rest.
   const kept = (d?.kept || []).length ? grp("kept", "KEPT COPIES", [], d.kept.map(deskKeptRow).join(""), d.kept.length) : "";
   const calls = d?.away?.on ? deskAwayCalls(d) : [];
@@ -580,7 +591,7 @@ function deskCList(project, taskApprovals) {
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskCRow).join("")).join("");
   // Working next: it's what's live, and it stays short (the Desk runs only so many at once); Waiting on you under it.
-  const body = blocked + work + you + kept + away + tail;
+  const body = blocked + work + you + install + kept + away + tail;
   const head = `<div class="dkn-th" aria-hidden="true"><span>Item</span><span>Progress</span><span>Now</span></div>`;
   // Where it stands, in words only (deskB2Status is html, escaped already).
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");

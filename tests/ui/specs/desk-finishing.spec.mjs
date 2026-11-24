@@ -30,7 +30,8 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   await patchItem(cue, "d5", { finish: { step: "queued", commit: "abc9999", at: Date.now() } });
   const clock = await page.evaluate((t) => clockAt(t), due);
-  expect(await groupOf(page, "d5")).toBe("WORKING");
+  // Its own group under Waiting on you, named by the Desk's after-landing steps (#824).
+  expect(await groupOf(page, "d5")).toBe("WAITING TO INSTALL");
   await expect(st).toHaveText(`On main · installs at ${clock} · in 30m`);
   await expect(page.locator('.dkn-items [data-desk-act="install_now"], .dkn-items [data-desk-act="skip_install"]')).toHaveCount(0);
   // Counting down: due in under a minute, it says the seconds left, then what it waits on once it's due. The clock held
@@ -86,7 +87,7 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   await expect(st).toHaveText(`On main · Put in place · since ${since}`);
   await patchItem(cue, "d5", { finish: { step: "starting", commit: "abc9999", at: began } });
   await expect(st).toHaveText(`On main · Start again · since ${since}`);
-  expect(await groupOf(page, "d5")).toBe("WORKING");
+  expect(await groupOf(page, "d5")).toBe("WAITING FOR PUT IN PLACE");
 });
 
 test("the landing line: the one being checked first, then the one moved up, then the oldest DONE, each saying where it is in WORKING; a failed check stays in WORKING, out of the line (#346, #666)", async ({ page, cue }) => {
@@ -98,9 +99,10 @@ test("the landing line: the one being checked first, then the one moved up, then
   await patchItem(cue, "d5", { state: "finishing", finish: { step: "checking", at: t + 120_000 } });
   await patchItem(cue, "d3", { state: "finishing", finish: { step: "queued", commit: "c71e0b4feed", at: t } });
   const working = async () => { const o = await listOrder(page), k = o.indexOf("# WORKING"); return o.slice(k + 1, o.findIndex((x, j) => j > k && x.startsWith("# ")) >>> 0); };
-  // The landing line in its order, then what waits to install (deskGroups' landing, then install).
-  expect(await working()).toEqual(["d5", "d6", "d4", "d3"]);
-  await expect(page.locator('.dkn-items .dkn-gh[data-desk2b-group="working"] > span:not(.dkn-fa)')).toHaveText("4");
+  // The landing line in its order; what waits to install is in its own group (#824).
+  expect(await working()).toEqual(["d5", "d6", "d4"]);
+  await expect(page.locator('.dkn-items .dkn-gh[data-desk2b-group="working"] > span:not(.dkn-fa)')).toHaveText("3");
+  expect(await groupOf(page, "d3")).toBe("WAITING TO INSTALL");
   const st = (id) => statusOf(page, id);
   const hm = (ms) => page.evaluate((x) => clockAt(x), ms);
   await expect(st("d5")).toHaveText(`Checking before it lands · since ${await hm(t + 120_000)}`);

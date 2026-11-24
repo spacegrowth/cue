@@ -29,11 +29,11 @@ test("a checked Cue fix without a commit hash waits for verification on the Desk
     );
   });
   // On the Desk it waits on you to check, not as a question (#602): under WAITING ON YOU, its row with the ✓ (Looks
-  // right), the one still installing in WORKING with none.
+  // right), the one still installing in its own group under it (#824) with none.
   expect(await groupOf(page, "265")).toBe("WAITING ON YOU");
   await expect(page.locator('[data-desk-item="265"]')).not.toHaveClass(/\bask\b/);
   await expect(page.locator('[data-desk-item="265"] .dk-ok')).toHaveAttribute("aria-label", "Looks right");
-  expect(await groupOf(page, "awaits-install")).toBe("WORKING");
+  expect(await groupOf(page, "awaits-install")).toBe("WAITING TO INSTALL");
   await expect(page.locator('[data-desk-item="awaits-install"] .dk-ok')).toHaveCount(0);
   await page.locator('[data-desk-item="265"]').click();
   // It opens its session's chat with its bar: Looks right closes it.
