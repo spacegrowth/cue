@@ -168,6 +168,8 @@
 /* The box, under the chat and the panel both (desk/page.js deskPage). */
 .dk-pgf { grid-area: foot; min-width: 0; display: flex; flex-direction: column; }
 .dk-ph { grid-area: head; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 10px; }
+/* The lead's page has no row over its name (no back, no Hide panel): its name sits as low as a session's name row. */
+.dk-pg[data-desk-page="dispatcher"] > .dk-ph { padding-top: 26px; }
 .dk-ph1 { display: flex; align-items: center; gap: 8px; min-height: 28px; }
 .dk-ph1 .dk-back { margin: 0 0 0 -6px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; }
 .dk-back.dk-here { cursor: default; }

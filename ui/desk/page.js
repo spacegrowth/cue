@@ -345,31 +345,10 @@ const DESK_MARKS = { desk: "Dispatcher", session: "Session", crew: "Crew", lead:
 const DESK_PANEL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg>`;
 /** Kinds of page whose panel you hid ("item", "session", "crew", "lead", "dispatcher"), kept across restarts. */
 const deskPanelHid = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.deskPanelHidden") || "[]")); } catch { return new Set(); } })();
-/** The lead's panel starts shown (#666); Hide panel puts its Now and Waits on you in the strip over the chat,
- *  remembered as "dispatcher-hidden". Every other page as before. */
+/** What Hide panel remembers each kind of page by. */
 const deskPanelKey = (page) => (page === "dispatcher" ? "dispatcher-hidden" : page);
-const deskPanelHidden = (page) => deskPanelHid.has(deskPanelKey(page)) || (page === "dispatcher" && deskB2Narrow());
-/** B2: the lead's chat card is too narrow for its panel (under 641px, desk-page.css's own rule), so the panel can't show
- *  and the strip takes its place, as with Hide panel. Read off the card in the chat's place as drawn last (else the
- *  board's width at the chat's share); a watcher on that card redraws when its width crosses the line. */
-let deskB2NarrowDrawn = null;
-const deskB2Sizer = typeof ResizeObserver === "function" ? new ResizeObserver((es) => {
-  const w = es.at(-1)?.contentRect.width;
-  if (view === "desk" && w > 0 && deskB2NarrowDrawn !== null && (w < 641) !== deskB2NarrowDrawn) renderMain();
-}) : null;
-function deskB2Narrow() {
-  const card = document.querySelector("#app .dk-board.dk-b2 > .dk-card:is(.dk2b-chat, .dk2b-open)");
-  const board = document.querySelector("#app .board");
-  const w = card ? card.getBoundingClientRect().width : board ? (board.clientWidth - 28) * 1.9 / 3.75 : 0;
-  deskB2NarrowDrawn = w > 0 && w < 641;
-  // Watch the card this draw puts there (a new element each draw).
-  if (deskB2Sizer) requestAnimationFrame(() => {
-    const next = document.querySelector("#app .dk-board.dk-b2 > .dk-card.dk2b-chat");
-    deskB2Sizer.disconnect();
-    if (next) deskB2Sizer.observe(next);
-  });
-  return deskB2NarrowDrawn;
-}
+// The lead's chat has no panel: its Now and Waits on you are always the strip over the chat, with no Hide panel.
+const deskPanelHidden = (page) => page === "dispatcher" || deskPanelHid.has(deskPanelKey(page));
 function deskPanelToggle(page) {
   if (!deskPanelHid.delete(page)) deskPanelHid.add(page);
   try { localStorage.setItem("cue.deskPanelHidden", JSON.stringify([...deskPanelHid])); } catch { /* kept for this window only */ }
@@ -398,8 +377,8 @@ function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "
   // its foot (#688); left out, the open page's own chat's (deskPageActivity).
   panel += activity ?? deskPageActivity();
   const hid = deskPanelHidden(page);
-  const tog = `<button class="btn small dk-ptog" data-desk-panel="${deskPanelKey(page)}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
-  return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph"><div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>`
+  const tog = page === "dispatcher" ? "" : `<button class="btn small dk-ptog" data-desk-panel="${deskPanelKey(page)}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
+  return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph">${back || acts || tog ? `<div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>` : ""}`
     + `<h1 class="dk-ph2"><span class="dk-hk"${["desk", "session", "crew", "lead"].includes(kind) ? ` data-desk-mark="${kind}"` : ""}>${deskKindIcon(kind)}${esc(mark.replace(/ · $/, ""))}</span><span class="dk-hsep"> · </span><span class="dk-tname">${title}</span></h1>${meta ? `<div class="dk-ph3">${meta}</div>` : ""}</div>`
     // The box runs under both the chat and the panel (the panel stops above it), so what you type has the whole width;
     // an item's page keeps it in its column (its rows are laid out for that).
@@ -414,6 +393,8 @@ const deskSessKind = (sid, d) => (sid === deskLead(d)?.sid ? "desk" : deskIsLead
 function deskChatBack(from, d) {
   const i = from?.kind === "item" && deskItem(d.project, from.id);
   const label = i ? deskNum(i) : from?.kind === "sessions" ? "All sessions" : from?.kind === "holder" ? deskHolderName(from.sid, d.items.find((x) => deskGroupKey(x.holder) === from.sid && x.state !== "done" && x.holder?.kind !== "crew")?.holder?.name) : deskB2ItemsWord(d);
+  // Opened from the sessions on the left, there's nothing to go back to: Items are in view beside it.
+  if (!from) return "";
   return `<button class="dk-back" data-desk-chat-back>‹ ${esc(label)}</button>`;
 }
 function deskSessChat(sid, from, d, foot = "", top = "") {

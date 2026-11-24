@@ -173,7 +173,10 @@ const typedQueued = (s) => (s?.state === "working" || s?.compacting_ms ? { st: "
 /** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`
  *  msgLine's, `after` anything under its line. Dashed on the panel till it's with them, filled once delivered, outlined
  *  red when it couldn't go. */
-const msgRow = (m, inner, cls = "", attrs = "", after = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}${after}</div>`;
+const msgRow = (m, inner, cls = "", attrs = "", after = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}${MSG_TRACED.has(m.st) ? ` style="--qd:-${Date.now() % 4000}ms"` : ""}>${inner}${msgLine(m)}${after}</div>`;
+/** The states whose bubble has the drifting arc (messages.css): each draw starts it where the clock has it, so a redraw
+ *  doesn't send it back to the start. */
+const MSG_TRACED = new Set(["sending", "held", "queued"]);
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
 /** A message from another session (#501, messages.css): the family's card, who it's from as its chip in the head, then
  *  the message (a forward quotes the original under it, as the full text). */

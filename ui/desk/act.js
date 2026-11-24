@@ -11,7 +11,7 @@ function deskShow(what) {
     deskTab = "lead";
     // "This turn in …" on the lead: its chat goes to that turn (desk/view.js deskSettle), not to its end.
     deskTurnLead = !!deskTurnAt;
-    if (!deskTurnAt) deskChatEnd = true;
+    if (!deskTurnAt) { deskChatEnd = true; deskChatSent = true; }
     return renderMain();
   }
   if (what?.kind === "item") deskSeeItem(what.id);
@@ -21,6 +21,9 @@ function deskShow(what) {
   deskDropArm = null;
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
+  // A chat opened (a session's, a crew member's, the lead's): at its end, and again a frame and a moment later, so what
+  // draws late (its steps, a picture) doesn't leave it short of the end.
+  if (!what || ["chat", "crew", "holder"].includes(what.kind)) { deskChatEnd = true; deskChatSent = true; }
   renderMain();
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
@@ -35,7 +38,8 @@ async function deskSendBox(key, sendNow = false) {
   deskAwayNoteSent(to);
   // From the lead's own box, however it goes (words, a "/" command, a "!" line): its chat goes to its end, to show
   // what you sent and follow the answer (#704).
-  if (deskLeadBoxTo(to)) { deskChatEnd = true; deskChatSent = true; }
+  // From the open chat's own box (a session's, a crew member's, an item's page) too.
+  if (deskLeadBoxTo(to) || document.querySelector(`.dk-right textarea[data-text="${CSS.escape(key)}"]`)) { deskChatEnd = true; deskChatSent = true; }
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
   if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
