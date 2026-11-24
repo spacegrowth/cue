@@ -218,6 +218,9 @@ fn the_whole_block_comes_every_twenty_messages_and_when_the_lead_asks() {
     ends(&w, &d, &format!("SHOW: #{a}"));
     let told = last(&w, &d);
     assert!(told.contains(&format!("#{a} in full, as you asked:")) && told.contains(DONE_WHEN), "{told}");
+    // In the lead's chat: Cue's answer to its line, never your bubble (#837).
+    let shown = w.hub().read(|st| st.sessions.thread(&d)).into_iter().rev().find(|e| e.role == "you" && e.text.contains(&format!("#{a} in full, as you asked:"))).expect("its copy in the chat");
+    assert!(shown.cue && shown.kind == "answer", "{shown:?}");
     ends(&w, &d, "SHOW: desk");
     let told = last(&w, &d);
     assert!(told.contains("Your whole Desk block, as you asked") && !changes_only(&told) && told.contains("Other open items:"), "{told}");

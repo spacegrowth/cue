@@ -146,12 +146,12 @@ impl Hub {
         if !matches!(claimed, Some(None)) {
             let back = self.write(|st| st.desk.item_mut(id).map(|i| std::mem::take(&mut i.back_waiting)).unwrap_or_default());
             if !back.is_empty() {
-                match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, id)) {
-                    Some((_, text)) => {
+                match fx.sends.iter_mut().find(|(s, text, _)| *s == to && names_item(text, id)) {
+                    Some((_, text, _)) => {
                         text.push_str("\n\n");
                         text.push_str(&back);
                     }
-                    None => fx.sends.push((to.to_string(), back)),
+                    None => fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), back), crate::sessions::Kind::Route)),
                 }
             }
         }
@@ -167,7 +167,7 @@ impl Hub {
                 // Your words (a Send back, a question) and the lead's notes go now all the same (#567): its holder reads
                 // them while it waits, told not to change files yet, and the lead hears your words at once.
                 let now_ones = self.write(|st| words_now(st, fx, id, to));
-                fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)) || now_ones.contains(text));
+                fx.sends.retain(|(s, text, _)| !(*s == to && names_item(text, id)) || now_ones.contains(text));
                 let backs: Vec<String> = fx.backs.iter().filter(|(b, _)| *b == id).map(|(_, m)| m.clone()).collect();
                 if !backs.is_empty() {
                     self.write(|st| {
@@ -242,7 +242,7 @@ impl Hub {
             line.push_str(&w);
         }
         let mut told = false;
-        for (_, text) in fx.sends.iter_mut().filter(|(s, text)| *s == to && names_item(text, id)) {
+        for (_, text, _) in fx.sends.iter_mut().filter(|(s, text, _)| *s == to && names_item(text, id)) {
             told = true;
             if !text.contains(&t.path) {
                 text.push('\n');
@@ -253,7 +253,7 @@ impl Hub {
         // by START or COPY FIRST): told all the same, or it goes on changing the main folder (#653).
         if !told {
             let title = it.as_ref().map(|i| i.title.clone()).unwrap_or_default();
-            fx.sends.push((to.to_string(), format!("Desk item #{id} ({title}): a copy of its repository is yours now. Move any work you've done for it so far into it, then carry on there.\n{line}")));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), format!("Desk item #{id} ({title}): a copy of its repository is yours now. Move any work you've done for it so far into it, then carry on there.\n{line}")), crate::sessions::Kind::Route));
         }
     }
 
@@ -267,22 +267,22 @@ impl Hub {
         if t.in_place {
             let words = format!("Desk item #{id}: Cue couldn't put {} on its own branch {}: {e}. It works in that folder as it is, on the branch it's on, and lands as a shared folder item does.", t.repo, t.branch);
             // In its holder's message on it, as where its branch is would be.
-            match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, id)) {
-                Some((_, text)) => {
+            match fx.sends.iter_mut().find(|(s, text, _)| *s == to && names_item(text, id)) {
+                Some((_, text, _)) => {
                     text.push('\n');
                     text.push_str(&words);
                 }
-                None => fx.sends.push((to.to_string(), words.clone())),
+                None => fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), words.clone()), crate::sessions::Kind::Route)),
             }
             if let Some(lead) = self.read(|st| st.desk.item(id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
-                fx.sends.push((lead, words));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((lead, words), crate::sessions::Kind::Route));
             }
         } else if t.keep || kept {
             let what = if kept { "move its kept copy back" } else { "make its copy" };
             let words = format!("Desk item #{id}: Cue couldn't {what} of {} on branch {}: {e}. Say where to work before changing files.", t.repo, t.branch);
-            fx.sends.push((to.to_string(), words.clone()));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), words.clone()), crate::sessions::Kind::Route));
             if let Some(lead) = self.read(|st| st.desk.item(id).and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)) {
-                fx.sends.push((lead, words));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((lead, words), crate::sessions::Kind::Route));
             }
         }
         // Not in line again: a copy that can't be made would be tried at every free one (#566). Nor queued for one,
@@ -402,7 +402,7 @@ impl Hub {
                     // With the why it was routed with (#657: a lead's send back held for a copy went without it).
                     crate::desk::handed_words(it, &it.after_why, &rule)
                 };
-                fx.sends.push((h.to().to_string(), words));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), words), crate::sessions::Kind::Brief));
             }
             fx.items.push(id);
             fx
@@ -732,7 +732,7 @@ impl Hub {
                     let it = st.desk.item(id);
                     it.and_then(|i| i.holder.as_ref()).map(|h| h.to().to_string()).into_iter().chain(it.and_then(|i| st.desk.lead_sid(&i.project)).map(str::to_string)).collect()
                 });
-                self.desk_done(Effects { sends: to.into_iter().map(|s| (s, words.clone())).collect(), ..Default::default() });
+                self.desk_done(Effects { sends: to.into_iter().map(|s| (s, words.clone(), crate::sessions::Kind::Route)).collect(), ..Default::default() });
             }
             Ok(None) => {}
         }
@@ -822,7 +822,7 @@ fn words_now(st: &mut Store, fx: &mut Effects, id: &str, to: &str) -> Vec<String
     let mut yours = Vec::new();
     for d in st.desk.decisions.iter_mut().filter(|d| steps.contains(&d.id)) {
         let Some(del) = d.delivery.as_mut() else { continue };
-        let Some((_, text)) = fx.sends.iter_mut().find(|(s, text)| s == to && *text == del.text) else { continue };
+        let Some((_, text, _)) = fx.sends.iter_mut().find(|(s, text, _)| s == to && *text == del.text) else { continue };
         if !text.contains(&wait) {
             text.push_str(&wait);
         }

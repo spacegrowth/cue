@@ -7,7 +7,7 @@ use rusqlite::{params, Connection};
 use serde_json::json;
 
 /// The columns each version added (db/schema.rs `migrate`), as (version, table, column).
-const ADDED: [(i64, &str, &str); 12] = [
+const ADDED: [(i64, &str, &str); 14] = [
     (3, "turns", "looks"),
     (3, "turns", "agents"),
     (3, "turns", "relay"),
@@ -20,8 +20,10 @@ const ADDED: [(i64, &str, &str); 12] = [
     (8, "exchanges", "status_ask"),
     (12, "exchanges", "from_name"),
     (12, "exchanges", "from_sid"),
+    (13, "exchanges", "by_cue"),
+    (14, "exchanges", "cue_kind"),
 ];
-const LATEST: i64 = 13;
+const LATEST: i64 = 14;
 
 /// The World's database file, opened beside Cue's (Cue's own connection let go first).
 fn outside(w: &World) -> Connection {
@@ -204,4 +206,44 @@ fn every_saved_path_follows_the_data_folder_when_it_moves() {
     let parked = crate::db::raw(|c| c.query_row("SELECT data FROM parked", [], |r| r.get::<_, String>(0))).unwrap();
     assert!(!parked.contains(old) && parked.contains(&img(new)), "a parked session's: {parked}");
     assert_eq!(crate::db::drafts()["s:p"]["images"], json!([img(new)]), "an unsent draft's");
+}
+
+/// Cue's message of a kind (#837) is saved with it, and an older page of the chat has it; a database from before kinds
+/// were kept moves up with none, and its messages read as they were.
+#[test]
+fn a_cue_message_keeps_its_kind_in_the_saved_chat_and_an_older_database_has_none() {
+    let w = World::new();
+    database_at(&w, 13);
+    // Opened, it's moved up; its message from before: not Cue's, no kind.
+    crate::db::reset();
+    let (version, old): (i64, Vec<(bool, String)>) = crate::db::raw(|c| {
+        let version = c.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        // by_cue as `database_at` left it: its copied table has no defaults, so null there.
+        let mut q = c.prepare("SELECT IFNULL(by_cue, 0), cue_kind FROM exchanges WHERE session_id = 'x'")?;
+        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok((version, rows))
+    })
+    .expect("the database opens");
+    assert_eq!(version, LATEST);
+    assert_eq!(old, [(false, String::new())]);
+
+    // Saved in a database of today's shape (the older one above lost its keys when made).
+    drop(w);
+    let w = World::new();
+    crate::db::reset();
+    let mut s: crate::sessions::Session = serde_json::from_value(json!({
+        "session_id": "k", "harness": "claude", "cwd": "/x/proj", "project": "proj", "state": "waiting",
+        "driven_by": "", "queued": null, "since_ms": 1, "prompt": "", "segments": [], "thread": []
+    }))
+    .unwrap();
+    let you = |at: u64, text: &str, kind: &str| crate::model::Exchange { role: "you".into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: !kind.is_empty(), kind: kind.into(), cue_parts: vec![] };
+    s.thread = vec![you(10, "Desk item #4 has moved to docs: stop work on it.", "route"), you(20, "fix the footer", "")];
+    crate::db::save_ended(&[(30, s)]);
+    let log = crate::db::session_log("k");
+    assert_eq!((log[0]["cue"].clone(), log[0]["kind"].clone()), (json!(true), json!("route")), "{log:?}");
+    assert!(log[1].get("cue").is_none() && log[1].get("kind").is_none(), "yours: {log:?}");
+    let page = crate::db::session_log_page("k", 20, 5);
+    assert_eq!(page.len(), 1, "{page:?}");
+    assert_eq!(page[0]["kind"], "route", "{page:?}");
+    drop(w);
 }

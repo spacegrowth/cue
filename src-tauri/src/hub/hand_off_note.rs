@@ -125,7 +125,7 @@ const AHEAD_BY: [&str; 6] = ["", "you", "session", "all", "desk", "full"];
 
 /// handoff_cue, with who asked ahead of its cache running out (0: not ahead).
 pub(crate) fn handoff_cue_ahead(h: &Hub, session_id: &str, ahead: u8) -> Result<String, String> {
-    let r = h.tell(session_id, &handoff_ask(session_id))?;
+    let r = h.tell(session_id, &handoff_ask(session_id), crate::sessions::Kind::HandOff)?;
     // Asked unasked (its tick, or Settings) and it began working in the meantime: Cue kept the ask to send when
     // that turn ends, when you're there. Taken back: held, not sent.
     if ahead > AHEAD_YOU && r.starts_with("kept in Cue") {
@@ -162,7 +162,7 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), hosted: o.hosted, ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
     let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd), &h.desk_item_names(session_id), &h.names_taken());
-    h.cue_says(&first);
+    h.cue_says(&first, crate::sessions::Kind::HandOff);
     let started = super::start_session_with(h, &o.harness, &o.cwd, &first, &name, &opts)?;
     let new_id = started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     crate::config::carry_move(session_id, &new_id);

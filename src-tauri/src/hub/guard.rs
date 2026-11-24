@@ -78,7 +78,7 @@ impl Hub {
         if saved != before {
             let words = crate::desk::one_way::changed_words(&saved);
             for sid in self.read(|st| desk_sessions(st, project)) {
-                if let Err(e) = self.tell(&sid, &words) {
+                if let Err(e) = self.tell(&sid, &words, crate::sessions::Kind::Desk) {
                     eprintln!("cue: couldn't tell {sid} the new Ask me before: {e}");
                 }
             }

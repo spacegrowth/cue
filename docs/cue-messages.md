@@ -144,6 +144,17 @@ the copy of it in the session's thread is marked `cue` (saved with it, so an old
 same words typed by you are never Cue's: nothing is guessed from the text. Your words wrapped by Cue (your note or
 question from an item's page, your Send back) stay yours.
 
+Each also says what kind it is, set where it's sent (#837): `tell(sid, text, kind)`, `tell_now`, `cue_says`,
+`desk_send_cue` and every Desk send take a `Kind`; `send_saved` takes `Said::You` or `Said::Cue(kind)`;
+`send_to_session` is yours alone. The thread's copy carries `kind` beside `cue` (saved as `cue_kind`): brief (an item
+handed over), route (moved, copy given or taken back, parked, paused, resumed, closed, dropped, open again), note (the
+lead's NOTE, an option picked, folded into), nudge (done?, stuck, a quiet teammate, Carry on after a usage limit, a background
+agent's Resume or Stop), followup (DONE and CHECK follow-ups), desk (Desk changes and feed, paused or resumed, Away), question (TO LEAD,
+cleanup, ASK passed on, a wait circle), answer (Cue's answers to the lead's own lines, SHOW, refusals), crew (a crew's
+reviews, fixes, hand outs), handoff (a hand-off note asked for, a fresh session's start from it, a new lead's hello), peer (TELL DESK), notice (anything
+else). A test (`testing/tests/send_rules.rs`) reads the source: text goes into a session only through `deliver`, and
+every one of Cue's sends names its kind.
+
 A marked message with a card of its own above keeps it. Any other is one quiet line at the left, as Cue's lines in a
 lead's chat are: "+ ◔ Cue → cue-383 · #832 · 3m", what it says in short under it ("Asked it to redo its check line",
 else its first sentence), a click opening the full text (`ui/desk/cue_said.js` `cueQuietHtml`). These used to show as

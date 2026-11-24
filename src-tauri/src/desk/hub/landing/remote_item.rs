@@ -451,12 +451,12 @@ impl Hub {
                 self.later(0, move |h| h.desk_remote_start_checked(s));
                 continue;
             }
-            match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, &id)) {
-                Some((_, text)) => {
+            match fx.sends.iter_mut().find(|(s, text, _)| *s == to && names_item(text, &id)) {
+                Some((_, text, _)) => {
                     text.push('\n');
                     text.push_str(&line);
                 }
-                None => fx.sends.push((to, format!("Desk item #{id}: {line}"))),
+                None => fx.sends.push(crate::desk::hub::core::desk::kinded((to, format!("Desk item #{id}: {line}")), crate::sessions::Kind::Route)),
             }
         }
     }
@@ -742,7 +742,7 @@ impl Hub {
         self.remote_stuck(&it.id, &format!("{NO_BRANCH}: {}", what.split(". ").next().unwrap_or(what)));
         let Some(h) = it.holder.clone().filter(|_| !told) else { return };
         let mut fx = Effects::default();
-        fx.sends.push((h.to().to_string(), format!("Desk item #{} ({}) waits for its branch: {what}. Cue tries again each minute.", it.id, it.title)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{} ({}) waits for its branch: {what}. Cue tries again each minute.", it.id, it.title)), crate::sessions::Kind::Route));
         self.desk_done(fx);
     }
 
@@ -975,8 +975,8 @@ fn remote_starts_of(st: &Store, ids: &[String]) -> Vec<(String, String, String, 
 /// Holder `to`'s messages naming item `id`, taken out of `fx` to be held, with `line` (where to work) added to the
 /// last; just that line when there were none.
 fn held_start_text(fx: &mut Effects, to: &str, id: &str, line: &str) -> String {
-    let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text)| *s == to && names_item(text, id)).map(|(_, t)| t.clone()).collect();
-    fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)));
+    let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text, _)| *s == to && names_item(text, id)).map(|(_, t, _)| t.clone()).collect();
+    fx.sends.retain(|(s, text, _)| !(*s == to && names_item(text, id)));
     if texts.is_empty() {
         texts.push(format!("Desk item #{id}: {line}"));
     } else {

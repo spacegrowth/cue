@@ -20,7 +20,7 @@ pub(crate) fn desk_send_now(h: &Arc<Hub>, project: &str, text: &str, images: &[c
     }
     let saved = crate::uploads::save(images)?;
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
-    let sid = deliver(h, project, text, saved, now, &lost)?;
+    let sid = deliver(h, project, text, saved, now, &lost, crate::sessions::Said::You)?;
     h.desk_yours(&sid, text);
     Ok(serde_json::json!({ "sid": sid }))
 }
@@ -30,29 +30,30 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
         return Err("nothing to send".into());
     }
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
-    let sid = deliver(h, project, text, vec![], false, &lost)?;
+    let sid = deliver(h, project, text, vec![], false, &lost, crate::sessions::Said::You)?;
     h.desk_yours(&sid, text);
     Ok(serde_json::json!({ "sid": sid }))
 }
 
 /// Cue's own words (its Desk changes, desk/hub/lead/feed.rs) to `project`'s lead as `deliver` sends them (resumed
 /// with the Desk's summary when parked), not kept as yours: its id.
-pub(crate) fn desk_send_cue(h: &Arc<Hub>, project: &str, text: &str) -> Result<String, String> {
-    h.cue_says(text);
+pub(crate) fn desk_send_cue(h: &Arc<Hub>, project: &str, text: &str, kind: crate::sessions::Kind) -> Result<String, String> {
+    // Known as Cue's before it's claimed: held while the lead starts, it goes later as Cue's still (DeskStart::done).
+    h.cue_says(text, kind);
     let lost = |e: String| format!("{}'s lead didn't come up ({e})", h.desk_name(project));
-    deliver(h, project, text, vec![], false, &lost)
+    deliver(h, project, text, vec![], false, &lost, crate::sessions::Said::Cue(kind))
 }
 
 /// Your words (`text`) and pictures (`saved`) to `project`'s lead, however it's reached (`desk_claim`), after the
 /// Desk's summary as built for that lead: its id. Sent to it live, the pictures go as a session chat's do (shown in its
 /// chat); held while it starts or resumed with it, the message names them by where they are, as a hosted session is
 /// sent them. `now`: sent live to a lead at work at once, not kept until its turn ends. `lost`: what you're told when it was waited for or resumed and didn't come up.
-fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::Saved>, now: bool, lost: &dyn Fn(String) -> String) -> Result<String, String> {
+fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::Saved>, now: bool, lost: &dyn Fn(String) -> String, said: crate::sessions::Said) -> Result<String, String> {
     let named = crate::uploads::with_paths(text, &saved);
-    let (sid, failed) = match h.desk_claim(project, &named)? {
+    let (sid, failed) = match h.desk_claim(project, &named, said)? {
         DeskClaim::Send(sid) => {
             let (message, failed) = for_lead(h, project, &sid, text, now);
-            h.send_saved(&sid, &message, saved, now)?;
+            h.send_saved(&sid, &message, saved, now, said)?;
             (sid, failed)
         }
         // Another message is resuming it (or a lead is starting or changing): this one is sent by that call once
@@ -107,8 +108,8 @@ impl<'a> DeskStart<'a> {
         for w in self.h.desk_claim_done(self.project) {
             let sent = up.clone().and_then(|sid| {
                 let (message, failed) = for_lead(self.h, self.project, &sid, &w.text, false);
-                // Yours, or Cue's known as such when it was sent (desk_send_cue): not `tell`, which makes it Cue's (#836).
-                self.h.send_to_session(&sid, &message, &[], false)?;
+                // Yours, or Cue's of a kind: as said where it was sent (#837).
+                self.h.send_saved(&sid, &message, vec![], false, w.said)?;
                 self.h.desk_told(&failed);
                 Ok(sid)
             });
@@ -124,7 +125,7 @@ impl<'a> DeskStart<'a> {
     pub(crate) fn back(mut self) {
         self.open = false;
         for w in self.h.desk_claim_done(self.project) {
-            let sent = deliver(self.h, self.project, &w.text, vec![], false, &|e| e);
+            let sent = deliver(self.h, self.project, &w.text, vec![], false, &|e| e, w.said);
             // Its sender may have gone (the window closed): nothing more to tell then.
             let _ = w.reply.send(sent);
         }

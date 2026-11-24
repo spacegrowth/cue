@@ -87,7 +87,7 @@ pub(crate) fn move_said(st: &mut Store, desk: &str, by: &str, sid: &str, id: &st
     if let Some(b) = it.holder.clone().filter(|_| matches!(it.state.as_str(), "new" | "queued" | "working")) {
         if it.state == "working" {
             let crew = if b.kind == "crew" { format!("For your teammate {}: ", b.name) } else { String::new() };
-            fx.sends.push((b.to().to_string(), format!("{crew}Desk item #{} ({}) has moved to the {to_name} Desk: stop work on it. Write your hand-off note for it now (what's done, what's next, the files), so the session that takes it there can carry on.", it.id, it.title)));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((b.to().to_string(), format!("{crew}Desk item #{} ({}) has moved to the {to_name} Desk: stop work on it. Write your hand-off note for it now (what's done, what's next, the files), so the session that takes it there can carry on.", it.id, it.title)), crate::sessions::Kind::Route));
         }
         handoff = format!(" {} worked on it: route it to new and the session Cue starts is sent {}'s hand-off.", b.name, b.name);
         it.remember_holder();

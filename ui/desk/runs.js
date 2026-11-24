@@ -55,8 +55,9 @@ function dkReplyTake(draw) {
     return t.keep;
   });
   const acts = taken.some(dkActs);
-  if (!taken.length) return { html, all: false, acts, forYou };
+  // Nothing left to read once its Desk lines are out (#837): it leaves whole, never an empty reply in the chat.
   const all = !html.replace(/<[^>]*>/g, "").trim() && !/<(?:img|svg|button|pre|table)\b/i.test(html);
+  if (!taken.length) return { html, all, acts, forYou };
   const tpl = taken.map((x) => `<template class="dk-taken">${x}</template>`).join("");
   return all ? { html: tpl, all: true, acts, forYou } : { html: html + tpl, all: false, acts, forYou };
 }
@@ -67,7 +68,7 @@ const dkActs = (h) => { const k = dkKindOf(h) || dkKindOf(String(h).replace(/^\s
  *  (#816): not your words, not your words that went with a session's (#812), not your answer to a question. */
 function dkNotice(s, e, n, page) {
   if (e.role !== "you" || e.decision) return false;
-  if (typeof deskRelaySplit === "function" && deskRelaySplit(e.text)?.yours) return false;
+  if (chatFrom(e) !== "cue" && typeof deskRelaySplit === "function" && deskRelaySplit(e.text)?.yours) return false;
   return dkLinesOf(s, e, n, page).length > 0;
 }
 /** Reply `n` of `ex` (session `s`'s messages, their Desk summaries dropped) when the turn it answers was only Cue's
@@ -77,6 +78,19 @@ function dkNotice(s, e, n, page) {
 function dkNoticeReply(s, ex, n, page) {
   const e = ex[n];
   if (e?.role !== "agent") return null;
+  // In a lead's chat, a turn with any message marked Cue's is decided by the tags (chat/who.js chatTurnOf, #837): one
+  // Cue started is Activity's whole, every reply in it under its last notice, whatever the reply does (its Desk lines
+  // are Activity's rows of their own; lines for you, pictures and buttons drawn there in full, dkNoticeAnswer). Cue's
+  // replies to the lead's own lines ("answer") start no turn: a reply after one goes on with the turn before it.
+  if (page?.you === deskLeadNote) {
+    const turn = chatTurnOf(ex, n);
+    // From the reply before its turn up to it: any of Cue's there (its turn's, or Cue's answers among the replies).
+    let j = n - 1;
+    while (j >= 0 && (chatFrom(ex[j]) === "ai" || chatCueAnswer(ex[j]))) j--;
+    while (j >= 0 && chatFrom(ex[j]) !== "ai") j--;
+    const tagged = ex.slice(j + 1, n).some((x) => chatFrom(x) === "cue");
+    if (tagged) return turn.length && turn.every((k) => chatFrom(ex[k]) === "cue") ? { turn, stays: false, tagged: true } : null;
+  }
   let i = n - 1;
   while (i >= 0 && ex[i].role === "agent") i--;
   const turn = [];
@@ -107,17 +121,36 @@ function dkNoticeQuiet(s, ex, turn, page) {
 function dkNoticeAnswer(s, e) {
   const text = addOn.plain(e.text), d = (state.desk?.projects || []).find((x) => deskLead(x)?.sid === s.session_id);
   const who = d ? deskLeadName(d) : nameOf(s.session_id, s.project);
+  // One with more than words (#837: lines for you with their buttons, pictures, an add-on's part): drawn in full as the
+  // chat would, its Desk lines left out (they're Activity's rows of their own).
+  const said = addOn.reply(s.session_id, e.text);
+  const t = dkReplyTake((run) => md(said.text, { runIn: s.session_id, lines: deskLineHtml, refs: deskRefs, run }));
+  if (t.forYou || said.after || e.images?.length) {
+    const body = t.html.replace(DK_TAKEN, "");
+    return `<div class="dk-ans full" data-dk-ans="${e.at_ms}"><b class="mg-who">${esc(who)}</b><div class="msg mg-text cv-text">${body}</div>${said.after}${thumbs(e.images)}</div>`;
+  }
   return `<div class="dk-ans" data-dk-ans="${e.at_ms}"><b class="mg-who">${esc(who)}</b>${deskCut(`ans:${s.session_id}:${e.at_ms}`, "mg-full", esc(text).replace(/\n/g, "<br>"), text)}</div>`;
 }
 /** Session `s`'s Desk lines, drawn now (`page`: its Desk chat's way, the lead's with its short lines, deskLeadNote):
  *  Cue's card or message for your-side message `e`, or each Desk line taken out of reply `e`, in order. */
 function dkLinesOf(s, e, n, page, answer = null) {
   const sid = s.session_id;
+  // The lead's answers to it (`answer`: one, or each reply of its turn), when they left the chat: under it, in order.
+  const said = [].concat(answer || []).map((a) => dkNoticeAnswer(s, a)).join("");
+  const withAnswer = (h) => (said ? h.replace(/<\/div>\s*$/, `${said}</div>`) : h);
+  // Another Desk's band, marked Cue's, in a lead's chat (#837): Activity's, the lead's answer under it.
+  if (chatFrom(e) === "cue" && chatPlace(e, page?.you === deskLeadNote ? "lead" : "session") === "activity") {
+    const band = e.role === "peer" ? (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text)
+      : typeof deskToldBand === "function" && deskToldBand(sid, e);
+    // The answers under the band, not inside it (its tint is that Desk's words only).
+    if (band) return [`<div data-dk="peer" class="dk-peer-row">${band}${said}</div>`];
+  }
   if (e.role === "you") {
-    const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && !youBack(e) && chatCueRow(page, s, sid, e, n, new Map());
+    // Marked Cue's (#837, chat/who.js): Cue's whatever its words say; unmarked, a send-back of yours stays yours.
+    const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && (chatFrom(e) === "cue" || !youBack(e)) && chatCueRow(page, s, sid, e, n, new Map());
     if (!h || !dkRow(h)) return [];
     // The lead's answer to it, when that answer left the chat (#816): under it, in the same row.
-    return [answer ? h.replace(/<\/div>\s*$/, `${dkNoticeAnswer(s, answer)}</div>`) : h];
+    return [withAnswer(h)];
   }
   if (e.role !== "agent") return [];
   const out = [];
@@ -131,9 +164,10 @@ function dkActivityRows(s) {
   const ex = conversation(null, s).map(deskSaidE), out = [];
   const { asks, answers, decided } = chatAsks(ex);
   const page = dkActivityPage(s.session_id);
-  // A lead's answers that left its chat (#816), by the notice they go under: its turn's last.
+  // A lead's answers that left its chat (#816), by the notice they go under: its turn's last; every reply of that turn,
+  // in order (#837).
   const lead = page.you === deskLeadNote, answered = new Map();
-  if (lead) ex.forEach((e, n) => { const r = e.role === "agent" && !asks.has(n) && dkNoticeReply(s, ex, n, page); if (r && !r.stays) answered.set(r.turn.at(-1), e); });
+  if (lead) ex.forEach((e, n) => { const r = e.role === "agent" && !asks.has(n) && dkNoticeReply(s, ex, n, page); if (r && !r.stays) answered.set(r.turn.at(-1), [...(answered.get(r.turn.at(-1)) || []), e]); });
   ex.forEach((e, n) => {
     if (answers.has(n) || decided.has(n) || asks.has(n)) return;
     const answer = answered.get(n) || null;

@@ -57,7 +57,7 @@ pub(crate) fn queue_for(st: &mut Store, project: &str, by: &crate::desk::hub::tu
         if let Some(b) = it.holder.clone() {
             if it.state == "working" {
                 let crew = if b.kind == "crew" { format!("For your teammate {}: ", b.name) } else { String::new() };
-                fx.sends.push((b.to().to_string(), format!("{crew}Desk item #{} ({}) has moved to {}: stop work on it.", it.id, it.title, h.name)));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((b.to().to_string(), format!("{crew}Desk item #{} ({}) has moved to {}: stop work on it.", it.id, it.title, h.name)), crate::sessions::Kind::Route));
             }
             it.remember_holder();
             it.moved_from = Some(b);
@@ -231,7 +231,7 @@ fn move_off_full_mac(st: &mut Store, now: u64, fx: &mut Effects) {
         let name = crate::machines::display_name(&m);
         let Some(it) = st.desk.item_mut(&id) else { continue };
         if let Some(h) = it.holder.clone() {
-            fx.sends.push((h.to().to_string(), format!("Desk item #{} ({}) has moved to a new session on {name}, which has room: this Mac's folders are all in use. Leave it; don't start on it.", it.id, it.title)));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{} ({}) has moved to a new session on {name}, which has room: this Mac's folders are all in use. Leave it; don't start on it.", it.id, it.title)), crate::sessions::Kind::Route));
             it.remember_holder();
             it.moved_from = Some(h);
         }
@@ -288,9 +288,9 @@ fn start_in(st: &mut Store, project: &str, id: &str, h: &Holder, now: u64, fx: &
         Some(message) => {
             it.held_by(&h.sid, now);
             fx.backs.push((id.to_string(), message.clone()));
-            fx.sends.push((h.to().to_string(), message));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), message), crate::sessions::Kind::Brief));
         }
-        None => fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule))),
+        None => fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), crate::desk::handed_words(it, "", &rule)), crate::sessions::Kind::Brief)),
     }
     fx.items.push(id.to_string());
     let (by, by_sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));

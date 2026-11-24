@@ -300,7 +300,7 @@ impl Hub {
             let whom = match &h {
                 Some(h) => {
                     let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-                    fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) is open again: {what}. {then}, then say DONE: #{id}.\nIts fixes stay in #{id}; don't add new items for them.{more}")));
+                    fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("{crew}Desk item #{id} ({title}) is open again: {what}. {then}, then say DONE: #{id}.\nIts fixes stay in #{id}; don't add new items for them.{more}")), crate::sessions::Kind::Route));
                     format!("sent back to {}", h.name)
                 }
                 None => "open again".to_string(),

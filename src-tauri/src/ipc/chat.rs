@@ -139,12 +139,14 @@ pub(crate) async fn focus_session(hub: State<'_, Arc<Hub>>, id: String) -> Resul
 }
 
 #[tauri::command]
-pub(crate) async fn send_to_session(hub: State<'_, Arc<Hub>>, session_id: String, text: String, images: Option<Vec<model::Upload>>, now: Option<bool>, cue: Option<bool>) -> Result<String, String> {
+pub(crate) async fn send_to_session(hub: State<'_, Arc<Hub>>, session_id: String, text: String, images: Option<Vec<model::Upload>>, now: Option<bool>, kind: Option<String>) -> Result<String, String> {
     let images = images.unwrap_or_default();
     let now = now.unwrap_or(false);
-    // Words Cue wrote for a click of yours (a background agent's Resume or Stop): Cue's, not yours (#836).
-    if cue == Some(true) && images.is_empty() {
-        return with_hub(&hub, move |h| h.tell_now(&session_id, &text, now)).await?;
+    // Words Cue wrote for a click of yours (a background agent's Resume or Stop: "nudge"): Cue's, of the kind the
+    // window says (one Cue doesn't know is a notice), not yours (#836, #837).
+    if let Some(kind) = kind.filter(|_| images.is_empty()) {
+        let kind = crate::sessions::Kind::named(&kind);
+        return with_hub(&hub, move |h| h.tell_now(&session_id, &text, now, kind)).await?;
     }
     // Yours from a box: a hosted lead's Team switch says its piece (hub/team/out.rs).
     with_hub(&hub, move |h| h.send_yours(&session_id, &text, &images, now)).await?

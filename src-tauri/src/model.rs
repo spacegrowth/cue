@@ -68,6 +68,10 @@ pub struct Exchange {
     /// draws it as Cue's, never as your bubble.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cue: bool,
+    /// Cue's (`cue`) only: what kind of message it is ("brief", "nudge"… sessions/cue_said.rs Kind), set where it was
+    /// sent (#837).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
     /// A kept message (Session::held) only: the parts of it that are Cue's, kept with yours (#836). Your bubble shows
     /// the rest; they go after yours, a message of their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

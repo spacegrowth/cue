@@ -283,7 +283,7 @@ impl Hub {
         for d in q.desks {
             let words = words.clone();
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &d, &words) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &d, &words, crate::sessions::Kind::Question) {
                     eprintln!("cue: desk: the user's answer didn't reach {d}'s lead: {e}");
                 }
             });

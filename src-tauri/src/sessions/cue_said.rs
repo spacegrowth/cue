@@ -12,9 +12,72 @@ const KEEP_MS: u64 = 30 * 60_000;
 /// At most this many known at once (the oldest go first).
 const MOST: usize = 64;
 
-/// What Cue sent lately, each as `plain` makes it, and when.
+/// What kind of message of Cue's it is (#837), set where it's sent, never read from its words. The window shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// An item handed to a session ("Desk item #id (kind): …").
+    Brief,
+    /// Where an item goes, told to its holder: moved, a copy given or taken back, parked, paused, resumed, closed,
+    /// dropped, open again, waiting for its branch.
+    Route,
+    /// The lead's NOTE, an option picked, an item folded into another.
+    Note,
+    /// Done? stuck? a teammate gone quiet, Carry on after a usage limit, continue; Resume or Stop of a background agent.
+    Nudge,
+    /// DONE and CHECK follow-ups: it isn't done, a check line to write again.
+    FollowUp,
+    /// To a lead: its Desk's changes, blocks and feed, the Desk paused or resumed, Away notices.
+    Desk,
+    /// To a lead: a session's TO LEAD, a cleanup question, an ASK passed on, a wait circle.
+    Question,
+    /// To a lead: Cue's answers to its own lines (route results, SHOW, refusals, Queued:, lands answered).
+    Answer,
+    /// To a crew's lead: its teammates' reviews, fixes, stop, commit, hand out, carried over.
+    Crew,
+    /// A hand-off note asked for, a fresh session's start from that note, a new lead's hello or hand-off.
+    HandOff,
+    /// Another Desk's lead (TELL DESK).
+    Peer,
+    /// Anything else of Cue's.
+    Notice,
+}
+
+impl Kind {
+    pub const ALL: [Kind; 12] = [Kind::Brief, Kind::Route, Kind::Note, Kind::Nudge, Kind::FollowUp, Kind::Desk, Kind::Question, Kind::Answer, Kind::Crew, Kind::HandOff, Kind::Peer, Kind::Notice];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::Brief => "brief",
+            Kind::Route => "route",
+            Kind::Note => "note",
+            Kind::Nudge => "nudge",
+            Kind::FollowUp => "followup",
+            Kind::Desk => "desk",
+            Kind::Question => "question",
+            Kind::Answer => "answer",
+            Kind::Crew => "crew",
+            Kind::HandOff => "handoff",
+            Kind::Peer => "peer",
+            Kind::Notice => "notice",
+        }
+    }
+
+    /// The kind `name` says (`as_str`); one Cue doesn't know is a Notice.
+    pub fn named(name: &str) -> Kind {
+        Kind::ALL.into_iter().find(|k| k.as_str() == name).unwrap_or(Kind::Notice)
+    }
+}
+
+/// Who a message to a session is from, said where it's sent: yours, or Cue's of a kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Said {
+    You,
+    Cue(Kind),
+}
+
+/// What Cue sent lately, each as `plain` makes it, its kind, and when.
 #[derive(Default)]
-pub struct CueSaid(Vec<(String, u64)>);
+pub struct CueSaid(Vec<(String, Kind, u64)>);
 
 /// `text` as Cue's words are compared: a Desk lead's `<desk>` block left out, every run of whitespace one space.
 fn plain(text: &str) -> String {
@@ -22,36 +85,50 @@ fn plain(text: &str) -> String {
 }
 
 impl CueSaid {
-    fn add(&mut self, text: &str, now: u64) {
+    fn add(&mut self, text: &str, kind: Kind, now: u64) {
         let t = plain(text);
         if t.is_empty() {
             return;
         }
-        self.0.retain(|(_, at)| now.saturating_sub(*at) < KEEP_MS);
-        self.0.push((t, now));
+        self.0.retain(|(_, _, at)| now.saturating_sub(*at) < KEEP_MS);
+        self.0.push((t, kind, now));
         let excess = self.0.len().saturating_sub(MOST);
         self.0.drain(..excess);
     }
 
+    /// You sent `text` yourself: the same words Cue sent before are yours this time, not Cue's.
+    fn forget(&mut self, text: &str) {
+        let t = plain(text);
+        self.0.retain(|(k, _, _)| *k != t);
+    }
+
     /// `text` is Cue's words alone: one message it sent, or several it sent kept and gone together.
     pub fn all_cue(&self, text: &str) -> bool {
+        self.kind_of(text).is_some()
+    }
+
+    /// The kind `text` was sent as when it's Cue's words alone (`all_cue`): several kept and gone together take the
+    /// first one's kind; the same words sent twice, the latest's.
+    pub fn kind_of(&self, text: &str) -> Option<Kind> {
         let mut rest = plain(text);
         if rest.is_empty() {
-            return false;
+            return None;
         }
-        if self.0.iter().any(|(t, _)| *t == rest) {
-            return true;
+        if let Some((_, k, _)) = self.0.iter().rev().find(|(t, _, _)| *t == rest) {
+            return Some(*k);
         }
-        let mut known: Vec<&str> = self.0.iter().map(|(t, _)| t.as_str()).collect();
-        known.sort_by_key(|t| std::cmp::Reverse(t.len()));
-        let mut any = false;
-        for t in known {
+        let mut known: Vec<(&str, Kind)> = self.0.iter().rev().map(|(t, k, _)| (t.as_str(), *k)).collect();
+        known.sort_by_key(|(t, _)| std::cmp::Reverse(t.len()));
+        let mut first: Option<(usize, Kind)> = None;
+        for (t, k) in known {
             if let Some(i) = rest.find(t) {
                 rest.replace_range(i..i + t.len(), "");
-                any = true;
+                if first.is_none_or(|(at, _)| i < at) {
+                    first = Some((i, k));
+                }
             }
         }
-        any && rest.trim().is_empty()
+        first.filter(|_| rest.trim().is_empty()).map(|(_, k)| k)
     }
 }
 
@@ -69,22 +146,32 @@ fn without_parts(text: &str, parts: &[String]) -> String {
 }
 
 impl Sessions {
-    /// Cue is about to send `text` to a session: it's Cue's, not yours, wherever it shows up next.
-    pub fn cue_says(&mut self, text: &str) {
-        self.1.add(text, now_ms());
+    /// Cue is about to send `text` to a session as a message of kind `kind`: it's Cue's, not yours, wherever it
+    /// shows up next.
+    pub fn cue_says(&mut self, text: &str, kind: Kind) {
+        self.1.add(text, kind, now_ms());
     }
 
-    /// `text` is Cue's words alone (see `CueSaid::all_cue`).
-    pub fn is_cue(&self, text: &str) -> bool {
-        self.1.all_cue(text)
+    /// You are about to send `text`: yours, even when Cue sent the same words a while ago.
+    pub fn you_say(&mut self, text: &str) {
+        self.1.forget(text);
+    }
+
+    /// The kind Cue sent `text` as, when it's Cue's words alone.
+    pub fn cue_kind(&self, text: &str) -> Option<Kind> {
+        self.1.kind_of(text)
     }
 
     /// Session `session_id`'s latest message of yours marked Cue's when it's Cue's words alone.
     pub(super) fn mark_cue(&mut self, session_id: &str) {
         let Some(s) = self.0.get_mut(session_id) else { return };
         let Some(e) = s.thread.iter_mut().rev().find(|e| e.role == "you") else { return };
-        if !e.cue && !e.decision && self.1.all_cue(&e.text) {
+        if e.cue || e.decision {
+            return;
+        }
+        if let Some(k) = self.1.kind_of(&e.text) {
             e.cue = true;
+            e.kind = k.as_str().to_string();
         }
     }
 
@@ -123,8 +210,8 @@ mod tests {
     #[test]
     fn cues_words_are_known_alone_or_kept_together_never_with_yours() {
         let mut c = CueSaid::default();
-        c.add("Your DONE for #832 is in, but its check line needs another go.\nWrite it again.", 1);
-        c.add("<desk v=\"1\">\nitems\n</desk>\n\nThe Desk is paused: stop at a safe point.", 2);
+        c.add("Your DONE for #832 is in, but its check line needs another go.\nWrite it again.", Kind::FollowUp, 1);
+        c.add("<desk v=\"1\">\nitems\n</desk>\n\nThe Desk is paused: stop at a safe point.", Kind::Desk, 2);
         assert!(c.all_cue("Your DONE for #832 is in, but its check line needs another go.  Write it again."), "spacing aside");
         assert!(c.all_cue("The Desk is paused: stop at a safe point."), "its Desk block aside");
         assert!(c.all_cue("Your DONE for #832 is in, but its check line needs another go.\nWrite it again.\n\nThe Desk is paused: stop at a safe point."), "two of Cue's, kept together");
@@ -136,8 +223,8 @@ mod tests {
     #[test]
     fn cues_words_are_forgotten_after_a_while() {
         let mut c = CueSaid::default();
-        c.add("Carry on where you stopped.", 1);
-        c.add("Something else.", 1 + KEEP_MS);
+        c.add("Carry on where you stopped.", Kind::Nudge, 1);
+        c.add("Something else.", Kind::Notice, 1 + KEEP_MS);
         assert!(!c.all_cue("Carry on where you stopped."));
     }
 
@@ -161,7 +248,7 @@ mod tests {
         let nudge = "Your teammate docs has gone quiet. Ask it where it is.";
         // Kept while it works: yours and Cue's in one kept message, Cue's known as its part.
         hub.send_to_session("s6", "fix the footer", &[], false).unwrap();
-        hub.tell("s6", nudge).unwrap();
+        hub.tell("s6", nudge, Kind::Nudge).unwrap();
         let held = |h: &crate::hub::Hub| h.read(|st| st.sessions.held("s6")).unwrap();
         assert_eq!(held(&hub).text, format!("fix the footer\n\n{nudge}"));
         assert_eq!(held(&hub).cue_parts, vec![nudge.to_string()]);
@@ -176,9 +263,45 @@ mod tests {
         let last_you = |h: &crate::hub::Hub| h.read(|st| st.sessions.thread("s6")).into_iter().rev().find(|e| e.role == "you").unwrap();
         hub.write(|st| st.sessions.note("s6", "you", &format!("{nudge}\n"), 50));
         assert!(last_you(&hub).cue, "Cue's");
+        assert_eq!(last_you(&hub).kind, "nudge", "of the kind it was sent as");
         hub.write(|st| st.sessions.note("s6", "agent", "Asked docs.", 50));
         hub.write(|st| st.sessions.note("s6", "you", "fix the footer", 50));
         assert!(!last_you(&hub).cue, "yours");
+        assert_eq!(last_you(&hub).kind, "", "yours have no kind");
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_kind_cue_sends_is_that_kind_in_the_chat_and_the_same_words_from_you_are_yours() {
+        let dir = std::env::temp_dir().join(format!("cue-kinds-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = crate::model::Origin { session_id: "s7".into(), harness: "claude".into(), ..Default::default() };
+        let hub = crate::hub::Hub::new(None);
+        hub.event(origin, "active", "refactor the router".into(), vec![], "");
+        let last_you = |h: &crate::hub::Hub| h.read(|st| st.sessions.thread("s7")).into_iter().rev().find(|e| e.role == "you").unwrap();
+        // Kept while it works; each comes back in its chat as the agent reports it.
+        for k in Kind::ALL {
+            let words = format!("A message of kind {}.", k.as_str());
+            hub.tell("s7", &words, k).unwrap();
+            hub.write(|st| st.sessions.note("s7", "you", &words, 50));
+            let e = last_you(&hub);
+            assert!(e.cue, "{words} is Cue's");
+            assert_eq!(e.kind, k.as_str(), "{words}");
+            hub.write(|st| st.sessions.note("s7", "agent", "OK.", 50));
+        }
+        // The same words, sent by you: yours, with no kind.
+        let words = format!("A message of kind {}.", Kind::Nudge.as_str());
+        hub.send_to_session("s7", &words, &[], false).unwrap();
+        hub.write(|st| st.sessions.note("s7", "you", &words, 50));
+        let e = last_you(&hub);
+        assert!(!e.cue && e.kind.is_empty(), "yours: {e:?}");
+        // A kind the window names that Cue doesn't know is a notice.
+        assert_eq!(Kind::named("nudge"), Kind::Nudge);
+        assert_eq!(Kind::named("whatever"), Kind::Notice);
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

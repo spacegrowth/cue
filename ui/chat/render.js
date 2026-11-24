@@ -246,8 +246,10 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
   const stepsOf = page?.noSteps || stepsMode() === "hidden" ? null : sid;
   const counts = replyCounts(stepsOf, s, ex, asks);
+  // Which chat this is (chat/who.js chatPlace): the Desk's lead, session or item chat, else the Board's.
+  const chat = page?.chat || (page?.lines ? "lead" : page?.dkOut ? "session" : "board");
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, hidden, lastAgent, recent, project, sid, near,
-    chose, reviews, reviewAt, fold, counts };
+    chose, reviews, reviewAt, fold, counts, chat };
   const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
   // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them.
   const rows = (page?.lines || page?.dkOut) && typeof dkFoldRows === "function" ? dkFoldRows(drawn) : drawn;
@@ -261,14 +263,22 @@ function chatHtml(it, s, harness, paged = false, page = null) {
 function chatRowHtml(c, e, n) {
   const { it, s, harness, page, asks, answers, decided, hidden, chose, near, reviews, reviewAt, fold, sid } = c;
   if (fold?.skip.has(n) || hidden.has(n)) return "";
+  // Another Desk's band in the lead's chat goes to Activity (chat/who.js chatPlace, #837): marked the Desk's, it leaves.
+  const out = (h) => (chatPlace(e, c.chat) === "activity" && typeof dkMark === "function" ? dkMark(h, "peer") : h);
   // From another Desk's session, in a lead's chat: a band across the chat (desk/lead.js, #472).
-  if (e.role === "peer") return (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text);
+  if (e.role === "peer") return out((typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text));
   if (answers.has(n)) return "";
   if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
   if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
   // Another Desk's lead, through Cue (TELL DESK, TELL DESKS, a HOLD, #540): the same band (desk/lead.js).
   const told = e.role === "you" && typeof deskToldBand === "function" && deskToldBand(sid, e);
-  if (told) return told;
+  if (told) return chatFrom(e) === "cue" ? out(told) : told;
+  // Who said it, from its tags (chat/who.js, #837): Cue's is its card, its quiet line, or Activity's in a Desk chat
+  // (chatCueRow marks it so), never your bubble; its words only pick how it looks. A message from before the tags
+  // goes on as it always did, below.
+  const place = chatPlace(e, c.chat);
+  if (place === "reply") return reviews.has(n) ? "" : chatAgentHtml(c, e, n);
+  if (place !== "bubble") return chatCueRow(page, s, sid, e, n, reviewAt) || "";
   // Your send-back of an item ("Not done", #688): your bubble with the item's head, as your other words about it.
   if (e.role === "you" && youBack(e)) return chatYouHtml(c, e, n);
   // In a Desk chat, your words that went in one message with a session's words for the lead (#812: you wrote while it
@@ -291,7 +301,10 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   // Each of these is the Desk's own (data-dk, desk/runs.js): it leaves the chat for Activity, unless it's meant for you.
   // Your pick (#667, "… picked option B2 on #d5 …") and your words Cue passed on (on its question, #651) are yours,
   // not the Desk's: they stay.
-  const mine = () => (/\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
+  // Marked Cue's (#837, chat/who.js): its tag says whether it stays (your words on Cue's question) or leaves; an older
+  // message without the mark, its words.
+  const mine = () => (chatFrom(e) === "cue" ? (chatPlace(e, "session") === "activity" ? "cue" : "yours")
+    : /\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
   const dk = (h, kind = mine()) => ((page?.lines || page?.dkOut) && typeof dkMark === "function" ? dkMark(h, kind) : h);
   const own = e.role === "you" && page?.you?.(e, n);
   if (own) return dk(own);
@@ -305,7 +318,7 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: e.no_wake ? "it didn't wake for this" : "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
   if (cm) return dk(cm);
   // Any other message Cue sent it, marked Cue's by the hub as it went (#836): one quiet line of Cue's, never your bubble.
-  return e.role === "you" && e.cue && typeof cueQuietHtml === "function" ? dk(cueQuietHtml(e, s, `${sid}:${e.at_ms}:cueq`)) : "";
+  return chatFrom(e) === "cue" && typeof cueQuietHtml === "function" ? dk(cueQuietHtml(e, s, `${sid}:${e.at_ms}:cueq`)) : "";
 }
 /** A page's own head on your words `e` (the Desk: what item they're about) and the words without it. Anywhere else (a
  *  session's own chat) your words from an item's page show the same way, Cue's words around them left out (#605). */
@@ -436,8 +449,8 @@ function laterOwn(e, page, key, meta) {
 function queuedRow(s, page, key = "queued") {
   const sid = esc(s.session_id), now = `<button class="q-now" data-act="send-now" data-sid="${sid}">Send now</button>`;
   const m = { st: "queued", to: msgTo(s), acts: page?.acts?.({ st: "queued", sid: s.session_id }) ?? now };
-  // Your send-back of an item (#688): yours, drawn below as any of your words.
-  if (!youBack(s.queued)) {
+  // Your send-back of an item (#688): yours, drawn below as any of your words; one marked Cue's (#837) never is.
+  if (chatFrom(s.queued) === "cue" || !youBack(s.queued)) {
     const own = laterOwn(s.queued, page, key, msgLine(m));
     if (own) return own;
     const cue = cueSaid(s.queued.text);
@@ -445,7 +458,7 @@ function queuedRow(s, page, key = "queued") {
     const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.queued, s, `${s.session_id}:queued:cue`, m);
     if (cm) return keyed(cm, key);
     // Any other of Cue's (#836): its quiet line, never your bubble.
-    if (s.queued.cue && typeof cueQuietHtml === "function") return keyed(cueQuietHtml(s.queued, s, `${s.session_id}:queued:cueq`, m), key);
+    if (chatFrom(s.queued) === "cue" && typeof cueQuietHtml === "function") return keyed(cueQuietHtml(s.queued, s, `${s.session_id}:queued:cueq`, m), key);
   }
   const hd = youHeadOf(page, s.queued);
   return msgRow(m, yourBubble(hd ? { ...s.queued, text: hd.text } : s.queued, `${s.session_id}:queued`, "", true, hd?.html || "") + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);
@@ -459,14 +472,16 @@ function heldRow(s, page, key = "held") {
   const m = heldWhy ? { st: "failed", why: esc(heldWhy.slice(15)), acts, to: msgTo(s) } : { st: "held", acts, to: msgTo(s) };
   const mine = page?.acts?.({ st: m.st, held: true, sid: s.session_id });
   if (mine != null) m.acts = mine;
-  // Your send-back of an item (#688): yours, drawn below as any of your words.
-  if (!youBack(s.held)) {
+  // Your send-back of an item (#688): yours, drawn below as any of your words; one marked Cue's (#837) never is.
+  if (chatFrom(s.held) === "cue" || !youBack(s.held)) {
     const own = !heldWhy && laterOwn(s.held, page, key, msgLine(m));
     if (own) return own;
     const cue = cueSaid(s.held.text);
     if (cue && !heldWhy) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, m), key);
     const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.held, s, `${s.session_id}:held:cue`, m);
     if (cm) return keyed(cm, key);
+    // Any other of Cue's (#836, #837): its quiet line, never your bubble.
+    if (chatFrom(s.held) === "cue" && typeof cueQuietHtml === "function") return keyed(cueQuietHtml(s.held, s, `${s.session_id}:held:cueq`, m), key);
   }
   const hd = youHeadOf(page, s.held);
   return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`);

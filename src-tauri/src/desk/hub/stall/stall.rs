@@ -349,7 +349,7 @@ pub(crate) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
         }
     }
     if !ask.is_empty() {
-        fx.sends.push((sid.to_string(), ask.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), ask.join("\n")), crate::sessions::Kind::Nudge));
     }
 }
 

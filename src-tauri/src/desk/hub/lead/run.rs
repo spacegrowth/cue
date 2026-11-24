@@ -51,11 +51,11 @@ impl Hub {
     /// twice: sent to it while it's live (paused is live: a message starts it again); resumed with it when it's
     /// parked. Resume claims the project until `desk_claim_done`; words that come meanwhile (or while a lead starts
     /// or changes) are held, and sent then (Wait). An error when there's no lead, or it has ended.
-    pub(crate) fn desk_claim(&self, project: &str, text: &str) -> Result<DeskClaim, String> {
+    pub(crate) fn desk_claim(&self, project: &str, text: &str, said: crate::sessions::Said) -> Result<DeskClaim, String> {
         self.write(|st| {
             if let Some(held) = st.desk.run.starting.get_mut(project) {
                 let (reply, outcome) = std::sync::mpsc::channel();
-                held.push(Waiting { text: text.to_string(), reply });
+                held.push(Waiting { text: text.to_string(), said, reply });
                 return Ok(DeskClaim::Wait(outcome));
             }
             let sid = st.desk.lead_sid(project).map(str::to_string).ok_or("no lead")?;

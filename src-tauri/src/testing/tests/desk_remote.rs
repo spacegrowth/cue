@@ -375,6 +375,9 @@ fn words_typed_on_the_push_card_go_to_the_lead_and_the_card_stays_open() {
     let told: Vec<String> = w.hosted.sent().into_iter().filter(|(s, t)| *s == lead && t.contains("what does it mean? what do i do")).map(|(_, t)| t).collect();
     assert_eq!(told.len(), 1, "{told:?}");
     assert!(told[0].starts_with("On Cue's question in your chat (\"Update from the shared copy, then upload 2 landings") && told[0].contains("Cue took neither"), "{}", told[0]);
+    // In the lead's chat: your words, never Cue's (#837).
+    let copy = w.hub().read(|st| st.sessions.thread(&lead)).into_iter().rev().find(|e| e.role == "you" && e.text.contains("what does it mean? what do i do")).expect("its copy in the chat");
+    assert!(!copy.cue && copy.kind.is_empty(), "{copy:?}");
     // Typed in the card's reply box instead: the same.
     w.hub().reply(&cid, "and if I say no?", &[]).unwrap();
     w.settle();

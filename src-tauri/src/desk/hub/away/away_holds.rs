@@ -175,7 +175,7 @@ impl Hub {
             }
         };
         let words = release_words(&ready);
-        if let Err(e) = self.tell(sid, &words) {
+        if let Err(e) = self.tell(sid, &words, crate::sessions::Kind::Desk) {
             eprintln!("cue: couldn't tell {sid} the owner's answers to its held steps: {e}");
         }
     }

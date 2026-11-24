@@ -285,7 +285,7 @@ impl Hub {
     fn desk_feed_tell(self: &Arc<Self>, desk: &str, go: &Go) -> Result<String, String> {
         if go.parked {
             // Resumed with the Desk's summary, then its rows.
-            return super::send::desk_send_cue(self, desk, &go.text);
+            return super::send::desk_send_cue(self, desk, &go.text, crate::sessions::Kind::Desk);
         }
         // A lead that took over from one the feed went to hears the Desk's summary first, then the rows that still
         // apply. A Desk's first lead was given the summary as it started.
@@ -296,7 +296,7 @@ impl Hub {
         } else {
             go.text.clone()
         };
-        self.tell(&go.lead, &text)
+        self.tell(&go.lead, &text, crate::sessions::Kind::Desk)
     }
 
     fn desk_feed_save(&self, desk: &str, items: &[DeskItem], (sent, heard): &(Mark, Mark)) {

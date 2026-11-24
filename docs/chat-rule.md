@@ -47,14 +47,22 @@ Cue's messages there; the Board and a crew member's chat show the quiet line in 
 | answer | Cue's answers to the lead's own lines: SHOW ("#852 in full, as you asked:"), refusals, Queued, route results, your Yes or No on its ask | Activity | n/a | quiet line | n/a |
 | crew | review, Send fixes, Stop, Commit, hand out a task, crew carried over | Activity | Activity | the CREW card | quiet line |
 | handoff | write a hand-off note, a new lead's hello | Activity | Activity | quiet line | quiet line |
-| peer | another Desk's lead, through Cue | the band from that Desk | n/a | quiet line | n/a |
+| peer | another Desk's lead, through Cue | Activity, as the band from that Desk with the lead's answer under it | n/a | quiet line | n/a |
 | notice | anything else, and any kind added later | Activity | Activity | quiet line | quiet line |
 
-A message from another session (not a Desk's) shows as Cue's FROM A SESSION card in every chat.
+A message from another session (not a Desk's) shows as Cue's FROM A SESSION card in every chat; in the lead's chat it
+goes to Activity.
+
+## The lead's chat
+
+The lead's chat holds only your messages and the lead's replies to them. When a lead's turn was started by Cue (a
+notice, a question passed on, another Desk's band) and none of your words, the whole turn goes to Activity: the
+notice with the lead's reply under it. Which turn is whose comes from the tags on the messages that started it,
+never from their words. A reply with nothing left once its Desk lines are taken out shows nothing.
 
 ## What stays as it is
 
-- In the lead's chat: the hand-off band, the bands from other Desks, and the "+ Desk update" fold under your words.
+- In the lead's chat: the hand-off band and the "+ Desk update" fold under your words.
 - Your words that Cue wraps (your note or question from an item's page, your send-back) stay yours: your bubble, the
   item's head on it, Cue's words around them left out.
 - A message kept while the session works that holds your words and Cue's: your bubble shows only yours; yours go

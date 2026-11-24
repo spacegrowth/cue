@@ -100,7 +100,7 @@ impl Hub {
     fn desk_lands_tell(&self, lsid: &str, words: String) {
         let sid = lsid.to_string();
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&sid, &words) {
+            if let Err(e) = h.tell(&sid, &words, crate::sessions::Kind::Answer) {
                 eprintln!("cue: desk: couldn't tell the lead about how work lands: {e}");
             }
         });

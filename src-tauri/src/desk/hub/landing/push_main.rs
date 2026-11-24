@@ -248,7 +248,7 @@ impl Hub {
         if !still {
             return;
         }
-        if let Err(e) = self.tell(to, &text) {
+        if let Err(e) = self.tell(to, &text, crate::sessions::Kind::Route) {
             eprintln!("cue: desk: couldn't send #{id}'s start to its holder: {e}");
         }
     }

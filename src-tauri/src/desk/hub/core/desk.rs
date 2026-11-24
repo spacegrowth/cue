@@ -4,6 +4,7 @@
 //! message) is desk/hub/lead/run.rs.
 //! A change is made under the store's lock and leaves `Effects`: its saves and messages, done once it's let go.
 
+use crate::sessions::{Kind, Said};
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::sessions::Session;
@@ -22,7 +23,7 @@ pub(crate) struct Effects {
     pub(crate) dropped: Vec<String>,
     pub(crate) decisions: Vec<String>,
     /// Messages to sessions: (session, text).
-    pub(crate) sends: Vec<(String, String)>,
+    pub(crate) sends: Vec<DeskSend>,
     /// Your Send backs (#396): (item, its message in `sends`), kept on the item if it has to wait for a copy.
     pub(crate) backs: Vec<(String, String)>,
     /// Your pick on a mocks item whose holder waits on its question (#281): (that ask, its question, the answer),
@@ -475,7 +476,8 @@ impl Hub {
             words = self.desk_use_answered(&u, d.behavior != "deny", &answer);
         }
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&sid, &words) {
+            // A sentence Cue wrote around your Yes or No: Cue's answer to its ASK (#837).
+            if let Err(e) = h.tell(&sid, &words, crate::sessions::Kind::Answer) {
                 eprintln!("cue: desk: couldn't send the lead its answer: {e}");
             }
         });
@@ -504,7 +506,8 @@ impl Hub {
         }
         let words = card_words(&question, text);
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&lead, &words) {
+            // Your own typed words: yours, never Cue's (#837).
+            if let Err(e) = h.send_to_session(&lead, &words, &[], false) {
                 eprintln!("cue: desk: couldn't send the lead your words on Cue's question: {e}");
             }
         });
@@ -645,18 +648,18 @@ impl Hub {
         // Cue's, not yours (#831): never kept as words you sent, and never joined to yours (send.rs send_held).
         for (desk, sid, text, words) in to_lead {
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text, crate::sessions::Kind::Question) {
                     eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
-                    let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""));
+                    let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""), crate::sessions::Kind::Answer);
                 }
             });
         }
         // A band to another Desk's lead (#540), as Cue's own words to it; when it can't go, the sending lead is told.
         for (desk, text, from) in tells {
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text, crate::sessions::Kind::Peer) {
                     eprintln!("cue: desk: a band didn't reach {desk}'s lead: {e}");
-                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)));
+                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)), crate::sessions::Kind::Answer);
                 }
             });
         }
@@ -708,8 +711,8 @@ impl Hub {
     /// `desk_done`'s messages, each sent off this thread with the steps that go with it.
     /// Each is Cue's own message to the session (#836), unless it carries your words: a step of yours (your note, your
     /// question, your Send back, a Retry of one) or one of your Send backs (`backs`).
-    fn desk_send_out(&self, sends: Vec<(String, String)>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String], backs: &[String]) {
-        for ((sid, text), steps) in sends.into_iter().zip(went_with) {
+    fn desk_send_out(&self, sends: Vec<DeskSend>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String], backs: &[String]) {
+        for ((sid, text, kind), steps) in sends.into_iter().zip(went_with) {
             let yours = backs.contains(&text) || self.read(|st| st.desk.decisions.iter().any(|d| d.by == "You" && steps.contains(&d.id)));
             // A Resume's send says how it went, on its item (#291).
             let restart = restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
@@ -718,10 +721,8 @@ impl Hub {
             self.later(0, move |h| {
                 // Your pictures from an item's page go as pictures, as a session's own chat sends them (#541).
                 let (text, pictures) = crate::desk::as_sent(&text);
-                if !yours {
-                    h.cue_says(&text);
-                }
-                let sent = if pictures.is_empty() { h.send_to_session(&sid, &text, &[], now) } else { h.send_saved(&sid, &text, pictures, now) };
+                let said = if yours { Said::You } else { Said::Cue(kind) };
+                let sent = h.send_saved(&sid, &text, pictures, now, said);
                 if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");
                 }
@@ -792,7 +793,7 @@ fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
     let mut went_with: Vec<Vec<String>> = fx.sends.iter().map(|_| Vec::new()).collect();
     let mut kept_back = Vec::new();
     for (step, to, item) in tracked {
-        match fx.sends.iter().position(|(s, text)| *s == to && text.contains(&format!("#{item} ("))) {
+        match fx.sends.iter().position(|(s, text, _)| *s == to && text.contains(&format!("#{item} ("))) {
             Some(n) => went_with[n].push(step),
             None => kept_back.push(step),
         }
@@ -802,8 +803,17 @@ fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
 
 /// In the store: each send kept as sent to its session, and items at work stamped for their holder; then the items
 /// and steps to save.
+/// A message the Desk sends a session: to whom, its words, and what kind of Cue's message it is (#837). Your notes
+/// and send-backs among them go as yours (`desk_send_out`).
+pub(crate) type DeskSend = (String, String, Kind);
+
+/// `send` (to, words) as a Desk send of kind `kind`.
+pub(crate) fn kinded((to, text): (String, String), kind: Kind) -> DeskSend {
+    (to, text, kind)
+}
+
 fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<DeskDecision>) {
-    for (to, text) in &fx.sends {
+    for (to, text, _) in &fx.sends {
         let sent = st.desk.run.sent.entry(to.clone()).or_default();
         // As the session gets it: pictures as their paths after the words (hub/send.rs deliver), so its prompt is
         // known as the Desk's (desk_prompt_taken).
@@ -824,7 +834,7 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
             it.held_by(&sid, now);
         }
         // Sent to its holder (again): a stall on it counts from here (desk/hub/stall/stall.rs).
-        if fx.sends.iter().any(|(to, _)| *to == sid) {
+        if fx.sends.iter().any(|(to, _, _)| *to == sid) {
             st.desk.run.sent_at.insert(id.clone(), (sid, now));
         }
     }

@@ -808,6 +808,8 @@ pub struct Waiting {
     /// Your words: sent after the Desk's summary as built for the lead it reaches (which may not be the one there was
     /// when you sent them).
     pub text: String,
+    /// Whose they are, as said where they were sent (#837): yours, or Cue's of a kind.
+    pub said: crate::sessions::Said,
     pub reply: std::sync::mpsc::Sender<Result<String, String>>,
 }
 
