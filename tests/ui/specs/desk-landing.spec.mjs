@@ -3,7 +3,7 @@
 // "In the landing line · waits: … · since 8:31pm", "Checking before it lands · since …", "Check failed · since …".
 // A dropped item's copy that had work in it is listed under Kept copies, with a Remove that takes two clicks.
 import { test, expect, openDesk } from "./cue.mjs";
-import { statusOf, openMore, listOrder } from "./desk.mjs";
+import { statusOf, openMore, listOrder, fullOf } from "./desk.mjs";
 
 const patchDesk = (cue, patch) => cue.change((st, p) => { Object.assign(st.desk.projects.find((x) => x.project === "cue"), p); }, patch);
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
@@ -22,11 +22,11 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   const at = Date.now(), since = await page.evaluate((t) => clockAt(t), at);
   await patchItem(cue, "d5", { state: "finishing", tree: tree("d5"), finish: { step: "line", wait: "The main line kept moving", at } });
   // Its row says its step.
-  await expect(statusOf(page, "d5")).toHaveText(`In the landing line · waits: The main line kept moving · since ${since}`);
+  await expect(fullOf(page, "d5")).toHaveText(`In the landing line · waits: The main line kept moving · since ${since}`);
   await patchItem(cue, "d5", { finish: { step: "line", at } });
-  await expect(statusOf(page, "d5")).toHaveText(`In the landing line · since ${since}`);
+  await expect(fullOf(page, "d5")).toHaveText(`In the landing line · since ${since}`);
   await patchItem(cue, "d5", { finish: { step: "checking", at } });
-  await expect(statusOf(page, "d5")).toHaveText(`Checking before it lands · since ${since}`);
+  await expect(fullOf(page, "d5")).toHaveText(`Checking before it lands · since ${since}`);
   const pane = await openItem(page, "d5");
   // No commit wait any more: nothing to ask of another session, nothing to land without.
   await expect(pane.locator('[data-desk-act="ask_commit"], [data-desk-act="land_without"]')).toHaveCount(0);
@@ -38,7 +38,7 @@ test("the landing line's steps on a finishing item: in the line with what it wai
   // Main may have been what broke it: run again on main as it is now (#343).
   await expect(box.locator('[data-desk-act="rerun"]')).toHaveText("Run the landing again");
   // Its row in the Items list says so too.
-  await expect(statusOf(page, "d5")).toHaveText(`Check failed · since ${since}`);
+  await expect(fullOf(page, "d5")).toHaveText(`Check failed · since ${since}`);
 });
 
 test("Send back is only on an item to check: not on an ask, nor on a stopped landing, where Send back to fix stays (#371, #435)", async ({ page, cue }) => {
@@ -130,7 +130,7 @@ test("a landing stopped on leftover edits already on its branch says so and offe
   const row = page.locator('.dkn-items [data-desk-item="d5"]');
   await patchItem(cue, "d5", { state: "finishing", stopped: true, tree: tree("d5"), finish: { step: "conflict", at: Date.now(), lead: true, question: "Not merged: the main checkout has edits of its own in a.txt, ui/b.js, c.txt that aren't committed", clear: ["a.txt", "ui/b.js"], clear_keep: [["c.txt", "tidier"]], clear_in: "/r/cue", clear_sha: "abc1234" } });
   // Its row: what stopped it in plain words; the button is in its bar.
-  await expect(statusOf(page, "d5")).toHaveText("Stopped · leftover edits in the main folder");
+  await expect(fullOf(page, "d5")).toHaveText("Stopped · leftover edits in the main folder");
   await expect(row.locator('[data-desk-act]')).toHaveCount(0);
   const pane = await openItem(page, "d5");
   const box = pane.locator(".dkn-ib .dk-wo");
