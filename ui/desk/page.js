@@ -783,7 +783,7 @@ function deskWaitsOn(i) {
     const found = c.at ? `Found at ${clockAt(c.at)} · ${c.told ? "the lead was told at once" : "no lead to tell: cut a link here"}` : "";
     return box(`Itself, through ${DESK_NTH[others] || others} other${others === 1 ? "" : "s"}. None can move until one link is cut.`, found, `<div class="dk-wo-loop">${esc(c.words)}</div>${links}${back ? `<div class="dk-acts">${back}</div>` : ""}`, "Circle");
   }
-  // Queued after another item: "What's holding it up" on its page says so, with Start it now / Put it before here.
+  // Queued after another item: "What's holding it up" on its page says so, with Start now / Put it before here.
   const f = i.finish;
   // In review: its pull request, and a way to it. It lands once that's merged; closed unmerged, it goes back.
   if (f?.step === "review" && f.pr) {
@@ -854,8 +854,8 @@ function deskMoreItems(i) {
     : i.state === "held" ? m("start_now", "Start") + deskDropMi(i)
     // Waiting for a free working folder (#401): its session starts on it now, without one.
     : deskCopyWaits(i) ? m("start_now", "Start now") + m("park", "Park")
-    : i.state === "queued" ? m("start_now", i.holder ? "Start it now" : "Start it now in a new session") + (first ? m("put_before", `Put it before ${deskShort(first.title)}`) : "") + m("park", "Park")
-    : i.state === "new" ? m("start_now", "Start it now in a new session") + m("park", "Park")
+    : i.state === "queued" ? m("start_now", "Start now") + (first ? m("put_before", `Put it before ${deskShort(first.title)}`) : "") + m("park", "Park")
+    : i.state === "new" ? m("start_now", "Start now") + m("park", "Park")
     // Its holder's turn cut off (a crash, a quit) leaves it "working" with nobody on it: Resume wakes that same
     // session where it left off (#375).
     : deskCanRestart(i) ? m("start_now", "Resume")

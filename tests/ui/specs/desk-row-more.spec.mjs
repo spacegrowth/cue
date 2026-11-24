@@ -41,7 +41,7 @@ test("a row's ⋯ holds only Start now, Park and Drop, and opening it doesn't op
   await expect(row(page, "d4")).toHaveClass(/\bon\b/);
   const side = page.locator(".dk-right");
   await openMore(side);
-  await expect(side.locator(".dk-moremenu [role='menuitem']")).toHaveText(["Start it now", "Put it before Search stays centred", "Park"]);
+  await expect(side.locator(".dk-moremenu [role='menuitem']")).toHaveText(["Start now", "Put it before Search stays centred", "Park"]);
   // One menu at a time: the row's ⋯ shuts the page's.
   await dots(page, "d4").click();
   await expect(page.locator(".dk-moremenu")).toHaveCount(1);

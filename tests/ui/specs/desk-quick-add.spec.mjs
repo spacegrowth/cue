@@ -819,11 +819,11 @@ test("an item's page has no row of Start and Park buttons, only a ⋯ that opens
   await expect(more.locator("svg")).toHaveCount(1);
   await expect(more).toHaveAttribute("aria-label", "More");
   await expect(side.locator('[data-desk-act="start_now"], [data-desk-act="park"]')).toHaveCount(0);
-  // Open: Start it now and Park, as a menu, whole inside the window.
+  // Open: Start now and Park, as a menu, whole inside the window.
   await more.click();
   const menu = side.locator(".dk-moremenu");
   await expect(menu).toHaveAttribute("role", "menu");
-  await expect(menu.locator('[role="menuitem"]')).toHaveText(["Start it now in a new session", "Park"]);
+  await expect(menu.locator('[role="menuitem"]')).toHaveText(["Start now", "Park"]);
   const box = await menu.boundingBox(), vp = page.viewportSize();
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
