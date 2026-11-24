@@ -80,12 +80,12 @@ function deskBox(d, o = deskOpen) {
   // talks to: the lead, the open holder, or the holder of the open item (not a crew member: those words are Cue's).
   const sugSid = to.mate ? "" : to.item ? sugItem : to.sid || deskLead(d)?.sid || "";
   // The new layout: the same box as the lead's (a session's chat box), who it goes to at its left (deskCBox).
-  return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, !to.mate);
+  return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, to.mate ? "crew" : to.item ? "item" : "session");
 }
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
-// No quick phrases on a crew member's box (`quick` false): there's nothing quick to say about one.
-const deskCBox = (key, pre, ph, sug = "", sugSid = "", quick = true) => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quick ? quickRow(`data-quick="${esc(key)}"`) : "", send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
+// Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member or about an item.
+const deskCBox = (key, pre, ph, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
 /** Box `to` is the lead's own: about no item, crew member, kept copy or other session. */
 const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kept;
 // The lead's box writes to its session (chat/compose.js sidOfKey): its "/" menu, Send at and suggestion are the lead's.
@@ -133,8 +133,8 @@ function deskItemFootNow(i, d) {
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
   const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
   const key = deskBoxKey(to), line = deskToLine(i.holder.name, i);
-  // No quick phrases to a crew member, as on its own box.
-  return deskCBox(key, line.pre, line.ph, "", "", !to.mate);
+  // An item's chat: no quick phrases, as a crew member's.
+  return deskCBox(key, line.pre, line.ph, "", "", "item");
 }
 function deskRight(project, taskApprovals) {
   return deskOpenCard(project, taskApprovals) || deskRightChat(deskOf(project), taskApprovals);

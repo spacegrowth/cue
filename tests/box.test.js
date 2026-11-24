@@ -37,7 +37,7 @@ for (const f of ["box/markup.js", "box/send.js", "box/end.js", "chat/send.js", "
 }
 // What the builders call that isn't theirs to draw.
 Object.assign(ctx, {
-  cmdMenu: (k) => `<cmd ${k}>`, slashHint: (k) => `<hint ${k}>`, quickRow: (a) => `<quick ${a}>`, now: () => 1000,
+  cmdMenu: (k) => `<cmd ${k}>`, slashHint: (k) => `<hint ${k}>`, quickRow: (a, sid, kind = "session") => (ctx.QUICK_BY_CHAT[kind]?.length === 0 ? "" : `<quick ${a}>`), now: () => 1000,
   // Today's Desk: the new layout's box (desk/view.js deskCBox) isn't one of the builders checked here.
   deskCOn: () => false,
   deskBoxes: new Map(), deskSelection: () => "P", deskLeadName: () => "lead-1", deskLead: () => ({ sid: "L" }), deskLeadEnded: () => false, leadS: { session_id: "L", state: "waiting" }, deskLeadSession: () => ctx.leadS, deskOf: () => ({ project: "P" }), listenLine: (sid) => `<ls ${sid}>`,
@@ -125,13 +125,13 @@ ctx.items[7] = { id: 7, title: "Remove the actions row", state: "doing" };
 ctx.deskOpen = { kind: "item", id: 7 };
 key = ctx.deskBoxKey({ project: "P", item: 7 });
 D(key, "why & how");
-sameC("item", ctx.deskBox(deskD));
+sameC("item", ctx.deskBox(deskD), false);
 // Its chat is its holder's session (#744, #748): the suggestion is that session's, none while nobody holds it.
 ctx.suggestionFor = (sid) => (sid === "H" ? "Looks good" : ""); D(key, "");
 assert.ok(!ctx.deskBox(deskD).includes("data-sug-sid"), "an item nobody holds: no suggestion");
 ctx.sessions.H = { session_id: "H" };
 ctx.items[7] = { ...ctx.items[7], state: "to_check", holder: { kind: "session", sid: "H", name: "lead-1" } };
-sameC("itemSug", ctx.deskBox(deskD));
+sameC("itemSug", ctx.deskBox(deskD), false);
 delete ctx.sessions.H;
 ctx.items[7] = { id: 7, title: "Remove the actions row", state: "doing" };
 ctx.suggestionFor = () => "";
@@ -139,7 +139,7 @@ ctx.suggestionFor = () => "";
 ctx.sessions.H = { session_id: "H" };
 ctx.items[8] = { id: 8, title: "Fix the thing now", state: "doing", holder: { kind: "crew", sid: "H", lead_sid: "H", name: "mate-1" } };
 ctx.deskOpen = { kind: "item", id: 8 };
-// No quick phrases on a crew member's box: there's nothing quick to say to one.
+// No quick phrases on a crew member's box, nor on any item's (#840).
 // Its tag (#803): "To mate-1" over "#8", as a crew member's.
 assert.ok(/field-to1">To mate-1<\/span><span class="field-to2">#8</.test(ctx.deskBox(deskD)), "itemCrew: two-line tag");
 sameC("itemCrew", ctx.deskBox(deskD), false);
@@ -150,13 +150,13 @@ ctx.suggestionFor = () => "";
 // An item to check with mocks to pick from.
 ctx.items[9] = { id: 9, title: "Make the new mocks", state: "to_check", holder: { kind: "session", sid: "H", name: "cue-9" } };
 ctx.deskOpen = { kind: "item", id: 9 }; ctx.deskPickOptions = () => [1];
-sameC("itemMocks", ctx.deskBox(deskD));
+sameC("itemMocks", ctx.deskBox(deskD), false);
 ctx.deskPickOptions = () => [];
 // An item that asks you, its holder's box (deskItemFoot): dictating, a picture; a crew member's, empty.
 const ask = { id: 7, title: "Remove the actions row", state: "needs_you", holder: { kind: "session", sid: "H", name: "cue-7" } };
 key = ctx.deskBoxKey({ project: "P", sid: "H", item: 7 });
 ctx.dictating = { key }; D(key, "yes", [PIC]);
-sameC("foot", ctx.deskItemFoot(ask, { project: "P" }), true);
+sameC("foot", ctx.deskItemFoot(ask, { project: "P" }), false);
 ctx.dictating = null;
 sameC("footCrew", ctx.deskItemFoot({ id: 8, title: "Fix the thing now", state: "needs_you", holder: { kind: "crew", lead_sid: "H", sid: "H", name: "mate-1" } }, { project: "P" }), false);
 // Send back's box (deskBackHtml): a picture; empty, dictating.

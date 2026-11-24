@@ -415,10 +415,19 @@ const suggestionFor = (sid) => {
   const last = [...(s.thread || [])].reverse().find((e) => e.role === "agent" || e.role === "you");
   return (last?.role === "agent" && replyAsked(last.text)) || s.suggestion || "";
 };
-/** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
-const quickRow = (attrs, sid = "") => {
-  const place = placeTab(sid);
-  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
+/** Which quick phrases each kind of chat shows (#840), the one place that says so: a plain session's chat all of yours
+ *  (Settings → Quick phrases), a Desk lead's only "Go ahead", an item's and a crew member's none. */
+const QUICK_BY_CHAT = { session: null, lead: ["Go ahead"], item: [], crew: [] };
+/** Chat kind `kind` (session, lead, item, crew) for session `sid`: a session that runs a Desk is its lead's chat,
+ *  wherever its box is. */
+const quickKind = (kind, sid) => (kind === "session" && sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid) ? "lead" : kind);
+/** The quick phrases chat kind `kind` shows. */
+const phrasesFor = (kind) => QUICK_BY_CHAT[kind] ?? phrases();
+/** The quick phrases of chat kind `kind`, with (at the right) where the session runs when it's a terminal app's; nothing
+ *  at all (no row, no space) when there's neither. */
+const quickRow = (attrs, sid = "", kind = "session") => {
+  const place = placeTab(sid), list = phrasesFor(quickKind(kind, sid));
+  return list.length || place ? `<div class="quick">${list.map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
 /** Claude's suggestion laid over an empty box's first line: "Suggested", the text, a Tab keycap and `tail`; `attrs` on
  *  the line. Empty when there's none. */
@@ -484,7 +493,7 @@ function draftChips(key) {
 }
 /** A text box that grows as you type (Shift+Enter = new line, Enter = send), optionally with images.
  *  The boxes that message a session (the ones with images) also get the quick phrases, unless `quick` is false (the
- *  crew page with a teammate on its left: they belong to the chat). `alt` shows beside Send once something's typed;
+ *  crew page with a teammate on its left: they belong to the chat); a chat kind there (quickRow) picks which. `alt` shows beside Send once something's typed;
  *  `extra` always does. */
 function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true) {
   const d = draft(key), sid = sidOfKey(key);
@@ -499,7 +508,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
     sug: images ? suggestionFor(sid) : "", sugSid: key.startsWith("s:") ? "" : sid,
     bang: bangTyped(d.text),
     cmd: sid ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : "",
-    top: images && quick ? quickRow(`data-quick="${esc(key)}"`, sid) : "",
+    top: images && quick ? quickRow(`data-quick="${esc(key)}"`, sid, quick === true ? "session" : quick) : "",
     clock: images && sid ? `<button class="icon-btn ${sendAtFor === key ? "on" : ""}" data-send-at-open="${esc(key)}" aria-label="Send at a time">${CLOCK_ICON}</button>` : "",
     extra: `${extra}${ready ? alt : ""}`,
     send: { attrs: sendAttrs, label: bang ? "Run" : label, disabled: !ready },
