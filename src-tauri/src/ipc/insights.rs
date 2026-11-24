@@ -11,7 +11,7 @@ use crate::logs::steps;
 use std::sync::Arc;
 // Kept at this path for the tests and the add-on.
 #[allow(unused_imports)]
-pub(crate) use crate::hub::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_keep_now, notice_handoff, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
+pub(crate) use crate::hub::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_fresh_with, handoff_keep_now, notice_handoff, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
 use crate::hub::{local_log, notice_handoff_in};
 use tauri::State;
 
@@ -121,10 +121,15 @@ pub(crate) async fn handoff_continue(hub: State<'_, Arc<Hub>>, session_id: Strin
 
 /// A session whose cache is gone: a new session of the same agent, folder and machine (Claude Code: the same
 /// model), started from its last reply instead of resuming the whole context. An open one closes (Closed keeps
-/// it), as every way to a fresh session does; a parked or closed one stays where it is.
+/// it), as every way to a fresh session does; a parked or closed one stays where it is. `message`: one it didn't wake
+/// for (#857), which the fresh one starts with, after its last reply.
 #[tauri::command]
-pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
-    with_hub(&hub, move |h| handoff_fresh_now(&h, &session_id)).await?
+pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| match message.as_deref() {
+        Some(m) => handoff_fresh_with(&h, &session_id, m),
+        None => handoff_fresh_now(&h, &session_id),
+    })
+    .await?
 }
 
 /// One thing an insight did, or you did with it: shown, acted (with what you picked), later, dismissed.

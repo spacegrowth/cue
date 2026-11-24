@@ -256,6 +256,27 @@ pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_
     Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
 }
 
+/// A session that didn't wake for your message (#857): a fresh one in its place, started from its last reply with that
+/// message, which it never got. As `handoff_fresh_now`: its Desk items go with it, and the old one closes (Closed
+/// keeps it).
+pub(crate) fn handoff_fresh_with(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<serde_json::Value, String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return handoff_fresh_now(h, session_id);
+    }
+    let new_id = start_after(h, session_id, |last| fresh_with_ask(last, message))?;
+    let (closed, detail) = close_replaced(h, session_id, "Sent to a fresh session");
+    Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
+}
+
+/// What starts a fresh session in place of one that didn't wake for `message`: carry on from its last reply (`last`),
+/// then answer the message.
+fn fresh_with_ask(last: &str, message: &str) -> String {
+    let last: String = last.chars().take(1500).collect();
+    let said = if last.is_empty() { String::new() } else { format!("\n\nIts last reply:\n\n{}", last.lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n")) };
+    format!("Carry on from an earlier session in this folder: it couldn't be started again to take my message.{said}\n\nIt left no hand-off note. Check git status, the branch and the files that reply names, then answer my message to it:\n\n{message}")
+}
+
 /// Record one insight event: known rules and actions only, the detail kept short.
 pub(crate) fn record_insight(session_id: &str, rule: &str, action: &str, detail: &str, tokens: u64) {
     // "ahead": a note asked before a cache ran out (shown, with who asked), what you did when you came back

@@ -33,6 +33,11 @@ pub struct Exchange {
     /// or a dialog it opened). Cue keeps looking for a while; the bubble shows a faint ring meanwhile.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending: bool,
+    /// Yours, not sent (`unsent`) because the session it went to didn't wake for it: Cue started its agent again to
+    /// take it, and the agent ended, or never took it within `hub::hosted::WAKE_LIMIT_MS` (a very large chat to
+    /// resume, say). The bubble says the session didn't wake, with Try again and Send to a fresh session (#857).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_wake: bool,
     /// Yours, sent now (⌘↵) right after the one above, before it was answered: stopping its turn put that
     /// one back into Claude Code's box and this was typed after it, so the agent got both as one message.
     /// The text is what you typed; the bubble says it went with the one above (sessions/thread.rs note_with).

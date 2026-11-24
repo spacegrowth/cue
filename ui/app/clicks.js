@@ -32,6 +32,8 @@ const ACTS = {
   "trust-start": () => trustAnswer(true),
   "trust-cancel": () => trustAnswer(false),
   "host-restart": () => hostRestart(),
+  // A message a session didn't wake for (#857): a fresh session in its place, starting from its last reply with it.
+  "fresh-send": (el) => invoke("handoff_fresh", { sessionId: el.dataset.sid, message: el.dataset.text }).then((r) => { if (r.session_id) setActive(null, r.session_id); toast(r.detail); }, (x) => toast(`Couldn't start it: ${x}`)),
   resend: (el) => invoke("send_to_session", { sessionId: el.dataset.sid, text: el.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`)),
   "ran-again": (el) => ranAct(el, (who, r) => runLine(who, r.line, r.cwd, r.machine)),
   // The line and what it printed, as the card shows them.

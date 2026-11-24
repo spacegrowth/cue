@@ -113,7 +113,7 @@ fn landing_stuck(it: &DeskItem, now: u64) -> Option<(String, String)> {
     Some((format!("{}:{}", f.step, f.at), words))
 }
 
-/// Item `it` at work with a holder of its own (not crew, not a lead) that ended or hit its usage limit: (its key
+/// Item `it` at work with a holder of its own (not crew, not a lead) that ended, hit its usage limit or didn't wake: (its key
 /// "sid:why:updated", the row's words).
 fn holder_gone(st: &Store, it: &DeskItem) -> Option<(String, String)> {
     let h = it.holder.as_ref().filter(|h| it.state == "working" && crate::desk::hub::core::desk::crew_parts(h).is_none() && h.lead_sid.is_empty())?;
@@ -123,6 +123,8 @@ fn holder_gone(st: &Store, it: &DeskItem) -> Option<(String, String)> {
     let (why, words) = match st.sessions.get(&h.sid) {
         Some(s) if s.state == "limited" => ("limited", "hit its usage limit with it at work. It carries on once the limit resets; ROUTE it to another session if it can't wait."),
         None if st.ended.iter().any(|(_, s)| s.origin.session_id == h.sid) => ("ended", "ended with it at work. ROUTE it to a session, or to new."),
+        // Woken for a message and it didn't wake (#857): the message is kept on its chat, not taken.
+        Some(_) if st.sessions.last_no_wake(&h.sid) => ("no_wake", "didn't wake for the last message sent to it (Cue started it again and it ended, or took nothing within a minute). ROUTE it to another session, or to new."),
         _ => return None,
     };
     Some((format!("{}:{why}:{}", h.sid, it.updated), format!("#{} ({})'s holder {} {words}", it.id, it.title, h.name)))

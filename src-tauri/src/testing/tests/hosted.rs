@@ -31,14 +31,14 @@ fn takes(w: &World, sid: &str, text: &str) {
 }
 
 /// A hosted session started with `message`, which Claude has taken (its turn under way): its id.
-fn running(w: &World, message: &str) -> String {
+pub(super) fn running(w: &World, message: &str) -> String {
     let sid = started(w, message);
     takes(w, &sid, message);
     sid
 }
 
 /// `sid` at the end of a turn that said `reply`.
-fn turn_ends(w: &World, sid: &str, reply: &str) {
+pub(super) fn turn_ends(w: &World, sid: &str, reply: &str) {
     w.hosted_says(sid, HostedEvent::TurnEnded { text: reply.into(), failed: false, cost_usd: 0.25, unprompted: false });
     w.settle();
 }

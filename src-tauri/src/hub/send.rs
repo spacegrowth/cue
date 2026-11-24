@@ -896,7 +896,7 @@ struct Watch {
 pub(super) fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
     // When you wrote it, too (a kept message sent now): its row stands there, where its bubble was (#422).
     let (at, written) = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| (e.at_ms, e.written_ms)).unwrap_or_else(|| (now_ms(), 0));
-    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written, cue: st.sessions.is_cue(text), cue_parts: vec![] };
+    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written, cue: st.sessions.is_cue(text), cue_parts: vec![] };
     st.sessions.set_queued(session_id, Some(q));
 }
 

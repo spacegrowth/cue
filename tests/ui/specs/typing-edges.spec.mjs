@@ -64,6 +64,22 @@ test("A message that didn't go through offers Send again, which sends it", async
   expect((await cue.called("send_to_session", { sessionId: "relay" })).args).toMatchObject({ text, now: false });
 });
 
+test("A message the session didn't wake for says so and offers Try again and Send to a fresh session", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  await markLastYours(cue, "relay", { unsent: true, no_wake: true });
+  const row = page.locator(".active-pane .cv-you.unsent").last();
+  await expect(row).toContainText("didn't wake");
+  await expect(row).toContainText("your message is kept here");
+  await expect(row).not.toContainText("Sending…");
+  const again = row.locator('button[data-act="resend"]');
+  await expect(again).toHaveText("Try again");
+  const text = await again.getAttribute("data-resend");
+  await again.click();
+  expect((await cue.called("send_to_session", { sessionId: "relay" })).args).toMatchObject({ text, now: false });
+  await row.locator('button[data-act="fresh-send"]').click();
+  expect((await cue.called("handoff_fresh", { sessionId: "relay" })).args).toMatchObject({ message: text });
+});
+
 test("A kept message that couldn't be sent says why", async ({ cue, page }) => {
   await openWorking(page, "eng");
   await cue.change((st) => {

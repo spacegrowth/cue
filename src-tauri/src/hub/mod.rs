@@ -43,9 +43,9 @@ mod events;
 mod guard;
 mod hand_off;
 mod hand_off_note;
-pub(crate) use hand_off_note::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_keep_now, local_log, notice_handoff, notice_handoff_in, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
+pub(crate) use hand_off_note::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_fresh_with, handoff_keep_now, local_log, notice_handoff, notice_handoff_in, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
 mod history;
-mod hosted;
+pub(crate) mod hosted;
 mod kept_history;
 mod live_writes;
 mod log_paths;
@@ -123,6 +123,9 @@ pub(crate) struct Store {
     /// A hosted turn's reply that was an API error (its kind, its words), until that turn's end comes back: the
     /// end is then that error (a usage limit: stopped on the limit, with Cue's carry-on), not a reply.
     hosted_api_error: HashMap<String, (String, String)>,
+    /// A paused hosted session Cue started again for a message (`wake_hosted`), until it takes it: the process it
+    /// started. It ending, or not taking the message within `hosted::WAKE_LIMIT_MS`, means it didn't wake (#857).
+    hosted_waking: HashMap<String, i32>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     pub(crate) sessions: crate::sessions::Sessions,
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to
