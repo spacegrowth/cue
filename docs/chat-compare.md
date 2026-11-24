@@ -7,7 +7,7 @@ Item #832, 2026-11-24. Nothing in the app changes with this doc. Line numbers ar
 What changed:
 - Read works on an item's page.
 - #123 and session names are links in every chat. On the Board and in the mini window, an item link opens the item on its Desk.
-- "↗ Send to…" is on replies in the Desk's item and session chats. The lead's chat still has none.
+- "↗ Send to…" is on replies in the Desk's item and session chats. Since #854 it is on every chat: the lead's, a crew member's and a parked session's too, one button (ui/chat/render.js fwdBtn).
 - btw opens its panel in the Desk's item and session chats.
 - The status line under those chats is the Board's: it names background agents and a hand-off on its way.
 - Escape twice on a hosted session that hasn't answered yet stops it and puts what you sent back in the box.

@@ -121,8 +121,8 @@ function deskChatRows(s, page) {
   // for Cue as every chat does (core/md.js cueLineHook, #833): left out, IF PICKED one quiet line, DESIGNS a button.
   const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
   // Every Desk chat (#789): Cue's messages to it and its Desk lines go only to Activity. Item numbers and session names
-  // are links in all of them (#832); Send to… on all but the lead's, which hands work on by its own lines.
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, refs: deskRefs, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: lead, ...page }) : "";
+  // are links in all of them (#832), and Send to… is on every one, the lead's too (#854).
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, refs: deskRefs, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */
@@ -156,11 +156,17 @@ function deskShownSid() {
   const d = deskOf(p);
   return deskLead(d) && !deskLeadEnded(d) ? deskLead(d).sid : null;
 }
-/** Read on a reply in a Desk chat (chat/reader.js): the reader in the chat's place, its bar, the reply set larger at
+/** What fills a Desk chat's place instead of it, as on the Board: a background agent or script opened from its tray
+ *  (helperPane), or Read on a reply (chat/reader.js): the reader in the chat's place, its bar, the reply set larger at
  *  the size picked, and its foot (Listen's player; Back to chat while `ask` waits). Null when no reply of `s`'s is
  *  open in it. Not a .dk-chat: the Desk's chat-end scroll (deskSettle) leaves it alone. */
 function deskReader(s, ask = null) {
-  const sid = s?.session_id, rv = sid && readerViewed(sid, ask, s);
+  const sid = s?.session_id;
+  // A background agent or script clicked in its tray, in full in the chat's place, as on the Board (chat/pane.js
+  // fullView): its bar, its view, Go to chat at its foot.
+  const hv = sid && helperViewed(sid), hp = hv && helperPane(sid, hv);
+  if (hp) return `${hp.bar}<div class="dk-rd dk-hv" data-scroll-key="${esc(`h|${sid}|${hv.id}`)}">${hp.body}</div>${hp.foot}`;
+  const rv = sid && readerViewed(sid, ask, s);
   if (!rv) return null;
   readerView.drawn = { it: ask, s };   // what ‹ › and Copy step through (chat/reader.js readerOf)
   const p = readerPane(sid, ask, s, s.harness || "claude", rv);
