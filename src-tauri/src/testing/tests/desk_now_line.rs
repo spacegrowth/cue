@@ -1,6 +1,6 @@
-//! The line at the top of each Desk (#783, desk/hub/landing/now_line.rs): what Cue is doing with landed work, in that
-//! Desk's own landing steps. Cue's own project says its full run (the commit, then whether it failed and on what),
-//! a project with steps of its own says which runs and how the last ended, and one with none says nothing.
+//! Which landing step a Desk's items are in right now (#783, #814, desk/hub/landing/now_line.rs): Cue's own project
+//! says its full run going and the items it carries, a project with steps of its own says which check step runs on
+//! which item, and once nothing runs there's nothing (no line over the Desk says what ended: an item's row does).
 
 use super::desk_commit::{ends, item, routed_with};
 use super::desk_full_run::{failed, in_cue_passed, lands, looks};
@@ -11,56 +11,45 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Desk `project`'s top line as the window gets it.
+/// Desk `project`'s step under way as the window gets it.
 fn line(hub: &Hub, project: &str) -> Value {
     let v = hub.read(|st| Hub::desk_view(st, 0));
     v["projects"].as_array().unwrap().iter().find(|p| p["project"] == project).map(|p| p["landing_now"].clone()).unwrap_or(Value::Null)
 }
 
 #[test]
-fn cues_own_desk_says_its_full_run_the_items_it_carries_and_its_failure() {
+fn cues_own_desk_says_its_full_run_going_and_the_items_it_carries() {
     let w = World::new();
-    let (runner, dir, project, id, h, start) = in_cue_passed(&w);
-    let l = line(w.hub(), &project);
-    assert_eq!((l["state"].as_str(), l["what"].as_str()), (Some("ok"), Some(format!("Tests passed on main at {}", &start[..7]).as_str())), "{l}");
+    let (runner, dir, project, id, h, _start) = in_cue_passed(&w);
+    assert_eq!(line(w.hub(), &project), Value::Null, "nothing going");
     let at = lands(&w, &dir, &project, "Header jumps", &id, &h, "a.txt");
     looks(&w);
     let l = line(w.hub(), &project);
-    assert_eq!(l["what"], format!("Testing main at {}", &at[..7]), "{l}");
+    assert_eq!((l["state"].as_str(), l["what"].as_str()), (Some("run"), Some(format!("Testing main at {}", &at[..7]).as_str())), "{l}");
     assert_eq!(l["items"], json!([id]), "the items it carries");
-    assert!(l["since"].as_u64().unwrap() > 0, "when it started: {l}");
     runner.ends_with(failed(None, Some("it failed before this batch")));
     looks(&w);
-    let l = line(w.hub(), &project);
-    assert_eq!((l["state"].as_str(), l["what"].as_str()), (Some("fail"), Some("Failed: hub::tests::header_stays and 1 more")), "{l}");
-    assert!(l["note"].as_str().unwrap().contains(&format!("on {}", &at[..7])), "{l}");
-    assert!(l["note"].as_str().unwrap().contains("no item caused it"), "{l}");
-    assert!(!l["note"].as_str().unwrap().contains("older commit"), "main is still there: {l}");
-    // Its build, then its install, with the items in it; the full run's failure behind them.
+    assert_eq!(line(w.hub(), &project), Value::Null, "it ended: nothing going");
+    // Its build: the item's row says it of itself.
     w.hub().write(|st| {
         let it = st.desk.item_mut(&id).unwrap();
         it.state = "finishing".into();
         it.finish = Some(crate::desk::Finish { step: "building".into(), at: 7, ..Default::default() });
     });
-    let l = line(w.hub(), &project);
-    assert_eq!((l["state"].as_str(), l["what"].as_str(), l["since"].as_u64()), (Some("run"), Some("Build"), Some(7)), "{l}");
-    assert_eq!(l["items"], json!([id]));
-    w.hub().write(|st| st.desk.item_mut(&id).unwrap().finish.as_mut().unwrap().step = "installing".into());
-    assert_eq!(line(w.hub(), &project)["what"], "Install");
+    assert_eq!(line(w.hub(), &project), Value::Null);
 }
 
 #[test]
-fn a_desk_with_steps_of_its_own_says_which_runs_and_how_the_last_ended() {
+fn a_desk_with_steps_of_its_own_says_which_runs_on_which_item() {
     let w = World::new();
     w.hub().desk_set_installer(Arc::new(Checker::default()));
     let mark = w.home().join("check-began").to_string_lossy().to_string();
-    // The check waits till the test has seen it running (or 10 s), so the line is read mid-step.
+    // The check waits till the test has seen it running (or 10 s), so it's read mid-step.
     let go = w.home().join("check-go").to_string_lossy().to_string();
     let wait = format!("touch {mark}; for i in $(seq 1 200); do [ -f {go} ] && break; sleep 0.05; done");
     let lands = json!({ "check": "command", "check_steps": ["true", wait], "after": "command", "after_steps": ["true"] });
     let (_dir, project, id, h) = routed_with(&w, |w, h, _| set(w, h, lands.clone()), |_, _, _| {});
-    let idle = line(w.hub(), &project);
-    assert_eq!((idle["state"].as_str(), idle["what"].as_str()), (Some("idle"), Some(format!("Check before landing: true, then {wait} · After landing: true").as_str())), "{idle}");
+    assert_eq!(line(w.hub(), &project), Value::Null, "nothing runs yet");
     let path = item(&w, &project, "Header jumps")["tree"]["path"].as_str().unwrap().to_string();
     std::fs::write(std::path::Path::new(&path).join("a.txt"), "a\n").unwrap();
     // Read from beside the landing while its steps run.
@@ -84,12 +73,11 @@ fn a_desk_with_steps_of_its_own_says_which_runs_and_how_the_last_ended() {
     let mid = crate::locking::lock(&seen, "seen line").clone();
     assert_eq!((mid["state"].as_str(), mid["what"].as_str(), mid["step"].as_str()), (Some("run"), Some(format!("Checking #{id} before it lands").as_str()), Some(wait.as_str())), "{mid}");
     assert_eq!(mid["items"], json!([id]));
-    let after = line(w.hub(), &project);
-    assert_eq!((after["state"].as_str(), after["what"].as_str()), (Some("ok"), Some(format!("After landing passed on #{id}").as_str())), "{after}");
+    assert_eq!(line(w.hub(), &project), Value::Null, "all ended: nothing runs");
 }
 
 #[test]
-fn a_desk_with_no_check_and_nothing_after_landing_has_no_line() {
+fn a_desk_with_no_check_and_nothing_after_landing_has_nothing() {
     let w = World::new();
     let (_dir, project, _id, _h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
     assert_eq!(line(w.hub(), &project), Value::Null);

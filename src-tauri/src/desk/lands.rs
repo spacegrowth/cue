@@ -381,7 +381,7 @@ pub fn run_steps(dir: &str, steps: &[String]) -> Result<(), StepFailed> {
     run_steps_seen(dir, steps, &|_| {})
 }
 
-/// `run_steps`, with `seen` told each step as it begins (the Desk's top line says which runs, now_line.rs).
+/// `run_steps`, with `seen` told each step as it begins (the item's row says which runs, now_line.rs).
 pub fn run_steps_seen(dir: &str, steps: &[String], seen: &dyn Fn(&str)) -> Result<(), StepFailed> {
     let (cap, total) = (step_cap(), total_cap());
     let until = std::time::Instant::now() + total;

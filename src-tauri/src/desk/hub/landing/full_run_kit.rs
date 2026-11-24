@@ -140,14 +140,6 @@ pub(crate) struct FullRunState {
     /// The commits a failed run was traced to and an item was told of: none is blamed twice.
     #[serde(default)]
     pub blamed: Vec<String>,
-    /// What the last run that finished failed on (its first names; empty when it passed), when it ended (ms) and the
-    /// items its commits landed: what the Desk's top line says of it (now_line.rs).
-    #[serde(default)]
-    pub failed_names: Vec<String>,
-    #[serde(default)]
-    pub judged_ms: u64,
-    #[serde(default)]
-    pub judged_items: Vec<String>,
 }
 
 impl FullRunState {
