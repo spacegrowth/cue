@@ -507,7 +507,8 @@ const deskSel = () => Object.keys(DESK_CLICKS).map((k) => `[${deskAttr(k)}]`).jo
  *  Remove does in the projects list); then `el` does its thing. True when it was the Desk's. */
 function deskTake(el) {
   if (deskDropArm && !((el?.dataset.deskAct === "drop" || el?.dataset.deskAct === "remove_kept") && el.dataset.id === deskDropArm)) { deskDropArm = null; if (!el) renderMain(); }
-  if (!el || !el.closest(".dk-board")) return false;
+  // The Desk's columns, and the line over them (#783, desk/now_line.js).
+  if (!el || !el.closest(".dk-board, .dkl")) return false;
   DESK_CLICKS[Object.keys(DESK_CLICKS).find((k) => k in el.dataset)](el);
   return true;
 }

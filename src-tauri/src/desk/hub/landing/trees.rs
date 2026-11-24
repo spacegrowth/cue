@@ -635,11 +635,30 @@ impl Hub {
             self.finish_fin(id, |f| (f.step, f.wait) = ("checking".into(), String::new()));
             // Its project's check (desk/lands.rs), on the same tree: main plus the item (`squash`). Your own steps run
             // in a clean copy of it; set to none, it lands "not checked"; else the repository's own (Cue's).
-            let check = match crate::desk::lands::check_of(crate::desk::hub::landing::other_repo::lands_project(it), &t.repo) {
-                crate::desk::lands::Check::Steps(steps) => Some(check_steps_on(&t.repo, squash, &steps)),
+            // The Desk's top line says which step runs (now_line.rs).
+            let kind = crate::desk::lands::check_of(crate::desk::hub::landing::other_repo::lands_project(it), &t.repo);
+            let first = match &kind {
+                crate::desk::lands::Check::Steps(steps) => steps.first().cloned().unwrap_or_default(),
+                _ => String::new(),
+            };
+            // Only a check that runs: your steps, or Cue's own on its own source (any other repository has none).
+            let runs = match &kind {
+                crate::desk::lands::Check::Steps(_) => true,
+                crate::desk::lands::Check::Repo => crate::desk::hub::lead::checks::builds_this_cue(&t.repo),
+                crate::desk::lands::Check::Off => false,
+            };
+            let live = runs.then(|| crate::desk::hub::landing::now_line::Steps::begin(self, &it.project, id, "check", &first));
+            let check = match kind {
+                crate::desk::lands::Check::Steps(steps) => Some(check_steps_on(&t.repo, squash, &steps, &|s| if let Some(l) = &live { l.at(s) })),
                 crate::desk::lands::Check::Off => None,
                 crate::desk::lands::Check::Repo => self.installer().check(&t.repo, squash),
             };
+            // How it ended, for the line; one that ran nothing says nothing.
+            match (live, &check) {
+                (Some(l), Some(Err(log))) => l.end(Some(log.lines().next().unwrap_or("its check"))),
+                (Some(l), Some(Ok(()))) => l.end(None),
+                _ => {}
+            }
             match check {
                 None => unchecked = true,
                 Some(Ok(())) => {}

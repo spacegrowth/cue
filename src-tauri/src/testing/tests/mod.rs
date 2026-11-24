@@ -59,6 +59,7 @@ mod desk_theirs_hunks;
 mod desk_features;
 mod desk_finish;
 mod desk_full_run;
+mod desk_now_line;
 mod desk_install;
 mod desk_install_passed;
 mod desk_served;

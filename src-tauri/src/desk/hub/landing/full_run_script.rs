@@ -25,6 +25,8 @@ const MARK: &str = "cue-full-run exit ";
 struct Run {
     stop: Arc<AtomicBool>,
     end: Option<FullRunEnd>,
+    /// On this machine: its steps can be read as it goes (`here.err`).
+    here: bool,
 }
 
 #[derive(Default)]
@@ -58,7 +60,7 @@ impl FullRunner for ScriptRunner {
         if runs.contains_key(&ask.repo) {
             return Err("a full run of it is going already".into());
         }
-        runs.insert(ask.repo.clone(), Run { stop: stop.clone(), end: None });
+        runs.insert(ask.repo.clone(), Run { stop: stop.clone(), end: None, here: ask.machine.is_empty() });
         drop(runs);
         let ask = ask.clone();
         std::thread::spawn(move || {
@@ -87,6 +89,22 @@ impl FullRunner for ScriptRunner {
             r.stop.store(true, Ordering::SeqCst);
         }
     }
+
+    fn step(&self, repo: &str) -> String {
+        let runs = crate::locking::lock(&self.runs, "full runs");
+        let here = runs.get(repo).is_some_and(|r| r.here && r.end.is_none());
+        drop(runs);
+        if !here {
+            return String::new();
+        }
+        let said = work_dir().ok().and_then(|d| std::fs::read_to_string(d.join("here.err")).ok()).unwrap_or_default();
+        step_said(&said)
+    }
+}
+
+/// The step the script last said it began ("full-run: rust tests…"), "" for none.
+fn step_said(said: &str) -> String {
+    said.lines().rev().find_map(|l| l.strip_prefix("full-run: ").and_then(|s| s.trim_end().strip_suffix('…'))).unwrap_or("").trim().to_string()
 }
 
 /// A full commit name, and nothing a shell would read as more.
@@ -296,6 +314,14 @@ mod tests {
         assert_eq!((r.passed, r.failed, r.culprit_note.as_deref()), (false, vec!["a::b".to_string()], Some("it failed before this batch")));
         assert_eq!(read("cue-full-run exit 2\nfull-run: no such commit\n"), FullRunEnd::NotMade("full-run: no such commit".into()));
         assert_eq!(read(""), FullRunEnd::NotMade("it gave no answer".into()));
+    }
+
+    #[test]
+    fn the_step_is_the_last_one_the_script_began() {
+        assert_eq!(step_said("full-run: build…\nfull-run: code check…\nfull-run: rust tests…\n"), "rust tests");
+        assert_eq!(step_said("full-run: build…\nfull-run: rust tests FAILED (see x)\nfull-run: node tests…\nnoise\n"), "node tests");
+        assert_eq!(step_said("full-run: looking for the commit that broke it…\n"), "looking for the commit that broke it");
+        assert_eq!(step_said(""), "");
     }
 
     #[test]

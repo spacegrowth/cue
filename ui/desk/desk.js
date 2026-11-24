@@ -133,6 +133,9 @@ const deskHoldWait = (w) => /^Waits for /.test(w || "");
  *  in 12m"), so a finished item never looks stuck while it waits (#339). */
 function deskFinStep(i) {
   const f = i.finish || {};
+  // Its Desk's own check or after-landing step under way on it (#783): which one, from the line over the Desk.
+  const live = deskNowLineFor(i);
+  if (live) return live;
   const since = f.at ? ` · since ${clockAt(f.at)}` : "";
   // In its own copy, waiting its turn to land (desk/hub/landing/trees.rs): one item lands at a time.
   // A wait for another Desk's hold (#540) already reads "Waits for cue #509's hold on …".

@@ -515,7 +515,9 @@ impl Hub {
             }
             let running = Claim::take(self, &crate::desk::hub::landing::in_place::steps_key(top));
             drop(guard);
-            let ran = crate::desk::lands::run_steps(top, &l.after_steps);
+            let live = crate::desk::hub::landing::now_line::Steps::begin(self, &self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default(), id, "after", l.after_steps.first().map(String::as_str).unwrap_or(""));
+            let ran = crate::desk::lands::run_steps_seen(top, &l.after_steps, &|s| live.at(s));
+            live.end(ran.as_ref().err().map(|e| e.step.as_str()));
             if running.is_some() {
                 drop(running);
                 // An item waiting for the folder may take it now.

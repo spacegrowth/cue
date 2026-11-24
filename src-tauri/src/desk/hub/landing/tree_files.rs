@@ -164,8 +164,9 @@ pub(crate) fn names_item(text: &str, id: &str) -> bool {
 }
 
 /// Your own check's `steps` run on `commit` of `repo` (main plus the item, the tree Cue's own check reads): in a
-/// detached copy of it in Cue's folder, removed after. Err says which step and what it said. No lock is held here.
-pub(crate) fn check_steps_on(repo: &str, commit: &str, steps: &[String]) -> Result<(), String> {
+/// detached copy of it in Cue's folder, removed after; `seen` told each step as it begins. Err says which step and what
+/// it said. No lock is held here.
+pub(crate) fn check_steps_on(repo: &str, commit: &str, steps: &[String], seen: &dyn Fn(&str)) -> Result<(), String> {
     static RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let run = RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = crate::server::cue_dir().join("checks").join(format!("{}-{run}", std::process::id()));
@@ -181,7 +182,7 @@ pub(crate) fn check_steps_on(repo: &str, commit: &str, steps: &[String]) -> Resu
     if crate::desk::hub::lead::checks::builds_this_cue(repo) {
         link_shared(repo, &path);
     }
-    let ran = crate::desk::lands::run_steps(&path, steps).map_err(|e| format!("\"{}\" {}\n{}", e.step, e.why, e.said).trim_end().to_string());
+    let ran = crate::desk::lands::run_steps_seen(&path, steps, seen).map_err(|e| format!("\"{}\" {}\n{}", e.step, e.why, e.said).trim_end().to_string());
     remove(&ItemTree { repo: repo.to_string(), path, branch: String::new(), ..Default::default() });
     ran
 }

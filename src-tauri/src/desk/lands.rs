@@ -267,9 +267,15 @@ pub(crate) fn login_shell() -> String {
 /// fails. A step done only when all it started that still hold its output are, so one left running in the background
 /// counts toward the time. Takes as long as the steps do: never with a lock held.
 pub fn run_steps(dir: &str, steps: &[String]) -> Result<(), StepFailed> {
+    run_steps_seen(dir, steps, &|_| {})
+}
+
+/// `run_steps`, with `seen` told each step as it begins (the Desk's top line says which runs, now_line.rs).
+pub fn run_steps_seen(dir: &str, steps: &[String], seen: &dyn Fn(&str)) -> Result<(), StepFailed> {
     let (cap, total) = (step_cap(), total_cap());
     let until = std::time::Instant::now() + total;
     for step in steps {
+        seen(step);
         let fail = |why: String, said: String| StepFailed { step: step.clone(), why, said };
         let left = until.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {

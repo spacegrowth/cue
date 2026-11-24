@@ -188,6 +188,7 @@ impl Hub {
         if s != was {
             kit::save(repo, &s);
         }
+        self.full_run_shown(desk, repo, &s, runner);
         let running = s.running.is_some();
         let Some(t) = told else { return running };
         if let Some((id, what, more)) = &t.reopen {
@@ -198,6 +199,38 @@ impl Hub {
         }
         self.desk_feed_line(desk, t.kind, &t.words, &t.words);
         running
+    }
+
+    /// What the Desk's top line says of `repo`'s full runs (now_line.rs), kept for the window: the window drawn again
+    /// when it changed. The run's items are asked of git once per run.
+    fn full_run_shown(&self, desk: &str, repo: &str, s: &FullRunState, runner: &dyn FullRunner) {
+        let head = crate::desk::hub::landing::in_place::main_head(repo).unwrap_or_default();
+        let (from, to) = match &s.running {
+            Some(r) => (r.since.clone(), r.at.clone()),
+            None => (s.good().to_string(), head.clone()),
+        };
+        let items = {
+            static ITEMS: std::sync::Mutex<Vec<(String, Vec<String>)>> = std::sync::Mutex::new(Vec::new());
+            let key = format!("{repo}\n{from}..{to}");
+            let known = crate::locking::lock(&ITEMS, "full run items").iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone());
+            match known {
+                Some(v) => v,
+                None if to.is_empty() => Vec::new(),
+                None => {
+                    let v = batch(repo, &Running { at: to, since: from, ..Default::default() });
+                    let mut all = crate::locking::lock(&ITEMS, "full run items");
+                    all.retain(|(k, _)| !k.starts_with(&format!("{repo}\n")));
+                    all.push((key, v.clone()));
+                    v
+                }
+            }
+        };
+        let on = s.running.as_ref().filter(|r| !r.on.is_empty()).map(|r| crate::machines::display_name(&r.on)).unwrap_or_default();
+        let step = if s.running.is_some() && on.is_empty() { runner.step(repo) } else { String::new() };
+        let line = crate::desk::hub::landing::now_line::full_line(s, &head, &step, &on, items);
+        if crate::desk::hub::landing::now_line::set_full(desk, line) {
+            self.redraw();
+        }
     }
 
     /// Run `r` of `repo` (Desk `desk`) ended with `end`: what's kept of it in `s`, and what to tell (nothing when its
@@ -218,6 +251,9 @@ impl Hub {
         // build (it passed, or failed on no item): a failure traced to an item leaves that clock alone, so failing
         // runs one after another can't keep both it and the four hours from ever being up.
         s.judged = r.at.clone();
+        // What the Desk's top line says of it (now_line.rs).
+        (s.judged_ms, s.judged_items) = (now, batch(repo, r));
+        s.failed_names = if res.passed { Vec::new() } else { res.failed.iter().take(8).cloned().collect() };
         if res.passed {
             (s.passed, s.good, s.failing, s.unrun_since) = (r.at.clone(), r.at.clone(), String::new(), 0);
             (s.held_since, s.held_item) = (0, String::new());

@@ -78,6 +78,11 @@ pub(crate) trait FullRunner: Send + Sync {
     fn take(&self, repo: &str) -> Option<FullRunEnd>;
     /// `repo`'s run given up on: stopped where it can be, its end never told.
     fn stop(&self, repo: &str);
+    /// The step `repo`'s run is at now, as the script names it ("rust tests"), "" when it can't be told (a run on
+    /// another machine says nothing till it ends).
+    fn step(&self, _repo: &str) -> String {
+        String::new()
+    }
 }
 
 /// A run under way, as kept: the commits, where ("" this machine), when it began (ms), and why it runs on this
@@ -135,6 +140,14 @@ pub(crate) struct FullRunState {
     /// The commits a failed run was traced to and an item was told of: none is blamed twice.
     #[serde(default)]
     pub blamed: Vec<String>,
+    /// What the last run that finished failed on (its first names; empty when it passed), when it ended (ms) and the
+    /// items its commits landed: what the Desk's top line says of it (now_line.rs).
+    #[serde(default)]
+    pub failed_names: Vec<String>,
+    #[serde(default)]
+    pub judged_ms: u64,
+    #[serde(default)]
+    pub judged_items: Vec<String>,
 }
 
 impl FullRunState {
