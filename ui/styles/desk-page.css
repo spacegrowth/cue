@@ -291,11 +291,47 @@
 /* Items list (#201): a light line over each group after the first, so the groups read apart. */
 .dk-items .dk-scroll > .dk-gh:not(:first-child), .dk-items .dk-scroll > .dk-holder { position: relative; margin-top: 22px; }
 .dk-items .dk-scroll > .dk-gh:not(:first-child)::before, .dk-items .dk-scroll > .dk-holder::before { content: ""; position: absolute; left: 4px; right: 4px; top: -11px; border-top: 1px solid var(--line); pointer-events: none; }
-/* Sessions' Desk group: its fold line, tray icon in the line's own colour. */
-.desk-fold { display: flex; align-items: center; gap: 6px; margin-top: 6px; cursor: pointer; }
-.desk-fold > .dk-kic { margin: 0; flex: none; color: inherit; width: 12px; height: 12px; }
-.desk-fold .desk-fold-n { font-weight: 500; letter-spacing: 0; }
-.desk-fold:focus-visible { outline: 2px solid var(--on-bg); outline-offset: 2px; border-radius: var(--radius-tag); }
+/* A Desk on the Board (#825, board/desk_cards.js): its lead's card in Waiting while anything on it waits on you, with
+   that inside it; else a line under Sessions. The Desk's tag is outlined like the machine pills (no fill, 5px corners). */
+.dkw { cursor: default; }
+.dkw:hover { background: var(--panel); }
+.dkw .nrow-who { cursor: pointer; }
+.dkw-tag { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px 0 5px; border: 1px solid currentColor; border-radius: var(--radius-tag); font: 600 var(--type-label)/16px var(--sans); white-space: nowrap; flex: none; box-sizing: border-box; }
+.dkw-tag > .dk-kic { width: 11px; height: 11px; margin: 0; color: inherit; }
+.dkw-cnt { font-size: var(--type-small); line-height: 18px; color: var(--muted); }
+.dkw-cnt b { font-weight: 600; color: var(--ink); }
+.dkw-in { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dkw-ih { font: 700 var(--type-label)/16px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dkw-ask { display: flex; flex-direction: column; gap: 6px; background: var(--panel-2); border-radius: var(--radius-btn); padding: 8px 10px; cursor: pointer; min-width: 0; }
+.dkw-ask.on { background: var(--sel); color: var(--on-sel); }
+.dkw-ask.on .btn { background: transparent; color: var(--on-sel); border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); }
+.dkw-ask.on .btn.primary { background: var(--on-sel); color: var(--sel); border-color: var(--on-sel); }
+.dkw-ask.answering { opacity: 0.6; pointer-events: none; }
+.dkw-from { font-size: var(--type-small); line-height: 18px; color: var(--muted); }
+.dkw-ask.on .dkw-from { color: color-mix(in srgb, var(--on-sel) 75%, transparent); }
+.dkw-from b { font-weight: 600; color: inherit; }
+.dkw-ask:not(.on) .dkw-from b { color: var(--ink); }
+.dkw-for { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.dkw-for:hover { text-decoration: underline; }
+.dkw-ir { display: flex; align-items: baseline; gap: 8px; font: var(--type-small)/18px var(--sans); color: var(--ink); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; min-width: 0; width: 100%; }
+.dkw-ir:hover .dkw-tt { text-decoration: underline; }
+.dkw-id { font: 600 var(--type-small)/18px var(--mono); flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dkw-tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dkw-st { flex: none; color: var(--muted); }
+.dkw-st.ask { color: var(--deny); font-weight: 600; }
+.dkw-more { font: 600 var(--type-small)/18px var(--sans); color: var(--muted); background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.dkw-more:hover { color: var(--ink); }
+:is(.dkw-ir, .dkw-more, .dkw-for, .dkw-line):focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: var(--radius-tag); }
+/* Under Sessions: DESKS, then a quiet line per Desk on the column's ground. */
+.dkw-sub { display: flex; align-items: center; gap: 6px; }
+.dkw-sub > .dk-kic { width: 12px; height: 12px; margin: 0; color: inherit; }
+.dkw-line { display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%; padding: 6px 2px; background: none; border: 0; color: var(--on-bg); font: var(--type-small)/18px var(--sans); text-align: left; cursor: pointer; }
+.dkw-line > .dk-kic { width: 12px; height: 12px; margin: 0; flex: none; color: inherit; }
+.dkw-line .dkw-nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 2.6em; }
+.dkw-line .dkw-tag { color: var(--on-bg-muted); }
+.dkw-line-n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--on-bg-muted); }
+.dkw-line:hover .dkw-nm { text-decoration: underline; }
+.dkw-line-n b { font-weight: 600; color: var(--on-bg); }
 /* An item's kind icon wherever its number shows (#292): in the line's own colour, just before the number. */
 :is(.dh-ab, .dk-sch-t, .dk-prs) > .dk-kic { color: inherit; margin-right: 4px; }
 /* Waits on (#250): what an item waits on, in a box, its buttons under it; a circle's tag red, its links each with Cut. */

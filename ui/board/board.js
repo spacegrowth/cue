@@ -398,13 +398,9 @@ function laterRow({ sid, s, it }) {
     ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}${insCardLine(sid)}</div>`;
 }
 const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc(it.id)}" aria-label="Move to bottom">↓</button>`;
-/** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
-function needRow(it, ghost, open = false) {
-  if (ghost) {
-    const h = state.history.find((x) => x.id === it.id);
-    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}</div>
-      <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : sessionOf(it.session_id)?.hosted ? "picked up" : "picked up in the terminal")}</div></div>`;
-  }
+/** A card's quick answers: Allow and Deny, a terminal dialog's choices, Choose… for a question, Continue for an
+ *  interrupted turn ("" for none). Waiting's rows and a Desk's card in Waiting (board/desk_cards.js) alike. */
+function needQuick(it) {
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
@@ -413,6 +409,16 @@ function needRow(it, ghost, open = false) {
   else if (q.length) quick = `${qFoldLine(it)}<div class="nrow-acts wrap">${qFoldBtns(it, `<button class="btn" data-act="choose" data-id="${esc(it.id)}">Choose…</button>`)}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
+  return quick;
+}
+/** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
+function needRow(it, ghost, open = false) {
+  if (ghost) {
+    const h = state.history.find((x) => x.id === it.id);
+    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}</div>
+      <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : sessionOf(it.session_id)?.hosted ? "picked up" : "picked up in the terminal")}</div></div>`;
+  }
+  const quick = needQuick(it);
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
     ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id))}`,
       `<span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}`)}
@@ -436,30 +442,36 @@ function waitingRows(b) {
   const live = new Set(needs.map((i) => i.id));
   // A ghost fades in once: every later render (they come often while sessions work) draws it still.
   const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
-  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && workingOnYours(s));
+  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && workingOnYours(s) && !onDeskCard(s.session_id));
   const talkSids = new Set(talkWork.map((x) => x.session_id));
-  const rows = [...needs, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
+  const rows = [...needs, ...ghostRows.filter((g) => !talkSids.has(g.session_id) && !onDeskCard(g.session_id))].sort(newestFirst);
   const inTalk = (i) => talking(i);
   const draw = (list) => list.map((i) => needRow(i, i._ghost, isOpen(i.session_id))).join("");
-  // A Desk session's "your turn" is the lead's to pick up: it goes under Desk's fold at the foot (asks stay here).
-  const deskTurn = (i) => i.kind === "waiting" && deskWorksFor(i.session_id);
-  const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), others = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
-  const rest = others.filter((i) => !deskTurn(i)), deskRest = others.filter(deskTurn);
+  // A Desk's sessions have no cards here (#825): their asks are in their Desk's card, their finished turns the lead's.
+  const offDesk = (i) => !onDeskCard(i.session_id);
+  const talks = rows.filter((i) => inTalk(i) && offDesk(i)).sort((a, c) => a.created_ms - c.created_ms), count = (list) => list.filter((i) => !i._ghost).length;
+  const rest = rows.filter((i) => !inTalk(i) && offDesk(i));
+  // Each Desk with something waiting on you is one card, among the rest by when the newest of it came.
+  const desks = b.desks.cards;
   // The add-on's rows that wait on you sit in Waiting with the rest.
   const more = addOn.waiting();
-  const restRows = rest.length || more.count ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest) + more.count}</button>${newestShut() ? "" : more.html + draw(rest)}` : "";
+  const restRows = rest.length || desks.length || more.count ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest) + desks.length + more.count}</button>${newestShut() ? "" : more.html + drawWithDesks(rest, desks, draw, isOpen)}` : "";
   const html = (talks.length || talkWork.length
     ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) + talkWork.length ? ` · ${count(talks) + talkWork.length}` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
-    : "") + restRows + deskWaitFold(deskRest, draw, count);
-  return { html, count: count(talks) + talkWork.length + count(rest) + count(deskRest) + more.count + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
+    : "") + restRows;
+  return { html, count: count(talks) + talkWork.length + count(rest) + desks.reduce((n, w) => n + w.n, 0) + more.count + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
 }
 
-/** Waiting's Desk fold: Desk sessions whose turn it is, under one line that folds with Sessions' Desk line. */
-function deskWaitFold(list, draw, count) {
-  if (!list.length) return "";
-  const shut = deskShut();
-  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}DESK SESSIONS · ${count(list)}<span class="desk-fold-n">· your turn</span></button>`
-    + (shut ? "" : draw(list));
+/** Newest first's rows with the Desks' cards among them: a Desk's card goes above the first row older than the
+ *  newest of what waits on it (rows you sent to the bottom stay below every card). */
+function drawWithDesks(rows, desks, draw, isOpen) {
+  const cards = [...desks].sort((a, c) => c.at - a.at);
+  let out = "";
+  for (const r of rows) {
+    while (cards.length && (r.back_ms || cards[0].at >= r.created_ms)) out += deskLeadCard(cards.shift(), isOpen);
+    out += draw([r]);
+  }
+  return out + cards.map((w) => deskLeadCard(w, isOpen)).join("");
 }
 /** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
 function sessionNote(s) {
@@ -484,15 +496,16 @@ function sessionCard(s, open) {
       ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${preview ? `<div class="prompt mg-plain on-bg">› ${preview}</div>` : ""}${deskSessCache(s.session_id)}${handOutHtml(s)}</div>`;
 }
 /** Sessions' cards: working, then out of usage, then idle, each under its heading. */
-function workColumn(all, isOpen) {
+function workColumn(all, isOpen, desks = []) {
   const card = (s) => sessionCard(s, isOpen(s.session_id));
-  // Desk work sits at the foot under its own fold line (out of usage stays up top: that one needs you).
-  const desk = all.filter((s) => s.state !== "limited" && deskWorksFor(s.session_id)), shown = all.filter((s) => !desk.includes(s));
+  // A Desk's sessions have no cards here (#825): a line per Desk at the foot stands for them, while nothing on it
+  // waits on you (then it's a card in Waiting). Out of usage stays up top: that one needs you.
+  const shown = all.filter((s) => s.state === "limited" || !onDeskCard(s.session_id));
   const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
   return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
     + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
-    + deskFold(desk, card)
+    + (desks.length ? `<div class="col-sub dkw-sub">${deskKindIcon("tray")}DESKS · ${desks.length}</div>${desks.map(deskLine).join("")}` : "")
     || `<div class="col-sub">NO OTHER SESSIONS</div>`;
 }
 /** Sessions' Desk group: one fold line (open until you fold it, remembered), then the Desks' cards, working first. */
@@ -566,11 +579,11 @@ function boardView() {
   // something never moves a row, so the lists don't shift under your pointer.
   const openSid = quietOpen || active?.sid || null;
   const isOpen = (sid) => !!openSid && sid === openSid;
-  const b = { needs, later, working, isOpen };
+  const b = { needs, later, working, isOpen, desks: boardDeskSplit(needs) };
   const wait = waitingRows(b);
-  const shown = working, sessCount = shown.length;
+  const shown = working.filter((s) => s.state === "limited" || !onDeskCard(s.session_id)), sessCount = shown.length + b.desks.lines.length;
   // Drawn in this order: Waiting's cards, Sessions' cards, Need to decide, then Sessions' drawers.
-  const workCol = workColumn(shown, isOpen);
+  const workCol = workColumn(shown, isOpen, b.desks.lines);
   const waitingCol = waitingColumn(b, wait), sessionsCol = sessionsColumn(b, workCol, sessCount);
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   const coll = (name) => (focus ? !focusShown.has(name) : collapsed.has(name));

@@ -127,9 +127,9 @@ test("the worker chat on Desk has the live approval footer and Deny clears it", 
 test("Allow from the session removes the same pending request from Desk", async ({ cue, page }) => {
   await setup(cue, page);
   await openSessions(page);
-  // The session on the Board, answered there.
+  // The session on the Board (its ask in its Desk's card, #825), answered there.
   await page.locator('.switch-view [data-view="board"]').click();
-  await page.locator('.nrow[data-big="codex-approval"]').click();
+  await page.locator('.dkw-ask[data-big="codex-approval"]').click();
   await page.locator('.active-pane [data-act="allow"][data-id="codex-approval"]').click();
   await cue.called("respond", { id: "codex-approval" });
   await page.locator('.switch-view [data-view="desk"]').click();
