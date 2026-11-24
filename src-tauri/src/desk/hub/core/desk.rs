@@ -641,9 +641,10 @@ impl Hub {
     /// and `tells`, a lead's bands to another Desk's lead.
     fn desk_send_bands(&self, to_lead: Vec<(String, String, String, String)>, tells: Vec<(String, String, String)>) {
         // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
+        // Cue's, not yours (#831): never kept as words you sent, and never joined to yours (send.rs send_held).
         for (desk, sid, text, words) in to_lead {
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_with(h, &desk, &text) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
                     eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
                     let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""));
                 }

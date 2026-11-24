@@ -88,3 +88,41 @@ test("a turn with your words in it stays in the chat as yours, with the lead's a
   await expect(chat).toContainText("Yes, two items landed.");
   await expect(chat).not.toContainText("Waiting on cue-fb.");
 });
+
+// A session's question for the lead (#831): it and the lead's answer, even one that acts (NOTE), are Activity's,
+// together; nothing of them is in the chat, no quiet line, no "To lead". Kept with your words while the lead works,
+// your bubble shows only yours.
+const RELAY = "From cue-fb on #d2 (Quick phrases at the right of Send):\nShould the phrases wrap on narrow windows?\nAnswer it with NOTE: #d2 | <your words>.";
+
+test("a session's question and the lead's answer to it are Activity's, together; nothing of them in the chat", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const mine = await yours(page);
+  await feed(page, [[`${SUMMARY}\n\n${RELAY}`, "Told cue-fb to wrap them.\n\nNOTE: #d2 | Yes, wrap them under 600px."]]);
+  const chat = page.locator(".dk-chat");
+  for (const words of ["wrap on narrow windows", "Told cue-fb to wrap them", "To lead", "TO LEAD", "asked about"]) await expect(chat).not.toContainText(words);
+  await expect(chat.locator(".dk-quiet")).toHaveCount(0);
+  await expect(chat.locator(".cv-you-text")).toHaveCount(mine);
+  const moves = await activity(page);
+  const q = moves.locator(".dk-mv", { hasText: "wrap on narrow windows" });
+  await expect(q).toHaveCount(1);
+  await expect(q.locator(".dk-ans")).toContainText("Told cue-fb to wrap them");
+});
+
+test("kept for the lead with a session's question, your bubble holds only your words", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await page.evaluate((relay) => {
+    const lead = sessionOf("lead");
+    lead.state = "working";
+    lead.held = { role: "you", text: `${relay}\n\nare we moving ?`, at_ms: Date.now(), images: [], delivery: [] };
+    renderMain();
+  }, `${SUMMARY}\n\n${RELAY}`);
+  const chat = page.locator(".dk-chat");
+  await expect(chat.locator(".cv-you-text", { hasText: "are we moving ?" })).toHaveCount(1);
+  await expect(chat).not.toContainText("wrap on narrow windows");
+  // Only the session's words kept: nothing in the chat.
+  await page.evaluate((relay) => { sessionOf("lead").held.text = relay; renderMain(); }, `${SUMMARY}\n\n${RELAY}`);
+  await expect(chat).not.toContainText("wrap on narrow windows");
+  await expect(chat.locator(".cv-you-text", { hasText: "are we moving ?" })).toHaveCount(0);
+});

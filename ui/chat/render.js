@@ -368,7 +368,11 @@ const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentN
 function chatWaitRows(s, page, K) {
   const out = [];
   // `cut`: a turn's steps split at it, as at a message in the thread, so the steps around it stay put when it goes.
-  if (s?.held) out.push({ at: s.held.at_ms, cut: true, html: heldRow(s, page, K(`y:${s.held.at_ms}`)) });
+  // A session's words for a Desk lead kept with yours (#831): never in your bubble, and alone, not in the chat (they
+  // go as a message of their own, Activity's once sent).
+  const relay = s?.held && typeof deskRelaySplit === "function" && deskRelaySplit(s.held.text);
+  const held = relay ? (relay.yours ? { ...s, held: { ...s.held, text: relay.yours } } : null) : s;
+  if (held?.held) out.push({ at: held.held.at_ms, cut: true, html: heldRow(held, page, K(`y:${held.held.at_ms}`)) });
   // A kept message sent now and queued: where you wrote it, as its copy is drawn once read (written_ms).
   const qAt = s?.queued && (s.queued.written_ms && s.queued.written_ms < s.queued.at_ms ? s.queued.written_ms : s.queued.at_ms);
   if (s?.queued) out.push({ at: qAt, cut: true, html: queuedRow(s, page, K(`y:${qAt}`)) });

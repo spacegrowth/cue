@@ -85,6 +85,9 @@ function dkNoticeReply(s, ex, n, page) {
     turn.unshift(i);
   }
   if (!turn.length) return null;
+  // An answer to a session's question (#831): Activity's with the question, whatever it does; your chat holds only
+  // your words and the lead's answers to them.
+  if (turn.some((i) => typeof deskRelaySplit === "function" && deskRelaySplit(ex[i].text))) return { turn, stays: false };
   const sid = s.session_id, said = addOn.reply(sid, e.text);
   const t = dkReplyTake((run) => md(said.text, { runIn: sid, lines: page?.lines || deskLineHtml, run }));
   return { turn, stays: !!(t.acts || t.forYou || said.after || e.images?.length) };

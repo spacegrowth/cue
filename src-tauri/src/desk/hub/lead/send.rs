@@ -137,3 +137,34 @@ impl Drop for DeskStart<'_> {
         }
     }
 }
+
+/// The kept message for session `sid` to send now. For a Desk lead, your words never go joined to a session's words
+/// for it (#831): kept together, yours (with the Desk's block) go now, and the sessions' stay kept, after them, for its
+/// next turn, a message of their own. Under the session's typing gate (hub/send.rs send_held), so nothing is kept
+/// meanwhile.
+pub(crate) fn held_yours_first(st: &mut crate::hub::Store, sid: &str) -> Option<crate::model::Exchange> {
+    let mut h = st.sessions.held(sid)?;
+    if st.desk.lead_of(sid).is_some() {
+        if let Some((mine, relays)) = crate::desk::relays_apart(&h.text) {
+            st.sessions.held_text_to(sid, format!("{mine}\n\n{relays}"));
+            h.text = mine;
+        }
+    }
+    Some(h)
+}
+
+/// The kept message for session `sid`, taken back (Esc, Edit). A Desk lead's: the sessions' words for it kept with
+/// yours aren't yours to take back (#831): they stay kept; with none of yours, nothing comes back.
+pub(crate) fn take_back_yours(st: &mut crate::hub::Store, sid: &str) -> Option<crate::model::Exchange> {
+    let mut h = st.sessions.take_held(sid)?;
+    if st.desk.lead_of(sid).is_some() {
+        if let Some((mine, relays)) = crate::desk::relays_apart(&h.text) {
+            st.sessions.hold(sid, &relays, vec![]);
+            h.text = mine;
+        } else if crate::desk::only_relays(&h.text) {
+            st.sessions.hold(sid, &h.text, h.images);
+            return None;
+        }
+    }
+    Some(h)
+}

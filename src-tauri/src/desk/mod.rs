@@ -82,6 +82,44 @@ pub fn with_fresh_block(text: &str, block: &str) -> String {
     format!("{block}\n\n{}", rest.trim())
 }
 
+/// How Cue ends a session's words for its lead (TO LEAD, #474; desk/hub/turn/heard.rs to_lead_said), on an item or on none.
+pub(crate) fn relay_words(name: &str, on: Option<(&str, &str)>, words: &str) -> String {
+    match on {
+        Some((id, title)) => format!("From {name} on #{id} ({title}):\n{words}\nAnswer it with NOTE: #{id} | <your words>."),
+        None => format!("From {name}:\n{words}\n{RELAY_NO_ITEM}"),
+    }
+}
+const RELAY_NO_ITEM: &str = "It holds no item here, so a NOTE can't reach it.";
+
+/// Paragraph `p` is a session's words for its lead as `relay_words` made them.
+fn is_relay(p: &str) -> bool {
+    let lines: Vec<&str> = p.lines().collect();
+    let (Some(first), Some(last)) = (lines.first(), lines.last()) else { return false };
+    lines.len() >= 3
+        && first.starts_with("From ")
+        && first.ends_with(':')
+        && (*last == RELAY_NO_ITEM || (last.starts_with("Answer it with NOTE: #") && last.ends_with(" | <your words>.")))
+}
+
+/// A message kept for a Desk lead (`text`, its Desk block first if any) taken apart (#831): (its block and your words,
+/// the sessions' words for the lead that were kept with them). None when it holds no session's words, or nothing else.
+pub fn relays_apart(text: &str) -> Option<(String, String)> {
+    let words = without_block(text);
+    let block = text[..text.len() - words.len()].trim_end();
+    let (relays, mine): (Vec<&str>, Vec<&str>) = words.split("\n\n").map(str::trim).filter(|p| !p.is_empty()).partition(|p| is_relay(p));
+    if relays.is_empty() || mine.is_empty() {
+        return None;
+    }
+    let mine = mine.join("\n\n");
+    Some((if block.is_empty() { mine } else { format!("{block}\n\n{mine}") }, relays.join("\n\n")))
+}
+
+/// `text` (its Desk block first if any) is only sessions' words for the lead, none of yours.
+pub fn only_relays(text: &str) -> bool {
+    let mut ps = without_block(text).split("\n\n").map(str::trim).filter(|p| !p.is_empty()).peekable();
+    ps.peek().is_some() && ps.all(is_relay)
+}
+
 /// Routing policy in every Desk summary, including for already-running leads.
 pub(crate) const ROUTING_GUIDANCE: &str = concat!(
     "For independent work, prefer a suitable idle Desk session over a busy one. ",

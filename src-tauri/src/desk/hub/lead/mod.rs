@@ -12,7 +12,7 @@ pub(crate) mod checks;
 pub(crate) mod lands;
 pub(crate) mod stop_lead;
 
-pub(crate) use send::{desk_send_cue, desk_send_images, desk_send_now, desk_send_with, DeskStart};
+pub(crate) use send::{desk_send_cue, desk_send_images, desk_send_now, desk_send_with, held_yours_first, take_back_yours, DeskStart};
 use send::desk_message;
 use crate::hub::{Hub, StartOpts};
 use std::sync::Arc;

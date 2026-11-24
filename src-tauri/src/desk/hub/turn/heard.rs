@@ -104,13 +104,13 @@ pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
             // An item on any Desk (#714): to that Desk's lead.
             (Some(_), Some(it)) => (
                 it.project.clone(),
-                format!("From {name} on #{} ({}):\n{words}\nAnswer it with NOTE: #{} | <your words>.", it.id, it.title, it.id),
+                crate::desk::relay_words(&name, Some((&it.id, &it.title)), &words),
             ),
             (Some(i), _) => {
                 back.push(format!("TO LEAD: not sent: #{i} isn't an item on any Desk. Name one you're on, or leave the # out."));
                 continue;
             }
-            (None, _) if scopes.len() == 1 => (scopes[0].clone(), format!("From {name}:\n{words}\nIt holds no item here, so a NOTE can't reach it.")),
+            (None, _) if scopes.len() == 1 => (scopes[0].clone(), crate::desk::relay_words(&name, None, &words)),
             (None, _) => {
                 back.push("TO LEAD: not sent: you hold no item and aren't on one Desk. Add #<id> for the item it's about.".into());
                 continue;

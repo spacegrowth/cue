@@ -641,7 +641,7 @@ impl Hub {
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
         *failed = self.desk_fresh_held(session_id);
-        let h = self.read(|st| st.sessions.held(session_id)).ok_or("nothing kept for it")?;
+        let h = self.write(|st| crate::desk::hub::lead::held_yours_first(st, session_id)).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
         let sent = self.send_in_turn(session_id, &h.text, saved, now, Some(&h)).inspect_err(|e| {
             self.write(|st| st.sessions.held_failed(session_id, e));
@@ -703,7 +703,7 @@ impl Hub {
             Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
             Err(std::sync::TryLockError::WouldBlock) => return None,
         };
-        let h = self.write(|st| st.sessions.take_held(session_id));
+        let h = self.write(|st| crate::desk::hub::lead::take_back_yours(st, session_id));
         if let Some(h) = &h {
             self.team_kept_left(session_id, &h.text, false);
             self.changed();

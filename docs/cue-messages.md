@@ -127,7 +127,7 @@ These already showed as short cards or lines before #478 and are unchanged:
 | Hand-off of an item ("Desk item #id (kind): title …") | the family's card tagged HAND-OFF (#174), at the right of the session's chat |
 | New items from you | a card tagged NEW ITEMS from you, at the right of the lead's chat, one row per item |
 | A session stopped without DONE ("#id (title) stopped…") | a card from Cue tagged STOPPED, with Open #id |
-| A session's TO LEAD: line | a card from the session tagged TO LEAD |
+| A session's TO LEAD: line | a card from the session tagged TO LEAD, in Activity with the lead's answer under it; never in the lead's chat, never joined to your words (kept while the lead works, yours go first and it goes next, a message of its own, #831) |
 | Items done | a card tagged DONE, one row per item |
 | Cue couldn't start a new session for #id | a card from Cue tagged COULDN'T START |
 | A new lead's hello ("You run cue's Desk now…") and hand-off ("X now runs cue's Desk. Please route …") | already one short line: its bubble, the `<desk …>` block dropped |
