@@ -211,11 +211,11 @@
    and Activity ›, which the click opens. No fill, no rule; the newest has a small dot. */
 /* Earlier leads in the lead's chat (#792): the moss band where the Desk passed to the next lead, edge to edge across
    the chat, and Show earlier over it (desk/earlier.js). */
-.dk-hoff { flex: none; display: flex; align-items: center; gap: 14px; margin: 6px -20px; padding: 14px 20px; background: var(--bg); color: var(--on-bg); }
-.dk-hoff > svg { flex: none; width: 24px; height: 24px; color: var(--sel); }
-.dk-hoff-w { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.dk-hoff-a { font-size: 17px; line-height: 24px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-hoff-a span { color: var(--sel); margin: 0 8px; }
+.dk-hoff { flex: none; display: flex; align-items: center; gap: 10px; margin: 4px -20px; padding: 7px 20px; background: var(--bg); color: var(--on-bg); }
+.dk-hoff > svg { flex: none; width: 18px; height: 18px; color: var(--sel); }
+.dk-hoff-w { display: flex; flex-direction: column; gap: 0; min-width: 0; flex: 1; }
+.dk-hoff-a { font-size: var(--type-body); line-height: var(--type-body-lh); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-hoff-a span { color: var(--sel); margin: 0 6px; }
 .dk-hoff-b { font-size: var(--type-small); line-height: 18px; color: var(--on-bg-muted); }
 .dk-hoff-note { all: unset; flex: none; cursor: pointer; font-size: var(--type-small); color: var(--on-bg-muted); text-decoration: underline; text-underline-offset: 2px; }
 .dk-hoff-note:hover { color: var(--on-bg); }

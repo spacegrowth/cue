@@ -11,8 +11,9 @@
 /* A session's chat on the Desk too: its bottom padding must be the 10px Listen and Read's sticky bar allows for, or
    the reply shows through under that bar. */
 :is(.dk2b-chat, .dkn-sp) .dk-chat, :is(.dk2b-chat, .dkn-sp) .dk-rd { padding: 14px 18px 10px; }
-/* Another Desk's band still runs edge to edge of that chat. */
-.dk2b-chat .dk-chat .dk-band, .dkn-sp .dk-chat .dk-band { margin-inline: -18px; padding-inline: 18px; }
+/* Another Desk's band and the hand-off band still run edge to edge of that chat: exactly its padding, or they stick
+   out past it and the chat scrolls sideways, leaving a strip at its right (#826). */
+:is(.dk2b-chat, .dkn-sp) .dk-chat :is(.dk-band, .dk-hoff) { margin-inline: -18px; padding-inline: 18px; }
 
 /* ---------- the strip: Working pill, how many wait on you, their chips, Check ---------- */
 .dk2b-strip { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-radius: var(--radius-tray); background: var(--panel-2); font-size: var(--type-small); line-height: var(--type-small-lh); }

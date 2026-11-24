@@ -28,6 +28,11 @@ test("the lead chat starts at the hand-off band; Show earlier brings back each e
   await expect(band.locator(".dk-hoff-a")).toHaveText("desk-lead-13→web-lead");
   await expect(band.locator(".dk-hoff-b")).toHaveText(/^Hand-off · \d\d:\d\d · the Desk passed to a fresh lead$/);
   await expect(band.locator(".dk-hoff-note")).toHaveText("Hand-off note");
+  // Slim, its names at the chat's text size, edge to edge of the chat and no wider, so nothing scrolls sideways (#826).
+  const fit = await band.evaluate((b) => { const c = b.closest(".dk-chat"), r = b.getBoundingClientRect(), q = c.getBoundingClientRect();
+    return { l: r.left - q.left, r: q.right - r.right, h: r.height, wide: c.scrollWidth - c.clientWidth, font: getComputedStyle(b.querySelector(".dk-hoff-a")).fontSize, body: getComputedStyle(document.documentElement).getPropertyValue("--type-body").trim() }; });
+  expect(fit).toEqual({ l: 0, r: 0, h: expect.any(Number), wide: 0, font: fit.body, body: expect.any(String) });
+  expect(fit.h).toBeLessThan(56);
   // Show earlier sits over the band; nothing of the earlier lead's yet, and no Earlier messages row.
   const earl = chat.locator(".dk-earl");
   await expect(earl).toHaveText(/^Show earlier ·desk-lead-13 · 2 messages · \d\d:\d\d to \d\d:\d\d$/);
