@@ -492,7 +492,8 @@ test("an item's question opens at the page's foot; the row only says it asks", a
   // Its reply is the question (#418, B): it shows once, in its chat (#744).
   await expect(itemPage(page).locator('[data-desk-chat="site"] .cv-agent').last()).toContainText("If it still jumps, tell me what you did just before.");
   const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
-  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To site-lead · Bug #d1");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to1")).toHaveText("To site-lead");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to2")).toHaveText("#d1");
   await expect(box).toHaveAttribute("placeholder", "Reply box loses…");
   await box.fill("It stays put now");
   await page.locator(".dk-right [data-desk-send]").click();
@@ -529,7 +530,8 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
   // About an item its session holds: its phrases (sent by its normal flow, desk-quick.spec) but not the lead's
   // suggestion (those words aren't the lead's own next prompt).
   await page.locator('[data-desk-item="d5"]').click();
-  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who has this item · sent as #d5");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to1")).toHaveText("To host-lead");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to2")).toHaveText("#d5");
   await expect(page.locator(".dk-right .foot:not(.held) .composer .quick .qp")).toHaveCount(2);
   await expect(page.locator(".dk-right .foot:not(.held) .composer .sug-line")).toBeHidden();
   // Held by a crew member: what you type goes to it through its lead, and its box has no quick phrases.

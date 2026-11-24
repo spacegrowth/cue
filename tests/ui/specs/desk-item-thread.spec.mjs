@@ -60,7 +60,8 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [] }); st.sessions.find((x) => x.session_id === "host").state = "working"; });
   await openItem(page, cue, "d5");
-  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who has this item · sent as #d5");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to1")).toHaveText("To host-lead");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to2")).toHaveText("#d5");
   await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Write to it here…");
   await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();

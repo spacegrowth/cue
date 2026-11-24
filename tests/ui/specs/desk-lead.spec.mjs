@@ -85,14 +85,16 @@ test("an item opens in the middle, its row lit in place in the Items list; ‹ I
   // The box starts with who gets it and the item, kept as you type (#132); ready to check, it goes back to its holder,
   // and the prefix follows it. The empty box shows the item's short title.
   const ph = page.locator(".dk-right .foot:not(.held) .composer textarea"), pre = page.locator(".dk-right .foot:not(.held) .composer .field-to");
-  await expect(pre).toHaveText("To web-lead · Bug #d4");
+  await expect(pre.locator(".field-to1")).toHaveText("To web-lead");
+  await expect(pre.locator(".field-to2")).toHaveText("#d4");
   await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
   // A tag filled in the box's own tint (--panel-2), at the left of where you type, in the same row.
   const tint = await pre.evaluate((el) => { const t = document.createElement("i"); t.style.background = "var(--panel-2)"; el.parentElement.append(t); const c = getComputedStyle(t).backgroundColor; t.remove(); return c; });
   expect(tint).not.toBe("rgba(0, 0, 0, 0)");
   await expect(pre).toHaveCSS("background-color", tint);
   await ph.fill("still blinks");
-  await expect(pre).toHaveText("To web-lead · Bug #d4");
+  await expect(pre.locator(".field-to1")).toHaveText("To web-lead");
+  await expect(pre.locator(".field-to2")).toHaveText("#d4");
   const tag = await pre.boundingBox(), input = await ph.boundingBox();
   const row = await page.locator(".dk-right .foot:not(.held) .composer .field-row").boundingBox();
   expect(tag.x + tag.width).toBeLessThanOrEqual(input.x);

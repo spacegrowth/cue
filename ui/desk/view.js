@@ -8,10 +8,11 @@ function deskBoxKey(to) {
   deskBoxes.set(key, to);
   return key;
 }
-/** An item page's box: a tag that stays above the input as you type, who gets it and which item ("To cue-131 · Task #131"), and
- *  the item's short title in the empty box ("Remove Actions…"). */
-const deskToLine = (who, i) => ({ pre: `To ${who || "the lead"}${i ? ` · ${deskNum(i)}` : ""}`, ph: i ? `${deskShort(i.title)}…` : "" });
-const deskPreHtml = (pre) => (pre ? `<span class="dk-pre" data-desk-pre="">${esc(pre)}</span>` : "");
+/** An item page's box: a tag at the left of the input, two lines as a crew member's (#803): who gets it, small, over
+ *  the item, bold ("To cue-131" / "#131"; "Lead" for the lead's own), and the item's short title in the empty box. */
+const deskToLine = (who, i) => ({ pre: [`To ${who || "the lead"}`, i ? `#${i.id}` : "Lead"], ph: i ? `${deskShort(i.title)}…` : "" });
+// The old one-line tag (away.js): the two lines side by side.
+const deskPreHtml = (pre) => (pre ? `<span class="dk-pre" data-desk-pre="">${esc([].concat(pre).join(" · "))}</span>` : "");
 /** deskBox for an open item: who gets what you type (its holder, its lead or a kept copy's old session), the tag over
  *  the box, its placeholder, and whose suggested reply it shows. `ph`: the lead's placeholder, kept when nothing else fits. */
 function deskBoxItem(d, o, lead, ph) {
@@ -22,7 +23,7 @@ function deskBoxItem(d, o, lead, ph) {
   // A dropped item's kept copy (#608): to the session that held it, as its own chat's box (the item is off the Desk).
   if (it?.kept && hs && sessionOf(hs)) {
     to = { sid: hs };
-    pre = `To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}, who held it`;
+    pre = [`To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}`, `Held #${o.id}`];
     ph = "Write to it here…";
   }
   // No live holder: to the lead, in a box of its own (B2 shows the lead's box beside this page: never one draft for two).
@@ -31,7 +32,8 @@ function deskBoxItem(d, o, lead, ph) {
     to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
     // Its chat is its holder's (#744), and this goes to it: the suggested reply is that session's.
     sugItem = hs;
-    pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
+    // Two lines as a crew member's chip (#803): who gets it, over the item it's sent as.
+    pre = [`To ${it.holder.name}`, `#${it.id}`];
     ph = "Write to it here…";
   }
   else {
