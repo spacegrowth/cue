@@ -126,13 +126,13 @@ test("a crew member's page: its panel ends with its lead's chat's last 3 Activit
   for (const id of ["d2", "d3", "d4", "d5"]) await push(page, "host", { role: "agent", text: `Working on it.\n\nTO LEAD: #${id} needs a look` });
   await page.evaluate(([lead, agent]) => deskShow({ kind: "crew", lead, agent }), ["host", crew[0]]);
   await expect(page.locator(".dk-right .dk-crewpg")).toBeVisible();
-  const tog = page.locator(".dk-right .dk-ptog");
-  if ((await tog.textContent()).includes("Show panel")) await tog.click();
-  const sec = page.locator(".dk-right .dk-panel .dk-psec.dk-pact");
-  await expect(sec.locator(".dk-psh")).toHaveText("Activity");
-  await expect(sec.locator(".dk-pdid")).toHaveCount(3);
+  // A crew member's page has no panel since desk-live (53bb5b7296): its lead's Desk lines are its Activity tab, all of
+  // them, newest first.
+  await expect(page.locator(".dk-right .dk-panel")).toHaveCount(0);
+  await page.locator('.dk-right .dkn-stab[data-desk-c-stab="activity"]').click();
+  const sec = page.locator(".dk-right .dkn-crew .dkn-sfiles");
+  await expect(sec.locator(".dk-pdid")).toHaveCount(4);
   await expect(sec.locator(".dk-pdid").first()).toContainText("#d5");
-  await expect(sec.locator(".dk-pall")).toHaveText("1 more in Activity ›");
   await expect(page.locator(".dk-right [title]")).toHaveCount(0);
 });
 

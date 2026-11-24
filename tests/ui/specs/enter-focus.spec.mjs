@@ -79,7 +79,7 @@ test("a Desk item's box: opening it puts the cursor there; composing Enter never
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await expect(box).toBeFocused();
   await enterKeys(page, cue, box, "desk_send", { project: "cue", text: "About #d6 (Tidy the Settings copy): keep the old one" });
 });

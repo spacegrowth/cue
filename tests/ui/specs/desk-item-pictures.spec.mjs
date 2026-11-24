@@ -13,14 +13,14 @@ const chatOf = (page, sid = "host") => page.locator(`.dk-right .dkn-sp[data-desk
 const dropTwo = (page) => page.evaluate((png) => {
   const dt = new DataTransfer();
   for (const name of ["one.png", "two.png"]) dt.items.add(new File([new Uint8Array(png)], name, { type: "image/png" }));
-  const el = document.querySelector(".dk-right .dk-box textarea");
+  const el = document.querySelector(".dk-right .foot:not(.held) .composer textarea");
   for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
 }, PNG);
 
 test("two pictures sent from an item's page show as two pictures in its chat, with no file paths", async ({ page, cue }) => {
   await cue.open("desk");
   await openItem(page, "d5");
-  const box = page.locator(".dk-right .dk-box");
+  const box = page.locator(".dk-right .foot:not(.held) .composer");
   await dropTwo(page);
   await expect(box.locator(".chip")).toHaveCount(2);
   await box.locator("textarea").fill("is A this or more?");
@@ -45,7 +45,7 @@ test("on their way, the two pictures show with your words, not a count", async (
   await cue.override("desk_item_act", () => new Promise(() => {}));
   await openItem(page, "d5");
   await dropTwo(page);
-  await page.locator(".dk-right .dk-box textarea").fill("and this one");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("and this one");
   await page.locator(".dk-right [data-desk-send]").click();
   const mine = chatOf(page).locator(".cv-you", { hasText: "and this one" });
   await expect(mine).toHaveCount(1);
@@ -58,7 +58,7 @@ test("to a session at its prompt, the two pictures are in its chat as it took th
   await cue.change((st) => { st.sessions.find((x) => x.session_id === "host").state = "idle"; });
   await openItem(page, "d5");
   await dropTwo(page);
-  await page.locator(".dk-right .dk-box textarea").fill("this is what I see");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("this is what I see");
   await page.locator(".dk-right [data-desk-send]").click();
   const ichat = chatOf(page), mine = ichat.locator(".cv-you", { hasText: "this is what I see" });
   await expect(mine).toHaveCount(1);

@@ -28,8 +28,9 @@ const rows = (page) => page.locator(".dk-items [data-held-row], .dk-items [data-
 test("steps held for your OK lead Waiting on you, oldest first, with No and Allow (#749)", async ({ page, cue }) => {
   await setup(cue, page);
   await expect.poll(async () => (await rows(page)).slice(0, 3)).toEqual(["held-old", "227", "held-new"]);
-  // The head says Waiting on you right above them, nothing in between.
-  const first = await page.locator('.dk-items .dkn-gh[data-desk2b-group="you"]').evaluate((h) => { const n = h.nextElementSibling; return (n?.matches("[data-held-row]") ? n : n?.querySelector("[data-held-row]"))?.dataset.heldRow; });
+  // The head says Blocked on you (desk-live, aed67d3ce2: held steps head the list, over Working) right above them,
+  // nothing in between: the first row of its band's body.
+  const first = await page.locator('.dk-items .dkn-gh[data-desk2b-group="blocked"]').evaluate((h) => { const n = h.nextElementSibling?.matches(".dkn-bb") ? h.nextElementSibling.firstElementChild : null; return (n?.matches("[data-held-row]") ? n : n?.querySelector("[data-held-row]"))?.dataset.heldRow; });
   expect(first).toBe("held-old");
   const held = page.locator('.dk-items [data-held-row="held-old"]');
   await expect(held.locator(".row-btns button")).toHaveText(["No", "Allow"]);

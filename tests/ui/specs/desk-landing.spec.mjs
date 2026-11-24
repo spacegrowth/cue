@@ -96,7 +96,8 @@ test("Kept copies lists a dropped item's copy with its work; Remove takes two cl
   await openDesk(page);
   await patchDesk(cue, { kept: [{ id: "d9", title: "Old idea, dropped", project: "cue", repo: "/r/cue", path: "/r/cue-kept/d9", branch: "desk/d9", at: Date.now() - 120000 }] });
   const list = page.locator(".dkn-items");
-  await expect(list.locator('.dkn-gh[data-desk2b-group="kept"]')).toHaveText("KEPT COPIES 1");
+  // A band of its own, its heading with its plain line (desk-live, ac3d10347c).
+  await expect(list.locator('.dkn-gh[data-desk2b-group="kept"]')).toHaveText(/^KEPT COPIES 1\s*copies of dropped work$/);
   const kept = list.locator('.dk-kept[data-kept="d9"]');
   await expect(kept).toContainText("#d9 Old idea, dropped");
   await expect(kept).toContainText("/r/cue-kept/d9 · desk/d9 · dropped");

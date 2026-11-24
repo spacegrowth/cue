@@ -353,7 +353,7 @@ test("an open item's box keeps the cursor: through redraws, and after Enter send
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.click();
   await page.keyboard.type("half a thought");
   const at = await box.boundingBox();
@@ -470,7 +470,7 @@ test("an item's question opens at the page's foot; the row only says it asks", a
   await page.locator('.dk-items [data-desk-item="d1"]').click();
   const foot = page.locator(".dk-right .dk-ask");
   // Its card is the foot, in the box's place.
-  await expect(page.locator(".dk-right .dk-box")).toHaveCount(0);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer")).toHaveCount(0);
   await foot.locator("[data-pick]", { hasText: "Keep it in the box" }).click();
   await foot.locator('[data-act="submit-answers"]').click();
   await cue.called("respond");
@@ -491,8 +491,8 @@ test("an item's question opens at the page's foot; the row only says it asks", a
   });
   // Its reply is the question (#418, B): it shows once, in its chat (#744).
   await expect(itemPage(page).locator('[data-desk-chat="site"] .cv-agent').last()).toContainText("If it still jumps, tell me what you did just before.");
-  const box = page.locator(".dk-right .dk-box textarea");
-  await expect(page.locator(".dk-right .dk-box .dk-pre")).toHaveText("To site-lead · Bug #d1");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To site-lead · Bug #d1");
   await expect(box).toHaveAttribute("placeholder", "Reply box loses…");
   await box.fill("It stays put now");
   await page.locator(".dk-right [data-desk-send]").click();
@@ -526,11 +526,17 @@ test("the lead's box has the chat box's quick phrases and Claude's suggested rep
   // A phrase sends, to the lead.
   await box.locator('.qp[data-phrase="go ahead"]').click();
   await cue.called("desk_send", { project: "cue", text: "go ahead" });
-  // About an item: its phrases (sent by its normal flow, desk-quick.spec) but no suggestion (those words aren't the
-  // lead's own next prompt).
+  // About an item its session holds: its phrases (sent by its normal flow, desk-quick.spec) but not the lead's
+  // suggestion (those words aren't the lead's own next prompt).
+  await page.locator('[data-desk-item="d5"]').click();
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who has this item · sent as #d5");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .quick .qp")).toHaveCount(2);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .sug-line")).toBeHidden();
+  // Held by a crew member: what you type goes to it through its lead, and its box has no quick phrases.
   await page.locator('[data-desk-item="d3"]').click();
-  await expect(page.locator(".dk-right .dk-box .quick .qp")).toHaveCount(2);
-  await expect(page.locator(".dk-right .dk-box .sug-line")).toBeHidden();
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toContainText("search-centre");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .quick .qp")).toHaveCount(0);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .sug-line")).toBeHidden();
 });
 
 test("a reply that asks for set words (Reply \"…\") offers them as the suggested reply: the lead's chat, an opened item; else Claude's own (#186)", async ({ page, cue }) => {
@@ -569,7 +575,7 @@ test("what you write on the page of an item no session has goes to the lead abou
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d6"]').click();
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("Keep the search box centred on narrow windows too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d6", act: "wrote_lead", text: "Keep the search box centred on narrow windows too" });
@@ -606,7 +612,7 @@ test("what you send on an opened item shows in its chat at once, before it comes
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d3"]').click();
-  await page.locator(".dk-right .dk-box textarea").fill("Narrow windows too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Narrow windows too");
   await page.locator(".dk-right [data-desk-send]").click();
   // Its page is its holder's chat (#744): yours in it at once, as you wrote it.
   const mine = itemPage(page).locator('[data-desk-chat="lead"] .cv-you', { hasText: "Narrow windows too" });
@@ -739,14 +745,14 @@ test("a message you send on an opened item is its chat's last, under its holder'
   const chat = itemPage(page).locator('[data-desk-chat="host"]'), rows = chat.locator(":scope > [data-key]");
   const latest = await chat.locator(".cv-agent .cv-text").last().textContent();
   await cue.override("desk_item_act", () => new Promise((r) => { window.__release = r; }));
-  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await expect(chat.locator(".cv-you").last()).toContainText("Check the narrow window too");
   expect(await chat.evaluate((el, t) => { const ks = [...el.querySelectorAll(":scope > [data-key]")]; const you = ks.findLastIndex((k) => k.textContent.includes("Check the narrow window too")); const msg = ks.findLastIndex((k) => k.textContent.includes(t.trim().slice(0, 30))); return you > msg && msg >= 0; }, latest)).toBe(true);
   // Its holder at work: its "now" is last, under your message, as it answers it (#165).
   await cue.change((st) => { const it = st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"); it.state = "working"; it.now_on = true; st.sessions.find((x) => x.session_id === "host").state = "working"; });
   await expect(chat.locator('[data-key="where"]')).toHaveCount(1);
-  await page.locator(".dk-right .dk-box textarea").fill("And the wide one");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("And the wide one");
   await page.locator(".dk-right [data-desk-send]").click();
   await expect(rows.last()).toHaveAttribute("data-key", "where");
   await expect(rows.nth(-2)).toContainText("And the wide one");
@@ -1011,7 +1017,7 @@ test("what you write on an opened item goes to its session as about it and shows
     st.sessions.find((x) => x.session_id === it.holder.sid).state = "waiting";
     Object.assign(it, { state: "needs_you", now_on: true });
   });
-  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
   await expect.poll(() => page.evaluate(() => deskOf("cue").decisions.find((c) => c.item_id === "d5" && c.delivery)?.delivery.text)).toMatch(/^About #d5 \(.+\): Check the narrow window too$/);

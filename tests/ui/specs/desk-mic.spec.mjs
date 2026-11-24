@@ -34,7 +34,7 @@ for (const scheme of ["light", "dark"]) {
     await openDesk(page);
     expect(await states(page, ".dk-right .foot:not(.held) [data-mic]"), "the lead's box").toEqual(board);
     await page.locator('[data-desk-item="d2"]').click();
-    await page.locator(".dk-right .dk-box [data-mic]").waitFor();
-    expect(await states(page, ".dk-right .dk-box [data-mic]"), "an item's page").toEqual(board);
+    await page.locator(".dk-right .foot:not(.held) .composer [data-mic]").waitFor();
+    expect(await states(page, ".dk-right .foot:not(.held) .composer [data-mic]"), "an item's page").toEqual(board);
   });
 }

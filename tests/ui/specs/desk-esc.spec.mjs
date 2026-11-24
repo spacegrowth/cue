@@ -28,7 +28,7 @@ test("an item's page: Esc brings back what Cue kept for its holder without the A
   await page.locator('.dk-items [data-desk-item="d5"]').click();
   const title = await page.evaluate(() => deskItem("cue", "d5").title);
   await hold(cue, "host", `About #d5 (${title}): try the other port`);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await page.keyboard.press("Escape");
   await cue.called("unhold_message", { sessionId: "host" });
   await expect(box).toHaveValue("try the other port");
@@ -52,7 +52,7 @@ test("Esc twice right after a kept message came back stops its holder, before th
     setTimeout(() => w.emit("state", w.snapshot()), 3000);
     return held;
   });
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await page.keyboard.press("Escape");
   await expect(box).toHaveValue("try the other port");
   await page.keyboard.press("Escape");
@@ -71,13 +71,13 @@ test("a session's page: Esc twice stops it; once it's stopped, Esc goes back as 
   await hold(cue, "host", "and the logs");
   await page.keyboard.press("Escape");
   await cue.called("unhold_message", { sessionId: "host" });
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("and the logs");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("and the logs");
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await cue.called("interrupt_session", { sessionId: "host" });
   // Stopped (waiting now) and nothing kept: Esc is the Desk's again, out of the box first, then the page closes.
   await expect.poll(() => page.evaluate(() => sessionOf("host").state)).toBe("waiting");
-  await page.locator(".dk-right .dk-box textarea").fill("");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("");
   await page.keyboard.press("Escape");
   await expect(sp).toHaveCount(0);
 });

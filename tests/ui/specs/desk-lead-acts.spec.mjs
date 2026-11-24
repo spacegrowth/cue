@@ -33,10 +33,13 @@ test("the lead's own moves are in Activity, its last 3 in the panel, not in its 
   await expect(did.first().locator(".dk-pdt")).toHaveText("Moved #d3 up in the landing line");
   await expect(did.first().locator(".dk-prs")).toHaveText("the user waits on it · 1m");
   await expect(did.nth(1)).toContainText("Started #d4 now");
-  // The lead's own ask waits on you, first, until it's answered: in Now, and in the Items card's Waiting on you (#748):
-  // its ask, #d1's question and #d2 ready to check.
-  const youN = page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span:not(.dkn-fa)');
-  await expect(youN).toHaveText("3");
+  // The lead's own ask waits on you, first, until it's answered: in Now, and in the Items card's Blocked on you
+  // (desk-live, aed67d3ce2: the lead's ask heads the list, over Working); Waiting on you keeps #d1's question and #d2
+  // ready to check.
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="blocked"] > span')).toHaveText("1");
+  await expect(page.locator(".dkn-card .dkn-b-blocked .dkn-row[data-desk-c-lead]")).toHaveCount(1);
+  const youN = page.locator('.dkn-card .dkn-gh[data-desk2b-group="you"] > span');
+  await expect(youN).toHaveText("2");
   await expect(panel.locator(".dk-pnow")).toContainText("It asks you something");
   // Its item number in the chat opens the item.
   await did.first().locator('[data-desk-chk-item="d3"]').click();
@@ -45,6 +48,7 @@ test("the lead's own moves are in Activity, its last 3 in the panel, not in its 
   // Answered: it no longer waits on you.
   await cue.change((st) => { st.items = st.items.filter((i) => i.id !== "n-lead-ask"); });
   await page.locator(".dk-right .dkn-sback .dk-back").first().click();
+  await expect(page.locator('.dkn-card .dkn-gh[data-desk2b-group="blocked"]')).toHaveCount(0);
   await expect(youN).toHaveText("2");
   await expect(page.locator(".dk-right .dk-panel .dk-pnow")).not.toContainText("It asks you something");
   // On a small window the panel folds and the strip over the chat says what waits (B2, #666); no Just did there.

@@ -172,7 +172,8 @@ test("an item waiting for room on a full machine says so on its row", async ({ p
   }, [machines, fresh]);
   await openDesk(page);
   // Its row in Up next: the line under its title.
-  await expect(statusOf(page, "w711")).toHaveText("Waits for room on build-box");
+  // Up next says in full why it waits (desk-live, 8fa85063b8).
+  await expect(statusOf(page, "w711")).toHaveText("Waits for room on build-box: it already runs all the items it can");
 });
 
 // Up next has no machine on a row nobody has yet (#776): where it starts is picked as it leaves the queue, so the row

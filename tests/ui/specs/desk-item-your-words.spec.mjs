@@ -25,7 +25,7 @@ test("a note sent from an item's page shows only your words, in its chat and the
   await cue.open("desk");
   await host(cue, { state: "waiting", thread: [] });
   await openItem(page, "d5");
-  await page.locator(".dk-right .dk-box textarea").fill("Try it in a hosted session too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Try it in a hosted session too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Try it in a hosted session too" });
   // The session got Cue's whole message (the window hears of it after the call, as from the hub).
@@ -45,7 +45,7 @@ test("a question sent from an item's page shows only your question, never Cue's 
   await host(cue, { state: "waiting", thread: [] });
   await item(cue, { state: "to_check", now_on: false });
   await openItem(page, "d5");
-  await page.locator(".dk-right .dk-box textarea").fill("Does it open on the second try too?");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Does it open on the second try too?");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Does it open on the second try too?" });
   // What the session got, once the window hears of it (after the call, as from the hub).

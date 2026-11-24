@@ -104,7 +104,7 @@ test("the lead's chat in the middle, the items at the right; All N sessions puts
   await left.locator('[data-desk-chat-of="host"]').click();
   const hostChat = page.locator('.dk-right [data-desk-chat="host"]');
   await expect(hostChat).toHaveCount(1);
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", /^Talk to /);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", /^Talk to /);
   // It's working: Esc is its Stop first, as on the Board (#494): once arms it, twice stops it, its chat still open.
   await page.keyboard.press("Escape");
   await expect(hostChat).toHaveCount(1);
@@ -121,9 +121,9 @@ test("the lead's chat in the middle, the items at the right; All N sessions puts
   await crewNotLead(cue);
   await expect(left.locator('[data-desk-crew="id-focus"] .dk-st')).toHaveText("needs you");
   await left.locator('[data-desk-crew="id-search"]').click();
-  await expect(page.locator(".dk-right .dk-pg h1 .dk-tname")).toHaveText("search-centre");
+  await expect(page.locator(".dk-right .dkn-crew .dkn-cname")).toHaveText("search-centre");
   // Opened from All sessions, its ‹ goes back there, as a session's chat does.
-  await expect(page.locator(".dk-right .dk-ph .dk-back").first()).toHaveText("‹ All sessions");
+  await expect(page.locator(".dk-right .dkn-crew .dkn-sback .dk-back").first()).toHaveText("‹ All sessions");
   await back();
   await expect(left.locator(".dk-srow.on")).toHaveAttribute("data-desk-crew", "id-search");
   await expect(left.locator(".dk-sfoot").getByRole("button")).toHaveAccessibleName("Add session");

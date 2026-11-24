@@ -8,12 +8,15 @@ import { test, expect, openDesk } from "./cue.mjs";
 const SINCE = 1793984100 * 1000;   // between the scenario's two calls: c1 after it, c2 before
 
 
-/** Items' WAITING ON YOU head (desk/c.js deskCList): its words and its count, without the fold's arrow. */
-const youHead = (items) => items.locator('.dkn-gh[data-desk2b-group="you"]').evaluate((el) => [...el.childNodes].filter((n) => !n.classList?.contains("dkn-fa")).map((n) => n.textContent).join("").trim());
+/** An Items band's head (desk/c.js deskCList): its words and its count, without its plain line (.dkn-gsay). */
+const bandHead = (items, key) => items.locator(`.dkn-gh[data-desk2b-group="${key}"]`).evaluate((el) => [...el.childNodes].filter((n) => !n.classList?.contains("dkn-gsay")).map((n) => n.textContent).join("").trim());
+/** Items' WAITING ON YOU head. */
+const youHead = (items) => bandHead(items, "you");
 
-/** CALLS WHILE AWAY, folded to a line after the list's groups (B2, #666), opened; it says `n`. */
+/** CALLS WHILE AWAY, its own band after the list's groups (desk-live: Kept copies and Calls while away are bands too),
+ *  opened; it says `n`. */
 async function openCalls(page, n) {
-  const line = page.locator('.dk-items [data-desk2b-fold="away"]');
+  const line = page.locator('.dk-items .dkn-gh[data-desk2b-group="away"]');
   await expect(line).toHaveText(new RegExp(`^CALLS WHILE AWAY ${n}`));
   if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
   await expect(line).toHaveAttribute("aria-expanded", "true");
@@ -44,16 +47,18 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   await expect(page.locator(".dk-board > :not(.col-grip)")).toHaveCount(columns);
   // The switch says until when and what it spent of the budget.
   await expect(sw.locator(".dk-aw-st")).toHaveText(/^until \d\d:\d\d · \$3\.20 of \$10$/);
-  // Waiting on you counts the waiting item, the one ready to check and the asker's ask, not the session on a usage limit.
+  // Waiting on you counts the waiting item and the one ready to check; the asker's ask is Blocked on you (desk-live,
+  // aed67d3ce2: asks while away head the list); the session on a usage limit is in neither.
   const items = page.locator(".dk-items");
-  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 3");
+  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 2");
+  await expect.poll(() => bandHead(items, "blocked")).toBe("BLOCKED ON YOU 1");
   await expect(items.locator('.dk-aw-asks [data-desk-chat-of="asker"]')).toHaveCount(1);
   await expect(items.locator('[data-desk-chat-of="capped"]')).toHaveCount(0);
   await expect(items.locator(".dk-aw-quiet")).toHaveText(/^capped paused till \d\d:\d\d · Cue carries on then$/);
   // Only the call made since Away went on, under CALLS WHILE AWAY (B2, #666), folded to a line after the groups;
   // opened, the list: its time, what, its item, why, Undo.
   await openCalls(page, 1);
-  const fold = items.locator(".dk-scroll > .dk2b-fold.open + .dk-aw-calls .dk-aw-fold");
+  const fold = items.locator(".dkn-b-away > .dkn-bb > .dk-aw-calls .dk-aw-fold");
   await expect(fold).toHaveText(/^›1 call while awaysince \d\d:\d\dtill \d\d:\d\d · \$3\.20 of \$10$/);
   await expect(fold.locator(".dk-aw-meter i")).toHaveAttribute("style", "width:32%");
   await expect(items.locator(".dk-aw-mark")).toHaveCount(1);
@@ -71,7 +76,7 @@ test("Away on: no column; the calls since it went on in one line at the top of I
   await expect(page.locator(".dk-aw-mark")).toHaveCount(0);
   await expect(page.locator(".dk-aw-calls")).toHaveCount(0);
   await expect.poll(() => youHead(page.locator(".dk-items"))).toBe("WAITING ON YOU 2");
-  await expect(page.locator('.dk-items [data-desk2b-fold="away"]')).toHaveCount(0);
+  await expect(page.locator('.dk-items [data-desk2b-group="away"]')).toHaveCount(0);
 });
 
 test("a call the lead made in place of asking you shows the question under it (#471)", async ({ page, cue }) => {
@@ -550,8 +555,10 @@ test("steps held while you were away list under Waiting on you in plain words wi
     d.held = [{ id: "held-1", sid: "site", who: "site", what: "delete files", command: "rm -rf build", at: 1 },
       { id: "held-2", sid: "site", who: "site", what: "push", command: "git push origin main", at: 2 }];
   });
-  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 4");
-  const rows = items.locator(".dk-held");
+  // Held steps are Blocked on you (desk-live, aed67d3ce2), over Working; Waiting on you keeps its two.
+  await expect.poll(() => bandHead(items, "blocked")).toBe("BLOCKED ON YOU 2");
+  await expect.poll(() => youHead(items)).toBe("WAITING ON YOU 2");
+  const rows = items.locator(".dkn-b-blocked .dk-held");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator(".dk-request-who")).toHaveText("site wants to delete files · held while you were away");
   await expect(rows.nth(0).locator("pre")).toHaveText("$ rm -rf build");

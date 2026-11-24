@@ -80,7 +80,8 @@ test("an item queued for a session says so in Up next", async ({ page, cue }) =>
   });
   await openDesk(page);
   await expect(page.locator('[data-dkn-drawer="next"] .dkn-nx[data-desk-item="q1"]')).toHaveCount(1);
-  await expect(statusOf(page, "q1")).toHaveText("Next for host-lead");
+  // Up next says in full why it waits (desk-live, 8fa85063b8).
+  await expect(statusOf(page, "q1")).toHaveText("Next for host-lead once it finishes what it's on");
 });
 
 test("the current step's dots move only while a session works on it right now (#729)", async ({ page, cue }) => {

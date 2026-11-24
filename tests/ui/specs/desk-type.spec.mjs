@@ -9,11 +9,12 @@ const churn = (page) => page.evaluate(() => {
     CueBridge.emit("state", CueBridge.world.snapshot());
   }, 300);
 });
-// Nothing over the window: the box is what's under the pointer, with a text cursor; a button shows the hand.
+// Nothing over the window: the box is what's under the pointer, with a text cursor; a button shows the hand. (The
+// Items head's Pause: its Strip | Line switch is gone.)
 const pointerFine = async (page, box) => {
   expect(await box.evaluate((t) => { const r = t.getBoundingClientRect(); return document.elementFromPoint(r.x + 20, r.y + r.height / 2) === t; })).toBe(true);
   expect(await box.evaluate((t) => getComputedStyle(t).cursor)).toMatch(/^(auto|text)$/);
-  expect(await page.evaluate(() => { const b = document.querySelector(".dkn-items .dkn-ih [data-desk-c-line]"); return [getComputedStyle(b).cursor, document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4) === b || b.contains(document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4))]; })).toEqual(["pointer", true]);
+  expect(await page.evaluate(() => { const b = document.querySelector(".dkn-items .dkn-ih [data-desk-pause]"); return [getComputedStyle(b).cursor, document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4) === b || b.contains(document.elementFromPoint(b.getBoundingClientRect().x + 4, b.getBoundingClientRect().y + 4))]; })).toEqual(["pointer", true]);
   expect(await page.evaluate(() => [getComputedStyle(document.body).cursor, getComputedStyle(document.body).pointerEvents])).toEqual(["auto", "auto"]);
 };
 const clickAndType = async (page, box) => {
