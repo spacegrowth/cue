@@ -131,6 +131,10 @@ function deskCardLine(sid) {
 }
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);
+/** Whether session `sid` runs a Desk as its lead, or is either side of a lead hand-off (#842: the old lead, and the new
+ *  one from the moment it starts, before the Desk names it its lead). By its role on the Desk, never by where its
+ *  process runs: a lead's chat offers nothing about terminals. */
+const isDeskLead = (sid) => !!sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid || d.lead?.handoff?.from === sid || d.lead?.handoff?.to === sid);
 /** The lead's name: one you just gave it (before the hub's next update has it), else what the hub named it, else its
  *  session's. */
 const deskLeadName = (d) => { const l = deskLead(d); return l ? deskHolderName(l.sid, renamedNow.get(l.sid)?.name || l.name) : ""; };

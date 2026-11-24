@@ -33,6 +33,8 @@ function termAppName(s) {
 function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
+  // A Desk's lead (#842), handing off or not: its chat is the lead's, with nothing about where it runs.
+  if (isDeskLead(sid)) return "";
   // Hosted: no terminal, so nothing here (⋯ has Move to terminal, for moving away from Cue).
   if (s.hosted) return "";
   // In Cue: its terminal opens from the strip above the box; the corner has only Move to hosted (hosting on).

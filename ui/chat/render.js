@@ -701,7 +701,7 @@ function moreMenu(sid, s, closable = false) {
  *  yourself (ipc/move_out.rs). Only for moving away from Cue, so it's here, not a button, and says so. Not while it
  *  works or asks you something. */
 function moveOutItem(sid, s) {
-  if (!s || !(s.hosted || (inTmux(sid) && !s.machine))) return "";
+  if (!s || !(s.hosted || (inTmux(sid) && !s.machine)) || isDeskLead(sid)) return "";   // never a Desk's lead (#842)
   const why = s.state === "working" ? "When this turn ends" : s.state === "deciding" ? "Once you've answered what it asks" : "";
   const where = s.hosted && s.machine ? `in tmux on ${machName(s.machine)}` : `in a ${termName()} tab`;
   return `<button data-act="move-term" data-sid="${esc(sid)}" ${why ? "disabled" : ""}>Move to terminal<span>${why || `Only if you're moving away from Cue: the conversation goes on ${esc(where)}, and Cue stops running it`}</span></button>`;
