@@ -525,7 +525,7 @@ fn merge(st: &mut Store, project: &str, by: &By, id: &str, into: &str, why: &str
     // Its holder at work on it hears what came with the repeat.
     if let Some(h) = target.holder.as_ref().filter(|_| target.state == "working") {
         let pics = added.iter().map(|p| format!(" `{p}`")).collect::<String>();
-        fx.sends.push((h.to().to_string(), format!("Desk item #{id} was folded into #{into}, which you have. It said: {said}{}", if pics.is_empty() { String::new() } else { format!("\nPictures:{pics}") })));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{id} was folded into #{into}, which you have. It said: {said}{}", if pics.is_empty() { String::new() } else { format!("\nPictures:{pics}") })), crate::sessions::Kind::Note));
     }
     for it in st.desk.items.iter_mut().filter(|i| i.after.as_deref() == Some(id.as_str())) {
         it.after = Some(into.clone());
@@ -567,7 +567,7 @@ fn route_answers(st: &mut Store, project: &str, lsid: &str, answers: Vec<String>
             held.push('\n');
         }
     } else {
-        fx.sends.push((lsid.to_string(), out.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((lsid.to_string(), out.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 
@@ -704,7 +704,7 @@ fn lead_done(st: &mut Store, project: &str, lsid: &str, ids: &[String], fx: &mut
     }
     if !notes.is_empty() {
         notes.push(DONE_NOTE_FOR_LEAD.to_string());
-        fx.sends.push((lsid.to_string(), notes.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((lsid.to_string(), notes.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 

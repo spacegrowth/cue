@@ -102,6 +102,13 @@ impl Hub {
         self.send_to_hosted_held(sid, typed, saved, busy, None)
     }
 
+    /// Cue's own words of kind `kind` to a hosted session, handed over as `send_to_hosted` does (queued to the agent
+    /// when `busy`, never kept in Cue): known as Cue's first, so its chat never shows them as yours (#837).
+    pub(crate) fn tell_hosted(&self, sid: &str, text: &str, busy: bool, kind: crate::sessions::Kind) -> Result<String, String> {
+        self.cue_says(text, kind);
+        self.send_to_hosted(sid, text, &[], busy)
+    }
+
     /// The same, for the kept message `held` (send_held): its copy takes its place in the same write (#422).
     pub(crate) fn send_to_hosted_held(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, held: Option<&crate::model::Exchange>) -> Result<String, String> {
         let text = typed.trim();

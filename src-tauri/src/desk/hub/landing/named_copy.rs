@@ -97,7 +97,7 @@ pub(crate) fn copy_said(st: &mut Store, project: &str, by: &By, id: &str, repo: 
     fx.items.push(id.to_string());
     // At work already: its copy is made now (desk/hub/landing/trees.rs), and its holder told where by this message.
     if let (true, Some(to)) = (working, holder) {
-        fx.sends.push((to, format!("Desk item #{id}: the Desk lead gave it its own copy of {repo}, on branch {branch}. Move your work there.")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((to, format!("Desk item #{id}: the Desk lead gave it its own copy of {repo}, on branch {branch}. Move your work there.")), crate::sessions::Kind::Route));
     }
     let text = format!("Gave #{id} a copy of {repo} on branch {branch}");
     decide(st, project, Some(id.to_string()), by.name, by.sid, &text, why, now, fx);

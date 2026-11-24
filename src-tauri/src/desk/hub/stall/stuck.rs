@@ -80,7 +80,7 @@ impl Hub {
                             fx.items.push(id.clone());
                         }
                     }
-                    None => fx.sends.push((lead, crate::owner::in_prompt(&s.words))),
+                    None => fx.sends.push(crate::desk::hub::core::desk::kinded((lead, crate::owner::in_prompt(&s.words)), crate::sessions::Kind::Question)),
                 }
             }
             fx

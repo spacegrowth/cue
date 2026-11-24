@@ -98,6 +98,7 @@ mod hosted;
 mod insights;
 mod kept_race;
 mod send_at;
+mod send_rules;
 mod launching;
 mod machine_stream;
 mod machines;

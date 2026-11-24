@@ -127,7 +127,7 @@ pub(crate) fn sweep(st: &mut Store, now: u64, fx: &mut Effects) {
         it.state = "working".into();
         let to = it.holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default();
         let why = it.after_why.clone();
-        fx.sends.push((to, crate::desk::handed_words(it, &why, &rule)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((to, crate::desk::handed_words(it, &why, &rule)), crate::sessions::Kind::Brief));
     }
 }
 

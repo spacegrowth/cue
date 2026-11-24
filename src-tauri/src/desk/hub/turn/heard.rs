@@ -16,7 +16,7 @@ pub(crate) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     let scopes = st.desk.scopes(sid, &project);
     if scopes.len() != 1 {
         if parse::lines(text).iter().any(|line| matches!(line, Line::Item { .. })) {
-            fx.sends.push((sid.to_string(), "Several Desks could receive this item. Add it through the intended Desk so it reaches the right lead.".into()));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), "Several Desks could receive this item. Add it through the intended Desk so it reaches the right lead.".into()), crate::sessions::Kind::Answer));
         }
         return;
     }
@@ -43,7 +43,7 @@ pub(crate) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     }
     if !kept.is_empty() {
         kept.push(SEPARATE_ITEM_WORDS.into());
-        fx.sends.push((sid.to_string(), kept.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), kept.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 
@@ -119,7 +119,7 @@ pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
         fx.to_lead.push((message.0, sid.to_string(), message.1, words));
     }
     if !back.is_empty() {
-        fx.sends.push((sid.to_string(), back.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), back.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 
@@ -251,7 +251,7 @@ fn check_back(st: &mut Store, sid: &str, id: &str, fx: &mut Effects) {
     let Some(words) = crate::desk::check_back_words(id, it.check.as_ref()) else { return };
     it.check_back = true;
     fx.items.push(id.to_string());
-    fx.sends.push((sid.to_string(), words));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), words), crate::sessions::Kind::FollowUp));
 }
 
 /// Holder `sid`'s CHECK lines in `text` (#526): what you check on an item it said DONE for, in this turn or before,

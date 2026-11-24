@@ -318,7 +318,7 @@ impl Hub {
                     t.repo,
                     untold.join(", ")
                 );
-                fx.sends.push((lead.to_string(), words));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((lead.to_string(), words), crate::sessions::Kind::Desk));
             }
             fx
         });

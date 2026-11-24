@@ -221,14 +221,14 @@ fn a_message_while_the_lead_resumes_waits_for_it() {
     let (_, project) = holder(&w);
     let d = new_lead(&w, &project);
     w.hub().add_parked(w.hub().session_record(&d).unwrap());
-    let first = w.hub().desk_claim(&project, "one");
+    let first = w.hub().desk_claim(&project, "one", crate::sessions::Said::You);
     assert!(matches!(first, Ok(crate::hub::DeskClaim::Resume(_))));
-    let second = w.hub().desk_claim(&project, "two");
+    let second = w.hub().desk_claim(&project, "two", crate::sessions::Said::You);
     assert!(matches!(second, Ok(crate::hub::DeskClaim::Wait(_))));
     assert!(w.hub().desk_claim_start(&project).is_err(), "a lead is coming up already");
     let held = w.hub().desk_claim_done(&project);
     assert_eq!(held.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), vec!["two"]);
-    assert!(matches!(w.hub().desk_claim(&project, "three"), Ok(crate::hub::DeskClaim::Resume(_))));
+    assert!(matches!(w.hub().desk_claim(&project, "three", crate::sessions::Said::You), Ok(crate::hub::DeskClaim::Resume(_))));
     drop(w.hub().desk_claim_done(&project));
 }
 

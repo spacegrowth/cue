@@ -96,7 +96,7 @@ impl Hub {
         })?;
         if removed_lead && self.session_origin(sid).is_some() {
             let words = format!("You no longer run {}'s Desk. Keep on with the items you hold.", self.desk_name(project));
-            if let Err(e) = self.tell(sid, &words) {
+            if let Err(e) = self.tell(sid, &words, crate::sessions::Kind::Desk) {
                 eprintln!("cue: desk: {project}'s last lead wasn't told it was removed: {e}");
             }
         }

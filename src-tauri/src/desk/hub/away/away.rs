@@ -418,7 +418,7 @@ impl Hub {
         });
         if reach {
             self.later(0, move |h| {
-                if let Err(e) = h.tell(&lead, &words) {
+                if let Err(e) = h.tell(&lead, &words, crate::sessions::Kind::Desk) {
                     eprintln!("cue: couldn't send {lead} its ASKs back: {e}");
                 }
             });

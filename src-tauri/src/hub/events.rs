@@ -247,7 +247,7 @@ mod tests {
 
         // Queued while it worked: Claude Code reports the queued text the moment it lands, wrapped the
         // same way. That's its echo, not a new turn: the message stays queued, with Send now.
-        let q = crate::model::Exchange { role: "you".into(), text: long.clone(), at_ms: now_ms(), images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, cue_parts: vec![] };
+        let q = crate::model::Exchange { role: "you".into(), text: long.clone(), at_ms: now_ms(), images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] };
         hub.write(|st| st.sessions.set_queued("u1", Some(q)));
         hub.event(o.clone(), "active", wrapped.clone(), vec![], "");
         assert!(hub.read(|st| st.sessions.queued_text("u1")).is_some(), "still queued: the wrapped report was its echo");

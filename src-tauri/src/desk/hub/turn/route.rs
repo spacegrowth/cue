@@ -93,7 +93,7 @@ pub(crate) fn start_released(it: &mut DeskItem, rule: &str, lead: Option<&crate:
         (it.state, it.queued_at) = ("queued".into(), now);
     } else if let Some(h) = &it.holder {
         it.state = "working".into();
-        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", rule)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), crate::desk::handed_words(it, "", rule)), crate::sessions::Kind::Brief));
     } else {
         it.state = "new".into();
         let (by, by_sid) = lead.map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
@@ -368,7 +368,7 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
     let was_working = it.state == "working" && !unfinished;
     // Moved from a holder at work on it: that one stops.
     if let Some(b) = before.filter(|_| !same && it.state == "working") {
-        fx.sends.push(moved_words(&b, it, &h));
+        fx.sends.push(crate::desk::hub::core::desk::kinded(moved_words(&b, it, &h), crate::sessions::Kind::Route));
     }
     fx.items.push(it.id.clone());
     held_by(it, &h, refused, waits.clone(), why, now);
@@ -399,7 +399,7 @@ fn routed_out(st: &mut Store, id: &str, to: &str, words: Option<String>, back: O
     }
     match words {
         Some(w) if back.is_some_and(|why| !why.trim().is_empty()) => send_step(st, id, to, w, now, fx),
-        Some(w) => fx.sends.push((to.to_string(), w)),
+        Some(w) => fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), w), crate::sessions::Kind::Brief)),
         None => {}
     }
 }
@@ -459,7 +459,7 @@ pub(crate) fn send_step(st: &mut Store, id: &str, to: &str, message: String, now
         step.delivery = Some(crate::desk::model::DeskDelivery { session_id: to.to_string(), text: message.clone(), at_ms: now, went: "sending".into() });
         fx.went.push((step.id.clone(), to.to_string(), id.to_string()));
     }
-    fx.sends.push((to.to_string(), message));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), message), crate::sessions::Kind::Note));
 }
 
 /// "Taken: #12 to web." (after `waits`, when it's queued): what the lead is told of a route made (#248).
@@ -544,7 +544,7 @@ fn move_off(st: &mut Store, by: &By, id: &str, why: &str, now: u64, fx: &mut Eff
     }
     if it.state == "working" {
         let to = Holder { kind: "session".into(), sid: String::new(), name: "a new session".into(), lead_sid: String::new() };
-        fx.sends.push(moved_words(&b, it, &to));
+        fx.sends.push(crate::desk::hub::core::desk::kinded(moved_words(&b, it, &to), crate::sessions::Kind::Route));
     }
     it.remember_holder();
     it.moved_from = Some(b);
@@ -687,7 +687,7 @@ pub(crate) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str
 /// `handoff`: the hand-off of the holder it moved off (#364, `handoff_words`), sent with it ("" for none).
 pub(crate) fn give_started(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), handoff: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     give_to(st, id, sid, by, true, now, fx)?;
-    if let Some(sent) = fx.sends.iter_mut().rev().find(|(to, _)| to == sid).filter(|_| !handoff.trim().is_empty()) {
+    if let Some(sent) = fx.sends.iter_mut().rev().find(|(to, _, _)| to == sid).filter(|_| !handoff.trim().is_empty()) {
         sent.1.push_str("\n\n");
         sent.1.push_str(handoff.trim());
     }
@@ -738,7 +738,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     }
     (it.held, it.asks) = (None, None);
     if let Some(b) = it.holder.clone().filter(|b| it.state == "working" && !(b.sid == h.sid && b.lead_sid.is_empty())) {
-        fx.sends.push(moved_words(&b, it, &h));
+        fx.sends.push(crate::desk::hub::core::desk::kinded(moved_words(&b, it, &h), crate::sessions::Kind::Route));
     }
     if it.holder.as_ref().is_some_and(|old| old.to() != h.to()) {
         it.remember_holder();
@@ -762,7 +762,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     it.done_at = None;
     it.updated = secs(now);
     it.after_why = by.2.to_string();
-    fx.sends.push((sid.to_string(), crate::desk::handed_words(it, by.2, &rule)));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), crate::desk::handed_words(it, by.2, &rule)), crate::sessions::Kind::Brief));
     fx.items.push(id.to_string());
     let text = if by.1.is_empty() { format!("Gave #{id} to {}", h.name) } else { format!("Started {} for #{id}", h.name) };
     // Given an item, by you or as a new session for it: on the Desk from now.

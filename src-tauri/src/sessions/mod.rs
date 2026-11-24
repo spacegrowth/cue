@@ -8,6 +8,7 @@
 mod bar;
 pub mod crew_log;
 mod cue_said;
+pub use cue_said::{Kind, Said};
 mod delivery;
 mod kept_message;
 pub mod send_at;

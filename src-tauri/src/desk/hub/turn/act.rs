@@ -450,7 +450,7 @@ fn start_now(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<Stri
         it.tree_wait_repo.clear();
         let words = crate::desk::handed_words(it, "", rule);
         let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
-        fx.sends.push((to, words));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((to, words), crate::sessions::Kind::Brief));
         you_wrote(st, &project, id, "Start now", "without waiting for a free working folder", now, fx);
     // Nobody holds it yet: a new session of its project takes it (desk_start_new).
     } else if holder.is_none() {
@@ -465,7 +465,7 @@ fn start_now(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<Stri
         (it.after, it.state) = (None, "working".into());
         let words = crate::desk::handed_words(it, "", rule);
         let (to, project) = (holder.as_ref().map(|h| h.to().to_string()).unwrap_or_default(), it.project.clone());
-        fx.sends.push((to, words));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((to, words), crate::sessions::Kind::Brief));
         you_wrote(st, &project, id, "Start now", "without waiting for the item ahead", now, fx);
     } else {
         resume(st, id, holder, busy, now, fx)?;
@@ -490,7 +490,7 @@ fn resume(st: &mut Store, id: &str, holder: Option<Holder>, busy: Option<String>
     let project = it.project.clone();
     you_wrote(st, &project, id, "Resume", &format!("to {}", h.name), now, fx);
     fx.restarts.push((id.to_string(), h.to().to_string(), h.name.clone()));
-    fx.sends.push((h.to().to_string(), words));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), words), crate::sessions::Kind::Route));
     Ok(())
 }
 
@@ -525,12 +525,12 @@ pub(crate) fn drop_as_asked(st: &mut Store, id: &str, now: u64, fx: &mut Effects
 fn drop_item(st: &mut Store, id: &str, pr_open: &str, now: u64, fx: &mut Effects) -> bool {
     let gone = st.desk.items.iter().position(|i| i.id == id).map(|p| st.desk.items.remove(p));
     if let Some(h) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "working")) {
-        fx.sends.push((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{id} was dropped: stop work on it.")), crate::sessions::Kind::Route));
     }
     // Queued for a session that hasn't started it: off its list, so it never does (#544).
     if let Some((h, title)) = gone.as_ref().and_then(|g| g.holder.as_ref().filter(|_| g.state == "queued").map(|h| (h, &g.title))) {
         let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({title}) was dropped: it's off your list. Don't start it.")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("{who}Desk item #{id} ({title}) was dropped: it's off your list. Don't start it.")), crate::sessions::Kind::Route));
     }
     // What a pick filed: once none of it is left, the picked item is no longer picked, so it can be picked again.
     let built = gone.as_ref().map(|g| g.builds.clone()).filter(|b| !b.is_empty());
@@ -567,7 +567,7 @@ fn retry(st: &mut Store, id: &str, step: &str, now: u64) -> Result<Effects, Stri
         return Err("it went already".into());
     }
     (del.went, del.at_ms) = ("sending".into(), now);
-    fx.sends.push((del.session_id.clone(), del.text.clone()));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((del.session_id.clone(), del.text.clone()), crate::sessions::Kind::Note));
     fx.went.push((d.id.clone(), del.session_id.clone(), id.to_string()));
     fx.decisions.push(d.id.clone());
     Ok(fx)
@@ -854,7 +854,7 @@ impl Hub {
             Ok(d.clone())
         })?;
         self.desk_done(Effects { decisions: vec![id.to_string()], ..Default::default() });
-        let sent = self.tell(&d.sid, &crate::desk::undo_words_with(&d, answer));
+        let sent = self.tell(&d.sid, &crate::desk::undo_words_with(&d, answer), crate::sessions::Kind::Route);
         if sent.is_ok() {
             // A keep undone: Cue's own rule holds again for that session.
             self.write(|st| st.desk.run.keep.retain(|_, k| k.1 != d.id));

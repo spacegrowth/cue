@@ -529,7 +529,7 @@ fn kept_for_turn_end(w: &World, l: &str, project: &str) -> String {
     let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
     w.hosted.hang_next_send(release.clone());
     let to = l.to_string();
-    let yours = w.client().spawn(move |c| c.hub.tell(&to, "Look at the board"));
+    let yours = w.client().spawn(move |c| c.hub.tell(&to, "Look at the board", crate::sessions::Kind::Notice));
     w.hosted.wait_hung();
     let p = project.to_string();
     let feed = w.client().spawn(move |c| {

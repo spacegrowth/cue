@@ -234,7 +234,7 @@ impl Hub {
             self.desk_open_again(id, what, "Fix it", more);
         }
         if let Some(note) = t.note.clone() {
-            self.desk_done(crate::desk::hub::core::desk::Effects { sends: vec![note], ..Default::default() });
+            self.desk_done(crate::desk::hub::core::desk::Effects { sends: vec![crate::desk::hub::core::desk::kinded(note, crate::sessions::Kind::FollowUp)], ..Default::default() });
         }
         if !t.quiet {
             self.desk_feed_line(desk, t.kind, &t.words, &t.words);

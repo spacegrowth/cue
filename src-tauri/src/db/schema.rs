@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS exchanges (
   from_name   TEXT NOT NULL DEFAULT '',    -- another session's message: who sent it
   from_sid    TEXT NOT NULL DEFAULT '',    -- and that session's id, when Cue knew it
   by_cue      INTEGER NOT NULL DEFAULT 0, -- 'you' in the thread, but Cue's own message to it (#836)
+  cue_kind    TEXT NOT NULL DEFAULT '',    -- and what kind of message of Cue's it is (#837)
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -449,6 +450,11 @@ fn migrate_on(c: &Connection, version: i64) -> rusqlite::Result<()> {
     if version < 13 {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN by_cue INTEGER NOT NULL DEFAULT 0", []);
         c.pragma_update(None, "user_version", 13)?;
+    }
+    // What kind of message of Cue's each is (#837), as it was sent.
+    if version < 14 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN cue_kind TEXT NOT NULL DEFAULT ''", []);
+        c.pragma_update(None, "user_version", 14)?;
     }
     Ok(())
 }

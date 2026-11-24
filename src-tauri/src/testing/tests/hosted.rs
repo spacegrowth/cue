@@ -131,7 +131,7 @@ fn a_message_sent_while_the_first_is_on_its_way_waits_its_turn() {
         other => panic!("started as {other:?}"),
     };
     let to = sid.clone();
-    let second = w.client().spawn(move |c| c.hub.tell(&to, "and the signup"));
+    let second = w.client().spawn(move |c| c.hub.tell(&to, "and the signup", crate::sessions::Kind::Notice));
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert!(!second.is_finished(), "the second waits while the first is on its way");
     assert!(w.hosted.sent().is_empty(), "nothing handed over yet: {:?}", w.hosted.sent());
