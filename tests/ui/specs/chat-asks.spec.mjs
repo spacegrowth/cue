@@ -210,3 +210,26 @@ test("an answered question wraps as text with its answer under it, inside the pa
     expect(await chat.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
 });
+
+test("a permission's Why is the request's own reason, never the session's earlier reply; no reason, no Why line (#806)", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const cmd = "rm -f work/tmp.txt && python3 scripts/check.py";
+  const reply = "Got it. It's done, on the dev Cue: the fix is live.";
+  await cue.change((st, [cmd, reply]) => {
+    const t0 = Date.now() - 600000;
+    const s = st.sessions.find((x) => x.session_id === "eng");
+    s.state = "deciding";
+    s.thread = [{ role: "you", text: "Run the check", at_ms: t0 }, { role: "agent", text: reply, at_ms: t0 + 10000 }];
+    const context = [{ role: "user", text: "Run the check" }, { role: "assistant", text: reply }];
+    st.items.push({ id: "n806", kind: "permission", harness: "claude", session_id: "eng", cwd: s.cwd, project: s.project, tool_name: "Bash", tool_input: { command: cmd, description: "Remove the scratch file and run the check" }, suggestions: [], context, created_ms: t0 + 20000, status: "pending", outcome: "" });
+  }, [cmd, reply]);
+  await openEngChat(page);
+  const card = page.locator(".act-card");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".why")).toHaveText("Why: Remove the scratch file and run the check");
+  await expect(card).not.toContainText("Got it");
+  // The same request with no reason of its own: no Why line at all, still not the earlier reply.
+  await cue.change((st) => { delete st.items.find((i) => i.id === "n806").tool_input.description; });
+  await expect(card.locator(".why")).toHaveCount(0);
+  await expect(card).not.toContainText("Got it");
+});

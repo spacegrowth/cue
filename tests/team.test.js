@@ -35,6 +35,8 @@ const ctx = {
   questions: () => [],
 };
 vm.createContext(ctx);
+// The ask's own reason comes from board.js, which this test doesn't load whole: its askWhy, as written there.
+vm.runInContext(/^function askWhy\(it\) \{[\s\S]*?^\}/m.exec(fs.readFileSync(__dirname + "/../ui/board/board.js", "utf8"))[0], ctx);
 // The ask-line readers team.js uses live in window.js (its ask lines section): loaded as written there.
 const win = fs.readFileSync(__dirname + "/../ui/window.js", "utf8");
 const askLines = win.slice(win.indexOf("// ---------- ask lines:"), win.indexOf("\n", win.indexOf("const askLnSaid")));

@@ -231,9 +231,15 @@ function requestBody(it) {
   const json = JSON.stringify(i, null, 2);
   return reqCut(it.id, `<pre class="slab">${esc(json)}</pre>`, json);
 }
+/** Why the session asks this: the request's own reason (a command's description, Codex's reason), or nothing.
+ *  Never what it said before the ask: that's an earlier reply, not this request's reason (#806). */
+function askWhy(it) {
+  const d = it.tool_input?.description;
+  return typeof d === "string" ? d.trim() : "";
+}
 function whyLine(it) {
-  const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
-  return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"}>Why: ${esc(firstLine(c.text))}</div>` : "";
+  const why = askWhy(it);
+  return why ? `<div class="why"${why.includes("\n") ? "" : " data-cut"}>Why: ${esc(firstLine(why))}</div>` : "";
 }
 /** A dialog Cue read off the session's screen (a terminal card): what it says, and its choices as buttons. */
 function dialogHtml(it) {

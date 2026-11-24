@@ -15,10 +15,9 @@ let crewBarDrawn = null, crewBarSince = 0;
 /** The chip in the box: ↪ on an ask, its words go as that answer. { sid, id (the ask's item), label }. */
 let crewChip = null;
 
-/** The first line of what was said before an ask: its reason, as the ask's card says it. */
+/** The first line of the ask's own reason, as the ask's card says it ("" when it gave none). */
 function crewAskWhy(it) {
-  const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
-  return c ? firstLine(c.text) : "";
+  return firstLine(askWhy(it));
 }
 /** An ask's buttons in the bar, from what it is: a permission ↪ Deny Allow; a question ↪ for your own words, Send its
  *  suggestions (when it has one for each question) and Choose ›; anything else (a form, one answered in its terminal) Open ›, the
