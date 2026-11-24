@@ -400,7 +400,7 @@ function deskCItemBar(i, bare = false) {
   // only Reopen beside the strip, so the bar keeps its height as it turns done and the chat under it stays put (#791).
   const done = i.state === "done" && !i.picked && !backing;
   const acts = backing ? "" : done ? (i.holder ? `<button class="btn small" data-desk-act="send_back" data-id="${id}">Reopen</button>` : "") : i.kept && bare ? `<button class="btn small primary" data-desk-act="pickup_kept" data-id="${id}">Pick up again</button><button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${id}">${armed ? "Remove it and its work" : "Remove"}</button>`
-    : !check ? deskItemActs(i) + (bare ? drop : "") : deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
+    : !check ? deskItemActs(i, bare) + (bare && i.state !== "held" ? drop : "") : deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
     : `<button class="btn small primary" data-desk-act="looks_right" data-id="${id}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button><button class="btn small" data-desk-act="send_back" data-id="${id}">Send back</button>`;
   // What to try: its session's check line (Try / Nothing to try), else its You'll see, else Send back to ask.
   const cl = check && !backing ? deskToCheckLine(i) : null;

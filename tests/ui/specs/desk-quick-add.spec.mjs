@@ -786,8 +786,10 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   await rows.locator('[data-desk-item="h1"]').click();
   const pane = page.locator('.dk-right .dkn-sp[data-desk-page="item"]');
   await expect(pane.locator(".dkn-smeta")).toContainText("Parked");
+  // Start out as its main button, Drop this item in its ⋯ (#847).
+  await expect(pane.locator('.dkn-ib .btn.primary[data-desk-act="start_now"]')).toHaveText("Start");
   await openMore(pane);
-  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Start");
+  await expect(pane.locator('.dk-moremenu [role="menuitem"]')).toHaveText(["Drop this item"]);
   await expect(pane.locator('[data-desk-act="park"]')).toHaveCount(0);
   // A queued item's page has Park too.
   await page.locator(".dk-right .dkn-sback .dk-back").click();
@@ -813,7 +815,8 @@ test("an item's page has no row of Start and Park buttons, only a ⋯ that opens
   const more = side.locator(".dk-more");
   // Shut: the ⋯ alone, none of what's in it on show.
   await expect(more).toHaveCount(1);
-  await expect(more).toHaveText("⋯");
+  await expect(more).toHaveText("");
+  await expect(more.locator("svg")).toHaveCount(1);
   await expect(more).toHaveAttribute("aria-label", "More");
   await expect(side.locator('[data-desk-act="start_now"], [data-desk-act="park"]')).toHaveCount(0);
   // Open: Start it now and Park, as a menu, whole inside the window.

@@ -62,7 +62,7 @@ test("Waiting on you, Working, Up next and Parked: each row's ⋯ opens its choi
   // Parked: open its drawer, Start.
   await page.locator('.dkn-items [data-desk-c-fold="parked"]').click();
   await dots(page, "p1").click();
-  await expect(menu(page).locator('[role="menuitem"]')).toHaveText(["Start"]);
+  await expect(menu(page).locator('[role="menuitem"]')).toHaveText(["Start", "Drop this item"]);
   await menu(page).locator('[data-desk-act="start_now"]').click();
   await cue.called("desk_item_act", { id: "p1", act: "start_now" });
   await expect(menu(page)).toHaveCount(0);

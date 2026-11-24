@@ -253,11 +253,15 @@ let deskGiveTop = null;
 function deskGivePlace() {
   const m = document.querySelector(".dk-givemenu"), b = m?.previousElementSibling;
   if (!m || !b) return;
-  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight, top = deskGiveTop ?? m.scrollTop;
-  Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${W - 2 * pad}px`, maxHeight: "", overflowY: "" });
+  const r = b.getBoundingClientRect(), pad = 8, H = innerHeight, top = deskGiveTop ?? m.scrollTop;
+  // Kept inside the pane it opens in (#847), not only the window: the item page, the item list.
+  const p = b.closest(".dk-right, .dkn-items")?.getBoundingClientRect(), L = Math.max(0, p?.left ?? 0), R = Math.min(innerWidth, p?.right ?? innerWidth);
+  Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${Math.max(0, R - L - 2 * pad)}px`, maxHeight: "", overflowY: "" });
   const w = m.offsetWidth, h = m.scrollHeight, below = H - r.bottom - 4 - pad, above = r.top - 4 - pad;
   const up = h > below && above > below, room = up ? above : below;
-  m.style.left = `${Math.max(pad, Math.min(r.left, W - pad - w))}px`;
+  // A ⋯ menu opens leftward from its button's right edge (it sits at a bar's or row's right end); Give to… rightward.
+  const want = m.classList.contains("dk-moremenu") ? r.right - w : r.left;
+  m.style.left = `${Math.max(L + pad, Math.min(want, R - pad - w))}px`;
   if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
   m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
   m.scrollTop = top;   // measuring it unscrolled dropped where you'd scrolled it to (#308)

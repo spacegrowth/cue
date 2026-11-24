@@ -819,7 +819,7 @@ function deskWaitsOn(i) {
 /** An item's buttons, by where it is. */
 const deskCanRestart = (i) => (i.state === "needs_resume" || i.stopped) && !!sessionOf(i.holder?.lead_sid || i.holder?.sid);
 
-function deskItemActs(i) {
+function deskItemActs(i, bare = false) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
   if (deskBackFor === i.id) return deskBackHtml(i.id);
   // A feature nobody holds is only its pieces (#282): they're given out, not it.
@@ -834,8 +834,10 @@ function deskItemActs(i) {
     // Reopen (#577): your words back to the session that did it, or a fresh one when it's closed or on other work.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>${i.holder ? b("send_back", "Reopen") : ""}` : "";
   const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
-  const dots = deskMore(i, deskMoreItems(i));
-  return acts || give || dots ? `<div class="dk-acts">${give}${acts}${dots}</div>` : "";
+  // Parked (#847): Start out as its main button, Drop this item in its ⋯ (its page's only: a row's has both).
+  const start = i.state === "held" ? b("start_now", "Start", "primary") : "";
+  const dots = deskMore(i, i.state === "held" ? (bare ? deskDropMi(i) : "") : deskMoreItems(i));
+  return acts || give || start || dots ? `<div class="dk-acts">${give}${start}${acts}${dots}</div>` : "";
 }
 /** What item `i`'s ⋯ menu holds (#669), by where it is: Start, Park, Put it before…, Resume, the install choices; ""
  *  when nothing fits (and when its page shows something else in their place: Send back's box, a feature's pieces, what
@@ -848,8 +850,8 @@ function deskMoreItems(i) {
   const first = i.after && deskItem(i.project, i.after);
   return i.state === "to_check" || i.state === "done" ? ""
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? m("start_now", "Retry")
-    // Parked (#385): Start queues it as a new item, for the lead to give out.
-    : i.state === "held" ? m("start_now", "Start")
+    // Parked (#385): Start queues it as a new item, for the lead to give out; or drop it (#847).
+    : i.state === "held" ? m("start_now", "Start") + deskDropMi(i)
     // Waiting for a free working folder (#401): its session starts on it now, without one.
     : deskCopyWaits(i) ? m("start_now", "Start now") + m("park", "Park")
     : i.state === "queued" ? m("start_now", i.holder ? "Start it now" : "Start it now in a new session") + (first ? m("put_before", `Put it before ${deskShort(first.title)}`) : "") + m("park", "Park")
@@ -858,6 +860,12 @@ function deskMoreItems(i) {
     // session where it left off (#375).
     : deskCanRestart(i) ? m("start_now", "Resume")
     : deskFinishing(i) ? mi(deskInstallNow(i, "")) + mi(deskSkipInstall(i, "")) : "";
+}
+/** Drop this item as a choice in an item's ⋯ (#847): two presses, as the button was; the first arms it ("Drop it",
+ *  in red) and leaves the menu open (act.js deskAct). */
+function deskDropMi(i) {
+  const armed = deskDropArm === i.id;
+  return `<button role="menuitem" class="dk-mi-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}"><span>${armed ? "Drop it" : "Drop this item"}</span></button>`;
 }
 /** Whether `at` names an item's ⋯ menu: its page's ("more") or its row's in the item list ("rmore", #839). */
 const deskMoreAt = (at) => at === "more" || at === "rmore";
@@ -872,7 +880,7 @@ function deskMore(i, items, at = "more") {
   const row = at === "rmore";
   const btn = row
     ? `<button class="dk-more-btn dkn-rmore" data-desk-more="${esc(i.id)}" data-at="rmore" aria-label="More" aria-haspopup="menu" aria-expanded="${open}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`
-    : `<button class="btn small dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}">⋯</button>`;
+    : `<button class="dk-more-btn dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`;
   return `<span class="dk-givewrap dk-morewrap${row ? " dkn-rwrap" : ""}">${btn}${menu}</span>`;
 }
 /** Which items' build logs are open in full (Show all), by id. */
