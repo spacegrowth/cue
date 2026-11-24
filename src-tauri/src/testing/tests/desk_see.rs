@@ -53,7 +53,7 @@ fn every_brief_says_to_run_only_the_tests_a_change_touches() {
     let told = crate::desk::handed_words(&it, "", "");
     assert!(told.contains(crate::desk::TESTS_RULE), "{told}");
     assert!(told.contains("only the tests for the files you changed and for code that uses them"), "{told}");
-    assert!(told.contains("full suite only before a push"), "{told}");
+    assert!(told.contains("never the full suite: Cue's own check runs it at landing"), "{told}");
     // The rule is written in the routing rules doc too.
     let doc = include_str!("../../../../docs/desk-routing-rules.md");
     assert!(doc.contains("## Tests while you work"), "the doc lost its tests rule");

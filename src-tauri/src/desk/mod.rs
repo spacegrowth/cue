@@ -337,8 +337,8 @@ pub fn not_done_words(id: &str) -> String {
 }
 
 /// Which tests a session runs while it works (#778; docs/desk-routing-rules.md, "Tests while you work"), in every item's brief.
-pub const TESTS_RULE: &str = "Tests: while you work, run only the tests for the files you changed and for code that uses them, \
-not the whole suite. Run the full suite only before a push: once, just before your DONE, since Cue pushes your work from there.";
+pub const TESTS_RULE: &str = "Tests: run only the tests for the files you changed and for code that uses them, \
+never the full suite: Cue's own check runs it at landing.";
 
 /// What the session holding `it` is told when it's handed the item. `rule`: its Desk's Ask me before line
 /// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
