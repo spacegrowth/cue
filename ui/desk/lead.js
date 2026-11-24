@@ -405,7 +405,9 @@ function deskRefs(h) {
   const swap = (t) => t.replace(DESK_REF, (m, pre, kind, id, name) => {
     if (id) {
       const it = deskItemAny(p, id.toLowerCase());
-      return it ? `${pre}<a href="#" class="dk-ref" data-desk-chk-item="${esc(it.id)}">${kind || ""}#${id}</a>` : m;
+      // Its project too: a link outside the Desk (the Board's chat) opens the item on its own Desk (app/clicks_chat.js).
+      const of = (state.desk?.projects || []).find((d) => (d.items || []).includes(it))?.project || p;
+      return it ? `${pre}<a href="#" class="dk-ref" data-desk-chk-item="${esc(it.id)}" data-desk-project="${esc(of)}">${kind || ""}#${id}</a>` : m;
     }
     const sid = sessBy(name);
     return sid ? `${pre}<a href="#" class="dk-ref" data-desk-session="${esc(sid)}">${name}</a>` : m;

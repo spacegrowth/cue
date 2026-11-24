@@ -590,6 +590,9 @@
     rule("[data-cue]", (t) => inCue(t.dataset.cue)),
     rule("[data-close]", () => closeChat()),
     rule("a[data-href], a[data-path]", openLink),
+    // An item number or a session's name in a reply (#832): the item on its Desk in Cue, the session's chat here.
+    rule("a[data-desk-chk-item]", (t, e) => { e.preventDefault(); deskInCue(t.dataset.deskProject, t.dataset.deskChkItem); }),
+    rule("a[data-desk-session]", (t, e) => { e.preventDefault(); openChat(t.dataset.deskSession); }),
     rule("[data-act=term], [data-act=term-open], [data-act=term-card]", () => inCue(m.open)),
     ...CHAT_CLICKS,
   ];

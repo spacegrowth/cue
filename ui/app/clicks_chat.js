@@ -172,6 +172,10 @@ const MESSAGE_CLICKS = [
   rule("[data-fwd-to]", (el) => { forward.to = el.dataset.fwdTo; renderMain(); document.querySelector(".fwd-note")?.focus(); }, () => !!forward),
   rule("[data-act='send-forward']", () => sendForward()),
   rule("[data-act='cancel-forward']", () => { sheet = forward = null; renderMain(); }),
+  // An item number or a session's name in a reply (desk/lead.js deskRefs), outside the Desk (the Desk takes its own
+  // clicks first): the item opens on its project's Desk, the session as its card.
+  rule("a[data-desk-chk-item]", (a, e) => { e.preventDefault(); openInDesk(a.dataset.deskProject || "", a.dataset.deskChkItem); }),
+  rule("a[data-desk-session]", (a, e) => { e.preventDefault(); openSession(a.dataset.deskSession); }),
   rule("a[data-path]", openPath),
   rule("a[data-href]", (link, e) => { e.preventDefault(); openPathOrDoc(link.dataset.href); }),
   rule("[data-local-lb]", openLocalImages),

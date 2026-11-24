@@ -2,6 +2,18 @@
 
 Item #832, 2026-11-24. Nothing in the app changes with this doc. Line numbers are as of commit 3f361844e8.
 
+## Round 1: done (2026-11-24)
+
+What changed:
+- Read works on an item's page.
+- #123 and session names are links in every chat. On the Board and in the mini window, an item link opens the item on its Desk.
+- "↗ Send to…" is on replies in the Desk's item and session chats. The lead's chat still has none.
+- btw opens its panel in the Desk's item and session chats.
+- The status line under those chats is the Board's: it names background agents and a hand-off on its way.
+- Escape twice on a hosted session that hasn't answered yet stops it and puts what you sent back in the box.
+
+Tested in tests/ui/specs/chat-same-everywhere.spec.mjs.
+
 ## The short version
 
 **The rule: add, never take away.** The chats are already mostly one. Four of the five draw their messages the same way, and each one only switches some features off. So making them one chat means switching those features back on. Nothing any chat has today is removed.
@@ -207,7 +219,7 @@ These are the differences no comment in the code explains or defends.
    - Send greyed out while the box is empty;
    - Listen's player line.
 6. **The status line under Desk chats leaves out** the hand-off line and the background-agent tray (`whereNow` instead of `statusLine`). The lead's chat also leaves out the step count (page.js:196).
-7. **A crew member's Activity tab on the Desk shows the lead's activity** (`dkActivityOf(lead)`, c.js:432), not the member's.
+7. **A crew member's Activity tab on the Desk shows its lead's Desk lines** (`dkActivityOf(lead)`, c.js:432). This is on purpose: a test (tests/ui/specs/desk-activity.spec.mjs:130) checks it, since a member has no chat of its own. Not a bug.
 8. **A crew member's chat has no Listen, Read, Show all, links or Send to**, because it doesn't use `chatHtml` (ui/chat/helpers.js:200-224).
    - The Desk and the Board crew page also draw the same member in two unrelated layouts:
      - Desk: chat first, with Files and Activity tabs (ui/desk/thread.js:115);
@@ -217,12 +229,11 @@ These are the differences no comment in the code explains or defends.
    - On a card, a plan shows plain Allow and Deny, not "Approve plan" and "Keep planning".
    - The card has no "Always…" and no redirect (↪).
    - The mini window has a third copy (ui/mini.js:224).
-10. **A restarting session's chat loses its status line and rename notice.** It calls `chatHtml` directly (ui/chat/pane.js:173) instead of `chatBody` (pane.js:103).
+10. **A restarting session's chat has no status line or rename notice** (ui/chat/pane.js:173). This is not a bug you can see: a cover with the restart's progress sits over the chat until it's back.
 11. **A parked session's box is a reduced one** (ui/chat/parked.js:116), with no pictures, "/" menu or quick phrases.
     - It shares its draft with the full box, so pictures pasted earlier are silently not shown there.
     - Its messages are hand-drawn bubbles (parked.js:102-104), with no Listen, Read, Fold or Send to.
-12. **Pasting a picture skips the limits.** Paste (ui/app/inputs.js:35) adds pictures with no limit. The Add image picker (ui/chat/patch.js:250-252) caps at 6 pictures and 15 MB.
-
+12. **Pasting a picture keeps to the same limits as Add image.** Pasted pictures go through the same path (ui/app/inputs.js:39, then `attach` in ui/chat/patch.js:250), with 6 at a time and 15 MB each. The one exception is when macOS is asked for the clipboard's picture directly (inputs.js:43), and that only ever adds one picture. Not a bug.
 13. **Escape gives back what you sent only in a terminal; in a hosted session the text is lost.**
     - What Cue's chats do on Escape: `escSession` (ui/app/keys.js:124-142).
       - If Cue is keeping a message for the session (you sent it while it worked), Escape takes it back into the box (`pullHeld`, ui/chat/compose.js:100-108).
@@ -295,9 +306,6 @@ Sizes: S is up to half a day, M is a day or two, L is three days or more. Each s
    - Read on the item page: view.js:158 asks for `deskReader`, as view.js:164 does.
    - Links: pass `refs: deskRefs` on every Desk chat, and on the Board.
    - btw: draw `btwPanel` where its button shows.
-   - Crew Activity: show the member's own moves.
-   - Paste: cap pictures as the picker does.
-   - Restarting pane: call `chatBody`.
    - Escape (bug 13): a stopped message comes back into the box, and a crew member's page takes back only into the lead's box. The hosted session's message is the one that matters most: today it is lost.
 
    Each is a line or two, with a UI test in tests/ui/specs. This step is worth doing even if the rest waits.

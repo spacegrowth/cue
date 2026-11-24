@@ -110,8 +110,20 @@ async function pullHeld(sid, key = `s:${sid}`) {
 const cancelHeld = (sid) => forgetSent(sid) || invoke("unhold_message", { sessionId: sid }).then((h) => toast(h ? "It won't be sent" : "Too late: it had already gone")).catch((e) => toast(`Couldn't cancel it: ${e}`));
 /** Stop a working session mid-turn (Esc in its terminal; Pi aborts directly). */
 async function interrupt(sid) {
-  try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }
-  catch (e) { toast(`Couldn't stop it: ${e}`); }
+  try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); return true; }
+  catch (e) { toast(`Couldn't stop it: ${e}`); return false; }
+}
+/** What you sent session `s` that it was still on when you stopped it, as you wrote it: your last message, when no
+ *  reply came after it (and it isn't Cue's own). Only a hosted session's: one in a terminal has Claude Code give it back
+ *  in its own input there, so it's never lost (#832). null for none. */
+function stoppedWords(s) {
+  if (!s?.hosted) return null;
+  const ex = s.thread || [], n = ex.findLastIndex((e) => e.role === "you");
+  if (n < 0 || ex.slice(n + 1).some((e) => e.role === "agent")) return null;
+  const t = ex[n].text || "";
+  if (cueSaid(t) || (typeof cueMsgOf === "function" && cueMsgOf(t)) || (typeof cueBackOf === "function" && cueBackOf(t))) return null;
+  const words = ((typeof deskYourWords === "function" && deskYourWords(t)?.words) ?? deskSaid(t)).trim();
+  return words || null;
 }
 const box_ = (key, placeholder, label, attrs, alt = "", extra = "", quick = true) => box(key, placeholder, label, attrs, true, alt, extra, quick);
 

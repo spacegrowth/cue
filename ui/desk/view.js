@@ -155,7 +155,8 @@ function deskOpenCard(project, taskApprovals) {
   if (o?.kind === "item") {
     const i = item;
     // An item is its session's chat, its bar on top (#744); one no session has yet, its bar over what it's about (#748).
-    if (i) { delete o.fresh; body = deskCItemChat(i, d, foot()) || deskCItemBare(i, d, foot()); }
+    // A reply of its holder's open in Read: read-only in the chat's place, as on a session's page (Reply brings it back).
+    if (i) { delete o.fresh; const hs = deskHolderSid(i); body = (hs && deskReader(sessionOf(hs))) || deskCItemChat(i, d, foot()) || deskCItemBare(i, d, foot()); }
     // Just added: it opens once Cue's state has it (the chat shows till then); not there in a few seconds, it won't.
     else if (o.fresh && now() - o.fresh < 5000) return null;
   }
