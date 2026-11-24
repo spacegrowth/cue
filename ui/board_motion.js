@@ -48,15 +48,6 @@ function fitTop() {
     h.classList.add(step);
   }
 }
-/** A project's swatches never get cut off: near the foot of the projects list (or the window), they open
- *  upward instead. */
-function placeColors() {
-  const pop = document.querySelector(".pc-pop");
-  if (!pop) return;
-  const box = pop.closest(".pj-pop")?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight };
-  const r = pop.getBoundingClientRect(), btn = pop.previousElementSibling.getBoundingClientRect();
-  pop.classList.toggle("up", r.bottom > box.bottom && btn.top - r.height - 6 >= box.top);
-}
 /** The chat header's buttons never get cut off and its chips never run into each other: when they don't fit, it
  *  gives up room step by step (short labels, then the agent and model, then the "your turn" pill, then the
  *  "N agents" chip, then the role tag, then the other chips, and the name shortens). The CSS widths can't know how
@@ -185,7 +176,7 @@ function waitPop(list) {
   const at = chipAt(list);
   const row = (x, n) => {
     const it = x.id && findItem(x.id), line = it ? plain(summary(it)) : "";
-    return `<div class="lv-row wt-row ${n === at ? "on" : ""}" role="button" data-chip-pick="${esc(x.id || x.sid)}">${projDot(x.project)}<span class="lv-name">${esc(x.sid ? nameOf(x.sid, x.project) : x.project || "")}</span><span class="wt-line">${esc(line)}</span><span class="wt-age">${ago(x.since)}</span></div>`;
+    return `<div class="lv-row wt-row ${n === at ? "on" : ""}" role="button" data-chip-pick="${esc(x.id || x.sid)}"><span class="lv-name">${esc(x.sid ? nameOf(x.sid, x.project) : x.project || "")}</span><span class="wt-line">${esc(line)}</span><span class="wt-age">${ago(x.since)}</span></div>`;
   };
   return `<div class="lv-pop wt-pop"><div class="lv-list">${list.map(row).join("")}</div></div>`;
 }

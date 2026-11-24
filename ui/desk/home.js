@@ -72,7 +72,7 @@ function deskHomeRow(d) {
   const people = `${n} session${n === 1 ? "" : "s"} · ${crew ? `${crew} crew` : "no crew"}`;
   return `<div class="dh-tr dk-desk" role="button" tabindex="0" data-desk-project="${esc(d.project)}">
     <span class="dh-cell"><b class="dh-nm">${esc(deskName(d))}</b><span class="dh-sm dh-ab">${deskAbout(d)}</span></span>
-    <span class="dh-cell"><span class="dh-pj">${projDot(deskWorkspace(d))}${esc(projLabel(deskWorkspace(d)))}</span><span class="dh-sm">${people}</span></span>
+    <span class="dh-cell"><span class="dh-pj">${esc(projLabel(deskWorkspace(d)))}</span><span class="dh-sm">${people}</span></span>
     ${["task", "bug", "feature"].map((k) => deskKindCell(d, k)).join("")}<span class="dh-on">${deskOnIt(d, sessions)}</span><span class="dh-go"><button class="btn small" data-desk-delete="${esc(d.project)}" aria-label="Delete ${esc(deskName(d))}">Delete…</button></span></div>${deskDeleteConfirmation(d)}`;
 }
 /** Every Desk, those with the most waiting on you first. */
@@ -157,7 +157,7 @@ function ndAgentDraw() {
   if (row) row.innerHTML = `<div class="seg">${agents.map((a) => `<button type="button" class="${ndAgent === a ? "on" : ""}" data-nd-agent="${esc(a)}" aria-pressed="${ndAgent === a}">${esc(agentName(a))}</button>`).join("")}</div>`;
 }
 /** A project's line: its dot and name, then its folder, muted. */
-const ndOpt = (c) => `${projDot(c.project)}<span class="nd-pn">${esc(projLabel(c.project))}</span><span class="nf-hint nd-pp">${esc(homeless(c.folder))}</span>`;
+const ndOpt = (c) => `<span class="nd-pn">${esc(projLabel(c.project))}</span><span class="nf-hint nd-pp">${esc(homeless(c.folder))}</span>`;
 function ndPickHtml() {
   const c = ndCs[ndAt];
   const btn = `<button type="button" class="nd-f nd-pick" id="nd-proj" data-nd-pick aria-haspopup="listbox" aria-expanded="${ndDrop}">${ndOpt(c)}<span class="nd-car">▾</span></button>`;

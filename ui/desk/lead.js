@@ -93,7 +93,7 @@ function deskBand({ d, label, to = false, who = "", id = "", title = "", at = nu
   const sub = [who ? `<b class="dk-band-who">${esc(who)}</b>` : "", id ? `<span class="dk-band-sub">#${esc(id)}${title ? ` ${esc(title)}` : ""}</span>` : ""].filter(Boolean).join(" · ");
   const head = `${tile}<span class="dk-band-desk">${to ? "To " : ""}${name}</span>${sub ? `<span class="dk-band-by">· ${sub}</span>` : ""}${at != null ? `<span class="dk-band-age">${ago(at)}</span>` : ""}`;
   const open = d ? `<button class="dk-band-open" data-desk-hand="${esc(d.project)}">Open ${esc(deskName(d))} Desk</button>` : "";
-  return `<div class="dk-band${to ? " out" : ""}" data-band="${to ? "to" : "from"}" data-from-desk="${esc(d ? d.project : label)}"${d ? ` style="${projStyle(d.project)}"` : ""}><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(text || "")}</div>${foot || open ? `<div class="dk-band-f">${foot}${open}</div>` : ""}</div>`;
+  return `<div class="dk-band${to ? " out" : ""}" data-band="${to ? "to" : "from"}" data-from-desk="${esc(d ? d.project : label)}"><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(text || "")}</div>${foot || open ? `<div class="dk-band-f">${foot}${open}</div>` : ""}</div>`;
 }
 /** One message of the family (#501, option B, ui/styles/messages.css): the card on panel-2, its head row (Cue's mark
  *  with `cue`, another Desk's `chip`, who → to, the TAG, the item's chip, the age at the right), then `body` (its

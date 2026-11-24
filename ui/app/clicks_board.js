@@ -37,11 +37,9 @@ function renameProject(renB) {
 }
 const PROJECT_CLICKS = [
   // A project's dot: its swatches open under it; a swatch sets the color for that folder everywhere.
-  rule("[data-pcpick]", (sw) => { setProjColor(sw.dataset.pcpick, +sw.dataset.pcidx); colorFor = null; renderMain(); }),
+  rule("[data-pcpick]", (sw) => { setWindowColor(+sw.dataset.pcpick); renderMain(); }),
   // Your own Color: the Mac's color picker.
   rule("[data-pcown]", (el) => pickOwnColor(el)),
-  rule("[data-pcolor]", (pc) => { const { pcolor: p, pcwhere: w } = pc.dataset; colorFor = colorFor?.p === p && colorFor.w === w ? null : { p, w }; renderMain(); }),
-  (t) => { if (colorFor && !t.closest(".pc-wrap")) { colorFor = null; renderMain(); } return false; },
   // Renaming a project in the list: its box takes clicks (not a pick); ✎ opens it.
   rule(".pj-name-in, .pj-new-in", () => {}),
   // × on a project you made: armed by the first click, removed by the second.

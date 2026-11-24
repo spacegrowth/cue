@@ -45,22 +45,22 @@ function projChip() {
   const del = (p) => !madeProject(p) ? "" : pjDelArm === p
     ? `<button class="pj-del armed" data-pjdel="${esc(p)}">Remove</button>`
     : `<button class="pj-del" data-pjdel="${esc(p)}" aria-label="Remove ${esc(projLabel(p))}">×</button>`;
-  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}${label(p)}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : r.made ? "empty" : "history"}</span>${ren(p)}${del(p)}${pin(p)}</div>`;
+  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${label(p)}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : r.made ? "empty" : "history"}</span>${ren(p)}${del(p)}${pin(p)}</div>`;
   const add = pjNewOpen
     ? `<div class="pm-new"><input class="pm-new-in pj-new-in" data-text="pjnew" maxlength="40" placeholder="Name the new project" spellcheck="false" value="${esc(draft("pjnew").text)}"/>${pjNewNote ? `<div class="pm-note">${esc(pjNewNote)}</div>` : ""}</div>`
     : `<button class="pj-row pj-add" data-pj-new="1">+ New project…</button>`;
-  const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project="">${projBtn(ALL_PROJ, "pj")}<span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}<div class="pj-sep"></div>${add}</div>` : "";
+  const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project=""><span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}<div class="pj-sep"></div>${add}</div>` : "";
   // A pinned project picked shows as its own chip, lit; the projects chip then reads All projects.
   const shown = projFilter && !pins.includes(projFilter) ? projFilter : "";
   // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
-  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle" aria-label="Projects, ${shown ? esc(projLabel(shown)) : "All projects"}">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
+  const main = `<span class="pj-wrap"><span class="hchip pj-chip"><button class="pj-open" data-pj="toggle" aria-label="Projects, ${shown ? esc(projLabel(shown)) : "All projects"}">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
   // Its dot changes its color, as the projects chip's does.
   // Replies that just came back there, in a conversation you're having (In conversation's rule), while another project
   // is shown: what's been waiting a while you know about; with All projects, or on that one, it's on screen already.
   const backIn = (p) => projFilter && projFilter !== p ? state.items.filter((i) => i.project === p && !parkedIds().has(i.session_id) && talking(i)).length : 0;
   const waitN = (p) => { const n = backIn(p); return n ? `<span class="pj-wait" aria-label="${n} just replied">${n}</span>` : ""; };
-  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span>${waitN(p)}</button></span></span>`).join("");
+  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}"><button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span>${waitN(p)}</button></span></span>`).join("");
   return main + chips;
 }
 
@@ -293,7 +293,7 @@ function recentEntry(i) {
   // Its session is at work again (on what you answered, or since): its dot pulses, as working ones do.
   const live = sessionOf(i.session_id)?.state === "working" ? "live" : "";
   // Lit when the Active pane shows this answer, however you got there (its row here, Sessions, Next…).
-  return `<div class="tl ${outcomeClass(i)} ${fresh} ${live} ${!quietOpen && active?.id === i.id ? "on" : ""}" style="${projStyle(i.project)}" data-detail="${esc(i.id)}">
+  return `<div class="tl ${outcomeClass(i)} ${fresh} ${live} ${!quietOpen && active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
     <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}${oddAgent(i.harness)}${machTag(i.machine)}<span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
@@ -306,7 +306,7 @@ function starEntry(s, open) {
   const dot = stuck ? "stuck" : it ? (it.kind === "waiting" ? "ok" : "no") : s.state === "working" || s.compacting_ms ? "live" : "";
   const what = it ? plain(summary(it)) : s.compacting_ms ? "Compacting…" : s.state === "working" ? s.doing || (s.prompt ? `› ${s.prompt}` : "Thinking") : s.prompt ? `› ${s.prompt}` : plain(firstLine(lastSaid(s)));
   const st = preStart(s) ? preStart(s) : stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
-  return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" style="${projStyle(s.project)}" data-session="${esc(sid)}">
+  return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" data-session="${esc(sid)}">
     <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}${oddAgent(s.harness)}${machTag(s.machine)}<span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
     <div class="tl-title">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
 }
@@ -339,7 +339,7 @@ const bgPill = (s) => agentPill(s?.session_id);
  *  buttons. When both don't fit (a narrow Waiting column) the time and buttons take a line of their own, right-aligned
  *  under it, before the name would shorten to a few letters or a button be cut off. */
 const cardTop = (who, side) => `<div class="nrow-top"><span class="nrow-who">${who}</span><span class="nrow-side">${side}</span></div>`;
-const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}">${cardTop(`${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}`, `<span class="age">${ago(s.since_ms)}</span>`)}<div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said mg-plain">› ${cueMsgPlainHtml(s.prompt, nameOf(s.session_id, s.project)) ?? esc(s.prompt)}</div>` : ""}</div>`;
+const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}">${cardTop(`${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}`, `<span class="age">${ago(s.since_ms)}</span>`)}<div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said mg-plain">› ${cueMsgPlainHtml(s.prompt, nameOf(s.session_id, s.project)) ?? esc(s.prompt)}</div>` : ""}</div>`;
 /** The grey line under a card's name: why it's in conversation (a finished turn answered you, anything else asks
  *  you), or that it just left it. */
 function talkNote(it) {
@@ -384,7 +384,7 @@ function parkedRow(p, on) {
 function starParkedEntry(p, open) {
   const sid = p.session_id, w = waking.has(sid);
   const last = [...(p.thread || [])].reverse().find(askLnSaid);
-  return `<div class="tl star-tl parked ${w ? "waking" : ""} ${open ? "on" : ""}" style="${projStyle(p.project)}" data-session="${esc(sid)}">${P_SIGN}
+  return `<div class="tl star-tl parked ${w ? "waking" : ""} ${open ? "on" : ""}" data-session="${esc(sid)}">${P_SIGN}
     <div class="tl-top"><span class="tl-name">${esc(p.name || p.project)}</span>${oddAgent(p.harness)}${machTag(p.machine)}<span class="tl-parked">${w ? "resuming…" : `parked ${parkedAgo(p)}`}</span>${starBtn(sid)}</div>
     <div class="tl-title tl-said"><span>${esc(last ? plain(firstLine(last.text)) : homeless(p.cwd))}</span>${w ? "" : `<button class="tl-wake" data-wake="${esc(sid)}">↺ Resume</button>`}</div></div>`;
 }
@@ -399,7 +399,7 @@ function laterRow({ sid, s, it }) {
   const what = it ? "" : s.state === "working" ? "working" : "idle";
   const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    ${cardTop(`${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}${bgPill(s)}`,
+    ${cardTop(`${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}${bgPill(s)}`,
       `<span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button>`)}
     ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}${insCardLine(sid)}</div>`;
 }
@@ -426,7 +426,7 @@ function needRow(it, ghost, open = false) {
   }
   const quick = needQuick(it);
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id))}`,
+    ${cardTop(`${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id))}`,
       `<span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}`)}
     ${talkNote(it)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>${insCardLine(it.session_id, it.kind !== "waiting")}${quick}</div>`;
@@ -496,7 +496,7 @@ function sessionCard(s, open) {
   const to = nameOf(s.session_id, s.project), cue = desk && /^Desk item #/i.test(words) ? null : cueMsgPlainHtml(words, to);
   const preview = desk && /^Desk item #/i.test(words) ? "" : cue ?? esc(deskAboutHead({ text: words })?.text ?? words);
   return `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${go}>
-      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
+      <div class="card-head">${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${addOn.cardLine(s.session_id)}${desk}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}
       ${s.queued || s.held ? `<div class="queued-note mg-plain on-bg">${s.held ? "Not sent yet" : "Queued"}: ${msgPlainWords(String((s.held || s.queued).text ?? ""), to)}</div>` : ""}
       ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${preview ? `<div class="prompt mg-plain on-bg">› ${preview}</div>` : ""}${deskSessCache(s.session_id)}${handOutHtml(s)}</div>`;

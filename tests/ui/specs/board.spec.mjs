@@ -82,9 +82,9 @@ test.describe("Settings", () => {
   test.beforeEach(async ({ cue, page }) => { await cue.open("board-waiting"); await page.keyboard.press(","); });
 
   test("a switch saves its setting", async ({ cue, page }) => {
-    await page.locator('.sheet [data-set="appearance.project"]').click();
-    await cue.called("set_setting", { key: "appearance.project", value: true });
-    await expect(page.locator('.sheet [data-set="appearance.project"]')).toHaveAttribute("aria-checked", "true");
+    await page.locator('.sheet [data-set="notify.cold"]').click();
+    await cue.called("set_setting", { key: "notify.cold", value: false });
+    await expect(page.locator('.sheet [data-set="notify.cold"]')).toHaveAttribute("aria-checked", "false");
   });
 
   test("Dark saves the appearance and the window turns dark", async ({ cue, page }) => {
@@ -1117,24 +1117,24 @@ test("a restart opens where you were: Desk and Read come back, not the Board", a
   }
 });
 
-// #259: a card's leading marks each in a color of their own, in both themes: the project's dot, then the Desk's
+// #259: a card's leading marks each in a color of their own, in both themes: the Desk's
 // session or crew mark (accent on a card, on-bg on a Working card on the ground), never the name's color. A Desk's
 // sessions have no cards on the Board (#825) unless one is out of usage: that one's card is on the ground.
 for (const scheme of ["light", "dark"]) {
-  test(`a card's dot and its Desk mark have colors of their own (${scheme})`, async ({ cue, page }) => {
+  test(`a card's Desk mark has a color of its own (${scheme})`, async ({ cue, page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await cue.open("desk");
     await cue.change((st) => { st.sessions.find((s) => s.session_id === "host").state = "limited"; });
     await expect(page.locator('.working[data-session="host"] .dk-name-ic')).toHaveCount(1);
     const marks = await page.evaluate(() => [...document.querySelectorAll(".working .card-head")].map((h) => {
-      const c = (e) => getComputedStyle(e)[e.matches(".pdot") ? "backgroundColor" : "color"];
-      return { dot: c(h.querySelector(".pdot")), mark: c(h.querySelector(".dk-name-ic")), name: c(h.querySelector(".proj")) };
+      const c = (e) => getComputedStyle(e).color;
+      return { mark: c(h.querySelector(".dk-name-ic")), name: c(h.querySelector(".proj")), dots: h.querySelectorAll(".pdot").length };
     }));
     expect(marks.length).toBeGreaterThan(0);
     const onBg = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--on-bg)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
     for (const m of marks) {
       expect(m.mark).toBe(onBg);
-      expect(m.mark).not.toBe(m.dot);
+      expect(m.dots).toBe(0);   // no project dot before the name (#848)
     }
   });
 }

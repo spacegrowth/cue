@@ -27,15 +27,15 @@ journey("a reply written on a finished turn's card is typed into its tmux pane, 
 });
 
 journey("a setting changed in the window is still set after Cue restarts", async (world) => {
-  const toggle = '[data-set="appearance.project"]';
+  const toggle = '[data-set="notify.cold"]';
   await world.ui.click("[data-act=open-settings]");
-  assert.equal(await (await world.ui.find(toggle)).getAttribute("aria-checked"), "false");
+  assert.equal(await (await world.ui.find(toggle)).getAttribute("aria-checked"), "true");
   await world.ui.click(toggle);
-  await world.ui.waitUntil(() => state.settings.appearance?.project === true, "the setting saved");
+  await world.ui.waitUntil(() => state.settings.notify?.cold === false, "the setting saved");
   await world.relaunch();
-  assert.equal(await world.ui.run(() => state.settings.appearance?.project), true, "Cue read it back");
+  assert.equal(await world.ui.run(() => state.settings.notify?.cold), false, "Cue read it back");
   await world.ui.click("[data-act=open-settings]");
-  assert.equal(await (await world.ui.find(toggle)).getAttribute("aria-checked"), "true", "the window shows it on");
+  assert.equal(await (await world.ui.find(toggle)).getAttribute("aria-checked"), "false", "the window shows it off");
 });
 
 journey("parking a session from its ⋯ menu ends its terminal and keeps it under Parked across a restart", async (world) => {

@@ -82,7 +82,7 @@ function keyCloseOpen(e) {
   else if (pjRenaming) pjRenaming = null;
   else if (newProjFor) { newProjFor = null; newProjNote = ""; }
   else if (pjNewOpen) { pjNewOpen = false; pjNewNote = ""; }
-  else if (pjOpen || colorFor) { pjOpen = false; colorFor = null; }
+  else if (pjOpen) pjOpen = false;
   else if (liveOpen) liveOpen = newOpen = false;
   else if (waitOpen) waitOpen = false;
   else return false;

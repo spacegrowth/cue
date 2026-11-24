@@ -24,7 +24,7 @@ function tellItem(sid, s) {
   return `<button data-act="watch" data-sid="${esc(sid)}" data-on="${on ? 0 : 1}">${on ? "Don't tell me" : "Tell me when this is done"}<span>${on ? "No notification when this turn ends" : "A notification and the tada sound when this turn ends, even with Cue in front · ⌘D"}</span></button>`;
 }
 /** Where the project's dot is, while you're waiting to be told: the tada, in the project's color. */
-const watchMark = (project) => `<span class="watch-mark" style="${projStyle(project)}" role="img" aria-label="Telling you when this turn is done">${tadaIcon(14, true)}</span>`;
+const watchMark = (project) => `<span class="watch-mark" role="img" aria-label="Telling you when this turn is done">${tadaIcon(14, true)}</span>`;
 
 /** The Active pane when nothing is open: Connect Claude Code until it is, then "Nothing waiting". */
 function emptyPane() {
@@ -92,7 +92,7 @@ function fullView(sid, it, s, harness) {
 function activeHead(a) {
   const { it, s, sid, harness, project, pending, ch } = a;
   const closable = sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" });
-  return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+  return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : ""}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, closable) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
@@ -168,7 +168,7 @@ function activePane(crew = null) {
   // Restarting (after an MCP change): covered until it's back, with nothing to press meanwhile.
   const rs = sid && state.restarting?.[sid];
   if (rs) return `<div class="active-pane restarting">
-    <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
+    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
     ${subHead(s?.cwd || it?.cwd, sid)}
     ${chatBox(`m|${sid}`, chatHtml(it, s, harness, true))}${foot}${restartCover(rs, nameOf(sid, project))}</div>`;
   // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.

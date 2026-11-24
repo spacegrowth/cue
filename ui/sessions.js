@@ -63,7 +63,7 @@ function livePop(rows) {
     .map(([p, rs]) => {
       const many = spread(rs), cwd = many ? projRoot(rs[0].cwd) : rs[0].cwd;
       for (const r of rs) r.where = many ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
-      return `<div class="lv-group"><div class="lv-ghead">${here?.sessions && ordered.length === 1 ? `<span>${esc(here.sessions)}</span>` : ""}${projDot(p, rs.some((r) => r.st === "working"))}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
+      return `<div class="lv-group"><div class="lv-ghead">${here?.sessions && ordered.length === 1 ? `<span>${esc(here.sessions)}</span>` : ""}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
     }).join("");
   return `<div class="lv-pop">
     <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="${esc(here?.ask || "Find a session, or anything said…")}  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
@@ -177,7 +177,7 @@ let nfProj = { at: "", info: null, pick: null, open: false };
 let nfNewProj = "";
 const NF_HOW = { repo: "its git repository", "repo-says": "its repository says so", put: "you put this folder in it", folder: "this folder" };
 function projLine() {
-  if (nfNewProj) return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(nfNewProj)}<b>${esc(nfNewProj)}</b><span class="nf-hint">this session only</span><button class="btn small" data-lv="proj-new-off">Change…</button></div></div>`;
+  if (nfNewProj) return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj"><b>${esc(nfNewProj)}</b><span class="nf-hint">this session only</span><button class="btn small" data-lv="proj-new-off">Change…</button></div></div>`;
   const cwd = draft("new-cwd").text.trim(), at = `${newMachine}|${cwd}`;
   // (On a machine "~" is that machine's home, which Cue only knows once a session's there.)
   if (!(newMachine ? /^\//.test(cwd) : /^[/~]/.test(cwd))) return "";
@@ -189,9 +189,9 @@ function projLine() {
   if (!i) return "";
   const name = nfProj.pick ?? i.name, how = nfProj.pick != null && nfProj.pick !== i.name ? (nfProj.pick === i.own ? "its own again, from now on" : "every session in this folder, from now on") : NF_HOW[i.how] || "";
   const names = [...new Set([i.own, ...projPins(), ...projectsKnown().map(([p]) => p), ...(state.history || []).map((h) => h.project)])].filter((p) => p && p !== name).slice(0, 12);
-  const drop = nfProj.open ? `<div class="nf-drop nf-pdrop">${names.map((p) => `<button class="nf-dopt" data-lv="proj-pick" data-project="${esc(p)}">${projDot(p)}${esc(projLabel(p))}${p === i.own ? `<span class="nf-hint">its own</span>` : ""}</button>`).join("") || `<div class="nf-hint">No other projects yet</div>`}</div>` : "";
+  const drop = nfProj.open ? `<div class="nf-drop nf-pdrop">${names.map((p) => `<button class="nf-dopt" data-lv="proj-pick" data-project="${esc(p)}">${esc(projLabel(p))}${p === i.own ? `<span class="nf-hint">its own</span>` : ""}</button>`).join("") || `<div class="nf-hint">No other projects yet</div>`}</div>` : "";
   const change = i.how === "folder" && nfProj.pick == null ? "Put in a project…" : "Change…";
-  return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(name)}<b>${esc(projLabel(name))}</b><span class="nf-hint">${esc(how)}</span><button class="btn small" data-lv="proj-open" aria-expanded="${nfProj.open}">${change}</button>${drop}</div></div>`;
+  return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj"><b>${esc(projLabel(name))}</b><span class="nf-hint">${esc(how)}</span><button class="btn small" data-lv="proj-open" aria-expanded="${nfProj.open}">${change}</button>${drop}</div></div>`;
 }
 /** Folders on this Mac under the path being typed (folders_under), for the text they were read for. */
 let nfDisk = { q: null, list: [] };
@@ -285,13 +285,8 @@ function nfRecentLine(folders) {
   // In the order you last used them, so a click never moves them; one typed in All options comes first.
   const top = folders.slice(0, 3), three = !cur || top.includes(cur) ? top : [cur, ...top].slice(0, 3);
   if (!three.length) return "";
-  const pill = (f) => `<button class="nf-rf ${f === cur ? "on" : ""}" data-lv="folder-quick" data-cwd="${esc(f)}">${projDot(projectAtFolder(f))}${esc(baseName(f))}</button>`;
+  const pill = (f) => `<button class="nf-rf ${f === cur ? "on" : ""}" data-lv="folder-quick" data-cwd="${esc(f)}">${esc(baseName(f))}</button>`;
   return `<div class="nf-recent"><span class="nf-k">In</span>${three.map(pill).join("")}<button class="nf-rf" data-lv="folder-more" aria-label="Another folder">…</button></div>`;
-}
-/** A folder's project, as Cue last had it for a session there (its own name if none). */
-function projectAtFolder(f) {
-  const same = (x) => x?.cwd && homeless(x.cwd) === homeless(f);
-  return (state.sessions.find(same) || (state.live || []).find(same) || (state.history || []).find(same))?.project || baseName(f);
 }
 function nfSummary(withFolder = true) {
   const where = newMachine ? `${newHosted() ? "Hosted on " : ""}${machShort(newMachine)}` : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
@@ -615,7 +610,7 @@ function svTileCard(t, q, match) {
   if (!solo.length) return null;
   const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
   const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
-      <div class="sx-thead">${projDot(t.project, members.some((m) => m.st === "working"))}<span class="sx-tname">${esc(t.project ? projLabel(t.project) : "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>
+      <div class="sx-thead"><span class="sx-tname">${esc(t.project ? projLabel(t.project) : "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>
       <div class="sx-solo">${svItems(solo)}</div></div>`;
   return { machine: t.machine, rank, latest, html };
 }
