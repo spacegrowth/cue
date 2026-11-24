@@ -1,9 +1,11 @@
 // A mocks item waiting for you to check lists its options, A, B… or M1, M2…, each with what it is and a Pick (#445).
 // A pick closes the mocks item and makes its build item for the lead to route; its chat is for comments on the mocks.
-// The options are in the bar over the item's chat (#748), its mocks a click away there.
+// The options are in the bar over the item's chat (#748), its mocks a click away there. They come only from its
+// IF PICKED: lines (#859): a reply's lines that only look like options never make a Pick.
 import { test, expect, openDesk } from "./cue.mjs";
 
 const patchItem = (cue, id, patch) => cue.change((st, [k, p]) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === k), p); }, [id, patch]);
+const plan = (option, title = "") => ({ option, kind: "feature", title, see: "", done_when: "", by: "new" });
 const items = (page) => page.evaluate(() => CueBridge.world.state.desk.projects.find((x) => x.project === "cue").items);
 
 test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes it and makes its build item (#445)", async ({ page, cue }) => {
@@ -11,7 +13,7 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   await openDesk(page);
   // Mocks only (#408, #436): no DESIGNS: line, the canvas is the link its DONE made.
   const text = "Two ways on the canvas: https://claude.ai/artifact/MOCKS\n- **M1**: a strip under the header\n- **M2** — a card in the list\nPick one: M1 or M2.";
-  await patchItem(cue, "d5", { state: "to_check", title: "Mocks: working items", designs: "", made: ["https://claude.ai/artifact/MOCKS"], finish: { step: "checked", at: Date.now(), mocks: true }, said: [{ at: Date.now(), by: "host-lead", text }] });
+  await patchItem(cue, "d5", { state: "to_check", title: "Mocks: working items", designs: "", made: ["https://claude.ai/artifact/MOCKS"], finish: { step: "checked", at: Date.now(), mocks: true }, next: [plan("M1", "Build: working items (option M1)"), plan("M2", "Build: working items (option M2)")], said: [{ at: Date.now(), by: "host-lead", text }] });
   await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
   const head = page.locator(".dk-right .dkn-ib");
   const opts = head.locator(".dkn-ibopts li");
@@ -36,17 +38,36 @@ test("a mocks-only item lists its options M1, M2 with a Pick each; a pick closes
   expect((await items(page)).find((i) => i.id === n).title).toBe("Build: working items (option M2)");
 });
 
-test("options listed one to a line are picked from even with no pick line; one option alone isn't a list (#445)", async ({ page, cue }) => {
+test("options listed one to a line make Picks only with IF PICKED: lines for them; one option alone isn't a list (#445, #859)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text: "On the canvas:\nA: rows\nB) cards\nC — a table" }] });
+  await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", next: [plan("A"), plan("B"), plan("C")], said: [{ at: Date.now(), by: "host-lead", text: "On the canvas:\nA: rows\nB) cards\nC — a table" }] });
   await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
   const opts = page.locator(".dk-right .dkn-ib .dkn-ibopts li");
   await expect(opts.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
   await expect(opts.locator(".dk-optw")).toHaveText(["rows", "cards", "a table"]);
-  await patchItem(cue, "d5", { said: [{ at: Date.now(), by: "host-lead", text: "A: the one way, on the canvas." }] });
+  await patchItem(cue, "d5", { next: [plan("A")], said: [{ at: Date.now(), by: "host-lead", text: "A: the one way, on the canvas." }] });
   await expect(page.locator(".dk-right .dkn-ib .dkn-ibopts")).toHaveCount(0);
   await expect(page.locator(".dk-right .dkn-spm textarea")).not.toHaveAttribute("placeholder", /^Comments… \(Pick an option above/);
+});
+
+// #859: an ordinary answer whose bullets start like options ("D3 it stays just above…"), on a mocks item, with no
+// IF PICKED: lines, never turns into a row of Picks, whether or not it asks a question that says "pick".
+test("a reply with option-like bullets and no IF PICKED: lines makes no Picks (#859)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const text = "Done, the box moved:\n- D3 it stays just above the list\n- D4: the header keeps its height\n- **E1** — the menu opens down\n1. built\n2. tested\n\nWhich one should I pick up next: D3 or D4?";
+  await patchItem(cue, "d5", { state: "to_check", title: "Mocks: the box", designs: "https://claude.ai/artifact/MOCKS", next: [], said: [{ at: Date.now(), by: "host-lead", text }] });
+  await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
+  await expect(page.locator(".dk-right .dkn-ib")).toBeVisible();
+  await expect(page.locator(".dk-right .dkn-ibopts")).toHaveCount(0);
+  await expect(page.locator('.dk-right [data-desk-act="pick"]')).toHaveCount(0);
+  await expect(page.locator(".dk-right .dkn-spm textarea")).not.toHaveAttribute("placeholder", /^Comments… \(Pick an option above/);
+  // The same reply with IF PICKED: lines for D3 and D4: those two, named from its lines, and not E1, 1 or 2.
+  await patchItem(cue, "d5", { next: [plan("D4", "Keep the header"), plan("D3", "Box above the list")] });
+  const opts = page.locator(".dk-right .dkn-ib .dkn-ibopts li");
+  await expect(opts.locator(".dk-optk")).toHaveText(["D3", "D4"]);
+  await expect(opts.locator(".dk-optw")).toHaveText(["Box above the list", "the header keeps its height"]);
 });
 
 // #539: an item whose reply marks one option suggested ("**B (suggested):**") and asks "Which option do you want
@@ -69,10 +90,10 @@ test("three options with the middle one suggested: all three get a Pick in the i
     "Which option do you want built: A, B or C?",
   ].join("\n");
   const at = Date.now() - 5000;
-  await cue.change((st, [text, at]) => {
-    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Plan and mocks: Desks on the same code", designs: "https://claude.ai/artifact/MOCKS", said: [{ at, by: "host-lead", text }] });
+  await cue.change((st, [text, at, next]) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Plan and mocks: Desks on the same code", designs: "https://claude.ai/artifact/MOCKS", next, said: [{ at, by: "host-lead", text }] });
     st.sessions.find((x) => x.session_id === "host").thread = [{ role: "you", text: "About #d5 (Plan and mocks): go on", at_ms: at - 60000 }, { role: "agent", text: "Reading the code first.", at_ms: at - 30000 }, { role: "agent", text, at_ms: at }];
-  }, [text, at]);
+  }, [text, at, [plan("A"), plan("B"), plan("C")]]);
   await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
   const side = page.locator(".dk-right .dkn-ib .dkn-ibopts li");
   await expect(side.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
@@ -88,14 +109,14 @@ test("three options with the middle one suggested: all three get a Pick in the i
   await expect(page.locator(".dk-right .dkn-ib .dkn-ibopts")).toHaveCount(0);
 });
 
-test("options one to a line with the middle one marked suggested and no pick line: all three in the bar (#539)", async ({ page, cue }) => {
+test("options one to a line with the middle one marked suggested, IF PICKED: lines and no pick line: all three in the bar (#539)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const text = "On the canvas:\n- **A:** rows\n- **B (suggested):** cards\n- **C:** a table", at = Date.now() - 5000;
-  await cue.change((st, [text, at]) => {
-    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", said: [{ at, by: "host-lead", text }] });
+  await cue.change((st, [text, at, next]) => {
+    Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", next, said: [{ at, by: "host-lead", text }] });
     st.sessions.find((x) => x.session_id === "host").thread = [{ role: "agent", text, at_ms: at }];
-  }, [text, at]);
+  }, [text, at, [plan("A"), plan("B"), plan("C")]]);
   await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
   for (const opts of [page.locator(".dk-right .dkn-ib .dkn-ibopts li")]) {
     await expect(opts.locator(".dk-optk")).toHaveText(["A", "B", "C"]);
@@ -109,7 +130,6 @@ test("options one to a line with the middle one marked suggested and no pick lin
 test("a redone mocks item asks again with numbered options: the new ones replace A, B, C everywhere (#619)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const plan = (option, title) => ({ option, kind: "feature", title, see: "", done_when: "", by: "new" });
   const first = "Three on the canvas:\n- **A:** a needs-you band\n- **B:** lanes\n- **C:** a track\nPick one: A, B or C.", at = Date.now() - 60000;
   await cue.change((st, [text, at, next]) => {
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "to_check", title: "Mocks: the Desk page", designs: "https://claude.ai/artifact/MOCKS", next, said: [{ at, by: "host-lead", text }] });
@@ -153,15 +173,16 @@ test("a redone mocks item asks again with numbered options: the new ones replace
   expect((await items(page)).find((i) => i.id === built).title).toBe("A List / Progress switch");
 });
 
-// The numbered options one to a line with no pick line, and a range ("1 to 10") on the pick line, are read too.
-test("numbered options one to a line, or a pick line's range, are picked from (#619)", async ({ page, cue }) => {
+// Numbered options one to a line with IF PICKED: lines for them are picked from; with one IF PICKED: line for any
+// option, a pick line's range ("1 to 10") names them (#619, #859).
+test("numbered options with IF PICKED: lines, or a pick line's range with one for any, are picked from (#619)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", next: [], said: [{ at: Date.now(), by: "host-lead", text: "Three versions:\n1. **Calmest:** a Desk menu in the head\n2. **Closest to today:** Desk pills\n3. **Most on screen:** a Desk strip" }] });
+  await patchItem(cue, "d5", { state: "to_check", designs: "https://claude.ai/artifact/MOCKS", next: [plan("1"), plan("2"), plan("3")], said: [{ at: Date.now(), by: "host-lead", text: "Three versions:\n1. **Calmest:** a Desk menu in the head\n2. **Closest to today:** Desk pills\n3. **Most on screen:** a Desk strip" }] });
   await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
   const opts = page.locator(".dk-right .dkn-ib .dkn-ibopts li");
   await expect(opts.locator(".dk-optk")).toHaveText(["1", "2", "3"]);
   await expect(opts.locator(".dk-optw")).toHaveText(["Calmest: a Desk menu in the head", "Closest to today: Desk pills", "Most on screen: a Desk strip"]);
-  await patchItem(cue, "d5", { said: [{ at: Date.now(), by: "host-lead", text: "Ten on the canvas.\n\nWhich option, 1 to 10, should we build?" }] });
+  await patchItem(cue, "d5", { next: [plan("any", "Build the picked one")], said: [{ at: Date.now(), by: "host-lead", text: "Ten on the canvas.\n\nWhich option, 1 to 10, should we build?" }] });
   await expect(opts.locator(".dk-optk")).toHaveText(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
 });

@@ -617,7 +617,8 @@ function deskPickLineIn(t) {
   const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines.find((x) => x.endsWith("?")) || lines[0];
   return line ? line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase()) : "";
 }
-/** The options its newest reply lists, each on a line of its own, its key first ("A: compact rows", "**M2** — a
+/** What its newest reply says of each option, on a line of its own, its key first (only a name for an option its
+ *  IF PICKED: lines offer, #859, never an option of its own) ("A: compact rows", "**M2** — a
  *  strip", "- Option C) …", "4. a calm list"): Map key → its words, cut short (#445, #619). */
 function deskOptionWords(i) {
   const out = new Map();
@@ -648,20 +649,19 @@ function deskPickRun(line) {
   }
   return [];
 }
-/** The options an item asks you to pick from, A, B, C…, M1, M2… or 1, 2… (#445, #543, #619): those its pick line
- *  names ("… working items: D, E or F" → D, E, F; "Which option, 1 to 10?"); else, for one with a canvas or with
- *  what follows each option (IF PICKED: lines), the two or more its newest reply lists one to a line, or those its
- *  IF PICKED: lines name: those when the list shares none of them (a numbered list that isn't its options); none once
- *  picked. */
+/** The options an item asks you to pick from, A, B, C…, M1, M2… or 1, 2… (#445, #543, #619, #859): only those its
+ *  session offers for picking, its IF PICKED: lines. Those lines' options, or, for one IF PICKED: line for any option,
+ *  those its pick line runs through ("… working items: D, E or F" → D, E, F; "Which option, 1 to 10?"). Never from
+ *  lines of its reply that only look like options ("- D3 it stays just above…"); none once picked. */
 function deskPickOptions(i) {
   if (i.picked || !DESK_PICK_STATES.has(i.state)) return [];
+  const opts = (i.next || []).map((n) => String(n.option || ""));
+  // In order, A before B and 4 before 10, however its lines came.
+  const named = [...new Set(opts.filter((o) => o && o !== "any"))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  if (named.length > 1) return named;
+  if (!opts.includes("any")) return [];
   const run = deskPickRun(deskPickLine(i));
-  if (run.length > 1) return run;
-  if (!deskCanvas(i) && !(i.next || []).length) return [];
-  const listed = [...deskOptionWords(i).keys()];
-  const named = [...new Set((i.next || []).map((n) => String(n.option)).filter((o) => o && o !== "any"))];
-  if (listed.length > 1 && (named.length < 2 || listed.some((o) => named.includes(o)))) return listed;
-  return named.length > 1 ? named : [];
+  return run.length > 1 ? run : [];
 }
 /** Its options as a short list, each with what it is (when its reply says) and a Pick (#281, #445, #543): Cue closes
  *  the item, then files and routes what its holder said follows the one you picked. */
