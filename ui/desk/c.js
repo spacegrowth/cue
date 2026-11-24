@@ -382,9 +382,14 @@ function deskCItemBare(i, d, foot) {
   const ls = deskLead(d) && !deskLeadEnded(d) ? deskLeadSession(d) : null;
   const sent = ls ? deskCItemPending(i, ls).map((o) => outboxRow(o, ls, o.key)).join("") : "";
   const head = `<div class="dkn-ihead"><h1 class="dkn-ih1">${deskCKind(i)}<span class="dkn-iid">#${esc(i.id)}</span> <span class="dkn-itt">${esc(i.title)}</span></h1><div class="dkn-smeta">${st}</div></div>`;
-  return `<div class="dkn-sp" data-desk-page="item"><div class="dkn-sback">${deskBack("")}</div>${head}${deskCItemBar(i, true)}<div class="dkn-spm"><div class="dk-pane dkn-ibare" data-scroll-key="item:${esc(i.id)}">${i.state === "needs_you" ? deskChain(i) : ""}${deskNotStarted(i)}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}${deskSec("Couldn't give it out", i.route_failed && !i.holder ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Added with", words)}${see}${sent ? `<div class="dkn-isent">${sent}</div>` : ""}</div>${foot}</div></div>`;
+  return `<div class="dkn-sp" data-desk-page="item"><div class="dkn-sback">${deskBack("")}</div>${head}${deskCItemBar(i, true)}<div class="dkn-spm"><div class="dk-pane dkn-ibare" data-scroll-key="item:${esc(i.id)}">${i.state === "needs_you" ? deskChain(i) : ""}${deskNotStarted(i)}${deskSec("Couldn't start", !i.holder && i.start_failed ? `<p>Cue couldn't start a new session for it: ${esc(i.start_failed)}</p>` : "")}${deskSec("Couldn't give it out", i.route_failed && !i.holder ? `<p>${esc(i.route_failed)}</p>` : "")}${deskSec("Added with", words)}${see}${deskCItemActs(i, d)}${sent ? `<div class="dkn-isent">${sent}</div>` : ""}</div>${foot}</div></div>`;
 }
-/** Each session's open tab on the new layout ("chat" | "files"), by session: Chat unless you picked Files. */
+/** An item no session has: its Activity (#789), what the Desk did with it so far, newest first; "" for none. */
+function deskCItemActs(i, d) {
+  const rows = deskItemActivity(d, i);
+  return rows.length ? deskSec("Activity", `<div class="dk-moves dkn-iact">${rows.map((r) => deskActRowHtml(r, d)).join("")}</div>`) : "";
+}
+/** Each session's open tab on the new layout ("chat" | "files" | "activity"), by session: Chat unless you picked another. */
 const deskCSessTabs = new Map();
 /** A session's chat on the new layout (a session clicked on the left, or the item it's on): back, then the Board's own
  *  top bar for it (its name, state, chips, Commit, ⋯, btw, Stop: chat/pane.js activeHead), the item it's on, the item's
@@ -460,11 +465,15 @@ function deskCSessChat(sid, from, d, foot, bar = "", item = null) {
   const meta = on ? `<div class="dkn-smeta">on ${deskItemLink(on)} · ${esc(on.title)}</div>` : "";
   // This turn's files and each of its items' (its Files tab lists them all).
   const n = (deskTurnDiff(sid)?.files || s.changes?.files || []).length + deskCSessTasks(d, sid).reduce((k, i) => k + (deskDiffs.get(deskDiffId(i))?.files || deskCFilesOn(i)).length, 0);
-  const tab = deskCSessTabs.get(sid) === "files" ? "files" : "chat";
+  const tab = ["files", "activity"].includes(deskCSessTabs.get(sid)) ? deskCSessTabs.get(sid) : "chat";
   const t = (k, label) => `<button class="dkn-stab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-c-stab="${k}" data-sid="${esc(sid)}">${label}</button>`;
-  const tabs = `<div class="dkn-stabs" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}</div>`;
+  // Activity (#789): the Desk's moves on the item open here (or, a session opened on its own, those in its chat and
+  // Cue's messages to it), which its chat no longer shows.
+  const acts = tab === "activity" ? (item ? deskItemActivity(d, item) : deskActivity(d).filter((r) => r.line?.sid === sid || r.x?.sid === sid)) : null;
+  const tabs = `<div class="dkn-stabs" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}${t("activity", "Activity")}</div>`;
   let main;
-  if (tab === "files") main = `<div class="dk-pane dkn-sfiles" data-scroll-key="files:${esc(sid)}">${deskSessFiles(sid) || deskPsec("Changed this turn", `<div class="dk-quiet">Nothing yet.</div>`, "dk-pfiles")}${deskCSessTaskFiles(d, sid)}</div>`;
+  if (tab === "activity") main = `<div class="dk-pane dk-moves dkn-sact" data-scroll-key="sact:${esc(sid)}:${esc(item?.id || "")}">${acts.length ? acts.map((r) => deskActRowHtml(r, d)).join("") : `<div class="dk-quiet">Nothing yet.</div>`}</div>`;
+  else if (tab === "files") main = `<div class="dk-pane dkn-sfiles" data-scroll-key="files:${esc(sid)}">${deskSessFiles(sid) || deskPsec("Changed this turn", `<div class="dk-quiet">Nothing yet.</div>`, "dk-pfiles")}${deskCSessTaskFiles(d, sid)}</div>`;
   else {
     const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
     const pending = item ? deskCItemPending(item, s) : [];
