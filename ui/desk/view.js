@@ -270,5 +270,10 @@ function deskSettle() {
   }
   // Just after you sent in the lead's chat, again a frame and a moment later (ui/box/end.js): what comes in late (a
   // picture, the Working line) mustn't leave your message just under the edge (#704).
-  else if (c && deskChatEnd) { boxStickToEnd(c, deskChatSent); deskChatSent = false; }
+  else {
+    // You scrolled it (a wheel, touch, key or click of yours since Cue last put it at its end) and it's not at its end:
+    // you're reading, even when this draw comes before the scroll event that would have said so (#782).
+    if (c && deskChatEnd && !deskChatSent && (c._youAt || 0) > (c._pinAt || 0) && !boxAtEnd(c)) deskChatEnd = false;
+    if (c && deskChatEnd) { boxStickToEnd(c, deskChatSent); deskChatSent = false; }
+  }
 }
