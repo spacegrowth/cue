@@ -438,7 +438,7 @@ test("Desk approvals send Allow and No for the pending request, from the opened 
       Object.assign(item.ask, { item_id: id, kind: "permission", text: "Run npm test" });
       st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id, kind: "permission", tool_name: "Bash", tool_input: { command: "npm test" } });
     }, id);
-    await expect(statusOf(page, "d1")).toHaveText("Asks you");
+    await expect(statusOf(page, "d1")).toHaveText("Needs your OK");
     await expect(row.locator("button")).toHaveCount(0);
     await row.click();
     await page.locator(`.dk-right .act-card [data-act="${behavior}"][data-id="${id}"]`).click();
@@ -457,7 +457,7 @@ test("an approval in Waiting on you: the whole command is in the opened item (#2
     st.items = st.items.filter((i) => i.id !== "long-approval");
     st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id: "long-approval", kind: "permission", tool_name: "Bash", tool_input: { command: long } });
   }, long);
-  await expect(statusOf(page, "d1")).toHaveText("Asks you");
+  await expect(statusOf(page, "d1")).toHaveText("Needs your OK");
   await page.locator('.dk-items [data-desk-item="d1"]').click();
   await expect(page.locator(".dk-right .dk-ask")).toContainText("bodylistmac.txt headmac.txt footmac.txt");
 });
