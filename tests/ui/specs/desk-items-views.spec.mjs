@@ -101,7 +101,11 @@ test("a row opens its item, lit in place, and back goes to the lead's chat", asy
   // In the middle, left of Items, which stays where it is; the row lit in the same place.
   expect((await sp.boundingBox()).x).toBeLessThan((await items(page).boundingBox()).x);
   await expect(row).toHaveClass(/\bon\b/);
-  expect(await row.boundingBox()).toEqual(before);
+  // Lit in the same place: only its full line opens under it (#810 option C), so it grows downward, nothing above moves.
+  const after = await row.boundingBox();
+  expect({ x: after.x, y: after.y, width: after.width }).toEqual({ x: before.x, y: before.y, width: before.width });
+  await expect(row.locator(".dkn-xl")).toBeVisible();
+  expect(after.height).toBeGreaterThan(before.height);
   // A row in Up next opens its item too.
   await box(page, "next").locator('[data-desk-item="d4"]').click();
   await expect(page.locator(".dk-c > .dk-right .dkn-sp .dkn-smeta")).toContainText("#d4");

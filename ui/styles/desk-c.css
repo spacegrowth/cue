@@ -152,6 +152,17 @@
    together moved the rows twice as far as the fold, down. Without it, the rows over it come down as it shuts. */
 .dkn-body:has(.dk-leave) { overflow-anchor: none; }
 .dkn-now .dk-soon { margin-left: 0; order: -1; }
+/* Stuck, stopped or quiet: amber, darkened toward the ink so small words still read (amber alone is 3.8:1 on white). */
+.dkn-nw.amber { color: color-mix(in srgb, var(--amber) 72%, var(--ink)); font-weight: 500; }
+/* The open row's full line (desk/c.js deskCFull, #810 option C): across the whole row under it, what it's doing in full,
+   what it waits on and what's next. Every row has it; only the open one shows it, so the rest keep their height. */
+.dkn-xl { display: none; grid-column: 1 / -1; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); gap: 4px 10px; align-items: baseline; flex-wrap: wrap; font-size: var(--type-small); line-height: var(--type-small-lh); min-width: 0; }
+.dkn-row.on .dkn-xl { display: flex; }
+.dkn-xl > b { font-weight: 600; color: var(--muted); flex: none; }
+.dkn-xs { min-width: 0; overflow-wrap: anywhere; }
+.dkn-xn { color: var(--muted); }
+.dkn-row.on:not(.dkn-b-blocked *) .dkn-xl { border-top-color: color-mix(in srgb, var(--on-sel) 25%, transparent); }
+.dkn-row.on:not(.dkn-b-blocked *) :is(.dkn-xl > b, .dkn-xn) { color: var(--on-sel); }
 
 /* Strip (K): one 6px strip, each step's piece as long as it took (desk/c.js deskCStrip sets its share), done ones and
    the one it's at never under 18px, steps to come 8px stubs; the one it's at in the Board's waiting stripes; each time

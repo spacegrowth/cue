@@ -1,7 +1,7 @@
 // The Desk: an item finishing (Landing, install, a failed build), waiting rows, and the list's look.
 import { test, expect, pick, openDesk, deskAllSessions } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
-import { listOrder, boxOf, groupOf, statusOf, openDone, openMore } from "./desk.mjs";
+import { listOrder, boxOf, groupOf, statusOf, openDone, openMore, fullOf } from "./desk.mjs";
 
 // Done means it's in your app (#181): a DONE is committed, built and installed before it's yours to check.
 /** Item `id` of the cue Desk changed by `patch` (merged in). */
@@ -14,9 +14,9 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   const since = await page.evaluate((t) => clockAt(t), began);
   await patchItem(cue, "d5", { state: "finishing", finish: { step: "line", wait: "The main checkout is in the middle of a merge", at: began } });
   const row = page.locator('.dkn-items [data-desk-item="d5"]');
-  const st = statusOf(page, "d5");
+  const st = fullOf(page, "d5");
   // At work, in WORKING; its row says what it waits on, its strip at Landing (#346).
-  await expect(st).toHaveText(`In the landing line · waits: The main checkout is in the middle of a merge · since ${since}`);
+  await expect(fullOf(page, "d5")).toHaveText(`In the landing line · waits: The main checkout is in the middle of a merge · since ${since}`);
   expect(await groupOf(page, "d5")).toBe("WORKING");
   await expect(row.locator(".dkn-ks")).toHaveAttribute("aria-label", "Step 5 of 6, Landing");
   await expect(row).not.toHaveClass(/\bask\b/);
@@ -103,9 +103,9 @@ test("the landing line: the one being checked first, then the one moved up, then
   expect(await working()).toEqual(["d5", "d6", "d4"]);
   await expect(page.locator('.dkn-items .dkn-gh[data-desk2b-group="working"] > span:not(.dkn-fa)')).toHaveText("3");
   expect(await groupOf(page, "d3")).toBe("WAITING TO INSTALL");
-  const st = (id) => statusOf(page, id);
+  const st = (id) => fullOf(page, id);
   const hm = (ms) => page.evaluate((x) => clockAt(x), ms);
-  await expect(st("d5")).toHaveText(`Checking before it lands · since ${await hm(t + 120_000)}`);
+  await expect(fullOf(page, "d5")).toHaveText(`Checking before it lands · since ${await hm(t + 120_000)}`);
   await expect(st("d6")).toHaveText(`In the landing line · since ${await hm(t + 60_000)}`);
   await expect(st("d4")).toHaveText(`In the landing line · since ${await hm(t)}`);
   await expect(st("d3")).toHaveText(/^On main · /);
@@ -219,12 +219,12 @@ test("each waiting row asks you; the most-unblocking first; a stopped item waits
   const order = await listOrder(page);
   expect(order.slice(order.indexOf("# WAITING ON YOU"), order.indexOf("# WAITING ON YOU") + 3)).toEqual(["# WAITING ON YOU", "d2", "d1"]);
   await expect(statusOf(page, "d2")).toHaveText("Asks you");
-  await expect(statusOf(page, "d1")).toHaveText("Asks you");
+  await expect(statusOf(page, "d1")).toHaveText("Needs your OK");
   // What it unblocks isn't under its row.
   await expect(page.locator(".dkn-items .dk-ub")).toHaveCount(0);
   const d3 = page.locator('.dkn-items [data-desk-item="d3"]');
   expect(await groupOf(page, "d3")).toBe("WORKING");
-  await expect(statusOf(page, "d3")).toHaveText("Stopped · the Desk lead is on it");
+  await expect(fullOf(page, "d3")).toHaveText("Stopped · the Desk lead is on it");
   await expect(d3).not.toHaveClass(/\bask\b/);
   for (const theme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
@@ -240,7 +240,7 @@ test("an item whose holder said what it waits on shows waiting on that, not stop
     Object.assign(it, { state: "working", stopped: false, waiting: "I'm waiting on the test run.", latest: "I'm waiting on the test run." });
   });
   const d3 = page.locator('.dkn-items [data-desk-item="d3"]');
-  await expect(statusOf(page, "d3")).toHaveText("Waits: I'm waiting on the test run.");
+  await expect(fullOf(page, "d3")).toHaveText("Waits: I'm waiting on the test run.");
   await expect(d3).not.toContainText(/stopped/i);
 });
 
@@ -260,13 +260,16 @@ test("a stopped item's row, open or not, keeps its title on one line and its num
     return { lines: Math.round(t.height / parseFloat(getComputedStyle(tt).lineHeight)), cut: tt.scrollWidth > tt.clientWidth, under: s.top >= t.bottom - 1, sameLeft: Math.abs(s.left - t.left) < 1, h: el.getBoundingClientRect().height };
   });
   await expect(row.locator(".dkn-sub .dkn-id")).toHaveText("#d3");
-  await expect(statusOf(page, "d3")).toHaveText("Stopped · the Desk lead is on it");
+  await expect(fullOf(page, "d3")).toHaveText("Stopped · the Desk lead is on it");
   const was = await shape();
   expect({ ...was, h: undefined }).toEqual({ lines: 1, cut: true, under: true, sameLeft: true, h: undefined });
   // Opened, its row is lit in place (#666); back, the row is as it was.
   await row.locator(".dkn-tt").click();
   await expect(row).toHaveClass(/\bon\b/);
-  expect(await shape()).toEqual(was);
+  // Its full line opens under it (#810 option C): taller, the rest as it was.
+  const open = await shape();
+  expect({ ...open, h: undefined }).toEqual({ ...was, h: undefined });
+  expect(open.h).toBeGreaterThan(was.h);
   await page.locator(".dk-right .dkn-sback .dk-back").click();
   await expect(row).not.toHaveClass(/\bon\b/);
   expect(await shape()).toEqual(was);
@@ -350,7 +353,7 @@ test("an item shows ready only once its work is on main: until then it says wher
   const at = Date.now(), since = await page.evaluate((t) => clockAt(t), at);
   await patchItem(cue, "d5", { state: "finishing", finish: { step: "landing", wait: "on side, not main", at } });
   const d5 = page.locator('.dkn-items [data-desk-item="d5"]');
-  await expect(statusOf(page, "d5")).toHaveText(`Committed, not on main yet · on side, not main · since ${since}`);
+  await expect(fullOf(page, "d5")).toHaveText(`Committed, not on main yet · on side, not main · since ${since}`);
   await expect(d5.locator(".dk-ok")).toHaveCount(0);
   // To check with its files uncommitted (its session on another machine): no ✓ on its row; its row says it isn't on
   // main and its bar's button commits it there.
@@ -399,7 +402,7 @@ test("the open item's long title keeps its full width beside its icon, not one l
   expect(k.y).toBeLessThanOrEqual(t.y + 4);   // its kind and number on its first line
 });
 
-test("a working row says what its holder does and since when, in mono; no Stalled word, colour or count (#285, #666)", async ({ page, cue }) => {
+test("a working row says what its holder does and since when, in plain words (#810); no Stalled word, colour or count (#285, #666)", async ({ page, cue }) => {
   await cue.open("desk", { frozen: true });
   await openDesk(page);
   const order = await listOrder(page);
@@ -415,11 +418,12 @@ test("a working row says what its holder does and since when, in mono; no Stalle
   await set({ d3: act(1, "Editing desk.rs", "last edited desk.rs"), d5: act(14, "Reading model.rs", "last read model.rs"), d1: act(30, "Running cargo test", "last ran cargo test") });
   const st = (id) => statusOf(page, id);
   await expect(st("d3")).toHaveText(/^Editing desk\.rs · \S+/);
-  await expect(st("d3")).toHaveClass(/\bmono\b/);
+  // Plain words, not the tool's mono (#810 option C); the exact step is on the open row's full line.
+  await expect(st("d3")).not.toHaveClass(/\bmono\b/);
   // Quiet 14 minutes, it still says what it does (#666; its session's own live step, when it has one, over the
   // item's): no Stalled word, class, colour or count.
   await expect(st("d5")).toHaveText(/^Testing the fix · \S+/);
-  await expect(st("d5")).toHaveClass(/\bmono\b/);
+  await expect(st("d5")).not.toHaveClass(/\bmono\b/);
   await expect(page.locator(".dkn-items .stalled, .dkn-items .dk-split")).toHaveCount(0);
   await expect(page.locator(".dkn-items")).not.toContainText("Stalled");
   const color = (sel) => page.locator(sel).evaluate((el) => getComputedStyle(el).color);
