@@ -235,6 +235,12 @@ function landsLeave() {
   else if (!lands.busy) lands = null;
   renderMain();
 }
+/** What was just saved, kept on Desk `desk` at once: the screen opened again before Cue's next refresh shows it,
+ *  not what was there before. */
+function landsKeep(desk, put) {
+  const d = (state.desk?.projects || []).find((x) => x.project === desk);
+  if (d) put(d);
+}
 /** Save: what you changed, applied together, then the screen closes. A part that couldn't be saved says so and
  *  stays on the screen, changed; one that was saved counts as saved. */
 function landsSave() {
@@ -244,14 +250,14 @@ function landsSave() {
   if (landsSetChanged(a)) {
     const set = landsOut(a.set, a.steps), steps = { ...a.steps };
     jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
-      () => { a.was.set = { ...a.set }; a.was.steps = steps; },
+      (view) => { a.was.set = { ...a.set }; a.was.steps = steps; landsKeep(a.desk, (d) => { if (view?.set) d.lands = view; }); },
       (e) => { throw `how work lands: ${e}`; },
     ));
   }
   if (landsModelChanged(a)) {
     const model = a.model;
     jobs.push(invoke("desk_model_set", { desk: a.desk, model }).then(
-      () => { a.was.model = model; },
+      (saved) => { a.was.model = model; landsKeep(a.desk, (d) => { d.model = typeof saved === "string" ? saved : model === "default" ? "" : model; }); },
       (e) => { throw `the model: ${e}`; },
     ));
   }
@@ -267,7 +273,11 @@ function landsSave() {
   if (landsAskChanged(a)) {
     const ticks = [...a.ab.ticks], kinds = askBeforeKinds().map((x) => x.key).filter((x) => ticks.includes(x));
     jobs.push(invoke("ask_before_set", { project: a.ab.project, kinds }).then(
-      () => { a.was.ticks = ticks; },
+      (kept) => {
+        a.was.ticks = ticks;
+        const ow = state.settings?.project?.oneway;
+        if (ow && Array.isArray(kept)) ow.set = { ...ow.set, [a.ab.project]: kept };
+      },
       (e) => { throw `Ask me before: ${e}`; },
     ));
   }
