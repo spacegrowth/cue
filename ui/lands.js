@@ -235,11 +235,25 @@ function landsLeave() {
   else if (!lands.busy) lands = null;
   renderMain();
 }
-/** What was just saved, kept on Desk `desk` at once: the screen opened again before Cue's next refresh shows it,
- *  not what was there before. */
-function landsKeep(desk, put) {
-  const d = (state.desk?.projects || []).find((x) => x.project === desk);
-  if (d) put(d);
+/** What was just saved, per Desk: { lands, model, at }. Shown at once, and kept over any update Cue built before the
+ *  save that comes in after it (an update and a command's answer come back on their own ways), until one has it. */
+const landsHeld = new Map();
+const LANDS_HELD_MS = 10000;
+/** What was just saved on Desk `desk` (`part` "lands" or "model"), kept on it from now: the screen opened again
+ *  shows it, not what was there before. */
+function landsKeep(desk, part, value) {
+  landsHeld.set(desk, { ...landsHeld.get(desk), [part]: value, at: Date.now() });
+  landsHeldApply(state);
+}
+/** Each update (app.js setState): what was just saved stays on its Desk until the update has it too. */
+function landsHeldApply(s) {
+  for (const [desk, h] of landsHeld) {
+    const d = (s.desk?.projects || []).find((x) => x.project === desk);
+    if (!d || Date.now() - h.at > LANDS_HELD_MS) { landsHeld.delete(desk); continue; }
+    if ("model" in h) { if ((d.model || "") === h.model) delete h.model; else d.model = h.model; }
+    if ("lands" in h) { if (JSON.stringify(d.lands?.set) === JSON.stringify(h.lands.set)) delete h.lands; else d.lands = h.lands; }
+    if (!("model" in h) && !("lands" in h)) landsHeld.delete(desk);
+  }
 }
 /** Save: what you changed, applied together, then the screen closes. A part that couldn't be saved says so and
  *  stays on the screen, changed; one that was saved counts as saved. */
@@ -250,14 +264,14 @@ function landsSave() {
   if (landsSetChanged(a)) {
     const set = landsOut(a.set, a.steps), steps = { ...a.steps };
     jobs.push(invoke("desk_lands_set", { desk: a.desk, lands: set }).then(
-      (view) => { a.was.set = { ...a.set }; a.was.steps = steps; landsKeep(a.desk, (d) => { if (view?.set) d.lands = view; }); },
+      (view) => { a.was.set = { ...a.set }; a.was.steps = steps; if (view?.set) landsKeep(a.desk, "lands", view); },
       (e) => { throw `how work lands: ${e}`; },
     ));
   }
   if (landsModelChanged(a)) {
     const model = a.model;
     jobs.push(invoke("desk_model_set", { desk: a.desk, model }).then(
-      (saved) => { a.was.model = model; landsKeep(a.desk, (d) => { d.model = typeof saved === "string" ? saved : model === "default" ? "" : model; }); },
+      (saved) => { a.was.model = model; landsKeep(a.desk, "model", typeof saved === "string" ? saved : model === "default" ? "" : model); },
       (e) => { throw `the model: ${e}`; },
     ));
   }
