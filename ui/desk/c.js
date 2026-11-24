@@ -14,40 +14,60 @@ const DESK_C_CREW = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"
 /** Which of Up next and Parked is open ("next", "parked" or "" for neither): one at a time, Up next to begin with. */
 const deskCLowOpen = () => { try { return localStorage.getItem("cue.deskCLow") ?? "next"; } catch { return "next"; } };
 /** Up next or Parked folded or opened as the Board's drawers are (board.js foldDrawer): one open at a time, so a
- *  click moves the room from one to the other. Both slide at once, in place, with their rows showing (the folded one
- *  keeps its rows in the page, hidden): measured as they'll end up, then each eased from its height to that. Drawn
- *  again once they've landed. */
+ *  click moves the room from one to the other. Only these two move, in place, with their rows showing (the folded one
+ *  keeps its rows in the page, hidden): measured as they'll end up, then each eased from its height to that, and the
+ *  green under the card with them when it grows or shrinks (both folded it's their headings alone). Nothing is drawn
+ *  afresh: redraws wait while they slide (`folding`, app/render.js), and on landing they're left as they are, the
+ *  lists' cuts measured again; a redraw held meanwhile happens then (#838: the slide ended a frame early, at its
+ *  natural heights, then the whole list was drawn again, and a redraw mid-slide jumped it to the end). */
 let deskCLowSliding = 0;
 function deskCLowFold(name) {
   const to = deskCLowOpen() === name ? "" : name;
   try { localStorage.setItem("cue.deskCLow", to); } catch { /* this window only */ }
-  const secs = [...document.querySelectorAll("#app .dkn-lcol > .dkn-dr")];
-  if (!secs.length || matchMedia("(prefers-reduced-motion: reduce)").matches) return renderMain();
-  const h = (el) => el.getBoundingClientRect().height;
-  const from = secs.map(h);
+  const secs = [...document.querySelectorAll("#app .dkn-lcol > .dkn-dr")], low = document.querySelector("#app .dkn-low");
   const set = (sec, open) => {
     sec.classList.toggle("fold", !open);
     const head = sec.querySelector(".dkn-dh");
     head.setAttribute("aria-expanded", String(open));
     head.firstElementChild.outerHTML = DESK_C_ARROW(open);
   };
+  const land = () => { deskCFitKey = ""; deskCFitLists(); };
+  if (!secs.length || !low) return renderMain();
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { secs.forEach((sec) => set(sec, sec.dataset.dknDrawer === to)); return land(); }
+  // A slide still going: on from where it has got to.
+  const h = (el) => el.getBoundingClientRect().height;
+  const from = secs.map(h), lowFrom = h(low);
+  for (const el of [low, ...secs]) { el.getAnimations().forEach((a) => a.cancel()); el.style.flex = el.style.overflow = el.style.minHeight = el.style.height = ""; }
   secs.forEach((sec) => set(sec, sec.dataset.dknDrawer === to));
-  const end = secs.map(h);
+  const end = secs.map(h), lowEnd = h(low);
   // The one folding keeps its rows in sight as it closes.
   secs.forEach((sec) => { if (sec.dataset.dknDrawer !== to) sec.classList.remove("fold"); sec.style.flex = "none"; sec.style.overflow = "hidden"; });
+  const lowMoves = Math.abs(lowEnd - lowFrom) > 0.5;
+  if (lowMoves) { low.style.flex = "none"; low.style.minHeight = "0"; }
   const run = ++deskCLowSliding;
+  folding = true;
   const done = () => {
     if (run !== deskCLowSliding) return;
     deskCLowSliding = 0;
-    secs.forEach((sec) => { sec.style.flex = sec.style.overflow = ""; });
-    renderMain();
+    folding = false;
+    // Landed, in the same frame: the folded one shut, every height its own again, the cuts measured again.
+    secs.forEach((sec) => { if (sec.dataset.dknDrawer !== to) sec.classList.add("fold"); });
+    for (const el of [low, ...secs]) { el.getAnimations().forEach((a) => a.cancel()); el.style.flex = el.style.overflow = el.style.minHeight = ""; }
+    land();
+    if (heldDraw) { heldDraw = false; renderMain(); }
   };
-  secs.forEach((sec, k) => sec.animate([{ height: `${from[k]}px` }, { height: `${end[k]}px` }], { duration: 260, easing: "cubic-bezier(0.2, 0, 0, 1)" }));
-  setTimeout(done, 280);
+  // Each holds its last frame until done() puts it as it is: no frame at its natural height between.
+  const opts = { duration: DESK_C_OPEN_MS, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "forwards" };
+  const anims = secs.map((sec, k) => sec.animate([{ height: `${from[k]}px` }, { height: `${end[k]}px` }], opts));
+  if (lowMoves) anims.push(low.animate([{ height: `${lowFrom}px` }, { height: `${lowEnd}px` }], opts));
+  Promise.all(anims.map((a) => a.finished)).then(done, () => {});
+  // A redraw that went ahead anyway (the page drawn afresh) drops the animations and their finish.
+  setTimeout(done, DESK_C_OPEN_MS + 200);
 }
+/** How long a drawer's slide takes, as desk-c.css's dkn-open. */
+const DESK_C_OPEN_MS = 260;
 /** Drawers you just opened: key -> when, for their rows' slide in (DESK_C_OPEN_MS, as desk-c.css's dkn-open). */
 const deskCOpened = new Map();
-const DESK_C_OPEN_MS = 260;
 const DESK_C_ARROW = (open) => `<span class="dkn-fa" aria-hidden="true">${open ? "▾" : "▸"}</span>`;
 
 // ---------- the sessions column, on the green ----------
@@ -278,7 +298,8 @@ function deskCFitLists() {
   // Working first: cut to its first rows, so the card's own cut below counts it at that height.
   deskCCapWorking();
   const lists = [...document.querySelectorAll("#app .dkn-items [data-dkn-list]:not([data-dkn-cap])")];
-  const key = `${innerWidth}x${innerHeight}|${lists.map((el) => `${el.dataset.dknList}:${el.querySelectorAll(".dk-it").length}`).join(",")}`;
+  // A folded list (Up next or Parked, kept in the page hidden) counts as folded: opened, it and the card are measured again.
+  const key = `${innerWidth}x${innerHeight}|${lists.map((el) => `${el.dataset.dknList}:${el.getClientRects().length ? el.querySelectorAll(".dk-it").length : "-"}`).join(",")}`;
   // Where each list was scrolled, and whether to its end (#791): a row folded shut and gone there must not pull the
   // rows down as the list is cut again.
   const tops = lists.map((el) => el.scrollTop), atEnd = lists.map((el) => el.scrollTop > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1);

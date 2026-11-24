@@ -196,7 +196,9 @@
 /* With Up next or Done today open they take 35% of the column; the card has the rest. */
 /* Both folded: just their two headings, right under the card, which takes all the room above them. */
 .dkn-low:not(:has(.dkn-dr:not(.fold))) { flex: none; min-height: 0; }
-@container dknl (max-width: 460px) { .dkn-low { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 14px; overflow-y: auto; } .dkn-dl { overflow: visible; } }
+/* Narrow, each list its rows' full height and the green scrolls as a whole (#838: the lists were squeezed to a row each,
+   scrolling within, as .dkn-dl's own overflow below came after this one). */
+@container dknl (max-width: 460px) { .dkn-low { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: max-content; gap: 14px; overflow-y: auto; } .dkn-low .dkn-dl { overflow: visible; } }
 /* The Board's drawer head: the arrow at the left, the name and count; the whole line folds it. */
 .dkn-dh { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; align-items: baseline; gap: 8px; padding: 0 6px 10px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; color: var(--on-bg); }
 /* A drawer just opened: its rows slide down into place and fade in (desk/c.js DESK_C_OPEN_MS). */
