@@ -85,3 +85,41 @@ test("Esc twice once it has answered: stopped, and nothing comes back into the b
   await cue.called("interrupt_session", { sessionId: "site" });
   await expect(box).toHaveValue("");
 });
+
+// Send to… is one button in every chat that talks to a session (#854): a crew member's and a parked session's too,
+// opening the same menu over the same sessions and sending the same way.
+test("a crew member's chat: Send to… on its words and its answer, and it sends its answer on", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.override("session_steps", ({ sessionId }, now) => {
+    if (sessionId !== "lead") return { version: 0, turns: [] };
+    const say = (text, m) => ({ t: "say", text, at_ms: now - m * 60000 });
+    const step = { t: "step", id: "s1", kind: "read", verb: "Read", subject: "ui/header.js", mono: true, result: "", bad: false, done: true, at_ms: now - 4 * 60000 };
+    return { version: 7, turns: [], helpers: [{ id: "id-search", desc: "search-centre", kind: "general-purpose", model: "", teammate: true, name: "search-centre", step: "", started_ms: now - 9 * 60000, finished_ms: now - 60000, last_ms: now - 60000, tokens: 0, running: false, more: 0,
+      items: [say("Looking at the header.", 5), step, say("Done: the search field stays centred.", 1)] }] };
+  }, Date.now());
+  await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
+  await page.locator('.dk-right .dk-pg [data-desk-crew="id-search"]').click();
+  const chat = page.locator('.dk-right .dkn-crew[data-desk-page="crew"] .dk-crewpg .ag-chat');
+  await expect(chat.locator(".stx-say .cv-fwd")).toHaveCount(1);
+  const fwd = chat.locator(".bg-view-reply:not(.ag-ask) .cv-fwd");
+  await expect(fwd).toBeVisible();
+  await fwd.click();
+  // The same menu as on the Board: every other open session, a note, Send.
+  await expect(page.locator(".fwd-pop")).toBeVisible();
+  await expect(page.locator('.fwd-pop [data-fwd-to="lead"]')).toHaveCount(0);
+  await page.locator('.fwd-pop [data-fwd-to="site"]').click();
+  await page.locator('.fwd-pop [data-act="send-forward"]').click();
+  const call = await cue.called("send_to_session", { sessionId: "site" });
+  expect(call.args.text).toContain("Done: the search field stays centred.");
+  await expect(page.locator(".fwd-pop")).toHaveCount(0);
+});
+
+test("a parked session's chat: Send to… on its reply opens the same menu", async ({ page, cue }) => {
+  await cue.open("parked-ended");
+  await page.evaluate(() => { setActive(null, "guide"); renderMain(); });
+  const msg = page.locator(".active-pane.parked .cv-agent").last();
+  await expect(msg.locator(".cv-fwd")).toHaveCount(1);
+  await msg.locator(".cv-fwd").click();
+  await expect(page.locator(".fwd-pop")).toBeVisible();
+});

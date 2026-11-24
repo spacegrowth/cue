@@ -100,7 +100,7 @@ function parkedPane(p) {
   const K = keyer();
   const rows = shown.map((e) => keyed(e.role === "you"
     ? `<div class="cv-you mg-you"><div class="cv-you-text mg-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="mg-f"><span class="mg-st">You · ${ago(e.at_ms)} ago</span></div></div>`
-    : `<div class="cv-agent mg-agent"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}</span>${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg mg-text cv-text">${md(addOn.plain(e.text))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
+    : `<div class="cv-agent mg-agent"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}</span>${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg mg-text cv-text">${md(addOn.plain(e.text))}</div><div class="mg-f cv-acts">${fwdBtn(`${sid}:${e.at_ms}`, e.text, name, sid)}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
   const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
   const line = w
     ? `<div class="mg-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`

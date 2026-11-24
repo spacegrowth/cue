@@ -342,7 +342,6 @@ function chatAgentHtml(c, e, n) {
   const long = shown.join("\n").length > 280 || shown.length > 4;
   const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
   const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
-  fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
   // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
   // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
   const split = page?.reply?.(e, key);
@@ -360,7 +359,15 @@ function chatAgentHtml(c, e, n) {
   const quiet = notice?.stays ? dkNoticeQuiet(s, ex, notice.turn, page) : "";
   return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${out ? " data-dkr" : ""} data-at="${e.at_ms}">${quiet}<div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : fwdBtn(key, e.text, project, sid)}</div>${follow}</div>`;
+}
+/** "↗ Send to…" on an agent's words, the one button every chat that talks to a session draws (#854): this chat's, the
+ *  Board's, the Desk's item and session chats, a crew member's (helpers.js agentChatHtml) and a parked session's
+ *  (parked.js). It keeps what it sends (fwdMsgs; `key` starts with the session's id and ":", so window.js keeps it
+ *  while the session lasts), and a click opens the one menu (sheets.js forwardPop) over the same list of sessions. */
+function fwdBtn(key, text, from, fromSid) {
+  fwdMsgs.set(key, { text: addOn.plain(text), from, fromSid });
+  return `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`;
 }
 /** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */
 const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentName(harness))}</span>${machTag(machine)} · ${ago(at)} ago`;

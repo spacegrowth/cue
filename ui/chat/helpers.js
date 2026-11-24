@@ -202,13 +202,16 @@ function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key
   const end = h && !running ? helperTail(h) : items.length;
   const reply = h ? items.slice(end).map((x) => x.text).join("\n\n").trim() || answer : answer;
   const out = [];
+  // Send to… under its words and its answer (render.js fwdBtn), keyed under its lead's id so it lasts as the lead does.
+  const from = sessionOf(sid)?.project || by || "crew member";
+  const fwd = (id, text) => `<div class="mg-f cv-acts ag-acts">${fwdBtn(`${sid}:${`ag-${key}-${id}`.replace(/:/g, "-")}`, text, from, sid)}</div>`;
   if (ask) out.push(agentBriefHtml(sid, key, ask, by));
   // Its steps and words, a run of steps at a time between its words.
   const runs = [];
   if (h) items.slice(0, end).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
   else if (steps.length) runs.push({ lines: steps });
   runs.forEach((r, n) => {
-    if (r.say) { out.push(`<div class="stx-say msg" data-key="${esc(r.say.id || `s:${r.say.at_ms}`)}">${md(r.say.text)}</div>`); return; }
+    if (r.say) { const id = r.say.id || `s:${r.say.at_ms}`; out.push(`<div class="stx-say msg" data-key="${esc(id)}">${md(r.say.text)}${fwd(id, r.say.text)}</div>`); return; }
     const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = agentRunOpen.has(k);
     const live = running && n === runs.length - 1;
     const count = `${list.length}${!n && h?.more ? "+" : ""} step${list.length === 1 ? "" : "s"}`, sum = r.steps ? turnSummary(r.steps) : "";
@@ -219,7 +222,7 @@ function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key
     out.push(`<div class="stx" data-key="run:${esc(first)}">${head}${body ? `<div class="stx-steps">${body}</div>` : ""}</div>`);
   });
   if (!runs.length && !reply) out.push(`<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`);
-  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div></div>`);
+  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div>${fwd("reply", reply)}</div>`);
   return `<div class="ag-chat">${out.join("")}</div>`;
 }
 /** One agent in full, in place of the chat: who it is, and its chat (agentChatHtml: what it was asked, what it did,
