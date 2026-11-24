@@ -17,7 +17,8 @@ Three of today's differences look like they were chosen on purpose. They stay as
    - #123 and session names as links;
    - "↗ Send to…";
    - btw with its panel;
-   - a status line that names background agents.
+   - a status line that names background agents;
+   - Escape bringing back a message you stopped, so nothing typed is lost.
 2. **One box everywhere**, a day or two. The Desk's item and session boxes become the same box as the Board's and the lead's, with Queue, the "/" menu and Send at a time.
 3. **Crew members**, later and only after a mock. A crew member's chat moves onto the same chat, so it gets Listen, Read, links and Show all too.
 
@@ -65,6 +66,7 @@ The lead, session, item and Board chats all draw their messages with the same fu
 | Held message (Edit, Send now, Cancel) | Yes | Yes | Different: Sending…, failed and Send again only | Yes | No |
 | Attachments (paste, drop, add image) | Yes | Yes | Yes | Yes | Yes on Desk, through the lead's box |
 | Mic | Yes | Yes | Yes | Yes | Yes |
+| Escape gives back what you just sent | Different: only a message still waiting to go comes back; one already sent is lost in a hosted session | Same as Lead | Same as Lead | Same as Lead; the mini window's Escape only closes the chat | Different: brings back the lead's waiting message, into the crew member's box |
 | Show all / Fold on long replies | Yes | Yes | Yes | Yes | No |
 | Earlier messages as you scroll up | Different: "Show earlier" after a hand-off | Yes | Yes | Yes | Different: Board shows "N earlier ›"; Desk loses the "earlier steps not shown" line |
 
@@ -221,6 +223,24 @@ These are the differences no comment in the code explains or defends.
     - Its messages are hand-drawn bubbles (parked.js:102-104), with no Listen, Read, Fold or Send to.
 12. **Pasting a picture skips the limits.** Paste (ui/app/inputs.js:35) adds pictures with no limit. The Add image picker (ui/chat/patch.js:250-252) caps at 6 pictures and 15 MB.
 
+13. **Escape gives back what you sent only in a terminal; in a hosted session the text is lost.**
+    - What Cue's chats do on Escape: `escSession` (ui/app/keys.js:124-142).
+      - If Cue is keeping a message for the session (you sent it while it worked), Escape takes it back into the box (`pullHeld`, ui/chat/compose.js:100-108).
+      - Otherwise Escape twice stops the turn (`interrupt`, ui/chat/compose.js:112). The message that already went is not put back in the box.
+    - Cue keeps a message sent mid-turn for both kinds of session:
+      - a session in a terminal: src-tauri/src/hub/send.rs:510-515;
+      - a hosted session: send.rs:571-575.
+
+      So a message still waiting comes back in every chat. One that has already gone, or one sent with Send now, does not.
+    - **Session in a terminal:** its stop is Escape typed into its terminal. Claude Code then puts the stopped message, or its own queue, back in its own input line there. Cue's box doesn't get it back, but the text isn't lost: it waits in the terminal. The note at send.rs:509-510 says so: "In the terminal's own queue only Claude Code could give it back."
+    - **Hosted session:** it has no terminal (send.rs:398-415). Its stop goes over its connection, and the text it was working on comes back nowhere.
+    - **Which chats this covers:**
+      - Board: through `keyEscape`, ui/app/keys.js:149.
+      - Desk lead, session, item and crew: through `deskEscSession`, ui/desk/act.js:584-593. The item takes it back through `deskHeldEdit` (act.js:590).
+      - A crew member's page sends Escape to its lead (act.js:592), so the lead's waiting message lands in the crew member's box.
+      - Mini window: Escape only closes the chat (`escKey`, ui/mini.js:486-490). It neither takes a message back nor stops the turn.
+    - **The fix:** when Escape stops a turn before it answered, Cue puts the stopped message back in that chat's box, for every kind of session. Cue already has the message's text, so this needs no help from the terminal. A message sent with Send now (queued in Claude Code) comes back the same way.
+
 Two old leftovers to clean up along the way. They don't change what anyone sees:
 - `deskSessChat` (ui/desk/page.js:500-520) can never run, since `deskCSessChat` covers every case it would;
 - `deskCrewPane` has unused variables at ui/desk/thread.js:124, 129, 137 and 138.
@@ -278,6 +298,7 @@ Sizes: S is up to half a day, M is a day or two, L is three days or more. Each s
    - Crew Activity: show the member's own moves.
    - Paste: cap pictures as the picker does.
    - Restarting pane: call `chatBody`.
+   - Escape (bug 13): a stopped message comes back into the box, and a crew member's page takes back only into the lead's box. The hosted session's message is the one that matters most: today it is lost.
 
    Each is a line or two, with a UI test in tests/ui/specs. This step is worth doing even if the rest waits.
 2. **One status line.** Size S. Low risk.
