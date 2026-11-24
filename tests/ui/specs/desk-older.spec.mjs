@@ -143,3 +143,45 @@ test("Give to… lists the sessions with work, the rest under one older line", a
   await older.click();
   await expect(menu.locator('[data-desk-give-to="spare"]')).toHaveCount(1);
 });
+
+test("sessions no process runs any more fold under Closed at the bottom, muted and saying closed; one that wakes moves back out (#834)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await openSessions(page);
+  await cue.change((st) => {
+    const site = st.sessions.find((x) => x.session_id === "site"), t = Date.now();
+    // "gone" ended (Cue's record has no process for it); "kept" ended too but holds an open item; "awake" still runs.
+    for (const [sid, pid, m] of [["gone", null, 5], ["kept", null, 6], ["awake", 9000003, 7]]) st.sessions.push({ ...site, session_id: sid, project: "cue", name: sid, state: "idle", agent_pid: pid, since_ms: t - m * 60000, thread: [] });
+    const d = st.desk.projects.find((x) => x.project === "cue");
+    d.members.push("gone", "kept", "awake");
+    d.items.push({ id: "d834", project: "cue", kind: "bug", title: "Held by kept", state: "queued", holder: { kind: "session", sid: "kept", name: "kept" }, updated: Math.floor(t / 1000) });
+  });
+  const side = page.locator(".dk-sessions"), closedH = side.locator('[data-desk-older="closed:cue"]');
+  await expect(closedH).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(async () => (await order(side)).slice(-1)).toEqual(["# Closed 1"]);
+  const rows = await order(side);
+  expect(rows.slice(-1)).toEqual(["# Closed 1"]);
+  expect(rows).toContain("kept");
+  expect(rows).toContain("awake");
+  expect(rows).not.toContain("gone");
+  await closedH.click();
+  await expect(closedH).toHaveAttribute("aria-expanded", "true");
+  const gone = side.locator('[data-desk-chat-of="gone"]');
+  await expect(gone).toHaveClass(/past/);
+  await expect(gone.locator(".dk-st")).toHaveText("closed");
+  expect((await order(side)).slice(-2)).toEqual(["# Closed 1", "gone"]);
+  await expect(side.locator(".dk-scroll [title]")).toHaveCount(0);
+  if (process.env.SHOT_DIR) {
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((th) => { document.documentElement.dataset.theme = th; }, theme);
+      await page.screenshot({ path: `${process.env.SHOT_DIR}/desk-closed-${theme}.png`, clip: await side.boundingBox() });
+    }
+    await page.setViewportSize({ width: 900, height: 600 });
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/desk-closed-small.png` });
+  }
+  // It wakes (a message started it again): out of Closed on the next update, no longer muted.
+  await cue.change((st) => { st.sessions.find((x) => x.session_id === "gone").agent_pid = 9000004; });
+  await expect(closedH).toHaveCount(0);
+  await expect(side.locator('[data-desk-chat-of="gone"]')).not.toHaveClass(/past/);
+  await expect(side.locator('[data-desk-chat-of="gone"] .dk-st')).toHaveText("idle");
+});

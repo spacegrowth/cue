@@ -30,7 +30,7 @@ CueBridge.area("desk", (w) => {
         const cwd = folderOf(project);
         if (!cwd) throw `no folder known for ${project}: start a session in it first`;
         const name = `${project}-lead`, id = `lead-${project}-${++n}`;
-        w.state.sessions.push({ session_id: id, name, project, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
+        w.state.sessions.push({ session_id: id, name, project, cwd, harness: "claude", hosted: true, agent_pid: 9000002, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
         d.lead = { sid: id, name, state: "live" };
       }
       w.changed();
@@ -65,7 +65,7 @@ CueBridge.area("desk", (w) => {
       const d = deskOf(project);
       d.id = project; d.independent = true; d.name = name || workspace; d.workspace_project = workspace; d.folder = cwd;
       const leadName = `${d.name}-lead`;
-      w.state.sessions.push({ session_id: sid, name: leadName, project: workspace, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
+      w.state.sessions.push({ session_id: sid, name: leadName, project: workspace, cwd, harness: "claude", hosted: true, agent_pid: 9000002, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
       d.lead = { sid, name: leadName, state: "live" }; join(project, sid);
       w.changed();
       return { id: project, project, sid };
