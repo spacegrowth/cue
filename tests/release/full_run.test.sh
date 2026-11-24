@@ -292,14 +292,17 @@ for _ in $(seq 1 100); do grep -q "^build-start slow" "$CALLS" && break; sleep 0
 TIMEFORMAT='%U %S %R'
 ( cd "$REPO" && { time CUE_FULL_RUN_POLL=1 CUE_FULL_RUN_STEPS="$WORK/steps.sh" "$ROOT/scripts/full-run.sh" --dir "$RUN" --at "$NEXT" --since "$BASE" >"$WORK/twin.out" 2>&1; } 2>"$WORK/twin.cpu" ) &
 TWIN=$!
-{ time full_run --at "$NEXT" --since "$BASE"; } 2>"$WORK/main.cpu"
+{ time CUE_FULL_RUN_POLL=1 full_run --at "$NEXT" --since "$BASE"; } 2>"$WORK/main.cpu"
 exits 0; is passed true; is at "\"$NEXT\""
 wait "$TWIN" || fail "the twin call failed: $(cat "$WORK/twin.out")"
 wait "$FIRST" || fail "the first call failed: $(cat "$WORK/first.out")"
 [ "$( { echo "$OUT"; cat "$WORK/twin.out"; } | grep -c "already made for these commits" | tr -d ' ')" = 1 ] || fail "not one call answered with the other's result: $(cat "$WORK/twin.out")"
 [ "$(grep -c "^build next" "$CALLS" | tr -d ' ')" = 1 ] || fail "the run of next was made $(grep -c "^build next" "$CALLS") times"
-awk '{ r[NR] = $3; c[NR] = $1 + $2 } END { m = c[1] < c[2] ? 1 : 2; exit !(r[m] >= 3 && c[m] < 0.5) }' "$WORK/main.cpu" "$WORK/twin.cpu" \
-  || fail "the call that only waited used the processor: $(cat "$WORK/main.cpu") / $(cat "$WORK/twin.cpu") (user system real)"
+# The call that only waited is the one that answered with the other's result; both ask every second. Waiting, it
+# uses under a tenth of the time it waits (spinning, it used all of it).
+if grep -q "already made for these commits" <<<"$OUT"; then WAITED="$WORK/main.cpu"; else WAITED="$WORK/twin.cpu"; fi
+awk '{ exit !($3 >= 3 && $1 + $2 < 0.1 * $3) }' "$WAITED" \
+  || fail "the call that only waited used the processor: $(cat "$WAITED") (user system real)"
 done_case
 
 start "a call waiting for an older commit gives up when one for a later commit waits too"
