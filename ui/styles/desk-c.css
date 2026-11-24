@@ -253,11 +253,24 @@
 .dkn-sp > .ap-head { flex: none; }
 .dkn-smeta { flex: none; padding: 4px 16px 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-sp > .dkn-ib { margin-top: 10px; border-top: 1px solid var(--line); }
-.dkn-stabs { flex: none; display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
-.dkn-stab { all: unset; cursor: pointer; padding: 6px 10px 8px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.dkn-stab.on { color: var(--ink); border-bottom-color: var(--ink); }
+/* The tabs over a session's or crew member's chat sit in a band between two lines; the picked one is filled. */
+.dkn-stabs { flex: none; display: flex; gap: 0; margin-top: 8px; padding: 0 2px; /* first label under the heading text (16px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dkn-stab { all: unset; cursor: pointer; padding: 7px 14px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
+.dkn-stab:hover { color: var(--ink); }
+.dkn-stab.on { color: var(--on-accent); background: var(--accent); }
+.dkn-stab.on .n { color: inherit; opacity: 0.8; }
 .dkn-stab .n { margin-left: 4px; font-weight: 500; color: var(--muted); }
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
+/* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: a band between two lines,
+   the picked one filled moss. */
+.dk-c .dk-ptabs { gap: 0; min-height: 0; margin-top: 8px; padding: 0 6px; /* first label under the heading text (20px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dk-c .dk-ptabs .dk-tab, .dk-c .dk-ptabs .dk-tname > .dk-tab { align-self: stretch; padding: 7px 14px; border: 0; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
+.dk-c .dk-ptabs .dk-tab:hover { color: var(--ink); }
+.dk-c .dk-ptabs .dk-tab.on { color: var(--on-accent); background: var(--accent); }
+.dk-c .dk-ptabs .dk-tab .n { font-size: inherit; line-height: inherit; font-weight: 500; }
+.dk-c .dk-ptabs .dk-tab.on .n { color: inherit; opacity: 0.8; }
+/* The tabs' top line is the only line over them: the heading and the strip above drop their own. */
+.dk-c .dk-pg[data-desk-page="dispatcher"]:not(.hid) > .dk-ph, .dk-c .dk-pg[data-desk-page="dispatcher"] > .dk-panel { border-bottom: 0; }
 .dkn-spm { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .dkn-sfiles { padding: 14px 20px; }
 /* A session's Files tab: this turn's, then each item it worked on, newest first (desk/c.js deskCSessTaskFiles). */

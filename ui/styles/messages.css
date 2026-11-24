@@ -138,6 +138,11 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 /* ---------- the status line under a chat (Working on…, Compacted…, Waiting on you…) ---------- */
 .mg-status { align-self: center; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 2px 0; font: var(--mg-meta); color: var(--muted); }
 .mg-status b { color: var(--ink); font-weight: 600; }
+/* The chat's status line ("Running: …", "Working on: …") stays one line, centred, with at least 15% clear at each
+   side: what it's doing is cut with "…", its step count and time always show. */
+.mg-status.cv-status { max-width: 70%; }
+.mg-status.cv-status .cv-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-status.cv-status > :not(.cv-what) { flex: none; white-space: nowrap; }
 /* A status line that needs you (out of usage, stuck, not started yet) is in ink; a button in one sits after its words. */
 .mg-status:is(.limit, .stuck) { color: var(--ink); }
 .mg-status .btn { margin-left: 6px; flex: none; }
