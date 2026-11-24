@@ -59,9 +59,17 @@ impl Hub {
             }
             // A session asking for a decision is no longer "just waiting for you".
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
+            // One of its agents asks while its own turn is over (at its prompt, or waiting on its agents, #787):
+            // answered, the agent goes on, and the session is still at its prompt, not at work.
+            let at_prompt = match st.sessions.state(&sid).as_deref() {
+                Some("agent") => true,
+                Some("waiting") => !agent_id.is_empty(),
+                _ => false,
+            };
             st.sessions.mark(&origin, "deciding", None);
             let thread = st.sessions.thread(&sid);
             let mut it = Self::new_item(st, &kind, origin);
+            it.at_prompt = at_prompt;
             it.thread = thread;
             it.tool_name = tool_name;
             it.tool_input = tool_input;
@@ -323,7 +331,13 @@ impl Hub {
                     st.answered_meanwhile.insert(sid.clone());
                 }
                 if !still_asking && (st.answered_meanwhile.remove(&sid) || answered) {
-                    st.sessions.mark(&it.origin, if it.at_prompt { "waiting" } else { "working" }, None);
+                    // At its prompt still: waiting on its agents if it was (#787), else on you.
+                    let back = match it.at_prompt {
+                        false => "working",
+                        true if st.sessions.waits_on_agents(&sid) => "agent",
+                        true => "waiting",
+                    };
+                    st.sessions.mark(&it.origin, back, None);
                 }
                 if answered {
                     st.sessions.note_decision(&sid, outcome, crate::config::context_keep());

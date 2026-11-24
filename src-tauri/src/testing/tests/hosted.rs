@@ -277,6 +277,52 @@ fn a_message_while_only_its_background_agents_work_goes_in_without_stopping_them
     assert_eq!(w.hosted.interrupted(), [sid.clone()], "your Stop stops it");
 }
 
+/// #787: its turn over, waiting on its teammate, which asks you something. Answered, the teammate goes on, and
+/// the lead is still at its prompt: your next message goes straight in, nothing kept, nothing stopped (a stop would
+/// end the teammate and the turn your message started).
+#[test]
+fn answering_its_teammates_ask_leaves_it_at_its_prompt_so_your_message_goes_in_and_stops_nothing() {
+    let w = World::new();
+    let sid = running(&w, "build it with a teammate");
+    let log = w.hub().session_origin(&sid).unwrap().transcript_path;
+    Transcript::at(&log).background_agent("a1", "Build it");
+    turn_ends(&w, &sid, "A teammate is on it.");
+    assert_eq!(w.snapshot().state(&sid), "agent", "at its prompt, waiting on its teammate");
+    let HostedEvent::Ask(mut a) = ask(AskKind::Permission, "r1") else { unreachable!() };
+    a.agent_id = "a1".into();
+    w.hosted_says(&sid, HostedEvent::Ask(a));
+    let id = w.snapshot().card(&sid)["id"].as_str().unwrap().to_string();
+    w.answer(&id, json!({ "behavior": "allow" }));
+    w.settle();
+    assert_eq!(w.snapshot().state(&sid), "agent", "its teammate goes on; the lead's own turn is still over");
+    w.send_to(&sid, "where ?");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "where ?".to_string())), "it goes in, not kept");
+    assert!(w.snapshot().session(&sid)["held"].is_null());
+    let _ = w.hub().send_held(&sid, true);
+    assert!(w.hosted.interrupted().is_empty(), "nothing stopped its teammate: {:?}", w.hosted.interrupted());
+}
+
+/// #787: Send now on a hosted session is Cue's own stop, to send your message: its log's "[Request interrupted by
+/// user]" isn't read as a turn you stopped, so no "Interrupted" card.
+#[test]
+fn send_now_on_a_hosted_session_is_no_interrupted_card() {
+    let w = World::new();
+    let sid = running(&w, "long job");
+    let log = w.hub().session_origin(&sid).unwrap().transcript_path;
+    w.send_to(&sid, "do this instead");
+    w.hub().send_held(&sid, true).unwrap();
+    assert_eq!(w.hosted.interrupted(), [sid.clone()]);
+    Transcript::at(&log).entry(json!({ "type": "user", "message": { "content": [{ "type": "text", "text": "[Request interrupted by user]" }] } }));
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "[ede_diagnostic] stopped".into(), failed: true, cost_usd: 0.0, unprompted: false });
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    // Past the moments a message reaching it vouches for it at work (activity.rs LOG_LAG_MS).
+    w.advance(15_000);
+    w.tick(false);
+    let s = w.snapshot();
+    assert_eq!(s.state(&sid), "working", "at work on your message");
+    assert!(!w.hub().pending().iter().any(|i| i.origin.session_id == sid && i.interrupted), "no Interrupted card");
+}
+
 #[test]
 fn a_turn_that_ends_is_a_finished_turn_card_with_its_cost() {
     let w = World::new();

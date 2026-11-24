@@ -196,6 +196,17 @@ fn a_turn_is_under_way_from_your_message_to_its_end() {
 }
 
 #[test]
+fn a_background_agents_lines_after_its_turn_ended_are_no_turn_of_its_own() {
+    let mut t = Translator::default();
+    t.step(&wire::parse(r#"{"type":"user","isReplay":true,"message":{"role":"user","content":"start a teammate"}}"#));
+    t.step(&wire::parse(r#"{"type":"result","subtype":"success","result":"A teammate is on it.","total_cost_usd":0.01}"#));
+    t.step(&wire::parse(r#"{"type":"assistant","parent_tool_use_id":"call-1","message":{"content":[{"type":"text","text":"Running the tests."}]}}"#));
+    assert!(!t.in_turn(), "its teammate works, it doesn't (#787)");
+    let es = t.step(&wire::parse(r#"{"type":"system","subtype":"init","session_id":"s"}"#));
+    assert!(es.contains(&HostedEvent::TurnStarted), "your next message starts a turn: {es:?}");
+}
+
+#[test]
 fn a_background_tasks_finish_notice_is_no_message_taken() {
     let mut t = Translator::default();
     let notice = r#"{"type":"user","isReplay":true,"origin":{"kind":"task-notification","producer":"session-task","runId":"r1"},"message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"}}"#;

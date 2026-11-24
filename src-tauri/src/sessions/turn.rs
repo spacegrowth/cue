@@ -211,6 +211,12 @@ impl Sessions {
         }
     }
 
+    /// At its prompt waiting on another agent (its background agents, or the agent driving it), as "agent" state
+    /// says; kept while one of them asks you something.
+    pub fn waits_on_agents(&self, session_id: &str) -> bool {
+        self.0.get(session_id).is_some_and(|s| s.helpers > 0 || !s.driven_by.is_empty())
+    }
+
     pub fn with_helpers(&self) -> Vec<Origin> {
         self.0.values().filter(|s| s.state == "agent" && s.helpers > 0).map(|s| s.origin.clone()).collect()
     }
