@@ -8,7 +8,7 @@ const deskActivityOpen = async (page) => {
   await page.evaluate(() => deskOpenActivity());
   return page.locator(".dk-moves");
 };
-import { listOrder, groupOf, statusOf, openMore } from "./desk.mjs";
+import { listOrder, groupOf, statusOf, openMore, fullOf } from "./desk.mjs";
 /** Item `id` is open in the middle (desk/c.js): its session's chat or, with no session, its own page; its bar either way. */
 const itemShown = async (page, id) => {
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", id]);
@@ -714,7 +714,7 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await pane.locator(".dkn-sback .dk-back").click();
   // B2 (#666): still under WORKING, after what's at work, saying so; what waits after it says so too.
   expect(await groupOf(page, "d5")).toBe("WORKING");
-  await expect(statusOf(page, "d5")).toHaveText("Stopped before it was done");
+  await expect(fullOf(page, "d5")).toHaveText("Stopped before it was done");
   expect(await listOrder(page)).toEqual(expect.arrayContaining(["# WORKING", "d3", "d5"]));
   const o = await listOrder(page);
   expect(o.indexOf("d5")).toBe(o.indexOf("d3") + 1);
@@ -750,7 +750,7 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
   const rows = page.locator(".dkn-items");
   // Under WORKING, saying who paused it.
   expect(await groupOf(page, "d5")).toBe("WORKING");
-  await expect(statusOf(page, "d5")).toHaveText("Paused by the Desk lead");
+  await expect(fullOf(page, "d5")).toHaveText("Paused by the Desk lead");
   await rows.locator('[data-desk-item="d5"]').click();
   const pane = page.locator(".dk-right");
   await itemShown(page, "d5");
