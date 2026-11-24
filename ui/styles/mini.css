@@ -182,7 +182,6 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 /* "✓ You answered: …": the message family's foot status (.mg-f .mg-st), under the title. */
 .m-dk-said { padding: 4px 0 0 21px; }
 .m-dk-box { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-tray); background: var(--panel); }
-.m-dk-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 .m-dk-box textarea { flex: 1; min-height: 26px; max-height: 72px; padding: 4px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--type-body)/1.4 var(--sans); field-sizing: content; }
 .m-dk-ask .dk-sb { margin-top: 0; }
 .m-dk-ask .dk-box.dk-sb-box { padding: 6px 6px 6px 10px; }

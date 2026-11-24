@@ -105,7 +105,6 @@
 .dk-sb-x:hover { color: var(--ink); }
 .dk-box.dk-sb-box { margin: 0; }
 .dk-pane .dk-sb { padding: 14px 24px 0; }
-.dk-box.dk-sb-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 /* "Done when" as a checklist (desk.js deskDoneWhenHtml): a point a line, small, room between; a quiet ring in front. */
 .dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: var(--type-body); line-height: 1.45; color: var(--ink); }
 .dk-dwl li { display: flex; gap: 9px; align-items: baseline; }

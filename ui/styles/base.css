@@ -23,6 +23,8 @@
   --panel: #FFFFFF;
   --panel-2: #F1F3EA;
   --line: #DCE0CB;
+  /* The message box while you type in it (#845): the line, a little stronger. Follows --line and --ink in every theme. */
+  --line-focus: color-mix(in srgb, var(--ink) 30%, var(--line));
   --ink: #1E2410;
   --muted: #5A6340;
   --accent: #3F4A22;
