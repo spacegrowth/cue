@@ -17,6 +17,11 @@ impl Hub {
             return;
         }
         let (sid, noted) = (sid.to_string(), !k.note.is_empty());
+        // A lead: its Desk's chat holds its box from now until the new lead is ready (#841).
+        let now = now_ms();
+        if self.write(|st| st.desk.lead_of(&sid).map(|p| st.desk.run.handing.insert(p, (sid.clone(), String::new(), now)))).is_some() {
+            self.changed();
+        }
         self.later(1500, move |h| h.desk_hand_on_now(&sid, noted));
     }
 
@@ -32,9 +37,31 @@ impl Hub {
                 }
             }
             Err(e) => {
+                self.desk_handed(sid);
                 crate::hub::record_insight(sid, "ahead", "held", &e, 0);
                 self.desk_note(sid, "Couldn't hand {name} off to a fresh session", &e);
             }
+        }
+    }
+
+    /// Session `sid`'s turn ended: a Desk handing off to it is through, its new lead ready (#841).
+    pub(crate) fn desk_handed_to(&self, sid: &str) {
+        self.desk_handing_end(|_, to| to == sid);
+    }
+
+    /// Session `sid`'s hand-off failed: its Desk isn't handing off any more.
+    fn desk_handed(&self, sid: &str) {
+        self.desk_handing_end(|from, _| from == sid);
+    }
+
+    fn desk_handing_end(&self, ends: impl Fn(&str, &str) -> bool) {
+        let gone = self.write(|st| {
+            let before = st.desk.run.handing.len();
+            st.desk.run.handing.retain(|_, (from, to, _)| !ends(from, to));
+            before != st.desk.run.handing.len()
+        });
+        if gone {
+            self.changed();
         }
     }
 
@@ -69,6 +96,12 @@ impl Hub {
             let (project, old_name) = (s.project.clone(), shown_name(s));
             let name = if name.is_empty() { st.sessions.get(new).map(shown_name).unwrap_or_else(|| new.chars().take(8).collect()) } else { name.to_string() };
             let lead = st.desk.lead_of(old).map(|id| (id, name.clone()));
+            // The new lead started: the hand-off is through once its first turn ends (#841).
+            if let Some((p, _)) = &lead {
+                if let Some(h) = st.desk.run.handing.get_mut(p).filter(|h| h.0 == old) {
+                    h.1 = new.to_string();
+                }
+            }
             for project in st.desk.scopes(old, &project) {
                 let held = held_items(st, &project, old);
                 carry_queue(st, &project, (old, new, &name), now, &mut fx);

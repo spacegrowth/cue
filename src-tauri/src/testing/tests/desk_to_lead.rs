@@ -210,3 +210,31 @@ fn relays_come_apart_from_your_words() {
     assert!(crate::desk::relays_apart(&r).is_none() && crate::desk::relays_apart("hello").is_none());
     assert!(crate::desk::only_relays(&r) && !crate::desk::only_relays("hello") && !crate::desk::only_relays(""));
 }
+
+#[test]
+fn a_desk_handing_off_says_so_until_the_new_leads_first_turn_ends() {
+    // #841: from the old lead's note till the new lead is ready, the window is told the Desk is handing off.
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let old = new_lead(&w, &project);
+    w.settle();
+    assert!(desk(&w, &project)["lead"]["handoff"].is_null());
+    let since = crate::clock::now_ms();
+    w.hub().write(|st| st.desk.run.handing.insert(project.clone(), (old.clone(), String::new(), since)));
+    w.hub().changed();
+    w.settle();
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["from"], old.as_str());
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["to"], "");
+    // The new lead starts: it's named, and the Desk is still handing off until it's ready.
+    let next = second(&w, "successor");
+    w.hub().desk_carry(&old, &next, "successor");
+    w.settle();
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["to"], next.as_str());
+    // The old lead's turn ending changes nothing; the new one's first turn ending ends it.
+    ends(&w, &old, "Note written.");
+    w.settle();
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["to"], next.as_str());
+    ends(&w, &next, "successor now runs the Desk.");
+    w.settle();
+    assert!(desk(&w, &project)["lead"]["handoff"].is_null(), "{}", desk(&w, &project)["lead"]);
+}

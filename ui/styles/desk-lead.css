@@ -226,6 +226,11 @@
 .dk-earl:hover:not(:disabled) { background: var(--panel-2); }
 .dk-earl:disabled { cursor: default; }
 .dk-earlier { display: flex; flex-direction: column; gap: 14px; }
+/* The earlier lead's last exchanges over the band (#841): muted, nothing in them to click. */
+.dk-tail { opacity: .55; }
+/* The lead's box held while the Desk hands off to a new lead (#841): the same box, quieter; it opens in place. */
+.composer.held .field { opacity: .6; }
+.composer.held textarea::placeholder { color: var(--ink); }
 /* A permission card you answered on the Desk (its item's page, a held step, an ask under Blocked on you) folds shut
    as the rows do (desk-c.css dkn-leave, desk/view.js deskAskFold), what's under it sliding up; your answer has gone
    already. At once with reduced motion. */

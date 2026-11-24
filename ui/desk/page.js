@@ -193,12 +193,34 @@ function deskChat(d) {
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat. Not while
   // a message of yours is on its way: "Waiting on you for your reply" under it would be wrong (#587).
   const sending = pending.some((p) => !p.failed);
-  const where = s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
+  // Handing off to a new lead (#841): that, in its place, till the new lead is ready.
+  const handing = deskHanding(d);
+  const where = handing ? deskHandingLine(d, handing) : s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
   // Each part keyed: the chat is kept in place across draws, brought up to date by key (chat/patch.js drawAround).
   const empty = (!rows || rows === top) && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   // By the way's panel over the chat, as in a session's chat.
   return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${top}${empty}${rows.slice(top.length)}${where ? keyed(where, "where") : ""}</div>`;
 }
+/** How long the chat holds its box for a hand-off before it opens again (#841). */
+const DESK_HANDOFF_WAIT = 3 * 60000;
+let deskHandingTimer = 0;
+/** Desk `d` handing off to a new lead (#841: from its old lead's note till the new lead's first turn ends, the Rust
+ *  side's lead.handoff): { since, over }, `over` once it's taken longer than DESK_HANDOFF_WAIT; null when it isn't. */
+function deskHanding(d) {
+  const h = deskLead(d)?.handoff;
+  if (!h?.since_ms) return null;
+  const left = h.since_ms + DESK_HANDOFF_WAIT - Date.now();
+  if (left > 0 && !deskHandingTimer) deskHandingTimer = setTimeout(() => { deskHandingTimer = 0; renderMain(); }, left + 50);
+  return { since: h.since_ms, over: left <= 0 };
+}
+/** The line at the chat's end while it hands off: "Handing off to a new lead…", or, past the wait, that it's taking
+ *  long and the box is open again. */
+function deskHandingLine(d, h) {
+  if (!h.over) return `<div class="mg-status cv-status dk-hwait"><span class="dot-live"></span>Handing off to a new lead…</div>`;
+  const mins = Math.round(DESK_HANDOFF_WAIT / 60000);
+  return `<div class="mg-status cv-status dk-hwait"><span class="lim-dot"></span><span><b>The hand-off is taking longer than ${mins} minutes.</b> The message box is open again: what you send goes to ${esc(deskLeadName(d))}.</span></div>`;
+}
+
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its
  *  routing and housekeeping calls, already in its chat as its own DECIDED lines), newest first. */
 const deskActs = (d) => (d?.decisions || []).filter((x) => x.act && x.sid === deskLead(d)?.sid).sort((a, b) => b.at - a.at);

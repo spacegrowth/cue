@@ -507,7 +507,7 @@ function draftChips(key) {
  *  The boxes that message a session (the ones with images) also get the quick phrases, unless `quick` is false (the
  *  crew page with a teammate on its left: they belong to the chat); a chat kind there (quickRow) picks which. `alt` shows beside Send once something's typed;
  *  `extra` always does. */
-function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true) {
+function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true, held = false) {
   const d = draft(key), sid = sidOfKey(key);
   const ready = d.text.trim() || (images && d.images.length);
   const bang = bangTyped(d.text) && !d.images.length;
@@ -516,7 +516,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   // always drawn, so a redraw never swaps out the box you're typing in. Send sits inside the box, at the end of its
   // row, so the box spans the full width (as the terminal dock does).
   return boxHtml({
-    key, look: "composer", rows: 2, placeholder, drop: !!images,
+    key, look: "composer", rows: 2, placeholder, drop: !!images, held,
     sug: images ? suggestionFor(sid) : "", sugSid: key.startsWith("s:") ? "" : sid,
     bang: bangTyped(d.text),
     cmd: sid ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : "",

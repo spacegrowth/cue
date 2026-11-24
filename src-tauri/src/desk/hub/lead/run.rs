@@ -38,7 +38,13 @@ impl Hub {
             (None, Some(s)) => ("parked", shown_name(s)),
             (None, None) => ("ended", l.name.clone()),
         };
-        json!({ "sid": l.sid, "name": if name.is_empty() { l.name.clone() } else { name }, "state": state })
+        // Handing off (#841): from its old lead's note till the new lead's first turn ends; forgotten after 15 minutes.
+        let handoff = st.desk.run.handing.get(project).filter(|h| now_ms().saturating_sub(h.2) < 15 * 60_000).map(|(from, to, since)| json!({ "from": from, "to": to, "since_ms": since }));
+        let mut v = json!({ "sid": l.sid, "name": if name.is_empty() { l.name.clone() } else { name }, "state": state });
+        if let Some(h) = handoff {
+            v["handoff"] = h;
+        }
+        v
     }
 
     /// How your words (`text`) reach `project`'s lead, decided in one step so two at once never resume it

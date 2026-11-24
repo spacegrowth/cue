@@ -110,6 +110,8 @@ impl Hub {
         if crate::hub::notice_handoff(self, &origin.session_id) {
             self.changed();
         }
+        // A Desk handing off to this lead (#841): it's ready, its first turn over.
+        self.desk_handed_to(&origin.session_id);
         // The note the Desk asked of a session grown too big: it goes on in a fresh session (desk/hub/lead/handoff.rs).
         if let Some(log) = super::send::log_here(origin) {
             self.desk_hand_on(&origin.session_id, log);

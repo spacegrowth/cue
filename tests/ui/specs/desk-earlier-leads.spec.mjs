@@ -33,16 +33,18 @@ test("the lead chat starts at the hand-off band; Show earlier brings back each e
     return { l: r.left - q.left, r: q.right - r.right, h: r.height, wide: c.scrollWidth - c.clientWidth, font: getComputedStyle(b.querySelector(".dk-hoff-a")).fontSize, body: getComputedStyle(document.documentElement).getPropertyValue("--type-body").trim() }; });
   expect(fit).toEqual({ l: 0, r: 0, h: expect.any(Number), wide: 0, font: fit.body, body: expect.any(String) });
   expect(fit.h).toBeLessThan(56);
-  // Show earlier sits over the band; nothing of the earlier lead's yet, and no Earlier messages row.
+  // Show earlier sits over the band; the earlier lead's last exchanges muted between them (#841), and no Earlier
+  // messages row.
   const earl = chat.locator(".dk-earl");
   await expect(earl).toHaveText(/^Show earlier ·desk-lead-13 · 2 messages · \d\d:\d\d to \d\d:\d\d$/);
   await expect(chat.locator(".cv-older")).toHaveCount(0);
-  await expect(chat).not.toContainText("Why does the rail dot one wait?");
-  const order = () => chat.evaluate((c) => [...c.children].map((el) => el.classList.contains("dk-earl") ? "earl" : el.classList.contains("dk-hoff") ? "band" : el.classList.contains("dk-earlier") ? "msgs" : "row").filter((x, n, a) => x !== "row" || a[n - 1] !== "row"));
-  expect(await order()).toEqual(["earl", "band", "row"]);
+  await expect(chat.locator(".dk-tail")).toContainText("Why does the rail dot one wait?");
+  const order = () => chat.evaluate((c) => [...c.children].map((el) => el.classList.contains("dk-earl") ? "earl" : el.classList.contains("dk-hoff") ? "band" : el.classList.contains("dk-tail") ? "tail" : el.classList.contains("dk-earlier") ? "msgs" : "row").filter((x, n, a) => x !== "row" || a[n - 1] !== "row"));
+  expect(await order()).toEqual(["earl", "tail", "band", "row"]);
   await expect(chat.locator("[title]")).toHaveCount(0);
   if (process.env.SHOT_DIR) await page.locator(".dk2b-chat").screenshot({ path: `${process.env.SHOT_DIR}/earlier-band.png` });
-  // Show earlier: desk-lead-13's messages above the band, and the marker now for desk-lead-12 over them.
+  // Show earlier: desk-lead-13's messages above the band in full (its last exchanges no longer apart), and the marker
+  // now for desk-lead-12 over them.
   await earl.click();
   await expect(chat.locator(".dk-earlier")).toContainText("Why does the rail dot one wait?");
   await expect(chat.locator(".dk-earlier")).toContainText("It waits after Search stays centred");
@@ -63,4 +65,78 @@ test("a lead that was the Desk's first has no band and keeps its Earlier message
   const chat = page.locator(".dk-chat");
   await expect(chat.locator(".cv-older")).toHaveCount(1);
   await expect(chat.locator(".dk-hoff, .dk-earl")).toHaveCount(0);
+});
+
+test("after a hand-off the earlier lead's last 5 exchanges sit muted over the band: yours and its replies only", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.override("session_log_page", () => []);
+  await cue.override("transcript_page", () => []);
+  await cue.override("desk_lead_before", ({ sid }) => (sid === "lead" ? { sid: "l13", name: "desk-lead-13", at_ms: Date.now() - 60e3, handoff: true, count: 20, first_ms: Date.now() - 3600e3, last_ms: Date.now() - 60e3, note: "", cwd: "" } : null));
+  await cue.override("session_log", ({ sessionId }) => {
+    if (sessionId !== "l13") return [];
+    const t = Date.now() - 3600e3, out = [];
+    for (let n = 1; n <= 7; n++) {
+      out.push({ at_ms: t + n * 60e3, role: "you", text: `Question ${n} from you` });
+      out.push({ at_ms: t + n * 60e3 + 10e3, role: "agent", text: `Answer ${n} from the lead` });
+    }
+    // Cue's own messages to the lead and a Desk block alone: never in the tail.
+    out.push({ at_ms: t + 9 * 60e3, role: "you", text: "Hand off: write a short note so a fresh session can carry on from here." });
+    out.push({ at_ms: t + 9 * 60e3 + 5e3, role: "you", text: '<desk project="cue" changes="1">\n#12 working\n</desk>' });
+    return out;
+  });
+  await openDesk(page);
+  const tail = page.locator(".dk-chat .dk-tail");
+  await expect(tail).toContainText("Question 3 from you");
+  await expect(tail).toContainText("Answer 7 from the lead");
+  await expect(tail).not.toContainText("Question 2 from you");
+  await expect(tail).not.toContainText("Hand off:");
+  await expect(tail).not.toContainText("#12 working");
+  // Read-only and muted, above the band.
+  expect(await tail.evaluate((el) => ({ inert: el.inert, op: Number(getComputedStyle(el).opacity), next: el.nextElementSibling?.classList.contains("dk-hoff") }))).toEqual({ inert: true, op: expect.any(Number), next: true });
+  expect(Number(await tail.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(1);
+  await expect(page.locator(".dk-chat [title]")).toHaveCount(0);
+  if (process.env.SHOT_DIR) {
+    for (const [scheme, w, h] of [["light", 1280, 800], ["dark", 1280, 800], ["light", 900, 600], ["dark", 900, 600]]) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize({ width: w, height: h });
+      await page.locator(".dk-chat .dk-hoff").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${process.env.SHOT_DIR}/tail-${scheme}-${w}.png` });
+    }
+  }
+});
+
+test("while the Desk hands off, the chat says so and the box is held; it opens in place once the new lead is ready", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const box = page.locator(".dk2b-chat .foot .composer");
+  const before = await box.boundingBox();
+  await cue.change((st) => { const d = st.desk.projects.find((p) => p.lead?.sid === "lead"); d.lead.handoff = { from: "lead", to: "", since_ms: Date.now() }; });
+  await expect(page.locator(".dk-chat .dk-hwait")).toHaveText("Handing off to a new lead…");
+  await expect(box).toHaveClass(/held/);
+  expect(await box.evaluate((el) => el.inert)).toBe(true);
+  await expect(box.locator("textarea")).toHaveAttribute("placeholder", "Handing off to a new lead…");
+  expect(await box.boundingBox()).toEqual(before);
+  if (process.env.SHOT_DIR) {
+    for (const [scheme, w, h] of [["light", 1280, 800], ["dark", 1280, 800], ["dark", 900, 600]]) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize({ width: w, height: h });
+      await page.screenshot({ path: `${process.env.SHOT_DIR}/handing-${scheme}-${w}.png` });
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.setViewportSize({ width: 1280, height: 800 });
+  }
+  // The new lead is ready: the line goes, the box opens where it was.
+  await cue.change((st) => { const d = st.desk.projects.find((p) => p.lead?.sid === "lead"); d.lead.handoff = null; });
+  await expect(page.locator(".dk-chat .dk-hwait")).toHaveCount(0);
+  await expect(box).not.toHaveClass(/held/);
+  expect(await box.evaluate((el) => el.inert)).toBe(false);
+  expect(await box.boundingBox()).toEqual(before);
+});
+
+test("a hand-off that takes too long opens the box again and says so", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st) => { const d = st.desk.projects.find((p) => p.lead?.sid === "lead"); d.lead.handoff = { from: "lead", to: "l2", since_ms: Date.now() - 4 * 60e3 }; });
+  await expect(page.locator(".dk-chat .dk-hwait")).toContainText("The hand-off is taking longer than 3 minutes.");
+  await expect(page.locator(".dk2b-chat .foot .composer")).not.toHaveClass(/held/);
 });

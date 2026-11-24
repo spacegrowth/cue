@@ -73,7 +73,10 @@ function deskBox(d, o = deskOpen) {
   if (deskLeadBoxTo(to)) {
     const s = deskLeadSession(d), busy = s?.state === "working";
     const after = s?.harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-    return `${listenLine(s?.session_id)}<div class="foot">${box(key, busy ? `Message ${lead}… ${after}` : ph, busy ? "Queue" : "Send", `data-desk-send="${esc(key)}"`, true)}</div>`;
+    // Handing off to a new lead (#841, desk/earlier.js): the box held, saying so, till the new lead is ready.
+    const h = deskHanding(d), held = !!h && !h.over;
+    const say = held ? "Handing off to a new lead…" : busy ? `Message ${lead}… ${after}` : ph;
+    return `${listenLine(s?.session_id)}<div class="foot">${box(key, say, busy ? "Queue" : "Send", `data-desk-send="${esc(key)}"`, true, "", "", true, held)}</div>`;
   }
   // Pictures pasted, dropped or added, and the mic, as in a session's chat box (app/inputs.js, chat/compose.js); its
   // quick phrases over the text, and Claude's suggested reply in the empty box (Tab types it in) from the session it

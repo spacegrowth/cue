@@ -25,6 +25,10 @@ pub struct DeskRun {
     /// Sessions whose compacting failed (an error, or no end in 15 minutes), and when: a session on a Desk with a live
     /// lead is asked for a hand-off note instead, and goes on fresh from it (hub/cache_tick.rs full_due). Not saved.
     pub compact_failed: HashMap<String, u64>,
+    /// Desks whose lead is handing off (#841, desk/hub/lead/handoff.rs): project → (the old lead, the new one once it
+    /// started, "" till then; since when, ms). From the old lead's note turn's end until the new lead's first turn
+    /// ends: the lead chat says so and holds its box. Not saved.
+    pub handing: HashMap<String, (String, String, u64)>,
     /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
     /// why (desk/hub/turn/said.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
     pub done_told: HashMap<String, String>,

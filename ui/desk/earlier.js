@@ -4,13 +4,14 @@
 // loads until you click. Who led before whom: Cue's (ipc desk_lead_before); their messages: Cue's log (session_log).
 
 /** Per Desk: { lead (the lead it's for), before: sid → the lead before it ({ sid, name, at_ms, handoff, count, first_ms,
- *  last_ms, note, cwd }, null for none, "asking" while Cue is asked), shown: [{ sid, msgs }] oldest first, busy }. */
+ *  last_ms, note, cwd }, null for none, "asking" while Cue is asked), shown: [{ sid, msgs }] oldest first, busy,
+ *  tail: sid → that lead's last exchanges (desk/earlier.js deskEarlierTail; null while asked) }. */
 const deskEarlier = new Map();
 
 function deskEarlierOf(d) {
   const lead = deskLead(d)?.sid || "";
   let e = deskEarlier.get(d.project);
-  if (!e || e.lead !== lead) { e = { lead, before: new Map(), shown: [], busy: false }; deskEarlier.set(d.project, e); }
+  if (!e || e.lead !== lead) { e = { lead, before: new Map(), shown: [], busy: false, tail: new Map() }; deskEarlier.set(d.project, e); }
   return e;
 }
 
@@ -69,10 +70,37 @@ function deskEarlierTop(d, s) {
     // The band names who it passed to: this lead (the one now, or an earlier one by the name the next band knew it by).
     const name = n === chain.length - 1 ? deskLeadName(d) : deskEarlierName(e.before.get(chain[n + 1].sid) || {});
     if (n === 0 && m) out += deskEarlierMarker(m, e.busy);
+    // Into the lead now, its lead before not shown in full: that lead's last exchanges over the band (#841).
+    if (m && chain.length === 1) out += deskEarlierTail(e, m);
     if (m) out += deskEarlierBand(m, name);
     if (seg.msgs) out += deskEarlierRows(seg.sid, seg.msgs);
   });
   return out;
+}
+
+/** How many of the earlier lead's exchanges show over the band (#841). */
+const DESK_TAIL_EXCHANGES = 5;
+
+/** The last `n` exchanges of messages `msgs` (an earlier lead's log): your messages and its replies only, as the chat
+ *  draws them; no Desk blocks alone and none of Cue's messages to it. */
+function deskEarlierLast(msgs, n = DESK_TAIL_EXCHANGES) {
+  const yours = (e) => e.role === "you" && !!deskSaid(e.text).trim() && !cueMsgOf(e.text) && !deskCueNote(e);
+  const kept = msgs.filter((e) => yours(e) || (e.role === "agent" && String(e.text ?? "").trim()));
+  const at = kept.flatMap((e, i) => (e.role === "you" ? [i] : []));
+  return at.length > n ? kept.slice(at[at.length - n]) : at.length ? kept.slice(at[0]) : kept.slice(-n);
+}
+
+/** Lead `m`'s last exchanges, muted and read-only, over the band into the lead after it: asked of Cue's log once. */
+function deskEarlierTail(e, m) {
+  if (!e.tail.has(m.sid)) {
+    e.tail.set(m.sid, null);
+    invoke("session_log", { sessionId: m.sid }).then((msgs) => { e.tail.set(m.sid, deskEarlierLast(Array.isArray(msgs) ? msgs : [])); renderMain(); }, () => e.tail.set(m.sid, []));
+  }
+  const msgs = e.tail.get(m.sid);
+  if (!msgs?.length) return "";
+  const s = { session_id: m.sid, harness: "claude", thread: msgs, team: [] };
+  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, refs: deskRefs, dkOut: true, you: deskLeadNote, youHead: deskAboutHead, noActs: true, noSteps: true });
+  return `<div class="dk-earlier dk-tail" data-key="tail:${esc(m.sid)}" inert>${rows}</div>`;
 }
 
 /** Show earlier: lead `sid`'s messages go back above the band (the chat keeps your place), and Cue is asked who led
