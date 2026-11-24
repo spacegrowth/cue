@@ -2,7 +2,7 @@
 // their place; each of them is in the Activity tab, which you can search and filter by item, who and kind of move.
 // Lines meant for you stay. The panel ends with Activity's last 3 rows. No capitals on the Desk; only your messages
 // have a background.
-import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 
 const push = (page, sid, e) => page.evaluate(([sid, e]) => { sessionOf(sid).thread.push({ at_ms: Date.now(), ...e }); renderMain(); }, [sid, e]);
 const SHOTS = process.env.CUE_SHOTS || "";
@@ -84,22 +84,20 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
-test("the panel: Now, Waits on you and Working, then Activity's last 3 rows and N more in Activity ›", async ({ page, cue }) => {
+test("the lead's chat: no panel, Now and Waits on you in its strip, its routes in Activity newest first", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await deskShowPanel(page);
+  // The lead's chat has no panel and no Hide/Show panel (692dc421): the strip over the chat instead.
+  await expect(page.locator(".dk2b-chat .dk2b-strip")).toBeVisible();
+  await expect(page.locator('.dk2b-chat [data-desk-panel="dispatcher-hidden"]')).toHaveCount(0);
+  await expect(page.locator(".dk2b-chat .dk-pact")).toBeHidden();
   for (const id of ["d2", "d3", "d4", "d5"]) await push(page, "lead", { role: "agent", text: `ROUTE: #${id} -> web-lead | why: it knows it` });
-  const panel = page.locator(".dk2b-chat .dk-panel");
-  const heads = await panel.locator(".dk-psh").allTextContents();
-  expect(heads.at(-1)).toBe("Activity");
-  expect(heads.some((h) => /Just did/.test(h))).toBe(false);
-  const sec = panel.locator(".dk-psec.dk-pact");
-  await expect(sec.locator(".dk-pdid")).toHaveCount(3);
-  await expect(sec.locator(".dk-pdid").first()).toContainText("#d5");
-  const more = sec.locator(".dk-pall");
-  await expect(more).toHaveText(/^\d+ more in Activity ›$/);
-  await more.click();
+  await expect(page.locator(".dk2b-chat")).not.toContainText("Just did");
+  await page.locator('.dk-tab[data-desk-tab="moves"]').click();
   await expect(page.locator('.dk-tab[data-desk-tab="moves"]')).toHaveAttribute("aria-pressed", "true");
+  const rows = page.locator(".dk-moves .dk-mv", { hasText: "web-lead" });
+  await expect(rows).toHaveCount(4);
+  await expect(rows.first()).toContainText("#d5");
 });
 
 for (const scheme of ["light", "dark"]) {
@@ -173,18 +171,18 @@ test("a routing call shows once in Activity: the lead's DECIDED line, not again 
 test("an item the lead holds: opening its page leaves the panel's Activity the lead's whole Activity", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await deskShowPanel(page);
   expect(await page.evaluate(() => deskHolderSid(deskItem(deskSelection(), "d2")))).toBe("lead");
   await push(page, "lead", { role: "you", text: "Hand these out please." });
   await push(page, "lead", { role: "agent", text: "ROUTE: #d3 -> web-lead | why: it knows it\nROUTE: #d4 -> web-lead | why: free" });
   await push(page, "lead", { role: "you", text: "And #d5." });
   await push(page, "lead", { role: "agent", text: "ROUTE: #d5 -> web-lead | why: same area" });
+  // The lead's chat has no panel to show (692dc421); its Activity rows are still drawn, out of sight.
   const sec = page.locator(".dk2b-chat .dk-panel .dk-psec.dk-pact");
   await expect(sec.locator(".dk-pdid")).toHaveCount(3);
   // Each row's words, without its age (it ticks from 0s to 1s between two reads).
   const words = (ts) => ts.map((t) => t.replace(/\d+[smhd]$/, ""));
   const before = words(await sec.locator(".dk-pdid").allTextContents());
-  const all = () => page.evaluate(() => deskActivity(deskOf(deskSelection())).map((r) => (r.x ? `mv:${r.x.id}` : `${r.line.sid}:${r.line.key}`)));
+  const all = () => page.evaluate(() => deskActivity(deskOf(deskSelection())).map((r) => (r.x ? `mv:${r.x.id}` : r.c ? `chk:${r.c.id}` : `${r.line.sid}:${r.line.key}`)));
   const whole = await all();
   // Its page (the lead's chat, desk/c.js deskCItemChat): Activity stays the lead's, whole.
   await page.evaluate(() => deskShow({ kind: "item", id: "d2" }));

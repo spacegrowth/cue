@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { test, expect, openDesk } from "./cue.mjs";
 
-const BODY = "15px", META = "13px";   // a chat's words at Slack's size (#703)
+const BODY = "14px", META = "12px";   // a chat's words one step under Slack's size (f13864a7f3, base.css --type-body)
 
 /** `read` run on what `loc` finds now (`all`: every match, else the first), again when a redraw replaced it between
  *  finding it and reading it: a chat redraws as its older messages and steps come in, and a replaced element reads as
@@ -77,14 +77,17 @@ for (const scheme of ["light", "dark"]) {
       await expect(you.locator(".mg-text")).toHaveCSS("font-size", BODY);
       await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("font-size", BODY);
       // Slack's spacing too (#703): the words on a 22px line, in your bubble and the reply alike.
-      await expect(you.locator(".mg-text")).toHaveCSS("line-height", "22px");
-      await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("line-height", "22px");
+      await expect(you.locator(".mg-text")).toHaveCSS("line-height", "20px");
+      await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("line-height", "20px");
       await expect(chat.locator(".mg-agent").last().locator(".mg-h")).toHaveCSS("font-size", META);
       await isCard(chat.locator(".mg.ask"));
       await expect(chat.locator(".mg.ask pre.mg-code")).toHaveCount(1);
-      // Cue's card: a session that isn't a lead shows its chat as it is (#744), so the card is in it, drawn as the family's.
-      await isCard(chat.locator(".mg.cue-msg"));
-      await readsOn(chat.locator(".mg.cue-msg .mg-t"));
+      // Cue's card: out of the session's chat since #789, in its Activity tab, drawn as the family's.
+      await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
+      await page.locator('.dk-right .dkn-stab[data-desk-c-stab="activity"]').click();
+      const act = page.locator(".dk-right .dkn-sact");
+      await isCard(act.locator(".mg.cue-msg"));
+      await readsOn(act.locator(".mg.cue-msg .mg-t"));
       await noHover(page);
     });
 

@@ -1,6 +1,6 @@
 // The Desk: the quick-add line, the lead's own lines and Cue's notes as its chat draws them, an item's pane,
 // paused and parked items, and items back to check.
-import { test, expect, pick, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
+import { test, expect, pick, openDesk, deskAllSessions } from "./cue.mjs";
 // The Desk's own lines left its chats for Activity (#688, option D; #789: no count line in their place): its tab has
 // them, newest first, each line as it was drawn in the chat.
 const deskActivityOpen = async (page) => {
@@ -719,10 +719,6 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   const o = await listOrder(page);
   expect(o.indexOf("d5")).toBe(o.indexOf("d3") + 1);
   await expect(statusOf(page, "d4")).toHaveText("After #d5");
-  // The lead's panel, behind Show panel.
-  await deskShowPanel(page);
-  await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item needs to resume.");
-  await expect(page.locator('[data-desk-page="dispatcher"] .dk-pfc')).toContainText("1 to resume");
   await rows.locator('[data-desk-item="d5"]').click();
   await openMore(pane);
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Resume");
@@ -760,8 +756,8 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
   await itemShown(page, "d5");
   await expect(pane.locator('[data-desk-act="start_now"]')).toHaveCount(0);
   await pane.locator(".dkn-sback .dk-back").click();
-  await deskShowPanel(page);
-  await expect(page.locator('[data-desk-page="dispatcher"] .dk-psay')).toContainText("1 item is paused.");
+  // The lead's chat has no panel (692dc421), so no "1 item is paused." summary there; its row says it (above).
+  await expect(page.locator('.dkn-items .dkn-row.on[data-desk-item="d5"]')).toHaveCount(0);
 });
 
 test("a parked item sits in its own quiet group with a Start button; queued rows have Park (#385, #391)", async ({ page, cue }) => {

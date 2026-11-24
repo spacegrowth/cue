@@ -492,7 +492,9 @@ function deskCSessChat(sid, from, d, foot, bar = "", item = null) {
     const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Nothing said yet.</div>` : "";
     main = `<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
   }
-  return `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${meta}${bar}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
+  // An item's page (its holder's chat under its bar) goes back to the list as an item without a holder does; a session
+  // opened from the left has no back (deskChatBack).
+  return `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${item ? deskBack("") : deskChatBack(from, d)}</div>${head}${meta}${bar}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
 }
 /** Items you just sent back, by id: what was open on the Desk then (commit.js deskLooksPlace). Their rows stay where
  *  they were in Waiting on you till you open something else (#791), rather than jump up to Working under you. */
