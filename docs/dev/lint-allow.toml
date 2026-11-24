@@ -210,6 +210,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
+to = "state sent"
+reason = "a redraw can run under a send's typing gate (hub/hosted.rs wake_hosted → changed → draw); state sent is a leaf, held only to keep or copy the last state sent to the windows (hub/redraw.rs, #794), nothing taken under it"
+
+[[lock_order]]
+from = "typing gate"
 to = "chats open"
 reason = "a card notified under a send's typing gate (hub/send.rs settle_typed → terminal_ask_with → notify) first looks whether you're reading that chat already (notify::is_read, #799); chats open is a leaf, held only to read or change the list of open chats, nothing taken under it"
 
