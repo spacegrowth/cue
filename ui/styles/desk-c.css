@@ -273,6 +273,9 @@
 .dkn-stab.on { color: var(--on-accent); background: var(--accent); }
 .dkn-stab.on .n { color: inherit; opacity: 0.8; }
 .dkn-stab .n { margin-left: 4px; font-weight: 500; color: var(--muted); }
+/* The tabs' top line is the only line over them (as the lead's, below): whatever sits right above them in a session's
+   or crew member's chat (an item's bar, #827) drops its own bottom line. */
+.dkn-sp > :has(+ .dkn-stabs) { border-bottom: 0; }
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
 /* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: a band between two lines,
    the picked one filled moss. */
