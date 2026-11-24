@@ -109,10 +109,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Split { id, titles } => split(st, project, &by, &id, &titles, now, fx, &mut answers),
             Line::Cut { id, on, why } => cut(st, project, &by, &id, &on, &why, now, fx, &mut answers),
             Line::Merge { id, into, why } => merge(st, project, &by, &id, &into, &why, now, fx, &mut answers),
-            Line::Note { id, text } => {
-                let id = st.desk.canon(&id);
-                answers.extend(note(st, project, &by, &id, &text, now, fx).err());
-            }
+            Line::Note { id, text } => { let id = st.desk.canon(&id); answers.extend(note(st, project, &by, &id, &text, now, fx).err()) }
             Line::Unstick { what, id, commit, why } => answers.extend(unstick_line(st, project, &by, (&what, &id, &commit, &why), last_new.as_deref(), now, fx)),
             Line::Feature { id, name, pieces } => answers.extend(crate::desk::hub::turn::features::feature_said(st, project, &by, id, &name, &pieces, last_new.as_deref(), now, fx).err()),
             Line::Copy { id, repo, branch, why } => copy_line(st, project, &by, (new_or_canon(st, &id, last_new.as_deref()), repo, branch, why), repos, now, fx, &mut answers),
@@ -135,11 +132,29 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
                 let id = new_or_canon(st, &id, last_new.as_deref());
                 answers.push(crate::desk::move_desk::move_said(st, project, &name, lsid, &id, &to, &why, now, fx));
             }
+            Line::Show { ids, desk } => show_said(st, project, lsid, &ids, desk, fx, &mut answers),
             Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
         }
     }
     started_after_queued(st, &mut answers, fx);
     lead_said_end(st, project, &by, text, (answers, back), now, fx);
+}
+
+/// The lead asked to see more (`SHOW:`, #818): items in full, told with its other answers; the whole Desk block,
+/// sent at once as Cue's own message, which carries it whole.
+#[allow(clippy::too_many_arguments)]
+fn show_said(st: &mut Store, project: &str, lsid: &str, ids: &[String], desk: bool, fx: &mut Effects, answers: &mut Vec<String>) {
+    for id in ids {
+        let id = st.desk.canon(id);
+        match crate::desk::hub::lead::run::item_in_full(st, project, &id) {
+            Some(line) => answers.push(format!("#{id} in full, as you asked:\n{line}")),
+            None => answers.push(format!("Refused: SHOW #{id}: there's no #{id} on this Desk.")),
+        }
+    }
+    if desk {
+        Hub::desk_block_whole_next(st, project);
+        fx.tells.push((project.to_string(), "Your whole Desk block, as you asked (SHOW: desk).".to_string(), lsid.to_string()));
+    }
 }
 
 /// A route's "Queued: #id is next for …" answer for an item a later line of the same turn sent to a new session (its

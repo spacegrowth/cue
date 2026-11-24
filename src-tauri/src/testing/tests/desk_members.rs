@@ -136,7 +136,7 @@ fn the_lead_sees_only_the_desks_sessions_as_routes() {
     let block = w.hub().desk_summary(&project, &d, false).0;
     // On the Desk with no item: on the one Older line (#363).
     let (_, on) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
-    assert!(on.contains(&format!("Older, idle with no recent item: cue-teams (sid:{id}, idle)")), "{on}");
+    assert!(on.contains(&format!("Older, idle with no recent item:\n- cue-teams (sid:{id}, idle)")), "{on}");
     assert!(!block.contains("Off the Desk"), "{block}");
 }
 
@@ -193,8 +193,8 @@ fn a_desk_shows_sessions_with_work_and_takes_off_one_closed_a_day() {
     w.hub().desk_set_member(&project, &h, true).unwrap();
     assert_eq!(with_work(&w, &project), vec![d.clone()], "cue-teams has no item: older");
     let routes = w.hub().desk_summary(&project, &d, false).0;
-    assert!(routes.contains("Older, idle with no recent item: cue-teams (sid:"), "{routes}");
-    assert!(!routes.contains("- cue-teams (sid:"), "{routes}");
+    assert!(routes.contains("Older, idle with no recent item:\n- cue-teams (sid:"), "{routes}");
+    assert!(!routes.split("Older, idle").next().unwrap().contains("- cue-teams (sid:"), "only under Older: {routes}");
 
     // Idle under a day: it stays on the Desk.
     w.advance(23 * 60 * 60_000);

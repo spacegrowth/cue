@@ -5,6 +5,7 @@
 mod send;
 pub(crate) mod feed;
 pub(crate) mod run;
+pub(crate) mod block;
 pub(crate) mod handoff;
 pub(crate) mod cleanup;
 pub(crate) mod checks;
@@ -20,8 +21,8 @@ use std::sync::Arc;
 /// from now, and is sent it with how a lead works (kept in Cue while it reads the note).
 pub(crate) fn lead_carried_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
-    let (summary, failed) = h.desk_summary(project, sid, true);
     let words = h.desk_handoff_words(project, sid, name);
+    let (summary, failed) = h.desk_block(project, sid, &words, true, true);
     h.tell(sid, &desk_message(&summary, &words))?;
     h.desk_told(&failed);
     Ok(())
@@ -120,8 +121,9 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
 /// works; a parked or ended one is resumed with it.
 fn take_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str, state: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
-    let (summary, failed) = h.desk_summary(project, sid, true);
-    let message = desk_message(&summary, &hello(&h.desk_name(project)));
+    let hi = hello(&h.desk_name(project));
+    let (summary, failed) = h.desk_block(project, sid, &hi, true, true);
+    let message = desk_message(&summary, &hi);
     match state {
         "live" => {
             h.tell(sid, &message)?;

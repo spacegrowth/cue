@@ -10,6 +10,9 @@ use super::model::Waiting;
 pub struct DeskRun {
     /// When the queue's next wait runs out and a sweep is set for it (ms; 0: none set): desk/hub/turn/queue.rs.
     pub queue_timer: u64,
+    /// What each Desk's lead was last sent of its Desk block (#818, desk/hub/lead/block.rs): the next carries only
+    /// what changed. Not saved: after a restart the next is whole.
+    pub blocks: HashMap<String, crate::desk::hub::lead::block::Sent>,
     /// Sessions being selected as leads, reserved across concurrent Desk changes.
     pub lead_claims: HashMap<String, String>,
     /// Projects whose lead is being started or resumed, with the messages that arrived while it was starting, sent

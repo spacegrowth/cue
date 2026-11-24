@@ -663,7 +663,7 @@ impl Hub {
         if !crate::desk::has_block(&text) {
             return Vec::new();
         }
-        let (summary, failed) = self.desk_summary(&project, session_id, false);
+        let (summary, failed) = self.desk_block(&project, session_id, crate::desk::without_block(&text), false, true);
         self.write(|st| st.sessions.held_text_to(session_id, crate::desk::with_fresh_block(&text, &summary)));
         failed
     }

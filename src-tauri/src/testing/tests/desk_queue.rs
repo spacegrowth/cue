@@ -18,7 +18,7 @@ fn the_dispatcher_sees_idle_routes_first_and_can_queue_overlapping_work_for_a_ne
     let (_, routes) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
     // idle-worker has no item: on the one Older line, after the routes with work, with its state (#363).
     assert!(routes.find("cue-teams (sid:").unwrap() < routes.find("idle-worker (sid:").unwrap(), "{routes}");
-    assert!(routes.contains(&format!("Older, idle with no recent item: idle-worker (sid:{}, idle)", &idle[..8])), "{routes}");
+    assert!(routes.contains(&format!("Older, idle with no recent item:\n- idle-worker (sid:{}, idle)", &idle[..8])), "{routes}");
     assert!(block.contains(crate::desk::ROUTING_GUIDANCE), "{block}");
 
     let launches = w.hosted.launched().len();

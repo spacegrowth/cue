@@ -288,7 +288,7 @@ impl Hub {
         // A lead that took over from one the feed went to hears the Desk's summary first, then the rows that still
         // apply. A Desk's first lead was given the summary as it started.
         let text = if go.summary {
-            let (summary, failed) = self.desk_summary(desk, &go.lead, false);
+            let (summary, failed) = self.desk_block(desk, &go.lead, &go.text, false, false);
             self.desk_told(&failed);
             super::send::desk_message(&summary, &go.text)
         } else {

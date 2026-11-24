@@ -97,6 +97,9 @@ pub enum Line {
     /// The lead moving item `id` to another Desk, named `to` (#639, desk/move_desk.rs): `MOVE: #<id> -> <Desk> | why: …`.
     /// It goes with its notes, copy and branch, and its holder's hand-off.
     Move { id: String, to: String, why: String },
+    /// The lead asking to see more of its Desk (#818): `SHOW: #<id> #<id>` (those items in full) or `SHOW: desk` (`desk`:
+    /// the whole Desk block).
+    Show { ids: Vec<String>, desk: bool },
 }
 
 /// What a LOOP: line says (#583). A part with no label of its own goes on the one before it, so a goal or a check
@@ -244,6 +247,7 @@ fn one(t: &str) -> Option<Line> {
         "COPY" => copy(body),
         "LOOP" => loop_line(body),
         "MOVE" => crate::desk::move_desk::parse(body),
+        "SHOW" => show(body),
         _ => None,
     }
 }
@@ -326,6 +330,19 @@ fn hold(body: &str) -> Option<Line> {
         }
     }
     Some(Line::Hold { id: id_of(head)?, area: area?, till, why })
+}
+
+/// `SHOW: #<id> #<id>` or `SHOW: desk` (#818). None when it names neither.
+fn show(body: &str) -> Option<Line> {
+    let words: Vec<&str> = body.split(|c: char| c.is_whitespace() || c == ',' || c == '|').filter(|w| !w.is_empty()).collect();
+    let desk = words.first().is_some_and(|w| w.trim_matches(['`', '*', '.']).eq_ignore_ascii_case("desk"));
+    let mut ids: Vec<String> = Vec::new();
+    for w in &words {
+        if let Some(id) = w.strip_prefix('#').map(|d| d.trim_end_matches(['.', ')', '`', '*'])).filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_alphanumeric())) {
+            ids.push(id.to_ascii_lowercase());
+        }
+    }
+    (desk || !ids.is_empty()).then_some(Line::Show { ids, desk })
 }
 
 /// `UNHOLD: #<id>` (#540); anything after a "|" is left alone.

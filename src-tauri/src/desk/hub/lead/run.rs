@@ -4,6 +4,7 @@
 use crate::desk::hub::core::desk::{routable, shown, shown_name};
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskItem, Waiting};
+use super::block;
 
 /// How `desk_summary` names a project's held route answers (`routes_held`, #248) for `desk_told`: this, then the project.
 pub(crate) const ROUTES_HELD: &str = "routes:";
@@ -272,22 +273,65 @@ impl Hub {
 
     /// What the lead is told before each message of yours: the project's items, who holds them, and the sessions it
     /// can hand work to, in one `<desk …>…</desk>` block (no `</desk>` inside it: the window strips the block by it).
-    /// `lead`: the session told (left out of the sessions listed; "" for one not started yet). `with_skill`: how a
-    /// lead works (for a session just made the lead: it has no such system prompt).
+    /// The whole block with the rules, as a lead not sent one yet reads it; nothing is noted as sent (`desk_block` is
+    /// what messages carry). `lead`: the session told (left out of the sessions listed; "" for one not started yet).
+    /// `with_skill`: how a lead works (for a session just made the lead: it has no such system prompt).
     /// With the routes it couldn't make that it's told of: `desk_told` once the message has reached it.
     pub(crate) fn desk_summary(&self, project: &str, lead: &str, with_skill: bool) -> (String, Vec<(String, String)>) {
         let now = now_ms();
-        let lands = if lead.is_empty() { String::new() } else { format!("{}\n{}\n", self.desk_lands_line(project).trim_end(), crate::desk::model_pick::lead_line(project)) };
-        let (text, failed) = self.read(|st| {
-            let mut out = summary_head(st, project, lead, &lands, now);
-            let mut failed = vec![];
-            summary_items(st, project, &mut out, &mut failed);
-            summary_routes(st, project, lead, &mut out, now);
-            summary_tail(st, project, with_skill, &mut out, now);
-            (out, failed)
+        let lands = self.lands_for(project, lead);
+        let (body, failed) = self.read(|st| {
+            let p = block_parts(st, project, lead, &lands, &[], now);
+            (format!("{}{}", block::whole(&p.lines), p.notes), p.failed)
         });
-        // Titles and names are anyone's words: none of them may close the block early.
-        (format!("<desk {}</desk>", crate::owner::in_prompt(&text).replace("</desk", "</ desk")), failed)
+        (wrapped(&self.read(|st| block_open(st, project, "")), &body, Some(with_skill)), failed)
+    }
+
+    /// The Desk block message `text` to lead `lead` of `project` carries (#818): the whole block with the rules to a
+    /// lead not sent one yet, after a hand-off, a compaction or a restart (`first`: always); the whole block every
+    /// FULL_EVERY messages or when it asked; else only the lines that changed since the last one it was sent. Items
+    /// `text` names (#<id>) are added in full. `going`: the message goes now (sent while it's at work is kept for its
+    /// turn's end instead, and built again then: hub/send.rs `desk_fresh_held`), so it's noted as what the lead has.
+    pub(crate) fn desk_block(&self, project: &str, lead: &str, text: &str, first: bool, going: bool) -> (String, Vec<(String, String)>) {
+        let now = now_ms();
+        let lands = self.lands_for(project, lead);
+        let about = about_ids(text);
+        let (open, body, failed, rules) = self.write(|st| {
+            let p = block_parts(st, project, lead, &lands, &about, now);
+            let compacted = st.sessions.get(lead).map_or(0, |s| s.compacted_ms);
+            let sent = st.desk.run.blocks.get(project);
+            let kind = if first { block::Kind::First } else { block::kind_for(sent, lead, compacted) };
+            let body = match (kind, sent) {
+                (block::Kind::Changes, Some(s)) => {
+                    let ops = block::diff(&s.base, &p.lines);
+                    format!("{CHANGES_HEAD}\n{}", block::changes(&s.base, &p.lines, &ops))
+                }
+                _ => block::whole(&p.lines),
+            };
+            // Kept for its turn's end: built again as it goes, from what the lead has now.
+            let busy = st.sessions.state(lead).as_deref() == Some("working") || st.sessions.compacting_since(lead) > 0;
+            if going || !busy {
+                let s = st.desk.run.blocks.entry(project.to_string()).or_default();
+                match kind {
+                    block::Kind::First => *s = block::Sent { sid: lead.to_string(), base: p.lines.clone(), rules_at: now, ..Default::default() },
+                    block::Kind::Whole => (s.base, s.since_full, s.full_next) = (p.lines.clone(), 0, false),
+                    block::Kind::Changes => (s.base, s.since_full) = (p.lines.clone(), s.since_full + 1),
+                }
+            }
+            let open = block_open(st, project, if kind == block::Kind::Changes { "changes" } else { "" });
+            (open, format!("{body}{}", p.notes), p.failed, kind == block::Kind::First)
+        });
+        (wrapped(&open, &body, rules.then_some(first)), failed)
+    }
+
+    /// The lead asked for its whole Desk block (SHOW: desk): its next message carries it.
+    pub(crate) fn desk_block_whole_next(st: &mut Store, project: &str) {
+        st.desk.run.blocks.entry(project.to_string()).or_default().full_next = true;
+    }
+
+    /// How `project` lands and where its new sessions start, for its lead's block ("" for one not started yet).
+    fn lands_for(&self, project: &str, lead: &str) -> String {
+        if lead.is_empty() { String::new() } else { format!("{}\n{}", self.desk_lands_line(project).trim_end(), crate::desk::model_pick::lead_line(project)) }
     }
 
     /// The short, visible hand-off for the successor. The full routing context travels separately in the Desk block.
@@ -341,20 +385,26 @@ pub(crate) fn context_k(tokens: u64) -> String {
 /// writes its whole context to the cache again.
 pub(crate) const COLD_NEW_WORK_MAX: u64 = 60_000;
 
-/// Show cache details when a pending hand-off could affect a routing decision, or (`route`: a session the lead routes
-/// to) when it is too big to wake cold for new work.
+/// Show the size when a pending hand-off could affect a routing decision, or (`route`: a session the lead routes
+/// to) when it is too big to wake cold for new work. No minutes counting down (#818): they changed every block.
 fn context_note(st: &Store, sid: &str, route: bool, now: u64) -> String {
     let Some(v) = st.insight.get(sid) else { return String::new() };
-    let (tokens, until) = (v["tokens"].as_u64().unwrap_or(0), v["until_ms"].as_u64().unwrap_or(0));
+    let tokens = v["tokens"].as_u64().unwrap_or(0);
     if !crate::hub::cache_tick::desk_will_hand_off(st, sid, v, now) {
-        // Codex logs say no cache time (0): never called cold.
-        if route && until > 0 && until <= now && tokens >= COLD_NEW_WORK_MAX {
+        if route && cold_no_new_work(st, sid, now) {
             return format!(", {}, cold: no new work", context_k(tokens));
         }
         return String::new();
     }
-    let minutes = until.saturating_sub(now).div_ceil(60_000);
-    format!(", {}, cache {minutes}m → Cue will hand off at expiry", context_k(tokens))
+    format!(", {}, Cue will hand off when its cache runs out", context_k(tokens))
+}
+
+/// Session `sid`'s cache ran out and it's too big to wake for new work (COLD_NEW_WORK_MAX). Codex logs say no cache
+/// time (0): never called cold.
+fn cold_no_new_work(st: &Store, sid: &str, now: u64) -> bool {
+    let Some(v) = st.insight.get(sid) else { return false };
+    let (tokens, until) = (v["tokens"].as_u64().unwrap_or(0), v["until_ms"].as_u64().unwrap_or(0));
+    until > 0 && until <= now && tokens >= COLD_NEW_WORK_MAX && !crate::hub::cache_tick::desk_will_hand_off(st, sid, v, now)
 }
 
 /// Of the folders of a project's sessions (in order), the first in the repository named for `project`, else the first.
@@ -424,27 +474,154 @@ pub(crate) fn start_failed(st: &mut Store, s: &crate::desk::hub::core::desk::New
     crate::desk::hub::lead::feed::raise(st, &s.project, &s.id, crate::desk::feed::ChangeKind::RouteFailed, words, &key, now);
 }
 
-/// The Desk summary's opening: which Desk, and the lead told (its name, its context, how its project lands).
-fn summary_head(st: &Store, project: &str, lead: &str, lands: &str, now: u64) -> String {
-    let mut out = match st.desk.spaces.get(project) {
-        Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\">\n", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
-        None => format!("project=\"{}\">\n", project.replace('"', "'")),
-    };
-    if !lead.is_empty() {
-        let name = st.sessions.get(lead).map(shown_name)
-            .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
-            .unwrap_or_else(|| lead.chars().take(8).collect());
-        out.push_str(&format!("Desk lead: {name} (you){}\n{lands}\n", context_note(st, lead, false, now)));
+/// How a block of changes only begins (#818).
+const CHANGES_HEAD: &str = "Only what changed since your last Desk block; everything it doesn't name stands as it was. SHOW: desk sends it whole, SHOW: #<id> an item in full.";
+
+/// How the lead reads its block (#818): sent with the rules.
+const BLOCK_GUIDE: &str = "Your Desk block gives items being routed, at work, finishing or paused in full; every other item is one line \
+(number, title, state, holder, after #X), and the item a message is about is added in full. Cold sessions too big for new work that hold \
+nothing are counted, not listed. Between whole blocks, a block marked changes=\"only\" carries only the lines that changed; anything it \
+doesn't name stands as in the block before. To see more, write a line of its own: SHOW: #<id> #<id> (those items in full, told at once) \
+or SHOW: desk (the whole block, sent at once).";
+
+/// The parts of a Desk block (#818): its lines (compared from block to block), and what goes with each message
+/// apart from them (`notes`: routes it couldn't make, and items the message is about in full), with those routes.
+struct Parts {
+    lines: block::Lines,
+    notes: String,
+    failed: Vec<(String, String)>,
+}
+
+/// A block's lines as they're made.
+#[derive(Default)]
+struct Out {
+    lines: block::Lines,
+}
+
+impl Out {
+    fn heading(&mut self, key: &str, text: &str) {
+        self.line(format!("h|{key}"), text.to_string());
     }
-    // Holds on this repository's code, every Desk's (#540): a lead that starts later, or after a compact, sees them.
-    if let Some(holds) = crate::desk::holds::summary_line(st, project) {
-        out.push_str(&holds);
+    fn gap(&mut self) {
+        let n = self.lines.iter().filter(|(k, _)| k.starts_with("gap|")).count();
+        self.line(format!("gap|{n}"), String::new());
+    }
+    /// A line; a key used already gets a number after it, so keys stay unique.
+    fn line(&mut self, key: String, text: String) {
+        let mut k = key.clone();
+        let mut n = 1;
+        while self.lines.iter().any(|(x, _)| *x == k) {
+            n += 1;
+            k = format!("{key}#{n}");
+        }
+        self.lines.push((k, text));
+    }
+    /// Each line of `text` under section `sec`.
+    fn text(&mut self, sec: &str, text: &str) {
+        for (i, l) in text.lines().enumerate() {
+            self.line(format!("{sec}|{i}"), l.to_string());
+        }
+    }
+}
+
+/// The `<desk …>` opening's attributes: which Desk, and (`changes`) a block of changes only.
+fn block_open(st: &Store, project: &str, changes: &str) -> String {
+    let mut out = match st.desk.spaces.get(project) {
+        Some(d) => format!("id=\"{}\" name=\"{}\" project=\"{}\"", project, d.name.replace('"', "'"), d.project.replace('"', "'")),
+        None => format!("project=\"{}\"", project.replace('"', "'")),
+    };
+    if !changes.is_empty() {
+        out.push_str(" changes=\"only\"");
     }
     out
 }
 
-/// The summary's items: to route, the others open, the parked ones; with the routes it couldn't make (`failed`).
-fn summary_items(st: &Store, project: &str, out: &mut String, failed: &mut Vec<(String, String)>) {
+/// The whole message's block: `<desk {open}>`, `body`, the rules when they go (`rules`: Some, with how a lead works
+/// when true), `</desk>`. Cue's own words say your name; the name line goes after that swap, so it says what it means.
+fn wrapped(open: &str, body: &str, rules: Option<bool>) -> String {
+    let mut text = format!("{open}>\n{body}");
+    if let Some(skill) = rules {
+        text.push('\n');
+        text.push_str(crate::desk::ROUTING_GUIDANCE);
+        text.push('\n');
+        text.push_str(BLOCK_GUIDE);
+        text.push('\n');
+        text.push_str("\nAnswer the owner's question or request directly in plain language before any Desk command lines.\n");
+        if skill {
+            text.push('\n');
+            text.push_str(crate::desk::LEAD_SKILL);
+            text.push('\n');
+        }
+    }
+    let mut said = crate::owner::in_prompt(&text);
+    if rules.is_some() {
+        // Your name (owner.rs): running leads get it too, and Cue's own words above use it.
+        said.push_str(&crate::owner::told_line());
+    }
+    // Titles and names are anyone's words: none of them may close the block early.
+    format!("<desk {}</desk>", said.replace("</desk", "</ desk"))
+}
+
+/// The items message `text` is about: the #<id>s it names, in order, a few at most.
+fn about_ids(text: &str) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for w in text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '#')) {
+        if let Some(id) = w.strip_prefix('#').filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit())) {
+            if !ids.iter().any(|i| i == id) {
+                ids.push(id.to_string());
+            }
+        }
+        if ids.len() >= 6 {
+            break;
+        }
+    }
+    ids
+}
+
+/// The parts of `project`'s block for lead `lead` (`lands`: how it lands, "" for none), with items `about` in full.
+fn block_parts(st: &Store, project: &str, lead: &str, lands: &str, about: &[String], now: u64) -> Parts {
+    let mut out = Out::default();
+    let mut notes = String::new();
+    let mut failed = vec![];
+    block_head(st, project, lead, lands, now, &mut out);
+    block_items(st, project, about, &mut out, &mut notes, &mut failed);
+    block_routes(st, project, lead, &mut out, now);
+    if let Some(paused) = crate::desk::hub::away::pause::pause_block(project, now) {
+        out.gap();
+        out.text("pause", &paused);
+    }
+    if let Some(away) = crate::desk::hub::away::away::away_block(st, project) {
+        out.gap();
+        out.text("away", &away);
+    }
+    Parts { lines: out.lines, notes, failed }
+}
+
+/// The block's opening lines: the lead told (its name, its context, how its project lands), and holds on its code.
+fn block_head(st: &Store, project: &str, lead: &str, lands: &str, now: u64, out: &mut Out) {
+    if !lead.is_empty() {
+        let name = st.sessions.get(lead).map(shown_name)
+            .or_else(|| st.desk.lead.get(project).filter(|l| l.sid == lead).map(|l| l.name.clone()))
+            .unwrap_or_else(|| lead.chars().take(8).collect());
+        out.line("head|lead".into(), format!("Desk lead: {name} (you){}", context_note(st, lead, false, now)));
+        out.text("lands", lands);
+        out.gap();
+    }
+    // Holds on this repository's code, every Desk's (#540): a lead that starts later, or after a compact, sees them.
+    if let Some(holds) = crate::desk::holds::summary_line(st, project) {
+        out.text("holds", &holds);
+    }
+}
+
+/// Item `it` (as shown) goes in the block in full (#818): to route, at work, finishing or paused; else one line.
+fn in_full(st: &Store, it: &DeskItem) -> bool {
+    let to_route = it.state == "new" && it.holder.is_none() && !st.desk.run.new_starts.contains(&it.id);
+    to_route || matches!(it.state.as_str(), "working" | "finishing" | "paused" | "needs_resume")
+}
+
+/// The block's items: to route, the others open, the parked ones; with the routes it couldn't make (`failed`), told
+/// in `notes`, and the items `about` in full there when their line is short.
+fn block_items(st: &Store, project: &str, about: &[String], out: &mut Out, notes: &mut String, failed: &mut Vec<(String, String)>) {
     let mut told = vec![];
     let (mut ready, open): (Vec<_>, Vec<_>) = st.desk.items.iter()
         .filter(|i| i.project == project && i.state != "done")
@@ -452,61 +629,103 @@ fn summary_items(st: &Store, project: &str, out: &mut String, failed: &mut Vec<(
         .partition(|i| i.state == "new" && i.holder.is_none() && !st.desk.run.new_starts.contains(&i.id));
     // In your order (#387): the one you dragged to the top first.
     ready.sort_by_key(crate::desk::hub::turn::act::queue_key);
-    out.push_str("Needs routing:\n");
+    out.heading("needs", "Needs routing:");
     if ready.is_empty() {
-        out.push_str("None.\n");
+        out.line("needs|none".into(), "None.".into());
     }
+    let mut item = |it: &DeskItem, out: &mut Out| {
+        let full = in_full(st, it);
+        out.line(format!("it|{}", it.id), item_lines(st, it, full, failed, &mut told));
+    };
     for it in &ready {
-        item_lines(st, it, out, failed, &mut told);
+        item(it, out);
     }
     // Parked (#385, #391): listed apart, so they never read as waiting for a route.
     let (held, open): (Vec<_>, Vec<_>) = open.into_iter().partition(|i| i.state == "held");
     if !open.is_empty() {
-        out.push_str("\nOther open items:\n");
+        out.gap();
+        out.heading("open", "Other open items:");
         for it in &open {
-            item_lines(st, it, out, failed, &mut told);
+            item(it, out);
         }
     }
     if !held.is_empty() {
-        out.push_str("\nParked (the owner starts these themselves; don't ROUTE or START them):\n");
+        out.gap();
+        out.heading("parked", "Parked (the owner starts these themselves; don't ROUTE or START them):");
         for it in &held {
-            item_lines(st, it, out, failed, &mut told);
+            item(it, out);
         }
     }
+    let short: Vec<&DeskItem> = about.iter()
+        .filter_map(|id| ready.iter().chain(open.iter()).chain(held.iter()).find(|i| i.id == *id))
+        .filter(|i| !in_full(st, i))
+        .collect();
+    if !short.is_empty() {
+        notes.push_str("\nIn full, as this message is about them:\n");
+        for it in short {
+            notes.push_str(&item_lines(st, it, true, &mut vec![], &mut vec![]));
+            notes.push('\n');
+        }
+    }
+    if !told.is_empty() {
+        notes.push('\n');
+    }
     for line in told {
-        out.push_str(&line);
+        notes.push_str(&line);
     }
     // Its routes Cue couldn't make that it couldn't be told of then, as it was asking the user something (#248).
     if let Some(held) = st.desk.run.routes_held.get(project).filter(|h| !h.is_empty()) {
-        out.push_str(held);
+        notes.push_str(held);
         failed.push((format!("{ROUTES_HELD}{project}"), held.clone()));
     }
 }
 
-/// The summary's routes: the Desk's sessions with work a line each, the rest in one line.
-fn summary_routes(st: &Store, project: &str, lead: &str, out: &mut String, now: u64) {
-    // Sessions with work (#363) get a line each; the rest of the Desk's, idle with no recent item, one line.
+/// Item `id` of `project` in full, as SHOW: #<id> tells the lead (#818); None when it isn't one of the Desk's.
+pub(crate) fn item_in_full(st: &Store, project: &str, id: &str) -> Option<String> {
+    let it = st.desk.item(id).filter(|i| i.project == project)?;
+    let it = shown(st, it);
+    Some(item_lines(st, &it, true, &mut vec![], &mut vec![]))
+}
+
+/// Session `sid` holds an open item of `project`, or one waits for it.
+fn holds_open(st: &Store, project: &str, sid: &str) -> bool {
+    st.desk.items.iter().filter(|i| i.project == project && i.state != "done")
+        .any(|i| i.holder.as_ref().or(i.next_for.as_ref()).is_some_and(|h| h.sid == sid || h.lead_sid == sid))
+}
+
+/// The block's routes: the Desk's sessions with work a line each, then the rest. A session too big to wake cold for
+/// new work that holds nothing open is only counted (#818): the lead can't route new work to it (rule 17,
+/// docs/desk-routing-merged.md); warm ones, small cold ones and ones holding an item stay listed.
+fn block_routes(st: &Store, project: &str, lead: &str, out: &mut Out, now: u64) {
+    // Sessions with work (#363) get a line each; the rest of the Desk's, idle with no recent item, under their own heading.
     let work = crate::desk::hub::core::members::with_work(st, project, now);
-    let (on, older): (Vec<_>, Vec<_>) = routable(st, project).into_iter()
+    let (listed, cold): (Vec<_>, Vec<_>) = routable(st, project).into_iter()
         .filter(|s| s.origin.session_id != lead && st.desk.on_desk(project, &s.origin.session_id))
-        .partition(|s| work.contains(&s.origin.session_id));
+        .partition(|s| !cold_no_new_work(st, &s.origin.session_id, now) || holds_open(st, project, &s.origin.session_id));
+    let (on, older): (Vec<_>, Vec<_>) = listed.into_iter().partition(|s| work.contains(&s.origin.session_id));
     let mut on: Vec<_> = on.into_iter().map(|s| (idle_route(st, s), s)).collect();
     on.sort_by_key(|(idle, _)| !idle);
-    if on.is_empty() && older.is_empty() {
-        out.push_str("\nNo Desk sessions available. Use ROUTE: #<id> -> new for a new session.\n");
+    out.gap();
+    if on.is_empty() && older.is_empty() && cold.is_empty() {
+        out.heading("routes", "No Desk sessions available. Use ROUTE: #<id> -> new for a new session.");
     } else {
-        out.push_str("\nDesk routes (or use ROUTE: #<id> -> new):\n");
+        out.heading("routes", "Desk routes (or use ROUTE: #<id> -> new):");
     }
     for (_, s) in on {
-        out.push_str(&format!("- {}\n", route_of(st, s, now)));
+        out.line(format!("s|{}", s.origin.session_id), format!("- {}", route_of(st, s, now)));
     }
     if !older.is_empty() {
-        let all: Vec<String> = older.iter().map(|s| route_of(st, s, now)).collect();
-        out.push_str(&format!("Older, idle with no recent item: {}\n", all.join("; ")));
+        out.heading("older", "Older, idle with no recent item:");
+        for s in older {
+            out.line(format!("s|{}", s.origin.session_id), format!("- {}", route_of(st, s, now)));
+        }
+    }
+    if !cold.is_empty() {
+        out.line("cold|count".into(), format!("Also {} cold sessions too big for new work, holding nothing: not listed (no new work for them).", cold.len()));
     }
 }
 
-/// One session as a route: its name, its sid's start, its state, its crew and its size and cache.
+/// One session as a route: its name, its sid's start, its state, and its size when that matters.
 fn route_of(st: &Store, s: &crate::sessions::Session, now: u64) -> String {
     let sid = &s.origin.session_id;
     let id: String = sid.chars().take(8).collect();
@@ -524,42 +743,15 @@ fn route_of(st: &Store, s: &crate::sessions::Session, now: u64) -> String {
     } else {
         r.push_str(&format!(", {}", s.state));
     }
-    if !s.team.is_empty() {
-        let crew: Vec<_> = s.team.iter().map(|t| t.name.as_str()).collect();
-        r.push_str(&format!(", crew: {}", crew.join(", ")));
-    }
     r.push_str(&context_note(st, sid, true, now));
     r.push(')');
     r
 }
 
-/// The summary's close: a pause or Away in force, how to route, and (for a new lead) how a lead works.
-fn summary_tail(st: &Store, project: &str, with_skill: bool, out: &mut String, now: u64) {
-    if let Some(paused) = crate::desk::hub::away::pause::pause_block(project, now) {
-        out.push('\n');
-        out.push_str(&paused);
-    }
-    if let Some(away) = crate::desk::hub::away::away::away_block(st, project) {
-        out.push('\n');
-        out.push_str(&away);
-    }
-    // Running leads get this too, even if their original system prompt is older.
-    out.push('\n');
-    out.push_str(crate::desk::ROUTING_GUIDANCE);
-    out.push('\n');
-    out.push_str("\nAnswer the owner's question or request directly in plain language before any Desk command lines.\n");
-    // Your name (owner.rs): running leads get it too, and Cue's own words above use it.
-    out.push_str(&crate::owner::told_line());
-    if with_skill {
-        out.push('\n');
-        out.push_str(crate::desk::LEAD_SKILL);
-        out.push('\n');
-    }
-}
-
-/// Item `it`'s line in the Desk's summary (into `out`), with the routes it couldn't make (into `failed`) and what the
-/// lead is told of them (into `told`).
-fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) {
+/// Item `it`'s line in the Desk's block: in full (`full`: with when it's done, what you'll see and its files), else
+/// short (#818). With the routes it couldn't make (into `failed`) and what the lead is told of them (into `told`).
+fn item_lines(st: &Store, it: &DeskItem, full: bool, failed: &mut Vec<(String, String)>, told: &mut Vec<String>) -> String {
+    let mut out = String::new();
     let kind = if it.kind.is_empty() { "no kind yet" } else { &it.kind };
     let status = match (it.stopped, it.loose.is_empty()) {
         (true, false) => "stopped, not committed".into(),
@@ -608,9 +800,23 @@ fn item_lines(st: &Store, it: &DeskItem, out: &mut String, failed: &mut Vec<(Str
         // At work without a copy (#566): in line for the next free one.
         out.push_str(&format!(" | at work where its holder is, in line for the next free copy of its repository ({}); COPY FIRST puts it first in that line", it.tree_wait_repo));
     }
-    item_details(it, out);
-    out.push('\n');
+    if full { item_details(it, &mut out) } else { item_short(it, &mut out) }
     item_refused(it, failed, told);
+    out
+}
+
+/// Item `it`'s short line, on (#818): only what the lead acts on without asking (SEE: for an item missing a line, a
+/// start that failed).
+fn item_short(it: &DeskItem, out: &mut String) {
+    if it.see.is_empty() {
+        out.push_str(" | no you'll see yet");
+    }
+    if it.done_when.is_empty() {
+        out.push_str(" | no done when yet");
+    }
+    if !it.start_failed.is_empty() {
+        out.push_str(&format!(" | couldn't start a new session: {}", it.start_failed));
+    }
 }
 
 /// Item `it`'s line, on: when it's done and what you'll see, its files, a start that failed.

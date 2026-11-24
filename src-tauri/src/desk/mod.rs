@@ -125,7 +125,9 @@ for the session doing it only (tests, files, commands). Give an item missing eit
 says \"nothing in the repo changes\". It takes no copy and goes to the user to check with no commit.
 
 Each message from Cue starts with a <desk> block. It shows who runs the Desk, what needs routing, other open items, \
-and the sessions that can take work. A pending hand-off shows the session's context size and cache time. \
+and the sessions that can take work. A pending hand-off shows the session's context size. Items being routed, at work, finishing or paused are in full; \
+the rest one line each, and the item a message is about in full. A block marked changes=\"only\" carries only what changed since the \
+last; what it doesn't name stands. \
 An item marked needs resume is still assigned and its holder is idle. A queued item with an after reference waits for that dependency. \
 The user's own words come after the block.
 
@@ -195,6 +197,8 @@ HOLD: #<id> | area: <files or globs, comma-separated> | till: <it lands, or a ti
 will move or rewrite that part of the code: Cue keeps the hold for the repository, and every Desk on it sees it in its \
 Desk block and under its header till the item lands, is dropped or parks)
 UNHOLD: #<id>      (lift that hold early)
+SHOW: #<id> #<id>      (those items in full: done when, you'll see, files; Cue tells you at once)
+SHOW: desk      (your whole Desk block, sent at once)
 TELL DESK: <Desk's name> | <words>      (to another Desk's lead on this repository, e.g. to agree who lands first; \
 start the words with #<id> when it's about one of your items. Its answer comes back to you the same way)
 TELL DESKS: <words>      (to every other Desk's lead on this repository: a heads-up before you change shared code)

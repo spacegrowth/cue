@@ -50,7 +50,7 @@ fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::S
     let named = crate::uploads::with_paths(text, &saved);
     let (sid, failed) = match h.desk_claim(project, &named)? {
         DeskClaim::Send(sid) => {
-            let (message, failed) = for_lead(h, project, &sid, text);
+            let (message, failed) = for_lead(h, project, &sid, text, now);
             h.send_saved(&sid, &message, saved, now)?;
             (sid, failed)
         }
@@ -58,7 +58,7 @@ fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::S
         // it's done (with the summary for the lead it reaches), or not, and you're told so.
         DeskClaim::Wait(outcome) => return outcome.recv().unwrap_or_else(|_| Err("it gave up".into())).map_err(lost),
         DeskClaim::Resume(sid) => {
-            let (message, failed) = for_lead(h, project, &sid, &named);
+            let (message, failed) = for_lead(h, project, &sid, &named, true);
             (DeskStart::new(h, project).done(resume(h, &sid, &message)).map_err(lost)?, failed)
         }
     };
@@ -68,9 +68,10 @@ fn deliver(h: &Arc<Hub>, project: &str, text: &str, saved: Vec<crate::uploads::S
 }
 
 /// Your words (`text`) as `project`'s lead `sid` is sent them: after the Desk's summary as it sees it (itself left
-/// out of the sessions it can route to). With the failed routes it's told of.
-fn for_lead(h: &Arc<Hub>, project: &str, sid: &str, text: &str) -> (String, Vec<(String, String)>) {
-    let (summary, failed) = h.desk_summary(project, sid, false);
+/// out of the sessions it can route to), whole or the changes since its last (`desk_block`; `going`: it goes now even
+/// if the lead is at work). With the failed routes it's told of.
+fn for_lead(h: &Arc<Hub>, project: &str, sid: &str, text: &str, going: bool) -> (String, Vec<(String, String)>) {
+    let (summary, failed) = h.desk_block(project, sid, text, false, going);
     (desk_message(&summary, text), failed)
 }
 
@@ -100,7 +101,7 @@ impl<'a> DeskStart<'a> {
         self.open = false;
         for w in self.h.desk_claim_done(self.project) {
             let sent = up.clone().and_then(|sid| {
-                let (message, failed) = for_lead(self.h, self.project, &sid, &w.text);
+                let (message, failed) = for_lead(self.h, self.project, &sid, &w.text, false);
                 self.h.tell(&sid, &message)?;
                 self.h.desk_told(&failed);
                 Ok(sid)

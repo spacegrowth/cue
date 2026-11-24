@@ -65,7 +65,7 @@ fn the_lead_sees_context_for_pending_handoffs_and_can_say_keep() {
     let lead_summary = || w.hub().desk_summary(&project, "lead01", false).0;
     w.tick(true);
     let s = lead_summary();
-    assert!(s.contains("sid:webui1, idle, 142k, cache 12m → Cue will hand off at expiry)"), "{s}");
+    assert!(s.contains("sid:webui1, idle, 142k, Cue will hand off when its cache runs out)"), "{s}");
     assert!(s.contains("sid:idle01, idle)") && !s.contains("160k"), "{s}");
     assert!(!s.contains("90k"), "{s}");
 
@@ -76,7 +76,7 @@ fn the_lead_sees_context_for_pending_handoffs_and_can_say_keep() {
     assert!(lead_summary().contains("sid:webui1, idle)") && !lead_summary().contains("142k"), "{}", lead_summary());
     w.hub().desk_undo(d[0]["id"].as_str().unwrap()).unwrap();
     w.settle();
-    assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "undone: Cue's rule again");
+    assert!(lead_summary().contains("142k, Cue will hand off when its cache runs out)"), "undone: Cue's rule again");
 
     // Kept again while it waits: for this wait only; its next turn ends it.
     shop_lead_says(&w, "CONTEXT: webui1 -> keep");
@@ -84,7 +84,7 @@ fn the_lead_sees_context_for_pending_handoffs_and_can_say_keep() {
     w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
     next_turn(&w, "webui1", "m2", 12 * 60_000, 142_000);
     w.tick(true);
-    assert!(lead_summary().contains("142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
+    assert!(lead_summary().contains("142k, Cue will hand off when its cache runs out)"), "{}", lead_summary());
 }
 
 /// Session `sid` works a turn and ends it with reply `id`, `left_ms` before its hour's cache runs out.
@@ -115,7 +115,7 @@ fn a_keep_said_while_a_session_works_covers_its_wait_after_that_turn() {
     w.advance(50 * 60_000); // (its reply is dated 48 minutes back: after the keep)
     next_turn(&w, "webui1", "m3", 12 * 60_000, 142_000);
     w.tick(true);
-    assert!(lead_summary().contains("sid:webui1, idle, 142k, cache 12m → Cue will hand off at expiry)"), "{}", lead_summary());
+    assert!(lead_summary().contains("sid:webui1, idle, 142k, Cue will hand off when its cache runs out)"), "{}", lead_summary());
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn once_a_hand_off_was_sent_this_wait_the_lead_is_not_told_cue_will() {
     shop_session(&w, "webui1", 12 * 60_000, 142_000);
     let project = shop_desk(&w);
     w.tick(true);
-    assert!(w.hub().desk_summary(&project, "lead01", false).0.contains("142k, cache 12m → Cue will"));
+    assert!(w.hub().desk_summary(&project, "lead01", false).0.contains("142k, Cue will hand off when its cache runs out"));
     crate::db::handoff_sent("webui1", "", false, 0);
     w.tick(true);
     let s = w.hub().desk_summary(&project, "lead01", false).0;
@@ -272,7 +272,13 @@ fn a_big_cold_session_is_marked_for_no_new_work() {
     let s = w.hub().desk_summary(&project, "lead01", false).0;
     // A session's route: its line, or its part of the one Older line (#363).
     let line = |sid: &str| s.lines().flat_map(|l| l.split("; ")).find(|l| l.contains(&format!("sid:{sid}"))).unwrap_or_default().to_string();
-    assert!(line("idle01").ends_with("sid:idle01, idle, 95k, cold: no new work)"), "{s}");
+    // Holding nothing, it's only counted (#818): the lead can't route new work to it.
+    assert!(line("idle01").is_empty() && s.contains("Also 1 cold sessions too big for new work, holding nothing"), "{s}");
     assert!(!line("small1").contains("cold") && !line("webui1").contains("cold"), "a small cold one and a warm one aren't marked: {s}");
+    // Holding an item, it's listed and marked: its own send-backs can still go to it.
+    w.hub().desk_add(&project, "bug", "Footer", "", Some("idle01")).unwrap();
+    let s = w.hub().desk_summary(&project, "lead01", false).0;
+    let line = |sid: &str| s.lines().find(|l| l.contains(&format!("sid:{sid}"))).unwrap_or_default().to_string();
+    assert!(line("idle01").ends_with("sid:idle01, idle, 95k, cold: no new work)"), "{s}");
     assert!(crate::desk::LEAD_SKILL.contains("A session marked cold takes no new work"), "the lead's rules say what the mark means");
 }
