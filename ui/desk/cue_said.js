@@ -254,6 +254,9 @@ function cueMsgHtml(e, s, key, m = null) {
 /** A few of Cue's messages to a session in Cue's words for you, for its quiet line (#836): [pattern on its text, its
  *  Desk block and teammate prefix dropped, → { id, what }]. Any other one says its first sentence. */
 const CUE_GISTS = [
+  // A failed full run of main (landing/full_run.rs): which tests and the end of its log only in the folded text.
+  [cueRe(String.raw`^Desk item #ID \([^\n]*\) is open again: the full run of main failed`), (m) => ({ id: m[1], what: `Reopened #${m[1]}: the full test run failed` })],
+  [cueRe(String.raw`^Desk item #ID \([^\n]*\): the full run of main failed on its commit`), (m) => ({ id: m[1], what: `Told it the full test run failed on #${m[1]}'s commit: fix it there too` })],
   [cueRe(String.raw`^Your DONE for #ID is in, but its check line needs another go`), (m) => ({ id: m[1], what: "Asked it to redo its check line" })],
   [/^Your background agent “(.+?)” has gone quiet/, (m) => ({ what: `Asked it to wake its background agent ${m[1]}` })],
   [/^Stop your background agent “(.+?)”/, (m) => ({ what: `Asked it to stop its background agent ${m[1]}` })],

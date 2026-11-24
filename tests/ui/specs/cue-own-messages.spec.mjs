@@ -61,6 +61,21 @@ for (const scheme of ["light", "dark"]) {
   }
 }
 
+test("a reopen after a failed full run is one quiet line; the failures and the log only in its folded text", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const REOPEN = "Desk item #777 (Rail (dark)) is open again: the full run of main failed after it landed (hub::tests::header_stays, tests/rail.test.js). Fix it, then say DONE: #777.\nIts fixes stay in #777; don't add new items for them.\nThe end of its output:\nthread 'hub::tests::header_stays' panicked at src/hub.rs:12\nFAIL tests/rail.test.js";
+  const NOTE = "Desk item #778 (Footer): the full run of main failed on its commit abc1234 (tests/rail.test.js). It is open with you already: fix that within #778 too.\nThe end of its output:\nFAIL tests/rail.test.js";
+  const chat = await engChat(page, cue, [{ role: "you", text: REOPEN, cue: true }, { role: "you", text: NOTE, cue: true }]);
+  const lines = chat.locator(".cue-quiet");
+  await expect(lines.locator(".dk-cue-w")).toHaveText(["Reopened #777: the full test run failed", "Told it the full test run failed on #778's commit: fix it there too"]);
+  await expect(lines).not.toContainText(["header_stays"]);
+  await expect(chat.locator(".cv-you")).toHaveCount(0);
+  await lines.first().locator(".dk-cue-w").click();
+  const full = chat.locator(".cue-quiet").first().locator(".mg-full");
+  await expect(full).toContainText("hub::tests::header_stays, tests/rail.test.js");
+  await expect(full).toContainText("panicked at src/hub.rs:12");
+});
+
 test("the same words without Cue's mark are yours: a bubble, as you typed them", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const chat = await engChat(page, cue, [{ role: "you", text: OTHER }]);
