@@ -221,8 +221,7 @@ function deskView() {
   // Three columns (#738, desk/c.js): the Desk's sessions at the left, the lead's chat (or what's open in its place) in
   // the middle, Items as one white card with Up next and Done today under it on the green.
   // The grip between the chat and Items trades their width (board/columns.js deskColDrag, styles/desk-cols.css).
-  // Over the columns, what Cue is doing with landed work in this Desk's own steps (#783, desk/now_line.js).
-  return `${deskNowLineHtml(deskOf(project))}<div class="board dk-board dk-b2 dk-cols dk-c" style="${deskColStyle()}">${deskCSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskCList(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
+  return `<div class="board dk-board dk-b2 dk-cols dk-c" style="${deskColStyle()}">${deskCSessions(project)}${deskAwayBackIn(deskRight(project, taskApprovals))}${deskAwayBackIn(deskCList(project, taskApprovals))}${deskColGrip()}${prog}</div>${deskAwayHtml()}`;
 }
 /** After the draw: the lead's chat at its end, as a chat opens (unless you'd scrolled up in it); an item's Thread at
  *  a message that just came. */

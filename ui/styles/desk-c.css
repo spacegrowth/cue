@@ -334,29 +334,5 @@
 .dkn-ibacts:has(.dk-wo) { flex: 1 1 100%; margin-left: 0; justify-content: stretch; }
 .dkn-ibkept { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 
-/* ---------- the line over the columns (#783, desk/now_line.js) ---------- */
-/* What Cue is doing with landed work, on the green: a dot by its state, what (600), then its step and time and what to
-   know, muted; under it the items that step carries, each opening its item. */
-.dkl { flex: none; margin-top: 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0 4px; color: var(--on-bg); font-size: var(--type-small); line-height: var(--type-small-lh); }
-.dkl + .board.dk-c { margin-top: 10px; }
-.dkl-1 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 0; min-width: 0; }
-.dkl-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-right: 8px; align-self: center; background: var(--on-bg-muted); }
-.dkl-run .dkl-dot { background: var(--sel); animation: dkl-pulse 1.6s ease-in-out infinite; }
-.dkl-wait .dkl-dot { background: var(--amber); }
-.dkl-fail .dkl-dot { background: var(--deny); }
-.dkl-ok .dkl-dot { background: var(--on-bg); }
-.dkl-idle .dkl-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--on-bg-muted); }
-@keyframes dkl-pulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .dkl-run .dkl-dot { animation: none; } }
-.dkl-what { font-weight: 600; overflow-wrap: anywhere; }
-.dkl-idle .dkl-what { font-weight: 500; color: var(--on-bg-muted); }
-.dkl-p, .dkl-note { color: var(--on-bg-muted); font-weight: 500; overflow-wrap: anywhere; }
-.dkl-p::before, .dkl-note::before { content: "·"; margin: 0 7px; }
-.dkl-t { font-variant-numeric: tabular-nums; }
+/* An item's row naming the landing step it waits on (#783, desk/now_line.js deskNowLineFor): a command in mono. */
 .dkl-cmd { font-family: var(--mono); }
-.dkl-2 { display: flex; flex-wrap: wrap; gap: 4px 6px; padding-left: 16px; min-width: 0; }
-.dkl-it { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; max-width: 340px; min-width: 0; padding: 1px 8px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--on-bg-muted); color: var(--on-bg); }
-.dkl-it:hover { background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
-.dkl-it:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
-.dkl-id { font-family: var(--mono); color: var(--on-bg-muted); flex: none; }
-.dkl-tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
