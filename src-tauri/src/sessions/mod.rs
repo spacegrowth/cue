@@ -7,6 +7,7 @@
 
 mod bar;
 pub mod crew_log;
+mod cue_said;
 mod delivery;
 mod kept_message;
 pub mod send_at;
@@ -372,8 +373,9 @@ impl Session {
     }
 }
 
+/// Every session by id, and Cue's own words sent to them lately (`cue_said`, #836).
 #[derive(Default)]
-pub struct Sessions(HashMap<String, Session>);
+pub struct Sessions(HashMap<String, Session>, cue_said::CueSaid);
 
 /// "2 background agents" / "1 background agent"; "" for none.
 pub fn helpers_words(n: u64) -> String {

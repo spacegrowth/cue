@@ -124,6 +124,8 @@ fn take_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str, state: &str) -> R
     let hi = hello(&h.desk_name(project));
     let (summary, failed) = h.desk_block(project, sid, &hi, true, true);
     let message = desk_message(&summary, &hi);
+    // Cue's hello, not your words (#836).
+    h.cue_says(&message);
     match state {
         "live" => {
             h.tell(sid, &message)?;
@@ -158,6 +160,7 @@ fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool, dir: Option<Strin
     let (summary, _) = h.desk_summary(project, "", agent != crate::hosted::Agent::Claude);
     let message = desk_message(&summary, &hello(&h.desk_name(project)));
     let opts = StartOpts { trust, desk_lead: project.to_string(), ..Default::default() };
+    h.cue_says(&message);
     let started = crate::hub::start_hosted(h, agent, &dir, &message, name, &opts, &[])?;
     started["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".into())
 }

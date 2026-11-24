@@ -428,8 +428,21 @@ impl Hub {
     }
 
     /// Cue's own words to a session: `send_to_session` with no images, not interrupting (kept if it's mid-turn).
+    /// Known as Cue's, so its chat never shows them as yours (#836).
     pub fn tell(&self, session_id: &str, text: &str) -> Result<String, String> {
-        self.send_to_session(session_id, text, &[], false)
+        self.tell_now(session_id, text, false)
+    }
+
+    /// `tell`; `now`: at once, its turn stopped first if it's at work (a turn that waits on what this asks).
+    pub fn tell_now(&self, session_id: &str, text: &str, now: bool) -> Result<String, String> {
+        self.cue_says(text);
+        self.send_to_session(session_id, text, &[], now)
+    }
+
+    /// `text` is about to go to a session as Cue's own words, however it's sent (a new session's first message, a
+    /// lead resumed with it…): its copy in the chat is Cue's, not yours (#836, sessions/cue_said.rs).
+    pub fn cue_says(&self, text: &str) {
+        self.write(|st| st.sessions.cue_says(text));
     }
 
     /// Send `typed` (and images already saved) to a session. Mid-turn, to an agent Cue types into: Cue
@@ -883,7 +896,7 @@ struct Watch {
 pub(super) fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
     // When you wrote it, too (a kept message sent now): its row stands there, where its bubble was (#422).
     let (at, written) = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| (e.at_ms, e.written_ms)).unwrap_or_else(|| (now_ms(), 0));
-    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written };
+    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written, cue: st.sessions.is_cue(text), cue_parts: vec![] };
     st.sessions.set_queued(session_id, Some(q));
 }
 
@@ -965,8 +978,8 @@ mod tests {
         let origin = Origin { session_id: "s5".into(), harness: "claude".into(), ..Default::default() };
         let hub = Hub::new(None);
         hub.event(origin, "active", "refactor the router".into(), vec![], "");
-        assert!(hub.tell("s5", "also keep the old session").unwrap().starts_with("kept in Cue"));
-        hub.tell("s5", "and run the tests").unwrap();
+        assert!(hub.send_to_session("s5", "also keep the old session", &[], false).unwrap().starts_with("kept in Cue"));
+        hub.send_to_session("s5", "and run the tests", &[], false).unwrap();
         let held = |h: &Hub| h.read(|st| st.sessions.held("s5"));
         assert_eq!(held(&hub).map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()), "one kept message, the second after the first");
         assert!(hub.read(|st| st.sessions.thread("s5")).iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
@@ -975,5 +988,4 @@ mod tests {
         assert!(held(&hub).is_none() && hub.unhold("s5").is_none());
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
-    }
-}
+    }}

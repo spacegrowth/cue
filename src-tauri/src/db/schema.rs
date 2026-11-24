@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS exchanges (
   status_ask  TEXT NOT NULL DEFAULT '',    -- yours: what a prompt hook added to ask for a status list
   from_name   TEXT NOT NULL DEFAULT '',    -- another session's message: who sent it
   from_sid    TEXT NOT NULL DEFAULT '',    -- and that session's id, when Cue knew it
+  by_cue      INTEGER NOT NULL DEFAULT 0, -- 'you' in the thread, but Cue's own message to it (#836)
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -443,6 +444,11 @@ fn migrate_on(c: &Connection, version: i64) -> rusqlite::Result<()> {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN from_name TEXT NOT NULL DEFAULT ''", []);
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN from_sid TEXT NOT NULL DEFAULT ''", []);
         c.pragma_update(None, "user_version", 12)?;
+    }
+    // Cue's own messages to a session (#836): marked, so an older page of a chat never shows them as yours.
+    if version < 13 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN by_cue INTEGER NOT NULL DEFAULT 0", []);
+        c.pragma_update(None, "user_version", 13)?;
     }
     Ok(())
 }

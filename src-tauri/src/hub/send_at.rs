@@ -63,6 +63,10 @@ impl Hub {
 
     /// Sent like anything you send it (kept in Cue if it's busy); if it can't be, it's put back with why, for you.
     fn send_one_later(&self, session_id: &str, l: SendAt) -> Result<String, String> {
+        // Cue's carry on (at 0) is Cue's words, not yours (#836); a message you set for later is yours.
+        if l.at_ms == 0 {
+            self.cue_says(&l.text);
+        }
         let sent = self.send_saved(session_id, &l.text, vec![], false);
         if let Err(e) = &sent {
             eprintln!("cue: couldn't send the message for later to {session_id}: {e}");

@@ -141,7 +141,7 @@ impl Hub {
         }
         for sid in stopped {
             self.later(0, move |h| {
-                if let Err(e) = h.send_to_session(&sid, PAUSE_WORDS, &[], true) {
+                if let Err(e) = h.tell_now(&sid, PAUSE_WORDS, true) {
                     eprintln!("cue: desk: couldn't pause {sid}: {e}");
                 }
             });

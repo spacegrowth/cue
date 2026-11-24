@@ -73,7 +73,7 @@ pub fn known_session_ids() -> std::collections::HashSet<String> {
 /// Everything Cue logged for one session, oldest first: the whole conversation, ended sessions too.
 pub fn session_log(session_id: &str) -> Vec<Value> {
     with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
         let rows = st.query_map(params![session_id], log_row)?;
         rows.collect()
     })
@@ -84,7 +84,7 @@ pub fn session_log(session_id: &str) -> Vec<Value> {
 /// chat loads earlier messages a page at a time as you scroll up). Fewer than `limit`: that's the start.
 pub fn session_log_page(session_id: &str, before_ms: u64, limit: usize) -> Vec<Value> {
     let mut page = with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
         let rows = st.query_map(params![session_id, before_ms as i64, limit as i64], log_row)?;
         rows.collect::<rusqlite::Result<Vec<Value>>>()
     })
@@ -109,6 +109,10 @@ fn log_row(r: &rusqlite::Row) -> rusqlite::Result<Value> {
         if !v.is_empty() {
             row[key] = json!(v);
         }
+    }
+    // Cue's own message to it (#836): drawn as Cue's, as the live thread has it.
+    if r.get::<_, bool>(8)? {
+        row["cue"] = json!(true);
     }
     Ok(row)
 }

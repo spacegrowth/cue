@@ -136,18 +136,24 @@ These already showed as short cards or lines before #478 and are unchanged:
 | From another Desk's session | a card with that Desk's chip in its head (#472's band is now a card) |
 | What Cue sent a crew lead for its crew | a card tagged CREW with "+ What Cue sent" (team.js `CUE_SAID`, below) |
 
-## Not a short line yet
+## Any other message of Cue's (#836)
 
-The hub (or the window) sends these too, but no pattern in `CUE_MSGS` knows them, so today they show as a raw bubble
-on the right with Cue's full text, as if you had typed it:
+Cue knows its own words when it sends them (`sessions/cue_said.rs`): whatever sends them says so first (`Hub::tell`,
+`tell_now`, the Desk's messages, a lead's hello, a hand-off's first message, a background agent's Resume or Stop), and
+the copy of it in the session's thread is marked `cue` (saved with it, so an older page of the chat has it too). The
+same words typed by you are never Cue's: nothing is guessed from the text. Your words wrapped by Cue (your note or
+question from an item's page, your Send back) stay yours.
 
-| Kind | Sent when | Hub | How it shows today |
-| --- | --- | --- | --- |
-| Carry on after the usage limit | A turn stopped on the usage limit, and it reset (Carry on is on) | sessions/send_at.rs `CARRY_ON` | your bubble: “Carry on where you stopped: your usage limit reset.” |
-| Resume with the hand-off skill | The next session after a hand-off, when the skill takes `resume` | hub/hand_off_note.rs | your bubble: “/handoff resume” |
-| Background agent quiet, or stop it | You wake or stop a session's background agent | ui/agents.js (the window) | your bubble: “Your background agent “X” has gone quiet…”, or “Stop your background agent “X” now…” |
-| Cut refused | The lead's CUT: names a wait that isn't there | desk_said.rs | the lead's chat, your bubble: “Not cut: #a doesn't wait on #b” |
-| CLOSE commit not on main | The lead's CLOSE: names a commit that isn't on main | desk_unstick.rs | the lead's chat, your bubble: “Desk item #id not closed: … isn't on main…” |
+A marked message with a card of its own above keeps it. Any other is one quiet line at the left, as Cue's lines in a
+lead's chat are: "+ ◔ Cue → cue-383 · #832 · 3m", what it says in short under it ("Asked it to redo its check line",
+else its first sentence), a click opening the full text (`ui/desk/cue_said.js` `cueQuietHtml`). These used to show as
+your bubble: the check line to redo, Carry on after the usage limit, /handoff resume, a background agent's Resume or
+Stop, the lead's Cut refused and CLOSE not on main, and any kind added later.
+
+Kept while the session works, Cue's words and yours are one kept message, Cue's parts known (`cue_parts`): your kept
+bubble shows only yours, Cue's are their quiet line ("goes when its turn ends"), and when the turn ends yours go first,
+alone, Cue's at its next turn, a message of their own (as a session's words for a Desk lead do, #831). Esc or Cancel
+takes back the whole kept message, Cue's words too, as before.
 
 A Cue message waiting to go (queued or held) shows as the card in the chat, dashed; the session's card on the board
 (“Queued: …”) and its Inbox row (“Queued for X: …”) give its plain line, not Cue's raw text.

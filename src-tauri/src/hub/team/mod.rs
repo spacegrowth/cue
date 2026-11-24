@@ -246,12 +246,12 @@ impl Hub {
             // Gone quiet with nothing running: its lead asks it where it is, and to carry on.
             "resume" => {
                 // At once: its lead's turn waits on this very teammate, so a message kept for the turn's end never goes.
-                self.send_to_session(lead, &resume_words(&t.name), &[], true)?;
+                self.tell_now(lead, &resume_words(&t.name), true)?;
                 Ok(format!("Asked its lead to wake {}", t.name))
             }
             "stop" => {
                 // At once, as Resume: a stuck teammate holds its lead's turn open, so a kept message would never go.
-                self.send_to_session(lead, &format!("Stop your teammate {} now (TaskStop, task id {}), and say so.", t.name, t.agent_id), &[], true)?;
+                self.tell_now(lead, &format!("Stop your teammate {} now (TaskStop, task id {}), and say so.", t.name, t.agent_id), true)?;
                 Ok(format!("Asked its lead to stop {}", t.name))
             }
             "aside" => {
@@ -353,7 +353,7 @@ impl Hub {
         let mins = now.saturating_sub(t.step_ms) / 60_000;
         let text = format!("(Cue) Your teammate {name} has been quiet for {mins} min with nothing running. Ask it where it is with SendMessage (to: \"{name}\"); if it doesn't answer, stop it.", name = t.name);
         // At once: its lead's turn waits on this teammate, so a message kept for that turn's end would never go.
-        if let Err(e) = self.send_to_session(&origin.session_id, &text, &[], true) {
+        if let Err(e) = self.tell_now(&origin.session_id, &text, true) {
             eprintln!("cue: couldn't tell {} about its quiet teammate {}: {e}", origin.session_id, t.name);
         }
     }

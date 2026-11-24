@@ -99,7 +99,7 @@ function agentWake(d) {
   const text = d.agWake === "stop"
     ? `Stop your background agent “${d.agName}” now (TaskStop, task id ${d.agId}), and say so.`
     : `Your background agent “${d.agName}” has gone quiet. Ask it where it is and to carry on, with SendMessage (to: "${d.agId}").`;
-  return invoke("send_to_session", { sessionId: d.agSid, text, images: [], now: true }).then(() => toast(d.agWake === "stop" ? `Asked its session to stop ${d.agName}` : `Asked its session to wake ${d.agName}`), (e) => toast(`Couldn't ask its session: ${e}`));
+  return invoke("send_to_session", { sessionId: d.agSid, text, images: [], now: true, cue: true }).then(() => toast(d.agWake === "stop" ? `Asked its session to stop ${d.agName}` : `Asked its session to wake ${d.agName}`), (e) => toast(`Couldn't ask its session: ${e}`));
 }
 /** Above the message box: the session's agents that need you or are at work, any kind, at most AGENT_ROWS (then
  *  "N more · Agents ›"); then its scripts still running. "" when nothing is. */

@@ -303,7 +303,9 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
   // folded under it (desk/cue_said.js).
   const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
-  return cm ? dk(cm) : "";
+  if (cm) return dk(cm);
+  // Any other message Cue sent it, marked Cue's by the hub as it went (#836): one quiet line of Cue's, never your bubble.
+  return e.role === "you" && e.cue && typeof cueQuietHtml === "function" ? dk(cueQuietHtml(e, s, `${sid}:${e.at_ms}:cueq`)) : "";
 }
 /** A page's own head on your words `e` (the Desk: what item they're about) and the words without it. Anywhere else (a
  *  session's own chat) your words from an item's page show the same way, Cue's words around them left out (#605). */
@@ -373,8 +375,17 @@ function chatWaitRows(s, page, K) {
   // A session's words for a Desk lead kept with yours (#831): never in your bubble, and alone, not in the chat (they
   // go as a message of their own, Activity's once sent).
   const relay = s?.held && typeof deskRelaySplit === "function" && deskRelaySplit(s.held.text);
-  const held = relay ? (relay.yours ? { ...s, held: { ...s.held, text: relay.yours } } : null) : s;
-  if (held?.held) out.push({ at: held.held.at_ms, cut: true, html: heldRow(held, page, K(`y:${held.held.at_ms}`)) });
+  const held = relay ? (relay.yours ? { ...s, held: { ...s.held, text: relay.yours, cue_parts: [] } } : null) : s;
+  // Cue's own words kept with yours (#836, the hub's cue_parts): your bubble holds only yours; Cue's are its quiet line,
+  // going after yours, a message of their own. All Cue's with a card of its own (cue_said.js, team.js): that card.
+  const parts = held?.held?.cue_parts || [];
+  const cueText = parts.join("\n\n"), at = held?.held?.at_ms;
+  const card = parts.length && typeof cueQuietHtml === "function" && !cueWithout(held.held.text, parts) && (cueSaid(cueText) || (typeof cueMsgOf === "function" && cueMsgOf(cueText)));
+  if (parts.length && typeof cueQuietHtml === "function" && !card) {
+    const yours = cueWithout(held.held.text, parts);
+    if (yours) out.push({ at, cut: true, html: heldRow({ ...held, held: { ...held.held, text: yours, cue_parts: [] } }, page, K(`y:${at}`)) });
+    out.push({ at, cut: true, html: keyed(cueQuietHtml({ ...held.held, text: cueText }, s, `${s.session_id}:held:cueq`, { st: "held" }), K(`yc:${at}`)) });
+  } else if (held?.held) out.push({ at, cut: true, html: heldRow(held, page, K(`y:${at}`)) });
   // A kept message sent now and queued: where you wrote it, as its copy is drawn once read (written_ms).
   const qAt = s?.queued && (s.queued.written_ms && s.queued.written_ms < s.queued.at_ms ? s.queued.written_ms : s.queued.at_ms);
   if (s?.queued) out.push({ at: qAt, cut: true, html: queuedRow(s, page, K(`y:${qAt}`)) });
@@ -421,6 +432,8 @@ function queuedRow(s, page, key = "queued") {
     if (cue) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:queued`, s.queued.text, m), key);
     const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.queued, s, `${s.session_id}:queued:cue`, m);
     if (cm) return keyed(cm, key);
+    // Any other of Cue's (#836): its quiet line, never your bubble.
+    if (s.queued.cue && typeof cueQuietHtml === "function") return keyed(cueQuietHtml(s.queued, s, `${s.session_id}:queued:cueq`, m), key);
   }
   const hd = youHeadOf(page, s.queued);
   return msgRow(m, yourBubble(hd ? { ...s.queued, text: hd.text } : s.queued, `${s.session_id}:queued`, "", true, hd?.html || "") + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);

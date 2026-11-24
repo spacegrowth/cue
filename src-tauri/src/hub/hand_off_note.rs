@@ -162,6 +162,7 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), hosted: o.hosted, ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
     let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd), &h.desk_item_names(session_id), &h.names_taken());
+    h.cue_says(&first);
     let started = super::start_session_with(h, &o.harness, &o.cwd, &first, &name, &opts)?;
     let new_id = started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     crate::config::carry_move(session_id, &new_id);

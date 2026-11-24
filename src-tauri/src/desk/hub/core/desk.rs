@@ -612,7 +612,8 @@ impl Hub {
         if !kept_back.is_empty() {
             self.desk_went(&kept_back, &Ok("kept in Cue".into()));
         }
-        self.desk_send_out(std::mem::take(&mut fx.sends), went_with, &fx.restarts, &fx.now);
+        let backs: Vec<String> = fx.backs.iter().map(|(_, m)| m.clone()).collect();
+        self.desk_send_out(std::mem::take(&mut fx.sends), went_with, &fx.restarts, &fx.now, &backs);
         self.desk_send_bands(std::mem::take(&mut fx.to_lead), std::mem::take(&mut fx.tells));
         for q in std::mem::take(&mut fx.to_user) {
             self.desk_to_user_ask(&q);
@@ -705,8 +706,11 @@ impl Hub {
     }
 
     /// `desk_done`'s messages, each sent off this thread with the steps that go with it.
-    fn desk_send_out(&self, sends: Vec<(String, String)>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String]) {
+    /// Each is Cue's own message to the session (#836), unless it carries your words: a step of yours (your note, your
+    /// question, your Send back, a Retry of one) or one of your Send backs (`backs`).
+    fn desk_send_out(&self, sends: Vec<(String, String)>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String], backs: &[String]) {
         for ((sid, text), steps) in sends.into_iter().zip(went_with) {
+            let yours = backs.contains(&text) || self.read(|st| st.desk.decisions.iter().any(|d| d.by == "You" && steps.contains(&d.id)));
             // A Resume's send says how it went, on its item (#291).
             let restart = restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
             let now = now_ones.contains(&sid);
@@ -714,6 +718,9 @@ impl Hub {
             self.later(0, move |h| {
                 // Your pictures from an item's page go as pictures, as a session's own chat sends them (#541).
                 let (text, pictures) = crate::desk::as_sent(&text);
+                if !yours {
+                    h.cue_says(&text);
+                }
                 let sent = if pictures.is_empty() { h.send_to_session(&sid, &text, &[], now) } else { h.send_saved(&sid, &text, pictures, now) };
                 if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");

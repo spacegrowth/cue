@@ -38,6 +38,7 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
 /// Cue's own words (its Desk changes, desk/hub/lead/feed.rs) to `project`'s lead as `deliver` sends them (resumed
 /// with the Desk's summary when parked), not kept as yours: its id.
 pub(crate) fn desk_send_cue(h: &Arc<Hub>, project: &str, text: &str) -> Result<String, String> {
+    h.cue_says(text);
     let lost = |e: String| format!("{}'s lead didn't come up ({e})", h.desk_name(project));
     deliver(h, project, text, vec![], false, &lost)
 }
@@ -106,7 +107,8 @@ impl<'a> DeskStart<'a> {
         for w in self.h.desk_claim_done(self.project) {
             let sent = up.clone().and_then(|sid| {
                 let (message, failed) = for_lead(self.h, self.project, &sid, &w.text, false);
-                self.h.tell(&sid, &message)?;
+                // Yours, or Cue's known as such when it was sent (desk_send_cue): not `tell`, which makes it Cue's (#836).
+                self.h.send_to_session(&sid, &message, &[], false)?;
                 self.h.desk_told(&failed);
                 Ok(sid)
             });
@@ -148,7 +150,15 @@ pub(crate) fn held_yours_first(st: &mut crate::hub::Store, sid: &str) -> Option<
         if let Some((mine, relays)) = crate::desk::relays_apart(&h.text) {
             st.sessions.held_text_to(sid, format!("{mine}\n\n{relays}"));
             h.text = mine;
+            h.cue_parts.clear();
+            return Some(h);
         }
+    }
+    // Any session's (#836): Cue's own words kept with yours go the same way, yours first, alone.
+    if let Some((mine, cues)) = st.sessions.held_cue_apart(sid) {
+        st.sessions.held_text_to(sid, format!("{mine}\n\n{cues}"));
+        h.text = mine;
+        h.cue_parts.clear();
     }
     Some(h)
 }

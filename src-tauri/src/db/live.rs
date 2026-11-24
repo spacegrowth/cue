@@ -117,10 +117,10 @@ pub fn save_ended(ended: &[(u64, Session)]) {
 pub(super) fn put_exchange(c: &Connection, session_id: &str, e: &Exchange) -> rusqlite::Result<()> {
     // Same moment, same speaker: the same exchange (its images may have been filled in since).
     c.execute(
-        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask, from_name, from_sid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images, voice = excluded.voice, status_ask = excluded.status_ask,
-           from_name = excluded.from_name, from_sid = excluded.from_sid",
-        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice, e.status_ask.as_deref().unwrap_or(""), e.from, e.from_sid],
+           from_name = excluded.from_name, from_sid = excluded.from_sid, by_cue = excluded.by_cue",
+        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice, e.status_ask.as_deref().unwrap_or(""), e.from, e.from_sid, e.cue],
     )?;
     Ok(())
 }

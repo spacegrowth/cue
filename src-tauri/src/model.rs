@@ -58,6 +58,15 @@ pub struct Exchange {
     /// when you wrote it, so the chat draws it there, where it stood while it waited. 0: `at_ms` is that time.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub written_ms: u64,
+    /// In the thread as yours ("you"), but Cue wrote it: one of its own messages to the session (a brief, a nudge, a
+    /// lead's note, a check line to redo…, #836), known as Cue's when it was sent (sessions/cue_said.rs). The chat
+    /// draws it as Cue's, never as your bubble.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cue: bool,
+    /// A kept message (Session::held) only: the parts of it that are Cue's, kept with yours (#836). Your bubble shows
+    /// the rest; they go after yours, a message of their own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cue_parts: Vec<String>,
 }
 
 fn is_zero(n: &u64) -> bool {
