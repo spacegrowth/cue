@@ -226,3 +226,8 @@
 .dk-earl:hover:not(:disabled) { background: var(--panel-2); }
 .dk-earl:disabled { cursor: default; }
 .dk-earlier { display: flex; flex-direction: column; gap: 14px; }
+/* A permission card you answered on the Desk (its item's page, a held step, an ask under Blocked on you) folds shut
+   as the rows do (desk-c.css dkn-leave, desk/view.js deskAskFold), what's under it sliding up; your answer has gone
+   already. At once with reduced motion. */
+:is(.dk-ask, .dk-request, .dk-prows).dk-leave { box-sizing: border-box; overflow: hidden; pointer-events: none; animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
+@media (prefers-reduced-motion: reduce) { :is(.dk-ask, .dk-request, .dk-prows).dk-leave { animation: none; display: none; } }
