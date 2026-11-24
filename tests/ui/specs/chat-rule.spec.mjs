@@ -259,20 +259,69 @@ test("a hand-off (brief) is its hand-off card and a crew message (crew) Cue's CR
   await expect(crewCard.locator(".mg-tag")).toHaveText("Crew");
 });
 
-test("another Desk's session (peer) is its band in the lead's chat, never your bubble", async ({ page, cue }) => {
+test("another Desk's message to the lead (peer) and the lead's answer to it are Activity's, its band there; neither is in the chat", async ({ page, cue }) => {
   await cue.open("desk");
   await noEarlier(cue);
-  const said = "Can #452 wait about 20 min for my scraper fix?";
-  await cue.change((st, said) => {
+  const said = "Can #452 wait about 20 min for my scraper fix?", answer = "Yes: #452 waits for the scraper fix.";
+  await cue.change((st, [said, answer]) => {
     const site = st.desk.projects.find((p) => p.project === "website"), at = Date.now() - 120000;
     site.name = "Docs site";
     site.items = [...(site.items || []), { id: "w118", project: "website", kind: "task", title: "Fix the scraper", state: "working", created: at, updated: at, holder: { kind: "session", sid: "site", name: "site-lead" }, from: "you" }];
-    st.sessions.find((x) => x.session_id === "lead").thread.push({ role: "peer", from: "site-lead", from_sid: "site", text: said, at_ms: at });
-  }, said);
+    st.sessions.find((x) => x.session_id === "lead").thread.push({ role: "peer", from: "site-lead", from_sid: "site", text: said, at_ms: at }, { role: "agent", text: answer, at_ms: at + 12000 });
+  }, [said, answer]);
   await openDesk(page);
   const chat = page.locator(".dk-chat");
-  await expect(chat.locator('.dk-band[data-band="from"]', { hasText: said })).toHaveCount(1);
-  await expect(chat.locator(".cv-you", { hasText: said })).toHaveCount(0);
+  await expect(chat.locator(".dk-band")).toHaveCount(0);
+  await expect(chat).not.toContainText(said);
+  await expect(chat).not.toContainText(answer);
+  await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+  const row = page.locator(".dk-moves .dk-mv", { hasText: said });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator(".dk-band-desk")).toHaveText("Docs site Desk");
+  await expect(row.locator(".dk-ans")).toContainText(answer);
+});
+
+// The lead's chat holds only your messages and the lead's answers to them (#837): a turn Cue started (by the tags on
+// the messages before the reply) goes to Activity whole, the reply with it, even one that acts; one you started stays.
+test("a lead turn Cue started goes to Activity with the lead's reply under it, even a reply that acts; your turn stays", async ({ page, cue }) => {
+  await cue.open("desk");
+  await noEarlier(cue);
+  const landing = "Landing stopped for #d2: its branch doesn't build on main (src/app.rs:12). Send it back or wait.";
+  const acted = "Sending it back to its holder.\n\nNOTE: #d2 | Fix the build on main before it lands.";
+  const asked = "What's left before the push?", told = "Two items: #d2 lands once it builds, then #d3.";
+  await cue.change((st, [SUMMARY, landing, acted, asked, told]) => {
+    const t0 = Date.now() - 300000;
+    st.sessions.find((x) => x.session_id === "lead").thread.push(
+      { role: "you", text: landing, cue: true, kind: "desk", at_ms: t0 },
+      { role: "agent", text: acted, at_ms: t0 + 12000 },
+      { role: "you", text: SUMMARY + asked, at_ms: t0 + 60000 },
+      { role: "agent", text: told, at_ms: t0 + 72000 });
+  }, [SUMMARY, landing, acted, asked, told]);
+  await openDesk(page);
+  const chat = page.locator(".dk-chat");
+  for (const w of ["Landing stopped", "Sending it back", "Fix the build"]) await expect(chat).not.toContainText(w);
+  await expect(chat.locator(".dk-quiet")).toHaveCount(0);
+  await expect(chat.locator(".cv-you-text", { hasText: asked })).toHaveCount(1);
+  await expect(chat.locator(".cv-agent", { hasText: told })).toHaveCount(1);
+  await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+  const row = page.locator(".dk-moves .dk-mv", { hasText: "Landing stopped" });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator(".dk-ans")).toContainText("Sending it back to its holder.");
+});
+
+test("a lead reply with nothing left once its Desk lines are out never shows as an empty reply", async ({ page, cue }) => {
+  await cue.open("desk");
+  await noEarlier(cue);
+  const asked = "Anything to route?";
+  await cue.change((st, [SUMMARY, asked]) => {
+    const t0 = Date.now() - 300000;
+    st.sessions.find((x) => x.session_id === "lead").thread.push({ role: "you", text: SUMMARY + asked, at_ms: t0 }, { role: "agent", text: "", at_ms: t0 + 12000 });
+  }, [SUMMARY, asked]);
+  await openDesk(page);
+  const chat = page.locator(".dk-chat");
+  await expect(chat.locator(".cv-you-text", { hasText: asked })).toHaveCount(1);
+  const empty = await chat.evaluate((el) => [...el.querySelectorAll(".cv-agent")].filter((a) => !a.querySelector(".cv-text")?.textContent.trim()).length);
+  expect(empty).toBe(0);
 });
 
 test("a session's question for the lead (question) is Activity's TO LEAD card with the lead's answer under it, never your bubble", async ({ page, cue }) => {
@@ -339,4 +388,93 @@ test("a crew member's chat: Cue's line after its answer sits under the answer, o
   await expect(chat.locator(".bg-view-reply:not(.ag-ask) .msg")).toHaveText(AI);
   const order = await chat.evaluate((el) => [...el.children].map((c) => (c.classList.contains("cue-quiet") ? `cue:${c.querySelector(".dk-cue-w")?.textContent}` : c.classList.contains("bg-view-reply") && !c.classList.contains("ag-ask") ? "answer" : "")).filter(Boolean));
   expect(order).toEqual(["cue:Asked it to wake its background agent docs", "answer", "cue:Main moved on while you worked: 3 new commits."]);
+});
+
+/** The lead's thread gets `msgs` (each { role, text, cue?, kind? }), a minute apart, ending two minutes ago. */
+const leadThread = (cue, msgs) => cue.change((st, msgs) => {
+  const t0 = Date.now() - 120000 - msgs.length * 60000;
+  st.sessions.find((x) => x.session_id === "lead").thread.push(...msgs.map((m, k) => ({ images: [], ...m, at_ms: t0 + k * 60000 })));
+}, msgs);
+const leadActivity = (page) => page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+
+test("Cue's reply to the lead's own line (answer) between two of the lead's answers: Activity's; neither answer gets it as a header or leaves", async ({ page, cue }) => {
+  await cue.open("desk");
+  await noEarlier(cue);
+  const refused = "Reply #869: note not sent: nobody holds it yet; route it first.";
+  await leadThread(cue, [
+    { role: "you", text: `${SUMMARY}What's next on the Desk?` },
+    { role: "agent", text: "First, #869 needs a holder before anyone can hear about it." },
+    { role: "you", text: refused, cue: true, kind: "answer" },
+    { role: "agent", text: "Then #d3 goes once #d2 lands." },
+  ]);
+  await openDesk(page);
+  const chat = page.locator(".dk-chat");
+  await expect(chat.locator(".cv-agent", { hasText: "#869 needs a holder" })).toHaveCount(1);
+  await expect(chat.locator(".cv-agent", { hasText: "#d3 goes once #d2 lands" })).toHaveCount(1);
+  await expect(chat).not.toContainText("note not sent");
+  await expect(chat.locator(".dk-quiet, .cue-quiet, .dk-cue")).toHaveCount(0);
+  await leadActivity(page);
+  const row = page.locator(".dk-moves .dk-mv", { hasText: "#869" }).filter({ hasText: "Cue" });
+  await expect(row.first()).toBeVisible();
+  await expect(page.locator(".dk-moves .dk-ans", { hasText: "#d3 goes once" })).toHaveCount(0);
+});
+
+test("two lead replies to one Cue notice: both in Activity under it, in order; nothing in the chat", async ({ page, cue }) => {
+  await cue.open("desk");
+  await noEarlier(cue);
+  const notice = "#d2 (Quick phrases at the right of Send) finished: it's ready for the owner's check. Nothing to do unless it gets stuck.";
+  await leadThread(cue, [
+    { role: "you", text: notice, cue: true, kind: "desk" },
+    { role: "agent", text: "Good, #d2 is ready; I'll look at what's next." },
+    { role: "agent", text: "Next up is #d3; it waits for its holder." },
+  ]);
+  await openDesk(page);
+  const chat = page.locator(".dk-chat");
+  for (const w of ["ready for the owner's check", "I'll look at what's next", "it waits for its holder"]) await expect(chat).not.toContainText(w);
+  await leadActivity(page);
+  const row = page.locator(".dk-moves .dk-mv", { hasText: "ready for the owner's check" });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator(".dk-ans")).toHaveCount(2);
+  await expect(row.locator(".dk-ans").nth(0)).toContainText("I'll look at what's next");
+  await expect(row.locator(".dk-ans").nth(1)).toContainText("it waits for its holder");
+});
+
+test("a lead reply to a Cue notice with a line for you: in Activity in full, its line for you drawn as in a chat, not raw", async ({ page, cue }) => {
+  await cue.open("desk");
+  await noEarlier(cue);
+  const notice = "#d2 (Quick phrases at the right of Send) finished: it's ready for the owner's check. Nothing to do unless it gets stuck.";
+  await leadThread(cue, [
+    { role: "you", text: notice, cue: true, kind: "desk" },
+    { role: "agent", text: "It's ready for you.\n\nUSER VERIFY: open the header and look at the logo" },
+  ]);
+  await openDesk(page);
+  const chat = page.locator(".dk-chat");
+  await expect(chat).not.toContainText("ready for the owner's check");
+  await expect(chat).not.toContainText("look at the logo");
+  await leadActivity(page);
+  const ans = page.locator(".dk-moves .dk-mv", { hasText: "ready for the owner's check" }).locator(".dk-ans");
+  await expect(ans).toHaveCount(1);
+  await expect(ans).toContainText("It's ready for you.");
+  await expect(ans.locator('.dk-sg[data-sg="user-verify"]')).toHaveCount(1);
+  await expect(ans).not.toContainText("USER VERIFY:");
+});
+
+test("a Desk session's chat: a reply to another session's message stays in its chat (only a lead's chat moves Cue's turns)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await noEarlier(cue);
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "site"), t0 = Date.now() - 300000;
+    s.thread = [
+      { role: "peer", from: "host-lead", from_sid: "host", text: "Can you check the footer while you're there?", at_ms: t0, images: [] },
+      { role: "agent", text: "Yes, I'll check the footer next.", at_ms: t0 + 60000, images: [] },
+    ];
+  });
+  await openDesk(page);
+  await page.evaluate(() => deskShow({ kind: "chat", sid: "site" }));
+  const chat = page.locator('.dk-right [data-desk-chat="site"]');
+  await expect(chat.locator(".cv-agent", { hasText: "I'll check the footer next" })).toHaveCount(1);
+  // The same through the lead's way of drawing (its Desk lines): still in its chat.
+  const html = await page.evaluate(() => chatHtml(null, sessionOf("site"), "claude", false, { lines: deskLineHtml, dkOut: true, you: deskCueNote }));
+  expect(html).toContain("check the footer next");
+  expect(html).not.toContain("data-dkr");
 });
