@@ -164,7 +164,8 @@ test("Looks right on an item committed as it finished only closes it, never \"wa
   await bar.locator('[data-desk-act="looks_right"]').click();
   await cue.called("desk_looks_right", { id: "d2" });
   await expect(page.locator(".toast").last()).toHaveText("Committed abc9999");
-  // Closed: under DONE TODAY, with when it landed.
+  // Closed: under DONE TODAY, with when it landed, once you've closed it (till then it stays in its place, #791).
+  await page.evaluate(() => deskShow(null));
   await openDone(page);
   expect(await groupOf(page, "d2")).toBe("DONE TODAY");
   await expect(statusOf(page, "d2")).toHaveText(/landed \d/);
