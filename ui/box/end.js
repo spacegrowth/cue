@@ -9,7 +9,7 @@ const boxAtEnd = (el, px = 24) => !!el && el.scrollHeight - el.scrollTop - el.cl
  *  below loading late, a picture or a table, would leave the end just out of view). `el`. */
 function boxStickToEnd(el, settle = true) {
   if (!el) return el;
-  const pin = () => { el.scrollTop = el.scrollHeight; el._pinTop = el.scrollTop; el._pinAt = Date.now(); };
+  const pin = () => { el.scrollTop = el.scrollHeight; el._pinTop = el.scrollTop; el._pinAt = Date.now(); el._wasEnd = true; };
   pin();
   if (settle) {
     const again = () => { if (el.isConnected && (el.scrollTop === el._pinTop || boxAtEnd(el))) pin(); };
@@ -17,6 +17,51 @@ function boxStickToEnd(el, settle = true) {
     setTimeout(again, 250);
   }
   return el;
+}
+
+// ---------- a chat at its end follows what comes in after it's drawn (#795) ----------
+// Each view places its chat as it draws it (app/render.js, desk/view.js deskSettle, mini.js, team_page.js). What lays
+// out after that (a reply growing in place, a picture loading, a question card taking the box's place and shrinking the
+// chat) moved nothing, so the newest lines slid under the edge. Here, for every chat in the window: whether it was at
+// its end is noted as it scrolls and after each change of size, and when its size or its content's changes, measured
+// once laid out, a chat that was at its end is put back there. Scrolled up to read, it's left where it is.
+const BOX_CHATS = "[data-chat], .dk-chat";
+/** The chats followed now. */
+const boxFollowed = new Set();
+const boxFollowSizes = typeof ResizeObserver === "function" ? new ResizeObserver((entries) => {
+  const chats = new Set(entries.map((e) => (e.target._follows ? e.target : e.target.parentElement)).filter((c) => c?._follows && c.isConnected));
+  for (const c of chats) {
+    if (c._wasEnd && !boxAtEnd(c, 2)) { c.scrollTop = c.scrollHeight; c._pinTop = c.scrollTop; c._pinAt = Date.now(); }
+    c._wasEnd = boxAtEnd(c);
+  }
+}) : null;
+/** Chat `c` followed: its own size and each of its rows'. */
+function boxFollow(c) {
+  c._follows = true;
+  c._wasEnd = boxAtEnd(c);
+  boxFollowed.add(c);
+  boxFollowSizes.observe(c, { box: "border-box" });
+  for (const row of c.children) boxFollowSizes.observe(row, { box: "border-box" });
+}
+function boxUnfollow(c) {
+  c._follows = false;
+  boxFollowed.delete(c);
+  boxFollowSizes.unobserve(c);
+  for (const row of c.children) boxFollowSizes.unobserve(row);
+}
+if (boxFollowSizes) {
+  // Chats drawn (each view's draw has placed them by now: this runs after it), rows coming and going in them, chats gone.
+  new MutationObserver((records) => {
+    for (const r of records) {
+      if (!r.target._follows) continue;
+      for (const n of r.addedNodes) if (n.nodeType === 1) boxFollowSizes.observe(n, { box: "border-box" });
+      for (const n of r.removedNodes) if (n.nodeType === 1) boxFollowSizes.unobserve(n);
+    }
+    for (const c of boxFollowed) if (!c.isConnected) boxUnfollow(c);
+    for (const c of document.querySelectorAll(BOX_CHATS)) if (!c._follows) boxFollow(c);
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  // Scrolled (by you, or by a view placing it): where it is now.
+  document.addEventListener("scroll", (e) => { if (e.target?._follows) e.target._wasEnd = boxAtEnd(e.target); }, true);
 }
 
 // ---------- what you're reading: Cue's notifications skip it, and take back what's about a chat you open (#799) ----------

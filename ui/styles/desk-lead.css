@@ -32,7 +32,17 @@
 .dk-box:has(> .dk-pre) .dk-box-row { flex-wrap: wrap; justify-content: flex-end; }
 .dk-box:has(> .dk-pre) .dk-box-row > :is(.ta-wrap, textarea) { flex: 1 0 100%; min-width: 0; }
 .dk-box .chips { margin: 0; }
-.dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
+/* A card under a chat (#795): as tall as it needs, up to what leaves the chat above it a share of the window (a % had only
+   the foot it sits in to be a share of, so the card was always cut to about half of itself). Its question and choices
+   scroll inside it; the box held under it while you answer (chat/pane.js askFoot) stays put, so the cursor in that box
+   never scrolls the question out of view. */
+.dk-ask { flex: none; display: flex; flex-direction: column; max-height: max(200px, 100vh - 340px); overflow: hidden; padding: 0 20px 14px; }
+.dk-ask > .foot.held { flex: none; }
+/* A short window: the held box gives the card its room, no quick phrases and two lines at most (it scrolls past them). */
+@media (max-height: 760px) {
+  .dk-ask > .foot.held .quick { display: none; }
+  .dk-ask > .foot.held textarea { max-height: calc(2lh + 10px); }
+}
 .dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-tray); background: var(--panel); }
 .dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
 .dk-request pre:not(.slab) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: var(--type-small); line-height: var(--type-small-lh); margin: 10px 0; }
@@ -41,7 +51,7 @@
 .dk-request .row-btns > .btn.flex, .dk-ask .row-btns > .btn.flex { flex: 0 0 auto; min-width: 76px; }
 /* The lead's ASK: a bordered panel card in the chat's column, not a tinted
    band; its choices on the panel too, the accent only on the one you point at or picked. */
-.dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-tray); padding: 12px 14px; }
+.dk-ask .act-card { flex: 0 1 auto; min-height: 0; max-height: none; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-tray); padding: 12px 14px; }
 .dk-ask .act-card .opt { background: var(--panel); }
 .dk-box textarea { flex: 1; min-height: 28px; max-height: 160px; padding: 5px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--type-body)/1.4 var(--sans); field-sizing: content; }
 
