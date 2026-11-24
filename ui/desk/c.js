@@ -216,20 +216,105 @@ const deskCKind = (i) => (deskKindIcon(i) ? `<span class="dkn-k" role="img" aria
 const deskCNum = (i) => `<span class="dkn-id">${deskCKind(i)}#${esc(i.id)}</span>`;
 /** Where it runs, only when that isn't this Mac (most items run here, and the sessions column says This Mac once). */
 const deskCMach = (i) => (i?.machine === "This Mac" ? "" : deskMachTag(i));
-/** The Now cell: Asks you, Ready to check with the ✓ (Looks right, as today's rows), else where it stands. */
+/** The Now cell: Asks you (Needs your OK for a tool), Ready to check with the ✓ (Looks right, as today's rows), else a
+ *  few plain words on where it stands (deskCShort); the full line is the open row's (deskCFull, #810 option C). */
 function deskCNow(i) {
   // What it asks opens with the row, as Check did: no Choose… button fighting the words for room.
-  if (i.state === "needs_you") return `<span class="dkn-nask">Asks you</span>`;
+  if (i.state === "needs_you") return `<span class="dkn-nask">${deskCAsksTool(i) ? "Needs your OK" : "Asks you"}</span>`;
   if (i.state === "to_check" && !deskInstallWait(i) && !deskUncommitted(i)) return deskLooksSoon.has(i.id) ? `<span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(i.id)}">Undo</button></span>` : `<span class="dkn-nw">Ready to check</span><button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`;
-  const [st, mono] = deskB2Status(i);
-  return `<span class="dkn-nw${mono ? " mono" : ""}">${st}</span>`;
+  const [st, look] = deskCShort(i);
+  return `<span class="dkn-nw${look ? ` ${look}` : ""}">${st}</span>`;
+}
+/** Whether what item `i` asks is a tool to allow (its request's kind, else its ask's own). */
+const deskCAsksTool = (i) => deskItemRequest(i)?.kind === "permission" || i.ask?.kind === "permission";
+/** A command in a few plain words, by what it does: "Testing", "Building", "Looking at changes"… */
+function deskCCmdWord(cmd) {
+  const c = String(cmd || "").trim();
+  if (/^git\s+(diff|status|log|show)\b/.test(c)) return "Looking at changes";
+  if (/^git\s+(add|commit)\b/.test(c)) return "Saving its work";
+  if (/^git\s+push\b/.test(c)) return "Pushing";
+  if (/\b(playwright|vitest|jest|pytest)\b|\bcargo\s+t(est)?\b|\bnpm\s+(run\s+)?test\b|\btests?\/run\.sh\b|\bnode\s+--test\b/.test(c)) return "Testing";
+  if (/install\.sh\b|\b(npm|pnpm|yarn|brew|pip)\s+install\b/.test(c)) return "Installing";
+  if (/\b(build|tsc)\b/.test(c)) return "Building";
+  return "Running a command";
+}
+/** A session's step ("Editing c.js", "Running: git diff --stat", "Thinking…") in plain words: a command by what it
+ *  does, the rest as it is without its "…". */
+const deskCStepWord = (d) => (/^Running: /.test(d) ? deskCCmdWord(d.slice(9)) : d.replace(/…$/, "")) || "Thinking";
+/** Its commands running on in the background (sessions/turn.rs running_words: "Running tests…", "Building…"), short. */
+const deskCBgWord = (r) => ({ "Running tests…": "Testing", "Building…": "Building", "Installing…": "Installing", "Landing…": "Landing" })[r] || (/^Running in the background: /.test(r) ? "Running a command" : r.replace(/…$/, ""));
+/** Its landing or install step in a few words (the full one is deskFinStep's, on the open row). */
+function deskCFinShort(i) {
+  const f = i.finish || {}, live = deskNowLineFor(i);
+  if (live) return /^On main · being tested/.test(live) ? "Tests on main" : /^On main · after landing/.test(live) ? "Updating the app" : "Checking";
+  if (f.step === "line") return "Waits to land";
+  if (f.step === "review") return "In review";
+  if (f.step === "landing") return "Not on main yet";
+  if (f.step === "queued") {
+    if (f.now) return "Installs next";
+    if (f.wait === "waiting for the full run") return "Tests on main";
+    if (f.wait) return "On main · waits";
+    const due = state.desk?.install_at || 0;
+    return due > now() ? `Installs ${clockAt(due)}` : "Waits for install";
+  }
+  const app = deskOf(i.project)?.lands?.set?.after_names?.[f.step];
+  if (app) return esc(app);
+  return { building: "Building the app", installing: "Installing", starting: "Restarting", checking: "Checking", check_failed: "Check failed" }[f.step] || "Committing";
+}
+/** Where item `i` stands in a few plain words for the Now column (html, escaped) and its look ("", or
+ *  "amber" for stuck or stopped): what it's doing, or what it waits on, short enough for the column. */
+function deskCShort(i) {
+  const amber = (t) => [t, "amber"];
+  if (i.state !== "done" && deskCircleOf(i)) return amber("Stuck in a circle");
+  if (deskFeat(i) && ["work", "q"].includes(deskFeatState(i)) && i.state !== "to_check") return [deskFeatBar(i), ""];
+  if (i.state === "to_check") return [deskInstallWait(i) ? "Waiting for install" : "Not on main yet", ""];
+  if (i.state === "done") return [deskB2Status(i)[0], ""];
+  if (i.state === "held") return ["Parked", ""];
+  if (i.state === "paused") return ["Paused", ""];
+  if (i.state === "needs_resume" || i.stopped) return amber("Stopped");
+  if (deskClearable(i)) return amber("Leftover edits");
+  if (deskFinishing(i)) { const w = deskCFinShort(i); return [w, w === "Check failed" ? "amber" : ""]; }
+  if (i.state === "working") {
+    if (i.waiting) return ["Waiting", ""];
+    if (i.remote?.quiet_since > 0) return amber("Machine not answering");
+    if (i.remote?.wait) return [`Waits on ${esc(machShort(i.machine || "") || "its machine")}`, ""];
+    const s = sessionOf(deskHolderSid(i));
+    // Its session is back at its prompt while the item still works: quiet, amber after 5 minutes.
+    if (s && !s.compacting_ms && deskSessWithHelpers(s)[0] === "idle") {
+      const t = s.since_ms || 0;
+      return [`Quiet${t ? ` · <span data-ago="${t}">${ago(t)}</span>` : ""}`, t && now() - t >= 5 * 60000 ? "amber" : ""];
+    }
+    const doing = s?.compacting_ms ? "Compacting" : s?.running ? deskCBgWord(s.running) : deskCStepWord(s?.doing || i.act?.now || "");
+    const at = s?.compacting_ms || s?.doing_ms || s?.since_ms || i.act?.at_ms || 0;
+    return [`${esc(doing)}${at ? ` · <span data-ago="${at}">${ago(at)}</span>` : ""}`, ""];
+  }
+  if (!i.holder && i.start_failed && (i.state === "new" || i.state === "queued")) return amber("Couldn't start");
+  if (deskCopyWaits(i)) return ["Waits for a folder", ""];
+  if (i.route_failed && !i.holder && !i.next_for) return amber("Couldn't give it out");
+  if (i.state === "queued" && i.slot_wait) return ["Waits for a slot", ""];
+  if (i.state === "queued" && i.after) return [esc(`Waits for ${deskAfterName(i)}`), ""];
+  if (i.state === "queued" && !i.holder && i.machine_wait) return ["Waits for room", ""];
+  if (i.state === "queued" && !i.holder && i.next_for) return ["Waits for its session", ""];
+  if (!i.holder) return ["Not given out yet", ""];
+  return ["Queued", ""];
+}
+/** What comes after the step an item at work is on (deskCAt), for its full line: "Next: tests". */
+const DESK_C_NEXT = ["it starts building", "tests", "it commits", "it lands on main", "it's yours to check", ""];
+/** The open row's full line (#810, option C): where it stands in full (what it's doing, its exact command, what it
+ *  waits on and what starts it), then what's next while it moves. Drawn on every row, shown on the open one only
+ *  (desk-c.css), so the other rows keep their height. */
+function deskCFull(i) {
+  const st = deskCWhy(i) || deskB2Status(i)[0];
+  const moving = (i.state === "working" && !i.waiting && !i.remote?.wait && !(i.remote?.quiet_since > 0)) || deskFinishing(i);
+  const next = moving ? DESK_C_NEXT[deskCAt(i)] || "" : "";
+  return `<div class="dkn-xl"><b>Now</b><span class="dkn-xs">${st}</span>${next ? `<span class="dkn-xn">Next: ${next}</span>` : ""}</div>`;
 }
 /** One item in the card: its title with its kind, number, who has it and where it runs; then its strip and Now.
  *  Narrow, the strip goes under the title. Lit while its page is open. */
 function deskCRow(i) {
   // Lit while its page is open, or its holder's chat (that session's chat is the item's chat).
   const o = deskOpen, on = (o?.kind === "item" && deskIdIs(i, o.id)) || ((o?.kind === "chat" || o?.kind === "holder") && !!o.sid && deskHolderSid(i) === o.sid);
-  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>${deskCRowMore(i)}</div>`;
+  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>${deskCRowMore(i)}${deskCFull(i)}</div>`;
 }
 /** A row's ⋯ (#839): its page's own menu (page.js deskMoreItems), without opening the item. Shown as you point at the
  *  row and on the open one (desk-c.css .dkn-rwrap); "" when nothing fits. */
