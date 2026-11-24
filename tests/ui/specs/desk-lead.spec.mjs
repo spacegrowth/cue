@@ -366,6 +366,38 @@ test("a crew member's page shows its whole chat, the same as the board's view of
   expect(board).toBe(desk);
 });
 
+test("a lead's long brief opens folded to its first sentence; opened, its steps and rules are lists and a long command has a box of its own (#805)", async ({ page, cue }) => {
+  const brief = "You're fixing the search field in the header of the Cue repo copy at /Users/someone/development/cue/.claude/worktrees/search-1. Work only there.\n\n"
+    + "Steps: (1) read `ui/header.js` and its styles (2) keep the field centred unless a button would sit under it (3) run `npx playwright test -c tests/ui/playwright.config.mjs tests/ui/specs/header.spec.mjs` once at the end.\n\n"
+    + "Rules: don't commit; no title= tooltips; touch only ui/header.js and ui/styles/header.css.\n\n"
+    + "Report: what you changed. What you left out.";
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, b) => { st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.agent_id === "id-search").asked = b; }, brief);
+  await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
+  await page.locator('.dk-right .dk-pg [data-desk-crew="id-search"]').click();
+  const ask = page.locator('.dk-right .dkn-crew[data-desk-page="crew"] .dk-crewpg .ag-ask');
+  // Folded: its first sentence, plain, and Show the full brief.
+  await expect(ask.locator(".ag-brief-line")).toHaveText("You're fixing the search field in the header of the Cue repo copy at /Users/someone/development/cue/.claude/worktrees/search-1.");
+  await expect(ask).not.toContainText("Steps");
+  await expect(ask.locator("[data-agent-brief]")).toHaveText("Show the full brief");
+  await expect(ask.locator("[title]")).toHaveCount(0);
+  await ask.locator("[data-agent-brief]").click();
+  // Opened: the brief whole, its words as they were, set out as a short document.
+  const doc = ask.locator(".ag-brief-md");
+  await expect(doc.locator("h4")).toHaveText(["Steps:", "Rules:", "Report:"]);
+  await expect(doc.locator("ol > li")).toHaveText(["read ui/header.js and its styles", "keep the field centred unless a button would sit under it", "run npx playwright test -c tests/ui/playwright.config.mjs tests/ui/specs/header.spec.mjs once at the end."]);
+  await expect(doc.locator("ul").first().locator("li")).toHaveText(["don't commit", "no title= tooltips", "touch only ui/header.js and ui/styles/header.css."]);
+  await expect(doc.locator("ul").last().locator("li")).toHaveText(["what you changed.", "What you left out."]);
+  await expect(doc.locator("code.brief-long")).toHaveText("npx playwright test -c tests/ui/playwright.config.mjs tests/ui/specs/header.spec.mjs");
+  await expect(doc.locator("code:not(.brief-long)").first()).toHaveText("ui/header.js");
+  // Nothing runs off the side; it folds again.
+  expect(await doc.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await ask.locator("[data-agent-brief]").click();
+  await expect(ask.locator(".ag-brief-line")).toBeVisible();
+  await expect(ask.locator(".ag-brief-md")).toHaveCount(0);
+});
+
 test("a crew member's words show plain, its files without scratch or node_modules, once in its lead's list (#197)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

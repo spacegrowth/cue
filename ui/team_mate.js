@@ -153,7 +153,7 @@ function crewMateRead(sid, t, left) {
   const bar = `<div class="cpm-tabs" role="tablist">${tabs.map(([k, w]) => `<button role="tab" class="${left.tab === k ? "on" : ""}" data-cp-tab="${k}" aria-selected="${left.tab === k}">${w}</button>`).join("")}<span class="grow"></span>${lit ? `<span class="cpm-lit">${esc(lit)}</span>` : ""}</div>`;
   let body;
   if (left.tab === "review") body = t.review ? `<div class="msg">${md(t.review)}</div>` : (t.findings || []).length ? `<ol class="mt-fx">${t.findings.map(mateFinding).join("")}</ol>` : `<div class="cp-dim">${["working", "queued", "reviewing"].includes(t.state) ? "No review yet." : "Its review found nothing."}</div>`;
-  else if (left.tab === "task") body = `<div class="msg cpm-task">${md(t.asked || t.what || "")}</div>`;
+  else if (left.tab === "task") body = `<div class="msg cpm-task ag-brief-md">${briefHtml(t.asked || t.what || "", sid)}</div>`;
   else body = crewMateDiff(sid, t, left);
   return `<div class="cpm-read">${bar}<div class="cpm-body" data-scroll-key="cpm:${esc(left.key)}:${left.tab}">${body}</div></div>`;
 }
