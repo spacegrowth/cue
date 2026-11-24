@@ -134,7 +134,7 @@ test("a machine pill only when it isn't This Mac, at the end of the line; Up nex
   await expect(d7.locator(".dkn-a2 .mach")).toHaveCount(0);
 });
 
-test("the ✓: it fills, the row greys with Done · Undo where it was, then folds away; Undo leaves it to check", async ({ page, cue }) => {
+test("the ✓: it fills, the row greys with Done · Undo where it was and stays there, done, till you open something else (#791); Undo leaves it to check", async ({ page, cue }) => {
   await open(page, cue);
   await cue.override("desk_looks_right", ({ id }) => {
     const it = CueBridge.world.state.desk.projects[0].items.find((i) => i.id === id);
@@ -162,15 +162,24 @@ test("the ✓: it fills, the row greys with Done · Undo where it was, then fold
   await expect(d2).not.toHaveClass(/\bsoon\b/);
   await page.clock.runFor(3500);
   expect(await cue.calls("desk_looks_right")).toEqual([]);
-  // Left alone after the ✓, it's sent once the 3 s are up, and the row folds away.
+  // Left alone after the ✓, it's sent once the 3 s are up. Done, it stays where it was, greyed, its Undo now putting
+  // it back to check; nothing round it moves, and it isn't in Done today twice (#791).
   await d2.locator(".dk-ok").click();
   await expect(d2.locator(".dk-soon")).toHaveText("Done · Undo");
   await page.clock.runFor(2500);
   expect(await cue.calls("desk_looks_right")).toEqual([]);
   await expect(d2).toHaveClass(/\bsoon\b/);
+  const boxes = () => card.locator(".dkn-row[data-desk-item]").evaluateAll((els) => els.map((e) => `${e.dataset.deskItem}@${Math.round(e.getBoundingClientRect().top)}`));
+  const before = await boxes();
   await page.clock.runFor(1000);
   await page.clock.runFor(400);
   await cue.called("desk_looks_right", { id: "d2" });
+  await expect(d2.locator('.dk-soon [data-desk-act="reopen"]')).toHaveText("Undo");
+  await expect(d2).toHaveClass(/\bsoon\b/);
+  expect(await boxes()).toEqual(before);
+  await expect(page.locator('[data-dkn-drawer="done"] .dkn-nx[data-desk-item="d2"]')).toHaveCount(0);
+  // Opening something else lets it go: out of Waiting on you, into Done today.
+  await card.locator(`.dkn-row[data-desk-item="${order.find((x) => x !== "d2")}"] .dkn-tt`).click();
   await expect(d2).toHaveCount(0);
   await expect(page.locator('[data-dkn-drawer="done"] .dkn-nx[data-desk-item="d2"]')).toHaveCount(1);
 });

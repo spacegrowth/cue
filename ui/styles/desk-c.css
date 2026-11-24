@@ -132,18 +132,17 @@
 .dkn-nw.mono { font-family: var(--mono); }
 .dkn-nask { color: var(--deny); white-space: nowrap; }
 .dkn-now :is(.btn, .dk-ok) { flex: none; }
-/* Ticked: its ✓ filled and "Done · Undo" for a second, then the row folds and fades in one move (commit.js deskLooksGo). */
+/* Ticked: its ✓ filled and "Done · Undo", where it was, till you open something else (commit.js deskLooksSoon, #791):
+   nothing folds or slides, so the rows round it stay put. */
 .dkn-now .dk-ok.on { background: var(--accent); color: var(--on-accent); }
 /* …and the rest of the row greys out at once, as a row that's done: nothing on it but Undo takes a click. */
 .dkn-row.soon { pointer-events: none; }
 .dkn-row.soon :is(.dkn-id, .dkn-t, .dkn-pl) { opacity: 0.4; }
 .dkn-row.soon .dk-undo-c { pointer-events: auto; }
+/* Held where it was after you acted on it (#791): the ✓'s height in its Now cell whatever it says now, so the row
+   doesn't shrink and nothing under it moves. */
+.dkn-row.soon .dkn-now { min-height: 24px; }
 .dkn-now .dk-soon { margin-left: 0; order: -1; }
-.dkn-row.dk-leave { animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
-@keyframes dkn-leave {
-  from { height: var(--h); opacity: 1; }
-  to { height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; }
-}
 
 /* Strip (K): one 6px strip, each step's piece as long as it took (desk/c.js deskCStrip sets its share), done ones and
    the one it's at never under 18px, steps to come 8px stubs; the one it's at in the Board's waiting stripes; each time
@@ -245,7 +244,9 @@
 .dkn-ib { flex: none; padding: 10px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .dkn-ib2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
 .dkn-ib2 .dkn-ks { flex: 0 1 260px; min-width: 160px; }
-.dkn-ibacts { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
+/* A button's height whatever it holds (Looks right and Send back, "Done · Undo", Reopen), so the bar doesn't change
+   height as you check the item and the chat under it stays put (#791). */
+.dkn-ibacts { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; min-height: 28px; }
 .dkn-ibsee { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); }
 .dkn-ibsee b { font-weight: 600; margin-right: 4px; }
 

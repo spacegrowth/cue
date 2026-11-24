@@ -289,7 +289,11 @@ async function deskAct(id, act, el = null) {
   if (act === "back_go") {
     const key = `back:${id}`;
     if (!draft(key).text.trim() && !draft(key).images.length) { toast("Say why it goes back first", 4000); focusComposer(key, { end: false }); return; }
+    // Its row stays where it was till you open something else (#791), from before it goes: its new state can come in
+    // before the answer does.
+    deskCStay.set(id, deskLooksPlace());
     if (await deskSendBack(id, key)) deskBackFor = null;
+    else deskCStay.delete(id);
     return renderMain();
   }
   // Start now at the limit on items at once (#712): asked first, never past it unless you raise it.
@@ -396,6 +400,9 @@ deskClicks({
   deskCrew: (el) => deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew, ...(deskOpen?.kind === "sessions" ? { from: { kind: "sessions", crew: [el.dataset.lead, el.dataset.deskCrew] } } : {}) }),
   deskBack: (el) => deskShow(el.dataset.deskBack ? { kind: "holder", sid: el.dataset.deskBack } : null),
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
+  // The lead chat's Show earlier and Hand-off note (#792, desk/earlier.js).
+  deskEarlier: (el) => deskEarlierShow(el.closest("[data-desk-chat]")?.dataset.deskChat || deskSelection(), el.dataset.deskEarlier),
+  deskEarlierNote: (el) => deskEarlierNote(el.closest("[data-desk-chat]")?.dataset.deskChat || deskSelection(), el.dataset.deskEarlierNote),
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
