@@ -75,8 +75,10 @@ test("one queued for a copy waits for a free one, and Start now starts it at onc
   // Sent back while none is free: it says so; Start now starts it at once, and the line goes.
   await patchItem(cue, "d4", { back_waiting: "Desk item #d4 isn't done: the dot is too big" });
   await expect(statusOf(page, "d4")).toHaveText("Sent back · waiting for a free working folder on This Mac (in use by #d3, #d5, #d7)");
-  // Start now is in its bar's ⋯ menu, not on its row.
-  await expect(row.locator("button")).toHaveCount(0);
+  // Start now is in a ⋯ menu, not on show on its row: the row's only button is its own ⋯ (#839).
+  await expect(row.locator("button")).toHaveCount(1);
+  await expect(row.locator("button.dkn-rmore")).toHaveCount(1);
+  await expect(row.locator('[data-desk-act="start_now"]')).toHaveCount(0);
   const pane = await openItem(page, "d4");
   // Its bar says what it waits for, with Start now, and the ⋯ menu has Start now too.
   const card = pane.locator(".dkn-ib .dk-ns");

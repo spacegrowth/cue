@@ -229,8 +229,11 @@ function deskCNow(i) {
 function deskCRow(i) {
   // Lit while its page is open, or its holder's chat (that session's chat is the item's chat).
   const o = deskOpen, on = (o?.kind === "item" && deskIdIs(i, o.id)) || ((o?.kind === "chat" || o?.kind === "holder") && !!o.sid && deskHolderSid(i) === o.sid);
-  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div></div>`;
+  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>${deskCRowMore(i)}</div>`;
 }
+/** A row's ⋯ (#839): its page's own menu (page.js deskMoreItems), without opening the item. Shown as you point at the
+ *  row and on the open one (desk-c.css .dkn-rwrap); "" when nothing fits. */
+const deskCRowMore = (i) => deskMore(i, deskMoreItems(i), "rmore");
 /** A row in Up next or Done today, on the green: #id and title (a grip on the ones you can drag), and a line under it. */
 /** Why an Up next item waits, in full plain words (html, escaped): what it waits for and what starts it. "" when it
  *  isn't waiting on anything Cue knows (then its status line says where it stands). */
@@ -264,7 +267,7 @@ function deskCLow(i, line) {
   const on = deskOpen?.kind === "item" && deskIdIs(i, deskOpen.id);
   // Nobody has it yet: no machine, it's picked as the item starts (#776).
   const mach = i.holder ? deskCMach(i) : "";
-  return `<div class="dk-it dkn-nx${on ? " on" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-a1"><span class="dkn-tx">${esc(i.title)}</span></div><div class="dkn-a2">${deskCNum(i)}${mach}${line ? `<span>${line}</span>` : ""}</div></div>`;
+  return `<div class="dk-it dkn-nx${on ? " on" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-a1"><span class="dkn-tx">${esc(i.title)}</span></div><div class="dkn-a2">${deskCNum(i)}${mach}${line ? `<span>${line}</span>` : ""}</div>${deskCRowMore(i)}</div>`;
 }
 /** A done item's line: how long it took and when it landed. */
 function deskCDoneLine(i) {

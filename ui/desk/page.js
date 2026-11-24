@@ -821,10 +821,6 @@ const deskCanRestart = (i) => (i.state === "needs_resume" || i.stopped) && !!ses
 
 function deskItemActs(i) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
-  // Start, Park and the rest (#669): in its ⋯ menu, not a row of buttons always on show.
-  const m = (act, label) => `<button role="menuitem" data-desk-act="${act}" data-id="${esc(i.id)}"><span>${esc(label)}</span></button>`;
-  const mi = (html) => html.replace("<button ", '<button role="menuitem" ');
-  const first = i.after && deskItem(i.project, i.after);
   if (deskBackFor === i.id) return deskBackHtml(i.id);
   // A feature nobody holds is only its pieces (#282): they're given out, not it.
   if (deskFeat(i) && !i.holder) return "";
@@ -837,7 +833,20 @@ function deskItemActs(i) {
     // Done by your pick on its mocks (#281): its build item says where it went (deskBuiltLink), nothing to undo here.
     // Reopen (#577): your words back to the session that did it, or a fresh one when it's closed or on other work.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>${i.holder ? b("send_back", "Reopen") : ""}` : "";
-  const more = i.state === "to_check" || i.state === "done" ? ""
+  const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
+  const dots = deskMore(i, deskMoreItems(i));
+  return acts || give || dots ? `<div class="dk-acts">${give}${acts}${dots}</div>` : "";
+}
+/** What item `i`'s ⋯ menu holds (#669), by where it is: Start, Park, Put it before…, Resume, the install choices; ""
+ *  when nothing fits (and when its page shows something else in their place: Send back's box, a feature's pieces, what
+ *  it waits on). Its page and its row in the item list (#839) both draw their menu from here. */
+function deskMoreItems(i) {
+  if (deskBackFor === i.id || (deskFeat(i) && !i.holder) || deskWaitsOn(i)) return "";
+  // Start, Park and the rest (#669): in its ⋯ menu, not a row of buttons always on show.
+  const m = (act, label) => `<button role="menuitem" data-desk-act="${act}" data-id="${esc(i.id)}"><span>${esc(label)}</span></button>`;
+  const mi = (html) => html.replace("<button ", '<button role="menuitem" ');
+  const first = i.after && deskItem(i.project, i.after);
+  return i.state === "to_check" || i.state === "done" ? ""
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? m("start_now", "Retry")
     // Parked (#385): Start queues it as a new item, for the lead to give out.
     : i.state === "held" ? m("start_now", "Start")
@@ -849,18 +858,22 @@ function deskItemActs(i) {
     // session where it left off (#375).
     : deskCanRestart(i) ? m("start_now", "Resume")
     : deskFinishing(i) ? mi(deskInstallNow(i, "")) + mi(deskSkipInstall(i, "")) : "";
-  const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
-  const dots = deskMore(i, more);
-  return acts || give || dots ? `<div class="dk-acts">${give}${acts}${dots}</div>` : "";
 }
+/** Whether `at` names an item's ⋯ menu: its page's ("more") or its row's in the item list ("rmore", #839). */
+const deskMoreAt = (at) => at === "more" || at === "rmore";
 /** An item's ⋯ button and, open, its menu of `items` (#669): placed as Give to…'s is (lead.js deskGivePlace), shut by
- *  Esc, a click outside it or any of its choices. "" with nothing in it. */
-function deskMore(i, items) {
+ *  Esc, a click outside it or any of its choices. "" with nothing in it. `at` "rmore" is a row's in the item list
+ *  (#839): the quiet round ⋯, shown as you point at the row (desk-c.css). */
+function deskMore(i, items, at = "more") {
   if (!items) return "";
-  const open = deskGiveFor?.id === i.id && deskGiveFor.at === "more";
+  const open = deskGiveFor?.id === i.id && deskGiveFor.at === at;
   if (open) queueMicrotask(deskGivePlace);
   const menu = open ? `<span class="dk-givemenu dk-moremenu" role="menu">${items}</span>` : "";
-  return `<span class="dk-givewrap dk-morewrap"><button class="btn small dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}">⋯</button>${menu}</span>`;
+  const row = at === "rmore";
+  const btn = row
+    ? `<button class="dk-more-btn dkn-rmore" data-desk-more="${esc(i.id)}" data-at="rmore" aria-label="More" aria-haspopup="menu" aria-expanded="${open}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`
+    : `<button class="btn small dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}">⋯</button>`;
+  return `<span class="dk-givewrap dk-morewrap${row ? " dkn-rwrap" : ""}">${btn}${menu}</span>`;
 }
 /** Which items' build logs are open in full (Show all), by id. */
 const DESK_LOG_FOLD = 6;
