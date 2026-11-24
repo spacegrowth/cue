@@ -208,3 +208,38 @@ fn desk_items_done_long_ago_are_deleted_at_load() {
     assert_eq!(rows, vec!["lately".to_string(), "open".to_string()], "the old done one is deleted; the rest kept");
     assert_eq!(loaded.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["open"], "only the open one loaded");
 }
+
+/// A lead's chat in Cue's log (#812): a save from an older copy of its record (one missing your message and the
+/// reply to it) deletes neither, while a message that moved (queued, put below the reply it waited behind) still
+/// leaves its old row.
+#[test]
+fn a_save_from_an_older_copy_of_a_chat_never_deletes_what_it_doesnt_have() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("cue-log-keep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::env::set_var("CUE_HOME", &dir);
+    reset();
+    let ex = |role: &str, text: &str, at: u64| Exchange { role: role.into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 };
+    let log = || session_log("lead").iter().map(|e| (e["at_ms"].as_u64().unwrap(), e["text"].as_str().unwrap().to_string())).collect::<Vec<_>>();
+    let mut s = session("lead", "");
+    s.thread = vec![ex("agent", "I run the Desk now.", 10), ex("you", "are we moving ?\n\nFrom cue-790 on #790 (Away):\nclose it?\nAnswer it with NOTE: #790 | <your words>.", 20), ex("agent", "Yes, we're moving.", 30)];
+    sync_live(&[s.clone()], &[]);
+    // An older copy of the same record: it never had your message or its reply, and has a reply of its own.
+    let mut old = s.clone();
+    old.thread = vec![ex("agent", "I run the Desk now.", 10), ex("agent", "Yes, we're moving.", 31)];
+    sync_live(&[old], &[]);
+    let kept = log();
+    assert!(kept.iter().any(|(at, t)| *at == 20 && t.starts_with("are we moving ?")), "your message is kept: {kept:?}");
+    assert_eq!(kept.iter().filter(|(_, t)| t == "Yes, we're moving.").count(), 1, "the reply to it is kept, once: {kept:?}");
+    // A queued message moved below the reply: its old row goes, its new one stays.
+    s.thread = vec![ex("agent", "I run the Desk now.", 10), ex("agent", "Yes, we're moving.", 30), ex("you", "and the canvas?", 40)];
+    sync_live(&[s.clone()], &[]);
+    s.thread = vec![ex("agent", "I run the Desk now.", 10), ex("agent", "Yes, we're moving.", 30), ex("agent", "On it.", 45), ex("you", "and the canvas?", 46)];
+    sync_live(&[s], &[]);
+    let after = log();
+    assert!(!after.iter().any(|(at, _)| *at == 40) && after.iter().any(|(at, t)| *at == 46 && t == "and the canvas?"), "{after:?}");
+    assert!(after.iter().any(|(at, _)| *at == 20) && after.iter().filter(|(_, t)| t == "Yes, we're moving.").count() == 1, "{after:?}");
+    reset();
+    std::fs::remove_dir_all(&dir).ok();
+}

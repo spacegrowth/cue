@@ -113,3 +113,50 @@ fn to_lead_goes_to_the_lead_of_the_items_desk() {
     assert!(to_a.len() == 1 && to_a[0].contains("about A") && to_a[0].contains("Only A"), "{to_a:?}");
     assert!(to_b.len() == 1 && to_b[0].contains("about B") && to_b[0].contains("Only B"), "{to_b:?}");
 }
+
+/// Your words to a lead at work and a session's TO LEAD line kept for it meanwhile reach it as one message (#812):
+/// that message, your words first, and the lead's answer are its chat, in Cue's log too, and stay in the log once
+/// newer messages push them out of the few the chat keeps live.
+#[test]
+fn your_words_and_a_sessions_question_in_one_turn_keep_the_answer_in_the_lead_chat() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let lead = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "bug", "Header wraps", "", None).unwrap();
+    w.hub().desk_give(&it.id, &sid).unwrap();
+    w.settle();
+    let words = |t: &str| t.rsplit("</desk>").next().unwrap_or(t).trim().to_string();
+    // The lead at work on your first message.
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "Status?", &[], false).unwrap();
+    w.settle();
+    let first = sent_to(&w, &lead).last().cloned().unwrap();
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: first });
+    w.settle();
+    // Meanwhile you write again, and the holder asks the lead something: both kept for it.
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "are we moving ?", &[], false).unwrap();
+    ends(&w, &sid, "Looked at it.\nTO LEAD: Should it wrap on narrow windows?");
+    ends(&w, &lead, "Two items are at work.");
+    let both = sent_to(&w, &lead).last().cloned().unwrap();
+    let asked = format!("From cue-teams on #{} (Header wraps):\nShould it wrap on narrow windows?\nAnswer it with NOTE: #{} | <your words>.", it.id, it.id);
+    assert_eq!(words(&both), format!("are we moving ?\n\n{asked}"), "one message, your words first");
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: both });
+    w.settle();
+    ends(&w, &lead, &format!("Yes, we're moving: two items landed.\nNOTE: #{} | Yes, wrap it.", it.id));
+    let chat: Vec<(String, String)> = w.snapshot().session(&lead)["thread"].as_array().unwrap().iter().map(|e| (e["role"].as_str().unwrap().to_string(), words(e["text"].as_str().unwrap()))).collect();
+    let at = chat.iter().position(|(r, t)| r == "you" && t.starts_with("are we moving ?")).unwrap_or_else(|| panic!("your words are in its chat: {chat:?}"));
+    assert_eq!(chat.get(at + 1).map(|(r, t)| (r.as_str(), t.starts_with("Yes, we're moving"))), Some(("agent", true)), "the answer right under them: {chat:?}");
+    // Five newer messages: the chat keeps only the last few live; Cue's log still has both, once each.
+    for k in 0..3 {
+        crate::desk::hub::lead::desk_send_now(w.hub(), &project, &format!("next {k}"), &[], false).unwrap();
+        w.settle();
+        let t = sent_to(&w, &lead).last().cloned().unwrap();
+        w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: t });
+        ends(&w, &lead, &format!("Answer {k}."));
+    }
+    let live = w.snapshot().session(&lead)["thread"].as_array().unwrap().len();
+    let log: Vec<(String, String)> = crate::db::session_log(&lead).iter().map(|e| (e["role"].as_str().unwrap().to_string(), words(e["text"].as_str().unwrap()))).collect();
+    assert!(!w.snapshot().session(&lead)["thread"].as_array().unwrap().iter().any(|e| words(e["text"].as_str().unwrap()).starts_with("are we moving")), "pushed out of the {live} kept live");
+    let at = log.iter().position(|(r, t)| r == "you" && t.starts_with("are we moving ?")).unwrap_or_else(|| panic!("your words are in Cue's log: {log:?}"));
+    assert!(log[at + 1].0 == "agent" && log[at + 1].1.starts_with("Yes, we're moving"), "{log:?}");
+    assert_eq!(log.iter().filter(|(_, t)| t.starts_with("Yes, we're moving")).count(), 1, "{log:?}");
+}

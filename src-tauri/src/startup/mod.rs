@@ -71,6 +71,15 @@ fn commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync +
 
 /// Everything that runs once the window exists, in the order it starts.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Another Cue already runs on this folder (a dev build started without a CUE_HOME of its own): this one goes
+    // before it touches anything there, its hooks, sessions or chats (#812).
+    if server::another_cue_runs(5_000) {
+        eprintln!(
+            "cue: another Cue already runs on {}; this one quits so it can't overwrite that Cue's chats and sessions. Quit the other first, or give this one its own folder with CUE_HOME.",
+            server::cue_dir().display()
+        );
+        std::process::exit(1);
+    }
     window::prepare(app);
     settle_folder_and_hooks();
     // The soak's chaos knobs that run on their own (debug builds, when set).

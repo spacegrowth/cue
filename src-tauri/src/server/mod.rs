@@ -87,6 +87,26 @@ pub fn socket_path() -> std::path::PathBuf {
     cue_dir().join("cue.sock")
 }
 
+/// Whether a Cue answers on the socket at `path` (a socket file left by one that's gone answers nothing).
+pub fn served_at(path: &std::path::Path) -> bool {
+    std::os::unix::net::UnixStream::connect(path).is_ok()
+}
+
+/// Another Cue runs on this Cue's folder, and still does after up to `wait_ms` (one quitting, as for an install,
+/// lets go of its socket by then). A second Cue there shares its database and its hosted sessions: it hears their
+/// replies too, keeps its own copy of their chats, and its saves delete the messages the first one kept (#812).
+pub fn another_cue_runs(wait_ms: u64) -> bool {
+    let path = socket_path();
+    let until = std::time::Instant::now() + Duration::from_millis(wait_ms);
+    while served_at(&path) {
+        if std::time::Instant::now() >= until {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    false
+}
+
 pub async fn serve(hub: Arc<Hub>) -> std::io::Result<()> {
     let dir = cue_dir();
     std::fs::create_dir_all(&dir)?;
@@ -352,6 +372,22 @@ fn settle_the_gone(hub: &Hub) {
 mod tests {
     use super::*;
     use tokio::io::AsyncReadExt;
+
+    /// A Cue listening on a folder's socket is seen there; the socket file it left once gone is not (#812).
+    #[test]
+    fn a_cue_on_the_folder_is_seen_by_its_socket_and_a_left_socket_file_is_not() {
+        let dir = std::env::temp_dir().join(format!("cue-served-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cue.sock");
+        let _ = std::fs::remove_file(&path);
+        assert!(!served_at(&path), "no socket: nobody runs there");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        assert!(served_at(&path), "a Cue listening there is seen");
+        drop(listener);
+        assert!(path.exists(), "its socket file stays behind");
+        assert!(!served_at(&path), "a socket file nobody listens on isn't a running Cue");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// One connection served (as `serve` does), and its client end.
     fn connect(hub: &Arc<Hub>) -> UnixStream {
