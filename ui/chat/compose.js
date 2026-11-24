@@ -427,9 +427,9 @@ const suggestionFor = (sid) => {
   const last = [...(s.thread || [])].reverse().find((e) => e.role === "agent" || e.role === "you");
   return (last?.role === "agent" && replyAsked(last.text)) || s.suggestion || "";
 };
-/** Which quick phrases each kind of chat shows (#840), the one place that says so: a plain session's chat all of yours
- *  (Settings → Quick phrases), a Desk lead's only "Go ahead", an item's and a crew member's none. */
-const QUICK_BY_CHAT = { session: null, lead: ["Go ahead"], item: [], crew: [] };
+/** Which quick phrases each kind of chat shows (#840), the one place that says so: null is all of yours (Settings →
+ *  Quick phrases), a list only those, [] none. Every chat has all of them but a crew member's. */
+const QUICK_BY_CHAT = { session: null, lead: null, item: null, crew: [] };
 /** Chat kind `kind` (session, lead, item, crew) for session `sid`: a session that runs a Desk is its lead's chat,
  *  wherever its box is. */
 const quickKind = (kind, sid) => (kind === "session" && sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid) ? "lead" : kind);

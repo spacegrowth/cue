@@ -87,7 +87,7 @@ function deskBox(d, o = deskOpen) {
 }
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
-// Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member or about an item.
+// Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member.
 const deskCBox = (key, pre, ph, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
 /** Box `to` is the lead's own: about no item, crew member, kept copy or other session. */
 const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kept;
@@ -136,8 +136,8 @@ function deskItemFootNow(i, d) {
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
   const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
   const key = deskBoxKey(to), line = deskToLine(i.holder.name, i);
-  // An item's chat: no quick phrases, as a crew member's.
-  return deskCBox(key, line.pre, line.ph, "", "", "item");
+  // An item's chat, or a crew member's when one holds it (no quick phrases to a crew member).
+  return deskCBox(key, line.pre, line.ph, "", "", to.mate ? "crew" : "item");
 }
 function deskRight(project, taskApprovals) {
   return deskOpenCard(project, taskApprovals) || deskRightChat(deskOf(project), taskApprovals);

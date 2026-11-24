@@ -521,18 +521,18 @@ test("an item's question opens at the page's foot; the row only says it asks", a
   expect(await page.evaluate(() => [view, deskOpen.kind])).toEqual(["desk", "item"]);
 });
 
-test("the lead's box has only Go ahead of the quick phrases and Claude's suggested reply", async ({ page, cue }) => {
+test("the lead's box has the chat box's quick phrases and Claude's suggested reply", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => {
-    st.settings.quick = { phrases: ["Commit", "show me"] };
+    st.settings.quick = { phrases: ["go ahead", "show me"] };
     const s = st.sessions.find((x) => x.session_id === "lead");
     s.state = "waiting";
     s.suggestion = "take the next item";
   });
   await openDesk(page);
   const box = page.locator(".dk-right .foot:not(.held) .composer"), ta = box.locator("textarea"), ghost = box.locator(".sug-line");
-  // Over the text, as in a session's chat box: only Go ahead (#840); in the empty box, the suggestion.
-  await expect(box.locator(".quick .qp")).toHaveText(["Go ahead"]);
+  // Over the text, as in a session's chat box: the phrases; in the empty box, the suggestion.
+  await expect(box.locator(".quick .qp")).toHaveText(["go ahead", "show me"]);
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveText("Suggestedtake the next itemTab");
   // Tab types it in.
@@ -542,14 +542,14 @@ test("the lead's box has only Go ahead of the quick phrases and Claude's suggest
   await expect(ghost).toBeHidden();
   await ta.fill("");
   // A phrase sends, to the lead.
-  await box.locator('.qp[data-phrase="Go ahead"]').click();
-  await cue.called("desk_send", { project: "cue", text: "Go ahead" });
-  // About an item its session holds: no quick phrases (#840), and not the lead's
+  await box.locator('.qp[data-phrase="go ahead"]').click();
+  await cue.called("desk_send", { project: "cue", text: "go ahead" });
+  // About an item its session holds: its phrases (sent by its normal flow, desk-quick.spec) but not the lead's
   // suggestion (those words aren't the lead's own next prompt).
   await page.locator('[data-desk-item="d5"]').click();
   await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to1")).toHaveText("To host-lead");
   await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to2")).toHaveText("#d5");
-  await expect(page.locator(".dk-right .foot:not(.held) .composer .quick .qp")).toHaveCount(0);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .quick .qp")).toHaveCount(2);
   await expect(page.locator(".dk-right .foot:not(.held) .composer .sug-line")).toBeHidden();
   // Held by a crew member: what you type goes to it through its lead, and its box has no quick phrases.
   await page.locator('[data-desk-item="d3"]').click();
