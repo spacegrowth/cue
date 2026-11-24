@@ -219,12 +219,39 @@ test("a DONE is one Ready to check card in the lead's chat: its item, its age, C
   await expect(said.locator("svg.dk-kic")).toHaveCount(1);
   await expect(said.locator(".dk-cl-t")).toHaveCSS("text-align", "center");
   // Sent back (#410): the item's title and what you wrote, in a line; "no note" when you wrote none.
-  await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { state: "back", back: "The arrows still skip one", back_pics: 2 }); });
+  await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { state: "back", back: "The arrows still skip one", back_pics: 2, back_by: "You" }); });
   const title = await page.evaluate(() => deskItem("cue", "d2").title);
   await expect(said).toHaveText(`You · sent #d2 ${title} back: “The arrows still skip one” · 2 pictures`);
   await cue.change((s) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { back: "", back_pics: 0 }); });
   await expect(said).toHaveText(`You · sent #d2 ${title} back · no note`);
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
+});
+
+// #779: #778 was finishing (Cue landing it) and nobody had pressed Send back, yet the chat said "You · sent #778 … back
+// · no note". A DONE past Ready to check shows under whoever moved it: Cue while it finishes, Cue or the lead when they
+// sent it back, You only for your own Send back.
+test("a DONE past Ready to check shows under who moved it: Cue while it finishes, Cue or the lead when they sent it back, You only for your Send back", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await expect(page.locator('.dk-chat [data-mg="check"]')).toHaveCount(1);
+  const title = await page.evaluate(() => deskItem("cue", "d2").title);
+  const said = page.locator(".dk-chat .dk-chk-done");
+  const set = (c) => cue.change((s, c) => { Object.assign(s.desk.projects.find((d) => d.project === "cue").checks[0], { back: "", back_pics: 0, back_by: "", ...c }); }, c);
+  // Finishing, nobody sent it back: Cue is landing it, and no "You", no "sent back", no "no note".
+  await set({ state: "finishing" });
+  await expect(said).toHaveText(`Cue · finishing #d2 ${title}`);
+  // Cue sent it back (its landing failed): under Cue, with Cue's why.
+  await set({ state: "working", back: "its install failed", back_by: "Cue" });
+  await expect(said).toHaveText(`Cue · sent #d2 ${title} back: “its install failed”`);
+  // The lead routed it back: under the lead.
+  await set({ state: "working", back: "the footer is left", back_by: "web-lead" });
+  await expect(said).toHaveText(`web-lead · sent #d2 ${title} back: “the footer is left”`);
+  // Your own Send back: under You.
+  await set({ state: "working", back: "The arrows still skip one", back_by: "You" });
+  await expect(said).toHaveText(`You · sent #d2 ${title} back: “The arrows still skip one”`);
+  // Sent back before Cue kept who did it: it only says it went back, under nobody.
+  await set({ state: "working", back: "old words" });
+  await expect(said).toHaveText(`#d2 ${title} went back: “old words”`);
 });
 
 test("your words about an item show its kind's icon, kind and number over them in the lead's chat; a click opens it", async ({ page, cue }) => {

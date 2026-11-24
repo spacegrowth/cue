@@ -117,7 +117,7 @@ pub(crate) fn checks_view(st: &Store, project: &str) -> Vec<Value> {
         .map(|(i, n)| {
             let c = &i.checks[n];
             json!({ "id": i.id, "kind": i.kind, "title": i.title, "see": i.see, "done_when": i.done_when, "state": i.state, "commit": i.commit, "commit_wait": i.commit_wait, "finish": i.finish, "designs": i.designs,
-                "at": c.at, "by": c.by, "files": c.files, "cue": c.cue, "edited": c.edited, "back": c.back, "back_pics": c.back_pics, "last": n + 1 == i.checks.len() })
+                "at": c.at, "by": c.by, "files": c.files, "cue": c.cue, "edited": c.edited, "back": c.back, "back_pics": c.back_pics, "back_by": c.back_by, "last": n + 1 == i.checks.len() })
         })
         .collect()
 }

@@ -107,7 +107,7 @@ function deskCheckTitle(c, max = 60) {
  *  when you wrote none. */
 function deskBackNote(c) {
   const note = plain(c.back || ""), pics = c.back_pics ? ` · ${c.back_pics === 1 ? "1 picture" : `${c.back_pics} pictures`}` : "";
-  if (!note) return ` · <span class="dk-chk-note">no note</span>${pics}`;
+  if (!note) return c.back_by === "You" ? ` · <span class="dk-chk-note">no note</span>${pics}` : pics;
   return `: <span class="dk-chk-note">“${esc(note.length > 140 ? note.slice(0, 140).replace(/\s+\S*$/, "") + "…" : note)}”</span>${pics}`;
 }
 /** Project `d`'s Ready to check lines for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
@@ -116,14 +116,19 @@ function deskCheckRows(d) {
 }
 /** A DONE as the family's card (#501) while it's the one to check: "Cue READY TO CHECK Task #125 12m", its title,
  *  Check it ›; the item and Check it › opening its page (what to test, Looks right and Send back are there). Once
- *  checked, a quiet centred line: "You · looked at [task] #124 and said it looks right" (or sent it back), the last
- *  one's commit and Undo · back to check after it. */
+ *  past it, a quiet centred line under whoever moved it: "You · looked at [task] #124 and said it looks right", the
+ *  last one's commit and Undo · back to check after it; "You · sent #124 … back · no note" only when your Send back
+ *  (or your words to its session) did it, else under who did (#779: Cue, the lead, its holder); "Cue · finishing
+ *  #124 …" while Cue lands it, nobody having sent it back. */
 function deskCheckLine(c, d) {
   const num = `${deskKindIcon(c)}<b class="dk-inum">#${esc(c.id)}</b>`;
   if (!(c.last && c.state === "to_check")) {
-    const said = c.state === "done" ? `looked at ${num} and said it looks right` : `sent ${num} ${deskCheckTitle(c)} back${deskBackNote(c)}`;
-    const cmt = c.last && c.state === "done" ? ` · ${deskCommitLine(c, true)}` : "";
-    return `<div class="dk-chk-done dk-cl"><span class="dk-cl-t"><b>You</b> · ${said}${cmt}</span></div>`;
+    const line = (who, said) => `<div class="dk-chk-done dk-cl"><span class="dk-cl-t">${who ? `<b>${esc(who)}</b> · ` : ""}${said}</span></div>`;
+    if (c.last && c.state === "done") return line("You", `looked at ${num} and said it looks right · ${deskCommitLine(c, true)}`);
+    if (c.last && c.state === "finishing" && !c.back_by && !c.back) return line("Cue", `finishing ${num} ${deskCheckTitle(c)}`);
+    // Sent back, by whoever did it; saved before Cue kept who, it says only that it went back.
+    if (c.back_by) return line(c.back_by, `sent ${num} ${deskCheckTitle(c)} back${deskBackNote(c)}`);
+    return line("", `${num} ${deskCheckTitle(c)} went back${deskBackNote(c)}`);
   }
   const open = `data-desk-chk-item="${esc(c.id)}"`;
   const wait = deskChkUninstalled(c) && !deskFinCommit(d && deskItem(d.project, c.id));

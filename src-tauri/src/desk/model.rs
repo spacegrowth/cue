@@ -649,6 +649,10 @@ pub struct DeskCheck {
     pub back: String,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub back_pics: usize,
+    /// Who sent it back (#779): "You" (Send back, or your words to its session), "Cue" (its landing or install
+    /// failed), the lead's name (its route back) or the holder's (its NOT DONE). Empty: not sent back, or saved before.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub back_by: String,
 }
 
 fn is_zero(n: &usize) -> bool {

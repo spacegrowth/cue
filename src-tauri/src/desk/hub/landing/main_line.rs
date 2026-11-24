@@ -294,7 +294,7 @@ impl Hub {
             (i.state, i.done_at, i.finish, i.updated) = (if h.is_some() { "working" } else { "new" }.into(), None, None, crate::desk::hub::core::desk::secs(now));
             i.check = None;
             if let Some(c) = i.checks.last_mut() {
-                c.back = what.clone();
+                (c.back, c.back_by) = (what.clone(), "Cue".into());
             }
             let (title, project) = (i.title.clone(), i.project.clone());
             let whom = match &h {

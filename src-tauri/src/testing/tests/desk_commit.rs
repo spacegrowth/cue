@@ -322,6 +322,8 @@ fn each_done_leaves_a_card_for_the_lead_with_who_what_to_test_and_its_files_kept
     let all = cards(&w);
     assert_eq!(all.len(), 2, "{all:?}");
     assert_eq!((all[0]["last"].as_bool(), all[1]["last"].as_bool()), (Some(false), Some(true)));
+    // #779: the card it went back from says you sent it; the new one, nobody yet.
+    assert_eq!((all[0]["back_by"].as_str(), all[1]["back_by"].as_str()), (Some("You"), Some("")), "{all:?}");
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "finished again");
 }
 

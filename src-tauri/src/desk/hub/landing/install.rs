@@ -315,7 +315,7 @@ impl Hub {
             let mut fx = crate::desk::hub::core::desk::Effects::default();
             let Some(i) = st.desk.item_mut(&id) else { return fx };
             if let Some(c) = i.checks.last_mut() {
-                c.back = question.to_string();
+                (c.back, c.back_by) = (question.to_string(), "Cue".into());
             }
             if hand_back {
                 (i.state, i.done_at, i.finish, i.close_on_check) = ("working".into(), None, None, false);
