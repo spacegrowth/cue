@@ -336,9 +336,16 @@ pub fn not_done_words(id: &str) -> String {
     )
 }
 
-/// Which tests a session runs while it works (#778; docs/desk-routing-rules.md, "Tests while you work"), in every item's brief.
-pub const TESTS_RULE: &str = "Tests: run only the tests for the files you changed and for code that uses them, \
-never the full suite: Cue's own check runs it at landing.";
+/// Which tests a session runs while it works (#778; docs/desk-routing-rules.md, "Tests while you work"), in every item's
+/// brief: as its Desk's Tests setting says (#780, desk/lands.rs: "all", "changed", "changed_full").
+pub fn tests_rule(tests: &str) -> &'static str {
+    match tests {
+        "changed" => "Tests: run only the tests for the files you changed and for code that uses them, never the full suite.",
+        "changed_full" => "Tests: while you work, run only the tests for the files you changed and for code that uses them. \
+Run the full suite once, just before your DONE: your work lands from there.",
+        _ => "Tests: run the tests for what you change as you work, and the full suite before you say done.",
+    }
+}
 
 /// What the session holding `it` is told when it's handed the item. `rule`: its Desk's Ask me before line
 /// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
@@ -377,12 +384,14 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
          A pick closes #{0}, and Cue files and routes what follows it.",
         it.id
     ));
-    out.push_str(&format!("\n{TESTS_RULE}"));
+    // Its Desk's Tests setting (#780): config is held in memory, so this never reads a file under the store's lock.
+    let tests = it.tree.as_ref().map_or_else(|| crate::desk::lands::tests_of(&it.project, "", false), |t| crate::desk::lands::tests_of(&it.project, &t.repo, t.card_tests));
+    out.push_str(&format!("\n{}", tests_rule(tests)));
     out.push_str(&format!("\nSay DONE: #{} on a line of its own when it's done.", it.id));
     out.push_str(&format!("\n{}", check_words(&it.id)));
     out.push_str("\nTo ask the owner something (a pick, a yes or no, something only they can tell you), end your reply with that question as its last line, ending in \"?\".");
     if let Some(t) = &it.tree {
-        out.push_str(&format!("\n{}", crate::hub::tree_line(t)));
+        out.push_str(&format!("\n{}", crate::hub::tree_line(t, tests)));
     }
     if !rule.is_empty() {
         out.push_str(&format!("\n{}", rule.trim_start_matches("- ")));

@@ -48,12 +48,22 @@ fn the_session_doing_it_is_told_both_lines() {
 }
 
 #[test]
-fn every_brief_says_to_run_only_the_tests_a_change_touches() {
-    let it = crate::desk::DeskItem { id: "7".into(), kind: "task".into(), title: "Faster".into(), ..Default::default() };
+fn every_brief_says_what_to_test_as_its_desk_is_set() {
+    let _w = World::new();
+    let it = crate::desk::DeskItem { id: "7".into(), project: "p780".into(), kind: "task".into(), title: "Faster".into(), ..Default::default() };
+    // A new Desk: every test (#780).
     let told = crate::desk::handed_words(&it, "", "");
-    assert!(told.contains(crate::desk::TESTS_RULE), "{told}");
-    assert!(told.contains("only the tests for the files you changed and for code that uses them"), "{told}");
-    assert!(told.contains("never the full suite: Cue's own check runs it at landing"), "{told}");
+    assert!(told.contains("\nTests: run the tests for what you change as you work, and the full suite before you say done.\n"), "{told}");
+    // Only what changed (#778's rule), then with a full run before it lands: as the Desk's Tests setting is saved.
+    crate::desk::lands::save("p780", crate::desk::lands::Place::Repo, &serde_json::json!({ "tests": "changed" })).unwrap();
+    let told = crate::desk::handed_words(&it, "", "");
+    assert!(told.contains("\nTests: run only the tests for the files you changed and for code that uses them, never the full suite.\n"), "{told}");
+    crate::desk::lands::save("p780", crate::desk::lands::Place::Repo, &serde_json::json!({ "tests": "changed_full" })).unwrap();
+    let told = crate::desk::handed_words(&it, "", "");
+    assert!(told.contains("\nTests: while you work, run only the tests for the files you changed and for code that uses them. Run the full suite once, just before your DONE: your work lands from there.\n"), "{told}");
+    assert_eq!(told.matches("Tests:").count(), 1, "said once: {told}");
+    // Fixed choices: anything else is refused.
+    assert!(crate::desk::lands::save("p780", crate::desk::lands::Place::Repo, &serde_json::json!({ "tests": "run npm test" })).is_err());
     // The rule is written in the routing rules doc too.
     let doc = include_str!("../../../../docs/desk-routing-rules.md");
     assert!(doc.contains("## Tests while you work"), "the doc lost its tests rule");

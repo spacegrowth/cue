@@ -139,3 +139,7 @@ without the lead repeating it.
     at landing.
     Why: a full run on every item made items slow; the run at landing still catches what the
     narrow runs miss.
+
+    Each Desk picks this in its settings, under Tests (#780): All tests (a new Desk's), Only what
+    changed (Cue's own Desk), or Changed, full run at landing (only what changed while it works,
+    then the full suite once just before its DONE). The brief says whichever is picked.

@@ -176,6 +176,30 @@ fn an_item_in_this_cues_own_source_is_told_to_run_its_card_tests() {
 }
 
 #[test]
+fn an_item_in_this_cues_own_source_is_told_what_its_desks_tests_setting_says() {
+    // Every test (the Desk set so before the item starts, #780).
+    let w = World::new();
+    let set = |tests: &'static str| move |w: &World, h: &str, dir: &std::path::Path| {
+        super::desk_finish::as_this_cue(dir);
+        let project = w.snapshot().session(h)["project"].as_str().unwrap().to_string();
+        crate::desk::lands::save(&project, crate::desk::lands::Place::Cue, &serde_json::json!({ "tests": tests })).unwrap();
+    };
+    let (_, project, id, h) = routed_with(&w, set("all"), |_, _, _| {});
+    let words = told(&w, &h, 0);
+    let brief = words.iter().find(|t| t.contains(&format!("Desk item #{id}")) && t.contains("Work in its own copy")).unwrap_or_else(|| panic!("{words:?}"));
+    assert!(brief.contains("\nTests: run the tests for what you change as you work, and the full suite before you say done.\n"), "{brief}");
+    assert!(brief.ends_with(" Cue stops an edit or git command outside it. Before you say done, run the full suite: CUE_FULL_RUN=1 tests/run.sh."), "{brief}");
+    assert_eq!(item(&w, &project, "Header jumps")["tree"]["card_tests"], true);
+    // Only what changed, then a full run just before DONE.
+    let w = World::new();
+    let (_, _, id, h) = routed_with(&w, set("changed_full"), |_, _, _| {});
+    let words = told(&w, &h, 0);
+    let brief = words.iter().find(|t| t.contains(&format!("Desk item #{id}")) && t.contains("Work in its own copy")).unwrap_or_else(|| panic!("{words:?}"));
+    assert!(brief.contains("\nTests: while you work, run only the tests"), "{brief}");
+    assert!(brief.ends_with(" While you work, run tests/run.sh card: it runs the tests for what you changed. Just before you say done, run the full suite once: CUE_FULL_RUN=1 tests/run.sh."), "{brief}");
+}
+
+#[test]
 fn an_item_in_another_project_is_told_nothing_of_cues_tests() {
     let w = World::new();
     let (_, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});

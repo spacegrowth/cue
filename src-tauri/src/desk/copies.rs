@@ -44,13 +44,17 @@ pub struct ItemTree {
 }
 
 impl ItemTree {
-    /// What its holder is told of testing, after the words on its copy: in this Cue's own source, to run the tests
-    /// for what it changed (tests/run.sh card) and leave the full run to after landing; nothing in any other project.
-    pub(crate) fn card_tests_line(&self) -> &'static str {
-        if self.card_tests {
-            " Before you say done, run tests/run.sh card: it runs the tests for what you changed. Don't run the full suite: it runs after landing."
-        } else {
-            ""
+    /// What its holder is told of testing, after the words on its copy, as its Desk's Tests setting says (#780,
+    /// desk/lands.rs): in this Cue's own source, how to run the tests for what it changed (tests/run.sh card) or every
+    /// test; nothing in any other project.
+    pub(crate) fn card_tests_line(&self, tests: &str) -> &'static str {
+        if !self.card_tests {
+            return "";
+        }
+        match tests {
+            "changed" => " Before you say done, run tests/run.sh card: it runs the tests for what you changed. Don't run the full suite: it runs after landing.",
+            "changed_full" => " While you work, run tests/run.sh card: it runs the tests for what you changed. Just before you say done, run the full suite once: CUE_FULL_RUN=1 tests/run.sh.",
+            _ => " Before you say done, run the full suite: CUE_FULL_RUN=1 tests/run.sh.",
         }
     }
 }

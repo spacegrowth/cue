@@ -64,7 +64,7 @@ kbd { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); padding: 2px
    built yet is shown greyed, saying so. */
 .ld-scrim { z-index: 30; }
 .ld-dialog { width: min(760px, calc(100vw - 32px)); }
-.ld-rows { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+.ld-rows { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 4px; }
 .ld-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start; }
 .ld-label { padding-top: 6px; font-size: var(--type-body); font-weight: 600; color: var(--ink); }
 .ld-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -84,7 +84,7 @@ kbd { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); padding: 2px
 .ld-n { min-width: 14px; text-align: center; font-size: var(--type-body); }
 .ld-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
 .ld-model-at { display: inline-flex; align-items: center; gap: 8px; font-size: var(--type-body); color: var(--muted); }
-.ld-dialog .set-group { margin: 12px 0 6px; }
+.ld-dialog .set-group { margin: 9px 0 6px; }
 .ld-sub { margin: -2px 0 4px; }
 .ld-esc { cursor: pointer; }
 .ld-intro { margin: 0 0 2px; }
@@ -102,6 +102,12 @@ kbd { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); padding: 2px
 .ld-dialog .ab-row, .ld-dialog .ab-more { padding: 4px; }
 .ld-dialog .ab-note { flex-basis: 100%; padding-top: 0; }
 .ld-old .ld-body > .btn { align-self: flex-start; }
+/* Before it looks (#780): its heading, the button and its words on one line, so the screen stays short (#447). */
+.ld-sec[data-ld-sec="old"]:has([data-ld="old"]) { display: flex; align-items: center; gap: 16px; }
+.ld-sec[data-ld-sec="old"]:has([data-ld="old"]) > .set-group { flex: none; margin-bottom: 0; }
+.ld-sec[data-ld-sec="old"]:has([data-ld="old"]) > .ld-rows { flex: 1; min-width: 0; margin: 9px 0 0; }
+.ld-old .ld-body:has(> [data-ld="old"]) { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.ld-old .ld-body:has(> [data-ld="old"]) > .ld-hint { flex: 1; min-width: 240px; }
 .ld-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 14px; border-top: 1px solid var(--line); }
 .ld-foot-t { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .ld-leaving .ld-foot-t { color: var(--ink); font-weight: 600; }

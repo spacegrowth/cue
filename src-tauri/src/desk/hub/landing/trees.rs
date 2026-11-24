@@ -30,8 +30,8 @@ pub(crate) const TREES: &str = ".claude/worktrees";
 /// The questions landing can stop on.
 pub(crate) const CHECK_FAILED: &str = "Its check failed";
 
-/// What a holder is told of its item's copy.
-pub(crate) fn tree_line(t: &ItemTree) -> String {
+/// What a holder is told of its item's copy; `tests`, its Desk's Tests setting (desk/lands.rs).
+pub(crate) fn tree_line(t: &ItemTree, tests: &str) -> String {
     if t.keep {
         return crate::desk::hub::landing::named_copy::named_line(t);
     }
@@ -42,14 +42,14 @@ pub(crate) fn tree_line(t: &ItemTree) -> String {
              Change files only there, make no worktree or branch of your own, don't switch branches, and don't merge \
              or push: at your DONE, Cue lands everything on it on {line} as one commit and puts the folder back on {line}.",
             t.branch, t.path
-        ) + t.card_tests_line();
+        ) + t.card_tests_line(tests);
     }
     format!(
         "Work in its own copy of the repository: {} (branch {}). Change files only there, never in the main checkout \
          or another folder, make no worktree or branch of your own, and don't merge or push: at your DONE, Cue lands \
          everything in it on the main line as one commit. Cue stops an edit or git command outside it.",
         t.path, t.branch
-    ) + t.card_tests_line()
+    ) + t.card_tests_line(tests)
 }
 
 /// How a turn in the landing line went.
@@ -232,7 +232,8 @@ impl Hub {
         if let Some(it) = it.as_ref().filter(|_| t.in_place) {
             crate::desk::hub::landing::in_place::save_owners(&t.repo, it);
         }
-        let mut line = tree_line(&t);
+        let tests = it.as_ref().map_or("all", |i| crate::desk::lands::tests_of(&i.project, &t.repo, t.card_tests));
+        let mut line = tree_line(&t, tests);
         if kept {
             line.push_str(" It holds this item's work from before it was dropped: read it first (git status, git log).");
         }
