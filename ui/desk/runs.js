@@ -47,23 +47,74 @@ function dkTake(h, own) {
  *  when the reply was nothing but such lines (its row then leaves whole). */
 function dkReplyTake(draw) {
   const taken = [];
+  let forYou = false;
   const html = draw((h, own) => {
     const t = dkTake(h, own);
     taken.push(...t.taken);
+    if (t.keep && /\bdata-dk="/.test(t.keep)) forYou = true;
     return t.keep;
   });
-  if (!taken.length) return { html, all: false };
+  const acts = taken.some(dkActs);
+  if (!taken.length) return { html, all: false, acts, forYou };
   const all = !html.replace(/<[^>]*>/g, "").trim() && !/<(?:img|svg|button|pre|table)\b/i.test(html);
   const tpl = taken.map((x) => `<template class="dk-taken">${x}</template>`).join("");
-  return all ? { html: tpl, all: true } : { html: html + tpl, all: false };
+  return all ? { html: tpl, all: true, acts, forYou } : { html: html + tpl, all: false, acts, forYou };
+}
+/** Whether a Desk line taken out of a reply acts on something (#816: ROUTE, ITEM, DONE, START, NOTE…), not only a call
+ *  it made (DECIDED). */
+const dkActs = (h) => { const k = dkKindOf(h) || dkKindOf(String(h).replace(/^\s*<div class="own-lines">/, "")); return !!k && k !== "decided" && k !== "minor"; };
+/** Whether your-side message `e` (the `n`th) of session `s`'s chat is wholly Cue's notice, out of the chat for Activity
+ *  (#816): not your words, not your words that went with a session's (#812), not your answer to a question. */
+function dkNotice(s, e, n, page) {
+  if (e.role !== "you" || e.decision) return false;
+  if (typeof deskRelaySplit === "function" && deskRelaySplit(e.text)?.yours) return false;
+  return dkLinesOf(s, e, n, page).length > 0;
+}
+/** Reply `n` of `ex` (session `s`'s messages, their Desk summaries dropped) when the turn it answers was only Cue's
+ *  notices (#816): { turn: those notices' indexes, oldest first; stays: it stays in the chat (it holds Desk lines that
+ *  act on something, or lines for you, or a card), with the notices one quiet line over it, else it goes to Activity
+ *  under its last notice }. null for any other reply: a turn with your words in it stays as it is. */
+function dkNoticeReply(s, ex, n, page) {
+  const e = ex[n];
+  if (e?.role !== "agent") return null;
+  let i = n - 1;
+  while (i >= 0 && ex[i].role === "agent") i--;
+  const turn = [];
+  for (; i >= 0 && ex[i].role !== "agent"; i--) {
+    if (!dkNotice(s, ex[i], i, page)) return null;
+    turn.unshift(i);
+  }
+  if (!turn.length) return null;
+  const sid = s.session_id, said = addOn.reply(sid, e.text);
+  const t = dkReplyTake((run) => md(said.text, { runIn: sid, lines: page?.lines || deskLineHtml, run }));
+  return { turn, stays: !!(t.acts || t.forYou || said.after || e.images?.length) };
+}
+/** The notices of a turn (`turn`: their indexes in `ex`) as one quiet line over the lead's reply that acted on them
+ *  (#816): "Cue · Stuck #815 · Queued #812". */
+function dkNoticeQuiet(s, ex, turn, page) {
+  const one = (i) => {
+    const c = cueMsgOf(ex[i].text);
+    return c ? `${esc(c.tag)}${c.id ? ` #${esc(c.id)}` : ""}${c.what ? `: ${esc(c.what)}` : ""}` : dkLinesOf(s, ex[i], i, page).map((h) => dkRowLine(h)).join(" · ");
+  };
+  const said = turn.map(one).filter(Boolean);
+  if (!said.length) return "";
+  return `<div class="dk-quiet">${cueMark()}<b class="mg-who">Cue</b><span class="dk-quiet-w">${said.join(" · ")}</span></div>`;
+}
+/** The lead's reply `e` to a notice-only turn, under its last notice in Activity (#816): its name, then its words, folded. */
+function dkNoticeAnswer(s, e) {
+  const text = addOn.plain(e.text), d = (state.desk?.projects || []).find((x) => deskLead(x)?.sid === s.session_id);
+  const who = d ? deskLeadName(d) : nameOf(s.session_id, s.project);
+  return `<div class="dk-ans" data-dk-ans="${e.at_ms}"><b class="mg-who">${esc(who)}</b>${deskCut(`ans:${s.session_id}:${e.at_ms}`, "mg-full", esc(text).replace(/\n/g, "<br>"), text)}</div>`;
 }
 /** Session `s`'s Desk lines, drawn now (`page`: its Desk chat's way, the lead's with its short lines, deskLeadNote):
  *  Cue's card or message for your-side message `e`, or each Desk line taken out of reply `e`, in order. */
-function dkLinesOf(s, e, n, page) {
+function dkLinesOf(s, e, n, page, answer = null) {
   const sid = s.session_id;
   if (e.role === "you") {
     const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && !youBack(e) && chatCueRow(page, s, sid, e, n, new Map());
-    return h && dkRow(h) ? [h] : [];
+    if (!h || !dkRow(h)) return [];
+    // The lead's answer to it, when that answer left the chat (#816): under it, in the same row.
+    return [answer ? h.replace(/<\/div>\s*$/, `${dkNoticeAnswer(s, answer)}</div>`) : h];
   }
   if (e.role !== "agent") return [];
   const out = [];
@@ -77,9 +128,13 @@ function dkActivityRows(s) {
   const ex = conversation(null, s).map(deskSaidE), out = [];
   const { asks, answers, decided } = chatAsks(ex);
   const page = dkActivityPage(s.session_id);
+  // A lead's answers that left its chat (#816), by the notice they go under: its turn's last.
+  const lead = page.you === deskLeadNote, answered = new Map();
+  if (lead) ex.forEach((e, n) => { const r = e.role === "agent" && !asks.has(n) && dkNoticeReply(s, ex, n, page); if (r && !r.stays) answered.set(r.turn.at(-1), e); });
   ex.forEach((e, n) => {
     if (answers.has(n) || decided.has(n) || asks.has(n)) return;
-    dkLinesOf(s, e, n, page).forEach((h, k) => out.push({ at: e.at_ms, key: `${e.role[0]}:${e.at_ms}:${k}`, e, n, k,
+    const answer = answered.get(n) || null;
+    dkLinesOf(s, e, n, page, answer).forEach((h, k) => out.push({ at: e.at_ms, key: `${e.role[0]}:${e.at_ms}:${k}`, e, n, k, answer,
       calls: [...h.matchAll(/<span class="dec-what">([\s\S]*?)<\/span>/g)].map((m) => m[1].replace(/<[^>]*>/g, "")) }));
   });
   return out;
@@ -101,7 +156,7 @@ function dkActivityOf(sid) {
     const rows = dkActivityRows(s).map((x) => ({ ...x, sid, get html() {
       if (!dkDrawn.size) queueMicrotask(() => dkDrawn.clear());
       const id = `${sid}:${x.n}:${x.e.at_ms}`;
-      if (!dkDrawn.has(id)) dkDrawn.set(id, dkLinesOf(s, x.e, x.n, dkActivityPage(sid)));
+      if (!dkDrawn.has(id)) dkDrawn.set(id, dkLinesOf(s, x.e, x.n, dkActivityPage(sid), x.answer));
       return dkDrawn.get(id)[x.k] || "";
     } })).sort((x, y) => y.at - x.at);
     hit = { sig, rows };

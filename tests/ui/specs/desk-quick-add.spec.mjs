@@ -627,7 +627,8 @@ test("Desk handoff shows only the routing note in Desk and session chat", async 
     renderMain();
   }, note);
   const chat = page.locator(".dk-chat");
-  await expect(chat.locator(".cv-you-text").last()).toHaveText(note);
+  // The new lead's hello is Cue's (#816): in Activity, not your bubble in the chat.
+  await expect(chat.locator(".cv-you-text", { hasText: "now runs Feature A's Desk" })).toHaveCount(0);
   await expect(chat).toContainText("Earlier handoff");
   await expect(chat).not.toContainText(/<desk|#193|abcdef|142k/);
   const deskComposer = page.locator(".dk-right .foot:not(.held) .composer textarea");
@@ -638,7 +639,8 @@ test("Desk handoff shows only the routing note in Desk and session chat", async 
   await expect(deskComposer).toHaveValue("Earlier handoff");
   await page.evaluate(() => openSession("lead"));
   const sessionChat = page.locator("[data-chat]");
-  await expect(sessionChat.locator(".cv-you-text").last()).toHaveText(note);
+  await expect(sessionChat.locator(".cv-you-text", { hasText: "now runs Feature A's Desk" })).toHaveCount(0);
+  await expect(sessionChat.locator(".cue-msg", { hasText: "now runs Feature A's Desk" })).toHaveCount(1);
   await expect(sessionChat).not.toContainText(/<desk|#193|abcdef|142k/);
   const sessionComposer = page.locator('textarea[data-text="s:lead"]');
   await sessionComposer.press("ArrowUp");

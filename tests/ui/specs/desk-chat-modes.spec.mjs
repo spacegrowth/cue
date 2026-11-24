@@ -54,12 +54,15 @@ test("Cue's messages and the lead's lines leave the chat, no count line in their
       { role: "agent", text: "That's all for now.", at_ms: t - 10000 });
   }, { t });
   const chat = page.locator(".dk-chat");
-  for (const w of ["Put the search box at the top please", "On it.", "That's all for now."]) await expect(chat).toContainText(w);
+  for (const w of ["Put the search box at the top please", "On it."]) await expect(chat).toContainText(w);
+  // The lead's answer to Cue's message alone goes with it, to Activity (#816).
+  await expect(chat).not.toContainText("That's all for now.");
   await noSwitch(page);
   await expect(chat.locator(".dk-cnt")).toHaveCount(0);
   await expect(chat.locator(".dk-cue, [data-dk=\"route\"]")).toHaveCount(0);
   // Both in Activity.
   await page.evaluate(() => deskOpenActivity());
   await expect(page.locator(".dk-moves .dk-cue")).toHaveCount(1);
+  await expect(page.locator(".dk-moves .dk-cue .dk-ans")).toContainText("That's all for now.");
   await expect(page.locator('.dk-moves [data-dk="route"]')).toHaveCount(1);
 });

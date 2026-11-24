@@ -76,11 +76,18 @@ const CUE_MSGS = [
   }, "Back"],
   // The Desk's changes since the lead last heard (desk/hub/lead/feed.rs, #616): a paragraph each, numbered at the end.
   [/^([\s\S]+?)\n\n\(Desk changes [^)\n]*\)$/, (m) => cueChanges(m[1]), "Desk changes"],
-  [cueRe(String.raw`^Queued: #ID is next for (.+?), after #([\w.-]+)`), (m, t) => ({ verb: "Told", id: m[1], what: `next for ${m[2]}, after #${m[3]}`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued"), next: t.split("\n")[0].split("; ")[1] || "" }), "Queued"],
+  [cueRe(String.raw`^Queued: #ID is next for (.+?)(?:, after #([\w.-]+)| \(busy with #([\w.-]+)\))`), (m, t) => ({ verb: "Told", id: m[1], what: m[3] ? `next for ${m[2]}, after #${m[3]}` : `next for ${m[2]} (busy with #${m[4]})`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued"), next: t.split("\n")[0].split("; ")[1] || "" }), "Queued"],
   [/^Cue asked .+?, for the leads of .+?: ([^\n]*)\nThe user's answer: ([^\n]*?)\./, (m) => ({ verb: "Told", what: `your answer: ${cueQ(m[2], 60)}`, by: "You", said: m[2], next: "The lead carries on with your answer" }), "Answered"],
   [/^Away mode:\n(?:Away is paused: ([^.\n]+)|(?:The owner|.+?) is away (until [^,\n]+))/, (m) => ({ verb: "Told", what: m[1] ? `Away paused: ${m[1]}` : `Away is on, ${m[2]}` }), "Away"],
+  // An item's holder gone quiet (desk/hub/stall/stuck.rs silent_words, #816): who, how long, its last step.
+  [cueRe(String.raw`^#ID \((.*)\) looks stuck: (.+?) has shown no new output for (\d+) minutes`), (m, t) => ({ verb: "Told", id: m[1], what: `looks stuck: ${m[3]} quiet for ${m[4]} min`, said: /Its last step: ([^\n]*)/.exec(t)?.[1] || "", label: "Its last step", next: "The lead looks at its chat, then nudges it, pauses it or routes it on" }), "Stuck"],
+  // An item that stopped on its way to main (desk/hub/lead/stop_lead.rs), or landed without files left in the main folder (landing/own_work.rs).
+  [cueRe(String.raw`^Desk item #ID \((.*)\) stopped while landing: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `stopped while landing: ${cueQ(m[3])}`, said: m[3], label: "Why", next: "The lead sends it back or clears the way and says DONE again" }), "Landing"],
+  [cueRe(String.raw`^#ID \((.*)\) lands from its copy without these files[^:]*: ([^\n]*?)\. They stay there`), (m) => ({ verb: "Told", id: m[1], what: `landed without ${m[3]}`, said: m[3], label: "Left in the main folder", next: "Those files stay uncommitted in the main folder" }), "Landing"],
+  // The Desk's new lead's first message (desk/hub/lead/run.rs desk_handoff_words).
+  [/^(.+?) now runs (.+?)'s Desk\./, (m) => ({ verb: "Told", what: `${m[1]} now runs ${m[2]}'s Desk`, next: "The new lead carries on with the Desk" }), "Hand-off"],
   // Replies to the lead's own command lines (Refused:, not cut, not split, …): its first line, the rest folded.
-  [cueRe(String.raw`^(?:Refused: |Noted: |#ID (?:note )?(?:not|copy not) |Couldn't read this line as a route|No question from #ID|FEATURE #ID: left out|Cue couldn't (?:route|queue|start) |Cue didn't reopen )`), (m, t) => {
+  [cueRe(String.raw`^(?:Refused: |Noted: |Told: |#ID (?:note )?(?:not|copy not) |#ID got no copy|Couldn't read this line as a route|No question from #ID|FEATURE #ID: left out|Cue couldn't (?:route|queue|start) |Cue didn't reopen )`), (m, t) => {
     const ls = cueLines(t), first = ls[0].split(/(?<=\.) /)[0].replace(/\.$/, "");
     // A reply about one item ("#d5 not cut: …") puts that item in the card's head, as every other line does.
     const [, id, rest] = /^#(\S+) (.+)$/.exec(first) || [];

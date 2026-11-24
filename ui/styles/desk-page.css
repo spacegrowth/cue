@@ -18,6 +18,12 @@
 /* Cue's own message to the lead (#616, desk/lead.js deskCueLine): one quiet line at the left, + opening Cue's full text
    under it as a voice message's + does. Its words cut to the line; the item's chip and the age stay whole. */
 .dk-cue { margin: 3px 0; }
+/* Cue's notices a lead's reply acted on (#816): one quiet line over the reply. Its answer to notices alone: under the notice in Activity. */
+.dk-quiet { display: flex; align-items: center; gap: 5px; margin: 0 0 4px; min-width: 0; color: var(--muted); font: var(--mg-meta); }
+.dk-quiet .mg-who { color: var(--muted); font-weight: 500; }
+.dk-quiet-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-ans { margin: 6px 0 0 14px; font: var(--mg-body); color: var(--ink); }
+.dk-ans > .mg-who { display: block; font: var(--mg-meta); color: var(--muted); }
 .dk-cue .mg-line { align-items: center; color: var(--muted); font: var(--mg-meta); }
 .dk-cue-t, .dk-cue-w { all: unset; cursor: pointer; }
 .dk-cue-t { flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }

@@ -49,16 +49,18 @@ for (const [name, words] of [["your words first", `are we moving ?\n\n${RELAY}`]
   });
 }
 
-test("two sessions' words in one message: a TO LEAD card each in Activity, nothing in the chat", async ({ page, cue }) => {
+test("two sessions' words in one message: a TO LEAD card each in Activity, the lead's answer under them, nothing in the chat", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const two = `${RELAY}\n\n${relay("cue-796", "d3", "Build steps", "is paused on tests.")}`;
   await feed(page, `${SUMMARY}\n\n${two}`);
   await expect(page.locator(".dk-chat")).not.toContainText("paused on tests");
-  await expect(page.locator(".dk-chat")).toContainText("Yes, we're moving.");
+  // A turn of only sessions' words for the lead (#816): its answer goes to Activity too, under them.
+  await expect(page.locator(".dk-chat")).not.toContainText("Yes, we're moving.");
   await page.evaluate(() => deskOpenActivity());
   const cards = page.locator('.dk-moves [data-mg="from"]');
   await expect(cards).toHaveCount(2);
   await expect(cards.filter({ hasText: "cue-796" })).toContainText("is paused on tests.");
   await expect(cards.filter({ hasText: "cue-790" })).not.toContainText("paused on tests");
+  await expect(page.locator(".dk-moves .dk-ans")).toContainText("Yes, we're moving.");
 });

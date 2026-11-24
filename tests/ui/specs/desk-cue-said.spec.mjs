@@ -84,9 +84,10 @@ test("each kind of message Cue sends reads as one short line; your own words and
     cueMsgPlain("About #d5 (Header): make it blue"),
     // A new lead's hello and hand-off note are short already: they keep their bubble (desk-quick-add.spec's Desk handoff).
     cueMsgPlain("You run cue's Desk now. Say so in one line, then hand out anything not given out yet."),
-    cueMsgPlain("web-lead now runs cue's Desk. Please route Header, Footer."),
     cueMsgPlain("Done? Write DONE: #d5, or say what's left\n\nDesk item #d5 (bug): Hosted sessions can't open the canvas\nSay DONE: #d5 on a line of its own when it's done."),
-  ])).toEqual([null, null, null, null, null]);
+  ])).toEqual([null, null, null, null]);
+  // A new lead's first message is Cue's, never your words (#816): one line in Activity.
+  expect(await page.evaluate(() => cueMsgPlain("web-lead now runs cue's Desk. Please route Header, Footer."))).toBe("Told · web-lead now runs cue's Desk");
 });
 
 // A crew lead's "(Cue) Your teammate … has been quiet" keeps the crew's own Cue line (team.js), as before.

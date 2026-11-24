@@ -88,10 +88,19 @@ one quiet line at the left, "+ ◔ Cue · Desk changes · #id · 3m" with what i
 click on it opens Cue's full text under it, as + on a voice message does (#616, desk/lead.js `deskCueLine`). The lead
 still gets the full text. The cards under "Kinds that keep their own design" stay cards there.
 
+Since #789 none of them is in the lead's chat: each is in Activity, under Cue, for its item. The lead's answer to a turn
+of only Cue's messages goes there too, under the message (#816, desk/runs.js `dkNoticeReply`). An answer that acts on
+it (a ROUTE, NOTE, START…, or a line for you) stays in the chat, the messages one quiet line over it ("◔ Cue Stuck #d2:
+…"). A message that holds your words too stays in the chat as yours (#812).
+
 | Kind | Sent when | Hub | The line |
 | --- | --- | --- | --- |
 | Desk changes | Items finished, were sent back or asked, got stuck finishing, clashed, lost their holder… since the lead last heard | desk/hub/lead/feed.rs (ends "(Desk changes 4–6)") | Told lead · #d5 finished · #d3 sent back (one item: “you sent it back: “…””) |
-| Queued | Its ROUTE with after: is kept till the item before is checked | desk route replies (“Queued: #id is next for X, after #y…”) | Told lead · #id next for X, after #y · 1 more queued |
+| Queued | Its ROUTE with after: is kept till the item before is checked, or its session is busy with another | desk route replies (“Queued: #id is next for X, after #y…”, “Queued: #id is next for X (busy with #y)…”) | Told lead · #id next for X, after #y (or busy with #y) · 1 more queued |
+| Stuck | An item's holder has shown no new output for a while | desk/hub/stall/stuck.rs `silent_words` | Told lead · #id looks stuck: X quiet for 33 min |
+| Stopped while landing | An item couldn't land (not merged, not committed…) | desk/hub/lead/stop_lead.rs | Told lead · #id stopped while landing: “why” |
+| Landed without files | An item landed while its session left files in the main folder | desk/hub/landing/own_work.rs | Told lead · #id landed without these files |
+| New lead | A new lead takes over the Desk | desk/hub/lead/run.rs `desk_handoff_words` | Told lead · X now runs Y's Desk |
 | Your answer for several leads | Cue asked you on behalf of more than one Desk | desk/escalate.rs | Told lead · your answer: “…” |
 | Landing clean-up question | A session asks how to clear the way for its landing | desk_cleanup.rs `lead_words` | Asked lead · #id X's landing question: “…” · 2 choices |
 | Wait circle | Items wait on each other in a circle | desk_waits.rs `circle_note` | Asked lead · cut a wait circle: #a waits on #b waits on #a |
@@ -107,7 +116,7 @@ and `route_answers` sends them as one message. With any reply before it, the lin
 first sentence · N more lines”), and the open ASKs are only in the fold.
 | Away sweep | You're about to go away | desk_away.rs `sweep_words` | Asked lead · settle what you can before Away |
 | Away on, off, paused | Away turned on, off, changed or ran out | desk_away.rs `tell_lead_away` | Told lead · Away is on, until 18:00 (or is off, or paused: …) |
-| Replies to its commands | Refused:, Noted:, "#id not cut / split / closed / paused / …", "note not sent", "Couldn't read this line as a route", "No question from #id…", FEATURE, "Cue couldn't route / queue…", "Cue didn't reopen…" | desk_said.rs, desk_route.rs, desk_unstick.rs, desk_features.rs | Told lead · its first sentence · N more lines |
+| Replies to its commands | Refused:, Noted:, Told: (TELL DESK), "#id got no copy…", "#id not cut / split / closed / paused / …", "note not sent", "Couldn't read this line as a route", "No question from #id…", FEATURE, "Cue couldn't route / queue…", "Cue didn't reopen…" | desk_said.rs, desk_route.rs, desk_unstick.rs, desk_features.rs | Told lead · its first sentence · N more lines |
 
 ## Kinds that keep their own design
 

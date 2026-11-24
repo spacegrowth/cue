@@ -349,7 +349,12 @@ function chatAgentHtml(c, e, n) {
   const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, run });
   const talk = page?.lines && typeof dkReplyTake === "function" ? dkReplyTake(draw) : null;
   const body = talk ? talk.html : draw(null);
-  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${talk?.all && !split?.after && !said.after && !e.images?.length ? " data-dkr" : ""} data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
+  // The lead's answer to a turn of only Cue's notices (#816): in Activity under the notice, unless it acted on it; then
+  // here, the notices one quiet line over it.
+  const notice = talk && typeof dkNoticeReply === "function" ? dkNoticeReply(s, ex, n, page) : null;
+  const out = (talk?.all && !split?.after && !said.after && !e.images?.length) || (notice && !notice.stays);
+  const quiet = notice?.stays ? dkNoticeQuiet(s, ex, notice.turn, page) : "";
+  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${out ? " data-dkr" : ""} data-at="${e.at_ms}">${quiet}<div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
 }
