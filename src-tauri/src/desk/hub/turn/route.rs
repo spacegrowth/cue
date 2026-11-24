@@ -135,7 +135,8 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         return Some(no);
     }
     let fresh = to.eq_ignore_ascii_case("new") || to.eq_ignore_ascii_case("me");
-    let holder = if fresh { None } else { resolve(st, project, to) };
+    // Its holder by the name or id its item saved, though not on the Desk's routes list (#784): left, or another Desk's.
+    let holder = if fresh { None } else { resolve(st, project, to).or_else(|| saved_holder(st, id, to)) };
     let to_new = fresh || holder.as_ref().is_some_and(|h| h.sid == by.sid && h.lead_sid.is_empty());
     // Finishing (its commit and install): the lead may take it off its finish only once it stopped on a question;
     // while its commit or install is under way, it's refused before anything else (the user isn't asked either).
@@ -147,6 +148,10 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
     if let Some(h) = holder.as_ref().filter(|h| !to_new && !may_route(st, project, h, id)) {
         ask_first(st, &UseAsk { lead: by.sid.into(), project: project.into(), sid: h.to().into(), name: h.name.clone(), item: id.into(), to: to.into(), after, why: why.into() }, fx);
         return Some(format!("Asked: #{id} goes to {0} once the user says yes ({0} isn't on the Desk).", h.name));
+    }
+    // With you to check, its session gone (#784): a send can't wake it, so a new session takes it with its work.
+    if let Some(h) = left_holder(st, id, holder.as_ref(), to.eq_ignore_ascii_case("new")) {
+        return reopen_fresh(st, project, by, id, &h, why, now, fx);
     }
     let finishing = st.desk.item(id).is_some_and(|i| i.state == "finishing");
     let unfinished = finishing && (to_new || holder.is_some());
@@ -181,6 +186,58 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
     }
     route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)
+}
+
+/// Item `id`'s holder, when `to` names it (by name, or the start of its id: six characters or more) and no session on
+/// the Desk's routes list goes by `to` (#784): the lead can still send it back to the session that did it.
+fn saved_holder(st: &Store, id: &str, to: &str) -> Option<Holder> {
+    let want = to.trim().trim_start_matches('@').to_lowercase();
+    let sid = want.strip_prefix("sid:").unwrap_or(&want).trim();
+    let h = st.desk.item(id)?.holder.clone()?;
+    (h.name.to_lowercase() == want || (sid.len() >= 6 && h.sid.to_lowercase().starts_with(sid))).then_some(h)
+}
+
+/// Item `id`'s holder when it's with you to check (#784), it has no copy of its own here, its session is gone (closed,
+/// or no longer in Cue, so no send wakes it), and the route is to that holder or to new: what Send back does then
+/// (act.rs `to_fresh_session`), the lead may do too.
+fn left_holder(st: &Store, id: &str, to: Option<&Holder>, to_new: bool) -> Option<Holder> {
+    let it = st.desk.item(id).filter(|i| reopens(i) && i.tree.is_none())?;
+    let h = it.holder.clone().filter(|h| st.sessions.get(h.to()).is_none())?;
+    (to_new || to.is_some_and(|t| t.sid == h.sid && t.lead_sid == h.lead_sid)).then_some(h)
+}
+
+/// Item `id`, with you to check, sent back by the lead while its holder `h` has left (#784): reopened for a new
+/// session, as your Send back does, with a hand-off naming the work so far and the lead's why. Its work on another
+/// machine carries on there (#598: the new session starts from what was pushed). What the lead is told.
+#[allow(clippy::too_many_arguments)]
+fn reopen_fresh(st: &mut Store, project: &str, by: &By, id: &str, h: &Holder, why: &str, now: u64, fx: &mut Effects) -> Option<String> {
+    if why.trim().is_empty() {
+        return Some(format!("Refused: #{id} is with the user to check, and {0} has left the Desk. To send it back, give a why (what's left to do), and a new session takes it with {0}'s work: ROUTE: #{id} -> new | why: …", h.name));
+    }
+    let left = format!("{} has left the Desk", h.name);
+    let it = st.desk.item_mut(id)?;
+    let hand = crate::desk::hub::turn::act::reopen_handoff(it, h, &left, why, "the Desk lead's");
+    it.remember_holder();
+    (it.moved_from, it.reopen_note) = (Some(h.clone()), hand);
+    (it.holder, it.state, it.after, it.next_for) = (None, "new".into(), None, None);
+    (it.done_at, it.finish, it.close_on_check, it.check, it.asked) = (None, None, false, None, None);
+    it.crew.clear();
+    it.next.clear();
+    it.after_why = why.to_string();
+    it.route_failed.clear();
+    it.reopen_refused.clear();
+    it.mark_reopened();
+    if let Some(c) = it.checks.last_mut() {
+        (c.back, c.back_by) = (why.trim().to_string(), by.name.to_string());
+    }
+    it.updated = secs(now);
+    fx.items.push(id.into());
+    decide(st, project, Some(id.into()), by.name, by.sid, &format!("Sent #{id} back to a new session: {left}"), why, now, fx);
+    if let Some(d) = st.desk.decisions.last_mut() {
+        d.act = "send_back".into();
+    }
+    fx.starts.push(NewStart { project: project.into(), id: id.into(), why: format!("sent back by the lead; {left}, so a new session takes it"), by: by.name.into(), by_sid: by.sid.into() });
+    Some(format!("Taken: #{id} to a new session with {}'s work ({left}; Cue is starting it).", h.name))
 }
 
 /// Item `id` finishing with its commit or install under way: refused, or (back to its holder, with a why) noted.
