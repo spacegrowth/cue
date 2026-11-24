@@ -532,7 +532,7 @@ function deskCSessChat(sid, from, d, foot, bar = "", item = null) {
     const pending = item ? deskCItemPending(item, s) : [];
     // Not started on the item yet (its card is in the bar, #626): its holder's own line only when it really asks you.
     const notYet = item && deskNotStarted(item), asks = ["waiting", "deciding"].includes(s.state) && waitingFor(null, s) !== "your reply";
-    const rows = deskChatRows(s, lead || pending.length ? { ...(lead ? { you: deskLeadNote } : {}), ...(pending.length ? { pending } : {}) } : undefined), where = !notYet || asks ? statusLine(null, s) : "";
+    const rows = deskChatRows(s, { ...(lead ? { you: deskLeadNote } : { chat: item ? "item" : "session" }), ...(pending.length ? { pending } : {}) }), where = !notYet || asks ? statusLine(null, s) : "";
     const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Nothing said yet.</div>` : "";
     // By the way's panel over the chat, as on the Board (its button is in the head above, #832); the status line under
     // it as on the Board too: a hand-off on its way and its background agents, not just where it is.
