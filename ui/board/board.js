@@ -72,6 +72,7 @@ function answered(id, on = true) {
 }
 async function respond(it, decision) {
   if (typeof deskAnswered === "function") deskAnswered(it, decision);   // an item's page on the Desk says what you picked
+  try { if (typeof deskPermAnswered === "function") deskPermAnswered(it); } catch (e) { console.error(e); }   // a permission card on the Desk folds shut (#793)
   answered(it.id);
   const ok = await invoke("respond", { id: it.id, decision }).catch(() => false);
   if (!ok) { answered(it.id, false); toast("Already answered somewhere else"); }

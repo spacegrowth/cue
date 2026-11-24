@@ -116,7 +116,7 @@ function deskAwayAsk(it, d, deny = "No") {
   const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, deny) : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
   const cmd = it.tool_input?.command;
   const what = it.kind === "input" ? formBody(it) : cmd ? cmdCut(it.id, cmd) : qs.length ? "" : `<p>${esc(summary(it))}</p>`;
-  return `<div class="dk-request dk-aw-ask" data-desk-request="${esc(it.id)}"><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
+  return `<div class="dk-request dk-aw-ask${it.fold ? deskAskLeave(it.fold, "list") : ""}"${it.fold ? ' aria-hidden="true"' : ` data-desk-request="${esc(it.id)}"`}><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
 }
 /** Away (#415, calls 1): the lead's calls since Away went on sit in one line at the top of Items, "4 calls while away ·
  *  since 16:00", with till, spend and a spend bar; open, each call with its time, why and Undo. Folded, one line; the
@@ -245,7 +245,11 @@ function deskAwayWaiting(d, taskApprovals) {
   const held = deskHeldRows(d);
   const out = (n, rows, more) => ({ n, held: rows, more, html: rows.map((x) => x[1]).join("") + more });
   if (!d?.away?.on) return out(held.n, held.rows, "");
-  const { asks } = deskAwayNeeds(d, taskApprovals);
+  const { asks: open } = deskAwayNeeds(d, taskApprovals);
+  // A permission you just answered here folds shut where it was (#793), not counted.
+  const asks = [...open];
+  const gone = deskAskFolding("list").filter((f) => f.it && !f.item && deskHasSession(d, f.it.session_id) && !open.some((it) => it.id === f.id));
+  for (const f of gone) { const at = asks.findIndex((it) => (it.created_ms || 0) > (f.it.created_ms || 0)); asks.splice(at < 0 ? asks.length : at, 0, { ...f.it, fold: f }); }
   const askRow = (it) => it.kind === "permission" ? deskAwayAsk(it, d, "Deny") : `<button class="dk-prow" ${deskChatAttrs(it.session_id, d)}><i class="dk-pdot ask" aria-hidden="true"></i><span class="dk-prt"><b>${esc(deskHolderName(it.session_id))}</b> <span class="dk-prs">asks you · ${esc(deskOneLine(summary(it)))}</span></span></button>`;
   // A session's ask that's a step Cue holds for your OK (a push, a delete, a release) goes with the held ones (#749).
   const ow = asks.filter((it) => it.one_way), other = asks.filter((it) => !it.one_way);
@@ -253,15 +257,17 @@ function deskAwayWaiting(d, taskApprovals) {
   const paused = [d.lead?.sid, ...(d.members || [])].filter((sid, k, all) => sid && all.indexOf(sid) === k && deskPausedTill(sid));
   const till = paused.length ? Math.max(...paused.map(deskPausedTill)) : 0;
   const quiet = paused.length ? `<div class="dk-aw-quiet">${esc(paused.map((sid) => deskHolderName(sid)).join(", "))} paused${till > 1 ? ` till ${deskHm(till)}` : ""} · Cue carries on then</div>` : "";
-  return out(held.n + asks.length, rows, (other.length ? `<div class="dk-prows dk-aw-asks">${other.map(askRow).join("")}</div>` : "") + quiet);
+  return out(held.n + open.length, rows, (other.length ? `<div class="dk-prows dk-aw-asks">${other.map(askRow).join("")}</div>` : "") + quiet);
 }
 
 /** Desk `d`'s held steps (desk/hub/away/away_holds.rs): who, what it wants to do in plain words, the exact command, Allow and No.
  *  Only what you allow runs, in the order the session asked. { n, rows: [[at, html]] }, oldest first. */
 function deskHeldRows(d) {
-  const held = d?.held || [];
-  const row = (h) => `<div class="dk-prows dk-aw-asks"><div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div>${cmdCut(`held:${h.id}`, h.command)}<div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div></div>`;
-  return { n: held.length, rows: held.map((h) => [h.at || 0, row(h)]) };
+  // One you just answered folds shut where it was (#793).
+  const gone = deskAskFolding("held").filter((f) => f.desk === d?.project && !(d?.held || []).some((h) => h.id === f.id));
+  const held = [...(d?.held || []), ...gone.map((f) => ({ ...f.held, fold: f }))];
+  const row = (h) => `<div class="dk-prows dk-aw-asks${h.fold ? deskAskLeave(h.fold, "held") : ""}"${h.fold ? ' aria-hidden="true"' : ""}><div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div>${cmdCut(`held:${h.id}`, h.command)}<div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div></div>`;
+  return { n: held.length - gone.length, rows: held.map((h) => [h.at || 0, row(h)]) };
 }
 /** A step Cue holds for your OK (Ask me before: a push to main, a release, a delete) that an item asks: when it was
  *  asked, else 0 (#749). */
@@ -277,6 +283,7 @@ function deskHeldFirst(aw, list, row, extra = []) {
 /** Your Allow or No to held step `id`: gone from the list at once; the session is told once its earlier ones are answered. */
 async function deskHeldAnswer(id, allow) {
   const d = (state.desk?.projects || []).find((x) => (x.held || []).some((h) => h.id === id));
+  if (d) deskAskFold(id, { held: d.held.find((h) => h.id === id), desk: d.project });
   if (d) d.held = d.held.filter((h) => h.id !== id);
   renderMain();
   try { await invoke("desk_held_answer", { id, allow }); } catch (err) { toast(`Couldn't answer the held step: ${err}`); }

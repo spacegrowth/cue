@@ -91,9 +91,40 @@ const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kep
 // The lead's box writes to its session (chat/compose.js sidOfKey): its "/" menu, Send at and suggestion are the lead's.
 // It claims no box (act.js's entry sends it).
 BOX_OWNERS.push({ owns: () => false, sid: (key) => { const to = deskBoxes.get(key); return deskLeadBoxTo(to) ? deskLead(deskOf(to.project))?.sid || null : null; } });
+/** Permission cards you just answered on the Desk (#793), by ask id: { at, h: { place: its height then }, it, item,
+ *  held, desk }. Each folds shut where it was (an item page's foot, a held step, an ask under Blocked on you) with the
+ *  rows' fold (commit.js deskLeaveMs, desk-c.css dkn-leave), while your answer has already gone; at once with reduced
+ *  motion. Places: "foot" (.dk-ask), "list" (.dk-request), "held" (its .dk-prows). */
+const deskAskFolds = new Map();
+/** Card `id` answered: its places' heights now, then it folds; `extra` says what it is (it, item, held, desk). */
+function deskAskFold(id, extra) {
+  if (typeof deskLeaveMs !== "function" || !deskLeaveMs() || deskAskFolds.has(id)) return;
+  const h = {}, sel = { foot: `.dk-ask [data-id="${CSS.escape(id)}"]`, list: `[data-desk-request="${CSS.escape(id)}"]`, held: `[data-held-row="${CSS.escape(id)}"]` };
+  const box = { foot: ".dk-ask", list: ".dk-request", held: ".dk-prows" };
+  for (const [place, q] of Object.entries(sel)) { const el = document.querySelector(q)?.closest(box[place]); if (el) h[place] = el.offsetHeight; }
+  if (!Object.keys(h).length) return;
+  deskAskFolds.set(id, { at: Date.now(), h, ...extra });
+  setTimeout(() => { deskAskFolds.delete(id); renderMain(); }, deskLeaveMs() + 20);
+}
+/** A permission card answered from its item's page or Blocked on you: it folds (board.js respond calls this). */
+function deskPermAnswered(it) {
+  if (it?.kind !== "permission") return;
+  const item = (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.ask?.item_id === it.id);
+  deskAskFold(it.id, { it, item: item?.id });
+}
+/** Folds of `place` still under way, oldest first. */
+const deskAskFolding = (place) => !deskAskFolds.size ? [] : [...deskAskFolds.entries()].filter(([, f]) => f.h[place] != null && Date.now() - f.at < deskLeaveMs()).map(([id, f]) => ({ id, ...f }));
+/** The class and style a folding card draws with in `place`, as commit.js deskLeaveStyle: its fold `now - at` in. */
+const deskAskLeave = (f, place) => ` dk-leave" style="--h:${f.h[place]}px;animation-delay:-${Math.min(Date.now() - f.at, deskLeaveMs())}ms`;
 /** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
  *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
 function deskItemFoot(i, d) {
+  // The permission you just answered on it folds shut over what comes next (#793).
+  const f = i && deskAskFolding("foot").find((x) => x.item === i.id);
+  const was = f ? `<div class="dk-ask${deskAskLeave(f, "foot")}" aria-hidden="true">${askFoot(f.it, f.it.session_id, f.it.harness || "claude", `fold:${f.id}`)}</div>` : "";
+  return was + deskItemFootNow(i, d);
+}
+function deskItemFootNow(i, d) {
   if (i?.state !== "needs_you") return deskBox(d);
   const it = deskItemRequest(i);
   if (it) return `<div class="dk-ask">${askFoot(it, it.session_id, it.harness || "claude", deskBoxKey({ project: d.project, item: i.id }))}</div>`;
