@@ -120,7 +120,7 @@ function crewBarHtml(sid) {
 function crewNeedsPage(sid) {
   const list = crewAsks(sid);
   const row = (x) => {
-    if (x.it && !x.mate) return `<div class="cpn-row act-card" tabindex="-1"><div class="act-head"><b>${esc(x.who)}</b> ${esc(x.what)}${x.one_way ? ` <span class="cpb-tag">one-way</span>` : ""}</div>${requestBody(x.it)}${x.it.kind !== "question" ? whyLine(x.it) : ""}${decisionButtons(x.it)}</div>`;
+    if (x.it && !x.mate) return `<div class="cpn-row act-card" tabindex="-1">${askHead(x.it, "act-head", `<b>${esc(x.who)}</b> ${esc(x.what)}${x.one_way ? ` <span class="cpb-tag">one-way</span>` : ""}`)}${requestBody(x.it)}${x.it.kind !== "question" ? whyLine(x.it) : ""}${decisionButtons(x.it)}</div>`;
     if (x.mate) return `<div class="cpn-row" tabindex="-1">${mateNeeds(sid, x.mate) ? mateNeedRow(sid, x.mate) : mateReadyRow(sid, x.mate)}</div>`;
     return `<div class="cpn-row" tabindex="-1">${x.html || `<div class="mt-row"><div class="mt-n"><b>${esc(x.who)}</b> <i>${esc(x.what)}</i></div><div class="mt-btns">${x.buttons}</div></div>`}</div>`;
   };

@@ -249,13 +249,26 @@ function decisionButtons(it, denyLabel = "Deny") {
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 ? "Use answer" : "Send") : "Redirect")}</div>`;
   if (it.kind === "input") return formButtons(it);
   if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button><span class="grow"></span>${qSendBtn(it)}</div>`;
+  // A permission's buttons sit in its title line (askHeadBtns), not under it.
+  if (askBtnsInHead(it)) return "";
+  return `<div class="row-btns">${permBtns(it, denyLabel, "flex")}</div>`;
+}
+/** A permission Cue can answer here, with no "what to do instead" box open: its buttons go in its title line (#800). */
+const askBtnsInHead = (it) => it.kind === "permission" && !inTerminal(it) && redirectFor !== it.id;
+/** A card's title line, its permission buttons at the right end (#800), where an item's buttons go: you answer without
+ *  scrolling past the command. `title`: the line's HTML; `cls`: its class. A long title wraps; the buttons stay. */
+const askHead = (it, cls, title, denyLabel = "Deny") => { const b = askHeadBtns(it, denyLabel); return b ? `<div class="${cls} ask-hrow"><div class="ask-ht">${title}</div>${b}</div>` : `<div class="${cls}">${title}</div>`; };
+/** A permission's buttons for its title line: No (Deny), Always…, ↪ (what to do instead), Allow; "" for anything else. */
+function askHeadBtns(it, denyLabel = "Deny") {
+  return askBtnsInHead(it) ? `<span class="row-btns ask-hbtns">${permBtns(it, denyLabel, "small")}</span>` : "";
+}
+/** Deny, Always…, ↪, Allow; `size`: "small" in a title line, "flex" in a row of their own. */
+function permBtns(it, denyLabel, size) {
+  const sm = size === "small" ? " small" : "", fl = size === "flex" ? " flex" : "";
   const sugg = it.suggestions || [];
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
   const plan = tool(it) === "exitplanmode";
-  return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">${plan ? "Keep planning" : esc(denyLabel)}</button>
-    ${sugg.length ? `<span class="always">${menu}<button class="btn" data-act="menu" data-id="${esc(it.id)}">Always…</button></span>` : ""}
-    <button class="btn" data-act="redirect" data-id="${esc(it.id)}">↪</button>
-    <button class="btn primary flex" data-act="allow" data-id="${esc(it.id)}">${plan ? "Approve plan" : "Allow"}</button></div>`;
+  return `<button class="btn${sm} deny${fl}" data-act="deny" data-id="${esc(it.id)}">${plan ? "Keep planning" : esc(denyLabel)}</button>${sugg.length ? `<span class="always">${menu}<button class="btn${sm}" data-act="menu" data-id="${esc(it.id)}">Always…</button></span>` : ""}<button class="btn${sm}" data-act="redirect" data-id="${esc(it.id)}">↪</button><button class="btn${sm} primary${fl}" data-act="allow" data-id="${esc(it.id)}">${plan ? "Approve plan" : "Allow"}</button>`;
 }
 
 /** What the agent wrote after a Stop hook made it continue — collapsed under the real answer. */

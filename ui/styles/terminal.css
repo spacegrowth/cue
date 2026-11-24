@@ -86,6 +86,13 @@
 @keyframes copied { 0% { opacity: 0; transform: translateY(4px); } 10%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .act-head { font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .act-head .act-who { color: var(--ink); font-weight: 700; }
+/* An ask's title line with a permission's buttons at its right end (#800), where an item's buttons go: the title wraps,
+   the buttons keep their place, dropping under it only when the window is too narrow for both. */
+.ask-hrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.ask-hrow > .ask-ht { flex: 1 1 0; min-width: 7em; overflow-wrap: anywhere; }
+.ask-hbtns { flex: none; margin-left: auto; flex-wrap: nowrap; }
+.ask-hbtns .menu { bottom: auto; top: calc(100% + 4px); }
+.dk-aw-ask .dk-request-who.ask-hrow { display: flex; }
 .code-wrap { position: relative; }
 .code-copy { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: var(--radius-qp); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
 .code-wrap:hover .code-copy, .code-copy:focus-visible { opacity: 1; }

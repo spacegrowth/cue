@@ -83,11 +83,12 @@ function deskAwayFirstList(d) {
  *  opens a page. */
 function deskAwayItem(i, d) {
   const who = deskHolderOf(i);
-  const head = `<div class="dk-aw-ih">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b>${who ? `<span aria-hidden="true">·</span><span>${esc(who)}</span>` : ""}</div>`
-    + `<div class="dk-aw-it">${esc(i.title)}</div>${i.see ? `<div class="dk-aw-see">You'll see: ${esc(i.see)}</div>` : ""}`;
   const request = deskItemRequest(i);
+  // A permission's No / Allow at the right end of its head line (#800), as on every ask.
+  const head = `<div class="dk-aw-ih">${deskKindIcon(i)}<b>${esc(deskNum(i))}</b>${who ? `<span aria-hidden="true">·</span><span>${esc(who)}</span>` : ""}${request ? askHeadBtns(request, "No") : ""}</div>`
+    + `<div class="dk-aw-it">${esc(i.title)}</div>${i.see ? `<div class="dk-aw-see">You'll see: ${esc(i.see)}</div>` : ""}`;
   let body;
-  if (request) body = deskAwayAsk(request, d);
+  if (request) body = deskAwayAsk(request, d, "No", true);
   else if (deskPickOptions(i).length) body = `<p class="dk-aw-q">${esc(deskPickLine(i))}</p>${deskPickBtns(i)}`;
   else if (i.state === "needs_you") {
     const q = deskQuestion(i);
@@ -108,15 +109,16 @@ function deskAwayNoteSent(to) {
   if (to?.item && (deskAwayEdit || deskAwayAside) && document.querySelector(`.dk-aw-dialog [data-away-item="${CSS.escape(to.item)}"]`)) deskAwaySent.add(`i:${to.item}`);
 }
 /** An open ask, answerable where it is: who asks and what, a single question's choices, then the controls its card
- *  has everywhere (decisionButtons: Allow / No, Decline / Type answer…, a form's fields). */
-function deskAwayAsk(it, d, deny = "No") {
+ *  has everywhere (decisionButtons: Decline / Type answer…, a form's fields; a permission's No / Allow at the right end of its
+ *  who line, askHead). `inItem`: on an item, whose head carries the who and the buttons (deskAwayItem). */
+function deskAwayAsk(it, d, deny = "No", inItem = false) {
   const qs = it.kind === "question" ? questions(it) : [];
   // A question: its whole card (board/question.js questionHtml), its suggestions picked; Send is in its buttons.
   const picks = qs.length ? questionHtml(it) : "";
   const acts = ["permission", "question", "input"].includes(it.kind) ? decisionButtons(it, deny) : `<div class="row-btns"><button class="btn" ${deskChatAttrs(it.session_id, d)}>Open its chat</button></div>`;
   const cmd = it.tool_input?.command;
   const what = it.kind === "input" ? formBody(it) : cmd ? cmdCut(it.id, cmd) : qs.length ? "" : `<p>${esc(summary(it))}</p>`;
-  return `<div class="dk-request dk-aw-ask${it.fold ? deskAskLeave(it.fold, "list") : ""}"${it.fold ? ' aria-hidden="true"' : ` data-desk-request="${esc(it.id)}"`}><div class="dk-request-who">${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}</div>${what}${picks}${acts}</div>`;
+  return `<div class="dk-request dk-aw-ask${it.fold ? deskAskLeave(it.fold, "list") : ""}"${it.fold ? ' aria-hidden="true"' : ` data-desk-request="${esc(it.id)}"`}>${inItem ? "" : askHead(it, "dk-request-who", `${esc(deskHolderName(it.session_id))}${it.agent_name ? ` · ${esc(it.agent_name)}` : ""}`, deny)}${what}${picks}${acts}</div>`;
 }
 /** Away (#415, calls 1): the lead's calls since Away went on sit in one line at the top of Items, "4 calls while away ·
  *  since 16:00", with till, spend and a spend bar; open, each call with its time, why and Undo. Folded, one line; the
@@ -266,7 +268,7 @@ function deskHeldRows(d) {
   // One you just answered folds shut where it was (#793).
   const gone = deskAskFolding("held").filter((f) => f.desk === d?.project && !(d?.held || []).some((h) => h.id === f.id));
   const held = [...(d?.held || []), ...gone.map((f) => ({ ...f.held, fold: f }))];
-  const row = (h) => `<div class="dk-prows dk-aw-asks${h.fold ? deskAskLeave(h.fold, "held") : ""}"${h.fold ? ' aria-hidden="true"' : ""}><div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div>${cmdCut(`held:${h.id}`, h.command)}<div class="row-btns"><button class="btn deny flex" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn primary flex" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></div></div></div>`;
+  const row = (h) => `<div class="dk-prows dk-aw-asks${h.fold ? deskAskLeave(h.fold, "held") : ""}"${h.fold ? ' aria-hidden="true"' : ""}><div class="dk-request dk-aw-ask dk-held" data-held-row="${esc(h.id)}"><div class="dk-request-who ask-hrow"><div class="ask-ht">${esc(h.who || deskHolderName(h.sid))} wants to ${esc(h.what)} · held while you were away</div><span class="row-btns ask-hbtns"><button class="btn small deny" data-desk-held="${esc(h.id)}" data-allow="0">No</button><button class="btn small primary" data-desk-held="${esc(h.id)}" data-allow="1">Allow</button></span></div>${cmdCut(`held:${h.id}`, h.command)}</div></div>`;
   return { n: held.length - gone.length, rows: held.map((h) => [h.at || 0, row(h)]) };
 }
 /** A step Cue holds for your OK (Ask me before: a push to main, a release, a delete) that an item asks: when it was
