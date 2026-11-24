@@ -2,6 +2,27 @@
 
 Item #832, 2026-11-24. Nothing in the app changes with this doc. Line numbers are as of commit 3f361844e8.
 
+## The short version
+
+**The rule: add, never take away.** The chats are already mostly one. Four of the five draw their messages the same way, and each one only switches some features off. So making them one chat means switching those features back on. Nothing any chat has today is removed.
+
+Three of today's differences look like they were chosen on purpose. They stay as they are until you say otherwise:
+- the lead chat hides the steps between messages;
+- the Desk moves Cue's own messages to the Activity tab;
+- the lead chat shows bands from other Desks.
+
+**Three rounds, each one small enough to try before the next:**
+1. **Turn on what's missing**, about half a day. Every chat gets:
+   - Read working;
+   - #123 and session names as links;
+   - "↗ Send to…";
+   - btw with its panel;
+   - a status line that names background agents.
+2. **One box everywhere**, a day or two. The Desk's item and session boxes become the same box as the Board's and the lead's, with Queue, the "/" menu and Send at a time.
+3. **Crew members**, later and only after a mock. A crew member's chat moves onto the same chat, so it gets Listen, Read, links and Show all too.
+
+The long plan further down is the same work in finer steps, for whoever builds it.
+
 ## The five chats
 
 - **Lead**: the Desk's lead chat, on the lead tab of a Desk. It is drawn by `deskChat` (ui/desk/page.js:174).
