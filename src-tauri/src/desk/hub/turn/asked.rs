@@ -137,7 +137,7 @@ impl Hub {
         let fx = self.write(|st| {
             let mut fx = Effects::default();
             for it in st.desk.items.iter_mut().filter(|i| about(i)) {
-                back_at_work(it, &why, now);
+                back_at_work(it, &why, "You", now);
                 fx.items.push(it.id.clone());
             }
             fx
@@ -166,12 +166,12 @@ impl Hub {
 
 /// Item `it`, with you to check, at work again (`why`: what reopened it, kept on the DONE it reopens, so its card and
 /// Progress say why). Saved with it in `fx.items`, it gets its copy, or waits in line for one (desk_trees).
-pub(crate) fn back_at_work(it: &mut crate::desk::DeskItem, why: &str, now: u64) {
+pub(crate) fn back_at_work(it: &mut crate::desk::DeskItem, why: &str, by: &str, now: u64) {
     (it.state, it.done_at, it.finish, it.close_on_check, it.updated) = ("working".into(), None, None, false, secs(now));
     (it.check, it.asked) = (None, None);
     it.mark_reopened();
     if let Some(c) = it.checks.last_mut().filter(|c| c.back.is_empty()) {
-        c.back = why.to_string();
+        (c.back, c.back_by) = (why.to_string(), by.to_string());
     }
 }
 
@@ -184,7 +184,7 @@ pub(crate) fn not_done(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut
         let Some(it) = st.desk.item_mut(&id).filter(|i| i.state == "to_check" && i.holder.as_ref().is_some_and(|h| h.is(sid))) else { continue };
         let name = it.holder.as_ref().map(|h| h.name.clone()).unwrap_or_default();
         let why = if left.is_empty() { format!("{name}: not done yet") } else { format!("{name}: {left}") };
-        back_at_work(it, &why, now);
+        back_at_work(it, &why, &name, now);
         fx.items.push(id);
     }
 }

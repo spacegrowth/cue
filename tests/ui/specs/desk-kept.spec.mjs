@@ -47,7 +47,7 @@ test("clicking a kept copy opens its item: the chat of the session that held it,
   const bar = right.locator(".dkn-ib .dkn-ibacts");
   await expect(bar.locator('[data-desk-act="pickup_kept"]')).toHaveText("Pick up again");
   // The box goes to the session that held it, not as an item message.
-  await expect(right.locator(".dk-pre")).toHaveText("To host-lead, who held it");
+  await expect(right.locator(".foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who held it");
   await right.locator(".dkn-spm textarea").fill("What did you get done on it?");
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await cue.calls("send_to_session")).map((c) => [c.args.sessionId, c.args.text])).toContainEqual(["host", "What did you get done on it?"]);

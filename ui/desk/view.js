@@ -12,6 +12,37 @@ function deskBoxKey(to) {
  *  the item's short title in the empty box ("Remove Actions…"). */
 const deskToLine = (who, i) => ({ pre: `To ${who || "the lead"}${i ? ` · ${deskNum(i)}` : ""}`, ph: i ? `${deskShort(i.title)}…` : "" });
 const deskPreHtml = (pre) => (pre ? `<span class="dk-pre" data-desk-pre="">${esc(pre)}</span>` : "");
+/** deskBox for an open item: who gets what you type (its holder, its lead or a kept copy's old session), the tag over
+ *  the box, its placeholder, and whose suggested reply it shows. `ph`: the lead's placeholder, kept when nothing else fits. */
+function deskBoxItem(d, o, lead, ph) {
+  let to = { project: d.project, item: o.id }, pre = "", sugItem = "";
+  // Who gets it, as deskSendBox sends it: ready to check, it goes back to its holder; begun by a live session, straight
+  // to it, sent as about the item, and the lead gets no copy (#276); else (no holder, not begun yet, or done) to the lead.
+  const it = deskItem(d.project, o.id), hs = deskHolderSid(it);
+  // A dropped item's kept copy (#608): to the session that held it, as its own chat's box (the item is off the Desk).
+  if (it?.kept && hs && sessionOf(hs)) {
+    to = { sid: hs };
+    pre = `To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}, who held it`;
+    ph = "Write to it here…";
+  }
+  // No live holder: to the lead, in a box of its own (B2 shows the lead's box beside this page: never one draft for two).
+  else if (it?.kept) { to = { project: d.project, kept: o.id }; ({ pre, ph } = deskToLine(lead, null)); }
+  else if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
+    to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
+    // Its chat is its holder's (#744), and this goes to it: the suggested reply is that session's.
+    sugItem = hs;
+    pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
+    ph = "Write to it here…";
+  }
+  else {
+    ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
+    // Ready to check, it goes back to its holder: that session's suggested reply.
+    if (it?.state === "to_check" && hs && sessionOf(hs)) sugItem = hs;
+    // Options to pick from: the chat is for what you think of them; a pick is its Pick button (#445, #543).
+    if (deskPickOptions(it || {}).length) ph = "Comments… (Pick an option above to go ahead)";
+  }
+  return { to, pre, ph, sugItem };
+}
 /** The box at the foot: to the Desk's lead (about the open item, named, when one is), or to an open holder (about its
  *  crew member, when one is). None without a live lead; a holder whose session has ended has none either. `o` what's
  *  open (null: the lead's own box, as B2's chat card always shows it, desk/b2.js). */
@@ -20,34 +51,7 @@ function deskBox(d, o = deskOpen) {
   // No lead, or one that has ended: no box to it (a holder's own box stays).
   if ((!deskLead(d) || deskLeadEnded(d)) && (!o || o.kind === "item" || o.kind === "addon")) return "";
   let to = { project: d.project }, ph = `Tell ${lead}: a bug, a feature, or a question…`, pre = "", sugItem = "";
-  if (o?.kind === "item") {
-    to = { project: d.project, item: o.id };
-    // Who gets it, as deskSendBox sends it: ready to check, it goes back to its holder; begun by a live session, straight
-    // to it, sent as about the item, and the lead gets no copy (#276); else (no holder, not begun yet, or done) to the lead.
-    const it = deskItem(d.project, o.id), hs = deskHolderSid(it);
-    // A dropped item's kept copy (#608): to the session that held it, as its own chat's box (the item is off the Desk).
-    if (it?.kept && hs && sessionOf(hs)) {
-      to = { sid: hs };
-      pre = `To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}, who held it`;
-      ph = "Write to it here…";
-    }
-    // No live holder: to the lead, in a box of its own (B2 shows the lead's box beside this page: never one draft for two).
-    else if (it?.kept) { to = { project: d.project, kept: o.id }; ({ pre, ph } = deskToLine(lead, null)); }
-    else if (it && hs && sessionOf(hs) && !["to_check", "done", "queued", "new", "dropped"].includes(it.state)) {
-      to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
-      // Its chat is its holder's (#744), and this goes to it: the suggested reply is that session's.
-      sugItem = hs;
-      pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
-      ph = "Write to it here…";
-    }
-    else {
-      ({ pre, ph } = deskToLine(it?.state === "to_check" && it.holder ? it.holder.name : lead, it));
-      // Ready to check, it goes back to its holder: that session's suggested reply.
-      if (it?.state === "to_check" && hs && sessionOf(hs)) sugItem = hs;
-      // Options to pick from: the chat is for what you think of them; a pick is its Pick button (#445, #543).
-      if (deskPickOptions(it || {}).length) ph = "Comments… (Pick an option above to go ahead)";
-    }
-  }
+  if (o?.kind === "item") ({ to, pre, ph, sugItem } = deskBoxItem(d, o, lead, ph));
   else if (o?.kind === "holder" || o?.kind === "crew" || o?.kind === "chat") {
     const sid = o.kind === "crew" ? o.lead : o.sid;
     if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;

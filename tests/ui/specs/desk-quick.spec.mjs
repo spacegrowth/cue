@@ -21,51 +21,51 @@ for (const [kind, scheme] of [["task", "light"], ["feature", "dark"], ["bug", "l
   test(`a ${kind} page's quick phrase sends at once, on its own (${scheme})`, async ({ cue, page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await openItem(cue, page, kind);
-    const quick = page.locator(".dk-right .dk-box .quick .qp");
+    const quick = page.locator(".dk-right .foot:not(.held) .composer .quick .qp");
     await expect(quick).toHaveText(["go ahead", "show me"]);
     // Over the box, not under it.
     // (Both measured at one moment: the page can redraw between two separate reads.)
     const gap = () => page.evaluate(() => {
-      const q = document.querySelector(".dk-right .dk-box .quick"), row = document.querySelector(".dk-right .dk-box-row");
+      const q = document.querySelector(".dk-right .foot:not(.held) .composer .quick"), row = document.querySelector(".dk-right .foot:not(.held) .composer .field-row");
       return q && row ? row.getBoundingClientRect().top + 1 - q.getBoundingClientRect().bottom : null;
     });
     await expect.poll(gap).not.toBeNull();
     expect(await gap()).toBeGreaterThanOrEqual(0);
     // Its words readable on the page in either theme.
-    const colors = () => page.evaluate(() => { const b = document.querySelector(".dk-right .dk-box .quick .qp"), c = b && getComputedStyle(b); return c?.color ? [c.color, c.backgroundColor] : null; });
+    const colors = () => page.evaluate(() => { const b = document.querySelector(".dk-right .foot:not(.held) .composer .quick .qp"), c = b && getComputedStyle(b); return c?.color ? [c.color, c.backgroundColor] : null; });
     await expect.poll(colors).not.toBeNull();
     const [fg, bg] = await colors();
     expect(fg).toBeTruthy();
     expect(fg).not.toBe(bg);
     await quick.nth(1).click();
     await expect.poll(() => sentTexts(cue)).toEqual(["show me"]);
-    await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("");
+    await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("");
   });
 }
 
 test("an item page's quick phrase, double clicked: sent once, nothing in the box", async ({ cue, page }) => {
   await openItem(cue, page);
-  await page.locator('.dk-right .dk-box .qp[data-phrase="go ahead"]').dblclick();
+  await page.locator('.dk-right .foot:not(.held) .composer .qp[data-phrase="go ahead"]').dblclick();
   await expect.poll(() => sentTexts(cue)).toEqual(["go ahead"]);
   await page.waitForTimeout(300);
   expect(await sentTexts(cue)).toEqual(["go ahead"]);
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("");
 });
 
 test("an item page's quick phrase with words typed in the box: only the phrase goes, the words stay as they were", async ({ cue, page }) => {
   await openItem(cue, page);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("the header, and");
-  await page.locator('.dk-right .dk-box .qp[data-phrase="show me"]').click();
+  await page.locator('.dk-right .foot:not(.held) .composer .qp[data-phrase="show me"]').click();
   await expect.poll(() => sentTexts(cue)).toEqual(["show me"]);
   await expect(box).toHaveValue("the header, and");
   // Clicked again later: sent again on its own, never stacked in the box.
   await page.waitForTimeout(1600);
-  await page.locator('.dk-right .dk-box .qp[data-phrase="show me"]').click();
+  await page.locator('.dk-right .foot:not(.held) .composer .qp[data-phrase="show me"]').click();
   await expect.poll(() => sentTexts(cue)).toEqual(["show me", "show me"]);
   await expect(box).toHaveValue("the header, and");
   // Its own Send still sends what's typed.
-  await page.locator(".dk-right .dk-box [data-desk-send]").click();
+  await page.locator(".dk-right .foot:not(.held) .composer [data-desk-send]").click();
   await expect.poll(() => sentTexts(cue)).toEqual(["show me", "show me", "the header, and"]);
 });
 
@@ -73,7 +73,7 @@ test("the lead's box still sends a quick phrase at once", async ({ cue, page }) 
   await cue.open("desk");
   await cue.change((st) => { st.settings.quick = { phrases: ["go ahead"] }; st.items = []; });
   await openDesk(page);
-  const qp = page.locator(".dk-right .dk-box .quick .qp");
+  const qp = page.locator(".dk-right .foot:not(.held) .composer .quick .qp");
   if (!(await qp.count())) test.skip(true, "this Desk's lead box has no phrases here");
   await qp.first().click();
   await cue.called("desk_send", { project: "cue" });
@@ -85,12 +85,12 @@ test("a quick phrase on an item to check is a note to its holder; typed words st
   await openItem(cue, page);
   const state = () => page.evaluate(() => state.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d2").state);
   expect(await state()).toBe("to_check");
-  await page.locator('.dk-right .dk-box .qp[data-phrase="go ahead"]').click();
+  await page.locator('.dk-right .foot:not(.held) .composer .qp[data-phrase="go ahead"]').click();
   await cue.called("desk_item_act", { id: "d2", act: "phrase", text: "go ahead" });
   await page.waitForTimeout(300);
   expect((await cue.calls("desk_item_act")).filter((c) => c.args.act === "send_back")).toEqual([]);
   expect(await state()).toBe("to_check");
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.fill("still 6px on the left");
   await box.press("Enter");
   await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "still 6px on the left" });

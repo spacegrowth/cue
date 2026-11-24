@@ -21,9 +21,9 @@ const park = (cue) => cue.change((st) => {
   st.desk.projects.find((d) => d.project === "cue").items.push({ id: "p1", project: "cue", kind: "task", title: "Tidy the footer", state: "held", holder: null, after: null,
     created: Date.now() / 1000, updated: Date.now() / 1000, from: "you", held: [Math.floor(Date.now() / 1000), "You", ""] });
 });
-/** C's order, top to bottom (#748): what waits on you (questions, then what's ready to check), what's at work, what's
- *  up next (queued, then parked), and Done today. */
-const ORDER = ["you", "working", "next", "done"];
+/** C's order, top to bottom (#748, desk-live 670449c234: Working above Waiting on you): what's at work, what waits on
+ *  you (questions, then what's ready to check), what's up next (queued, then parked), and Done today. */
+const ORDER = ["working", "you", "next", "done"];
 
 test("the list's groups in order: Waiting on you, Working, Up next, Done today; light and dark (#602, #748)", async ({ page, cue }) => {
   for (const colorScheme of ["light", "dark"]) {
@@ -33,8 +33,9 @@ test("the list's groups in order: Waiting on you, Working, Up next, Done today; 
     await park(cue);
     await expect.poll(() => heads(page)).toEqual(ORDER);
     // Each one's rows under it: the question before the finished one; the queue in your order, the parked one last.
-    await expect.poll(async () => (await listOrder(page)).slice(0, 11)).toEqual(["# WAITING ON YOU", "d1", "d2", "# WORKING", "d3", "d5", "# UP NEXT", "d4", "d6", "p1", "# DONE TODAY"]);
-    await expect(statusOf(page, "p1")).toHaveText("Parked: starts when you press Start");
+    await expect.poll(async () => (await listOrder(page)).slice(0, 11)).toEqual(["# WORKING", "d3", "d5", "# WAITING ON YOU", "d1", "d2", "# UP NEXT", "d4", "d6", "p1", "# DONE TODAY"]);
+    // Up next says in full why it waits (desk-live, 8fa85063b8).
+    await expect(statusOf(page, "p1")).toHaveText("Parked: press Start to begin it");
     // Done today starts open, its rows after its head.
     await expect(page.locator('.dk-items [data-desk-c-fold="done"]')).toHaveAttribute("aria-expanded", "true");
     expect((await listOrder(page)).slice(11)).toContain("d7");
@@ -72,21 +73,22 @@ test("the order holds with Done today opened, groups emptied, and after a restar
 test("each queued row says what it waits for, in words; the item's page says the same", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
+  // The row says it in full (desk-live, 8fa85063b8 "Up next says in full why each item waits").
   // Marked for a session, going to a fresh one at a time (17:00 now, UTC).
   await queue(cue, "d4", { next_for: HOST, fresh_at: NOW + 20 * 60000 });
-  await expect(who(page, "d4")).toHaveText("Next for host-lead · goes to a fresh session at 17:20");
+  await expect(who(page, "d4")).toHaveText("Next for host-lead once it finishes what it's on; a fresh session takes it at 17:20 if not");
   // Marked for it, no fresh time.
   await queue(cue, "d4", { next_for: HOST });
-  await expect(who(page, "d4")).toHaveText("Next for host-lead");
+  await expect(who(page, "d4")).toHaveText("Next for host-lead once it finishes what it's on");
   // After another item, then for a session.
   await queue(cue, "d4", { after: "d3", next_for: HOST });
-  await expect(who(page, "d4")).toHaveText("After #d3 · then host-lead");
+  await expect(who(page, "d4")).toHaveText("Waits for #d3 to finish first, then goes to host-lead");
   // After another item only.
   await queue(cue, "d4", { after: "d3" });
-  await expect(who(page, "d4")).toHaveText("After #d3");
+  await expect(who(page, "d4")).toHaveText("Waits for #d3 to finish first");
   // Neither: any free session, no Give to….
   await queue(cue, "d4", {});
-  await expect(who(page, "d4")).toHaveText("Any free session");
+  await expect(who(page, "d4")).toHaveText("Waits for a free session");
   await expect(page.locator('.dk-items [data-desk-item="d4"] [data-desk-give]')).toHaveCount(0);
   // An older one still queued with a holder reads as before.
   await queue(cue, "d6", { holder: { kind: "lead", sid: "lead", name: "web-lead" }, after: "d3" });
@@ -108,7 +110,7 @@ test("the Queue's look, light and dark", async ({ page, cue }) => {
   await openDesk(page);
   await queue(cue, "d4", { next_for: HOST, fresh_at: NOW + 20 * 60000 });
   await queue(cue, "d6", { after: "d4", next_for: HOST });
-  await expect(who(page, "d6")).toHaveText("After #d4 · then host-lead");
+  await expect(who(page, "d6")).toHaveText("Waits for #d4 to finish first, then goes to host-lead");
   for (const colorScheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme });
     await page.waitForTimeout(150);

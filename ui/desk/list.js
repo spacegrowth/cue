@@ -435,7 +435,9 @@ function deskQPress(e) {
   // How far it has gone: the pointer's move plus the list's scroll since the press (rects are as at the press).
   const place = () => {
     const dy = y - y0 + ((scroller?.scrollTop || 0) - st0);
-    const mid = rects[from].top + rects[from].height / 2 + dy;
+    // Where the pointer is (as at the press, scroll taken in), not the row's middle: a tall row held by its grip at its
+    // top (Up next's rows run to two lines of why) went nowhere when the pointer was over the row above.
+    const mid = y0 + dy;
     to = rows.reduce((n, r, k) => (k === from ? n : k < from ? (mid < rects[k].top + rects[k].height / 2 ? Math.min(n, k) : n) : mid > rects[k].top + rects[k].height / 2 ? Math.max(n, k) : n), from);
     rows.forEach((r, k) => { if (k === from) return; r.style.transform = from < k && k <= to ? `translateY(${-h}px)` : to <= k && k < from ? `translateY(${h}px)` : ""; });
     row.style.transform = `translateY(${dy}px)`;
@@ -512,13 +514,16 @@ function deskKeepKey(el, n) {
   if (d.deskProgRow != null) return `p:${d.deskProgRow}`;
   if (d.deskGroup != null) return `g:${d.deskGroup}`;
   if (d.deskGbody != null) return `b:${d.deskGbody}`;
+  // An Items band (desk/c.js deskCList) by its kind, so one appearing above it (Blocked on you) doesn't shift it.
+  if (d.dknBand != null) return `n:${d.dknBand}`;
   const k = `${el.tagName}.${el.classList[0] || ""}`;
   n.set(k, (n.get(k) || 0) + 1);
   return `${k}#${n.get(k)}`;
 }
 const deskKeepKeys = (box) => { const n = new Map(); return [...box.children].map((c) => deskKeepKey(c, n)); };
-/** What holds rows: brought up to date child by child, not as one. */
-const DESK_KEEP_INSIDE = ".dk-gbody, .dk-gin, .dk-pcs, .dk-held";
+/** What holds rows: brought up to date child by child, not as one (an Items band, its body and Working's capped list
+ *  too: morphed as one, a row joining a band drew every row in it new). */
+const DESK_KEEP_INSIDE = ".dk-gbody, .dk-gin, .dk-pcs, .dk-held, .dkn-band, .dkn-bb, .dkn-wl";
 /** Attributes as the fresh draw has them; a group sliding open or shut (deskGroupFold) keeps sliding. */
 function deskKeepAttrs(a, b) {
   if (a.classList.contains("moving")) b.classList.add("moving");

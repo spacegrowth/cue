@@ -58,7 +58,7 @@ test("what you send on an item's page shows at once, before its session has it",
   // The send never comes back while we look.
   await cue.override("desk_item_act", () => new Promise(() => {}));
   await openItem(page, "d5");
-  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   const mine = chatOf(page).locator(".cv-you").filter({ hasText: "Check the narrow window too" });
   await expect(mine).toHaveCount(1);

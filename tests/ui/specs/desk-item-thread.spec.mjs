@@ -60,9 +60,9 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [] }); st.sessions.find((x) => x.session_id === "host").state = "working"; });
   await openItem(page, cue, "d5");
-  await expect(page.locator(".dk-right .dk-box .dk-pre")).toHaveText("To host-lead, who has this item · sent as #d5");
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveAttribute("placeholder", "Write to it here…");
-  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who has this item · sent as #d5");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Write to it here…");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
   // The window hears of it shortly after the call, as from the hub.

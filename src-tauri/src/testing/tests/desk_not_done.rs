@@ -42,6 +42,8 @@ fn its_holder_saying_not_done_puts_an_item_to_check_back_at_work() {
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "working", "{it}");
     assert_eq!(it["checks"].as_array().and_then(|c| c.last()).map(|c| c["back"].clone()), Some(serde_json::json!("cue-teams: the footer still jumps")), "{it}");
+    // #779: under its holder, who said so, not under you.
+    assert_eq!(it["checks"].as_array().and_then(|c| c.last()).map(|c| c["back_by"].clone()), Some(serde_json::json!("cue-teams")), "{it}");
     // Said again on an item at work: nothing more changes.
     ends(&w, &h, &format!("NOT DONE: #{id}"));
     assert_eq!(item(&w, &project, "Header jumps")["state"], "working");

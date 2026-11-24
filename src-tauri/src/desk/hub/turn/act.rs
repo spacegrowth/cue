@@ -292,7 +292,7 @@ fn at_work_again(it: &mut DeskItem, done: bool, words: &str) -> &'static str {
     // Kept on the DONE it answers, so its card says why (the pictures, added by ipc desk_item_act, counted).
     if let Some(c) = it.checks.last_mut() {
         let (why, pics) = crate::desk::your_words(words);
-        (c.back, c.back_pics) = (why.trim().to_string(), pics.len());
+        (c.back, c.back_pics, c.back_by) = (why.trim().to_string(), pics.len(), "You".into());
     }
     again
 }

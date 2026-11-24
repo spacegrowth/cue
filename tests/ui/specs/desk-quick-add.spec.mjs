@@ -774,7 +774,8 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   const o = await listOrder(page);
   expect(o.indexOf("h1")).toBeGreaterThan(o.indexOf("q7"));
   await expect(rows.locator(".dkn-gh, .dkn-dh", { hasText: /Parked|On hold/ })).toHaveCount(0);
-  await expect(statusOf(page, "h1")).toHaveText("Parked: starts when you press Start");
+  // Up next says in full why it waits (desk-live, 8fa85063b8).
+  await expect(statusOf(page, "h1")).toHaveText("Parked: press Start to begin it");
   await expect(rows.locator('[data-desk-act="start_now"], [data-desk-act="park"]')).toHaveCount(0);
   await rows.locator('[data-desk-item="h1"]').click();
   const pane = page.locator('.dk-right .dkn-sp[data-desk-page="item"]');
@@ -837,9 +838,10 @@ test("a crew member's files and a session's turn: three then the rest, a click o
   await page.setViewportSize({ width: 1800, height: 1095 });
   await cue.open("desk");
   await openDesk(page);
-  // A crew member: its diff so far, as its Diff reads it, in its page's panel.
+  // A crew member: its diff so far, as its Diff reads it, in its page's Files tab (desk-live, 53bb5b7296: no panel).
   await page.evaluate(() => deskShow({ kind: "crew", lead: "lead", agent: "id-search" }));
-  const sec = page.locator(".dk-right .dk-panel .dk-pfiles");
+  await page.locator('.dk-right .dkn-stab[data-desk-c-stab="files"]').click();
+  const sec = page.locator(".dk-right .dkn-crew .dkn-sfiles");
   await expect(sec.locator(".ib-file code")).toHaveText(["ui/header.js", "ui/styles/header.css"]);
   await sec.locator(".ib-file").nth(1).click();
   await expect(page.locator(".dov-fh .dov-p")).toHaveText("ui/styles/header.css");
@@ -861,25 +863,26 @@ test("written about an item ready to check, it's sent back with your words: off 
   await cue.open("desk");
   await openDesk(page);
   await page.locator('[data-desk-item="d2"]').click();
-  await page.locator(".dk-right .dk-box textarea").fill("The More menu is cut off");
-  await page.locator(".dk-right .dk-box textarea").press("Enter");
+  // The item page's box is the Board's chat box (25cdd738fe); Working is above Waiting on you (670449c234).
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("The More menu is cut off");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").press("Enter");
   // As Send back: to its holder, not the lead.
   await cue.called("desk_item_act", { id: "d2", act: "send_back", text: "The More menu is cut off" });
   expect(await cue.calls("desk_send")).toEqual([]);
   await expect(page.locator(".toast").last()).toContainText("Sent back");
   // The box emptied, the item's page still open.
-  await expect(page.locator(".dk-right .dk-box textarea")).toHaveValue("");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("");
   await itemShown(page, "d2");
   // Off Waiting on you: in Working.
   await page.locator(".dk-right .dkn-sback .dk-back").click();
   await expect.poll(() => groupOf(page, "d2")).toBe("WORKING");
-  await expect.poll(() => listOrder(page)).toEqual(["# WAITING ON YOU", "d1", "# WORKING", "d3", "d2", "d5", "# UP NEXT", "d4", "d6", "# DONE TODAY", "d7", "d8", "d9"]);
+  await expect.poll(() => listOrder(page)).toEqual(["# WORKING", "d3", "d2", "d5", "# WAITING ON YOU", "d1", "# UP NEXT", "d4", "d6", "# DONE TODAY", "d7", "d8", "d9"]);
   // One that doesn't go: the item stays open. (Its red line with why and Send again was on the deleted Thread.)
   await page.locator('[data-desk-item="d1"]').click();
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
   await cue.override("desk_item_act", () => { throw "its session has ended"; });
-  await page.locator(".dk-right .dk-box textarea").fill("Still loses focus");
-  await page.locator(".dk-right .dk-box textarea").press("Enter");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Still loses focus");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").press("Enter");
   await cue.called("desk_item_act", { id: "d1", act: "send_back", text: "Still loses focus" });
   await itemShown(page, "d1");
 });

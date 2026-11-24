@@ -26,7 +26,7 @@ test("you send a note on an item's page: a Working line shows in its chat till t
   await expect(ichat.locator(".cv-agent").filter({ hasText: first })).toHaveCount(1);
   await expect(where).not.toContainText("Working");
   // You send a note; it goes to its session, which starts on it.
-  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await expect(ichat.locator(".cv-you").filter({ hasText: "Check the narrow window too" })).toHaveCount(1);
   await cue.change((st) => {

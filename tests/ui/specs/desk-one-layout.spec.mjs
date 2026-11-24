@@ -57,9 +57,10 @@ test("The Desks from the header, Desk settings' sections, the sessions' chats, S
   for (const s of ["lands", "old"]) await expect(dlg.locator(`[data-ld-sec="${s}"]`)).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
-  // The groups: Waiting on you, Working, then Up next and Done today, in that order.
+  // The groups: Working, Waiting on you (desk-live, 670449c234: Working above Waiting on you), then Up next and Done
+  // today, in that order.
   const heads = (await listOrder(page)).filter((x) => x.startsWith("# "));
-  expect(heads).toEqual(["# WAITING ON YOU", "# WORKING", "# UP NEXT", "# DONE TODAY"]);
+  expect(heads).toEqual(["# WORKING", "# WAITING ON YOU", "# UP NEXT", "# DONE TODAY"]);
   // The sessions at the left: the lead and the Desk's session; one opens its chat, its back goes to the lead's.
   const side = page.locator(".dkn-side");
   await expect(side.locator(".dkn-lead")).toContainText("web-lead");
@@ -69,15 +70,10 @@ test("The Desks from the header, Desk settings' sections, the sessions' chats, S
   await side.locator(".dkn-lead").click();
   await expect(page.locator(".dk-c > .dk2b-chat")).toHaveCount(1);
   await expect(page.locator('.dk-c [data-desk-page="session"]')).toHaveCount(0);
-  // Progress as Strip or Line, one at a time.
+  // Progress as the strip, the one view (desk-live, 5ba37d4889: the Strip · Line switch is gone).
   const items = page.locator(".dkn-card");
-  await expect(items.locator('[data-desk-c-line="strip"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(items.locator("[data-desk-c-line], .dkn-lsw")).toHaveCount(0);
   await expect(items.locator(".dkn-row .dkn-ks").first()).toBeVisible();
-  await items.locator('[data-desk-c-line="line"]').click();
-  await expect(items.locator('[data-desk-c-line="line"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(items.locator(".dkn-row .dkn-tline").first()).toBeVisible();
-  await expect(items.locator(".dkn-row .dkn-ks")).toHaveCount(0);
-  await items.locator('[data-desk-c-line="strip"]').click();
   await expect(items.locator(".dkn-row .dkn-tline")).toHaveCount(0);
   // Another Desk from the header's menu.
   await page.locator('.top [data-hv-menu="desks"]').click();
@@ -90,7 +86,7 @@ test("Landing items sit in Working with the ones at work, before Up next", async
   await open(page, cue);
   const at = await page.evaluate(() => now());
   await cue.change((st, t) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "finishing", finish: { step: "line", at: t } }); }, at);
-  expect(await listOrder(page)).toEqual(["# WAITING ON YOU", "d1", "d2", "# WORKING", "d5", "d3", "# UP NEXT", "d4", "d6", "# DONE TODAY", "d7", "d8", "d9"]);
+  expect(await listOrder(page)).toEqual(["# WORKING", "d5", "d3", "# WAITING ON YOU", "d1", "d2", "# UP NEXT", "d4", "d6", "# DONE TODAY", "d7", "d8", "d9"]);
 });
 
 test("An item opened leads with its steps, the one it's at, who is on it and its buttons; back goes to the lead", async ({ page, cue }) => {

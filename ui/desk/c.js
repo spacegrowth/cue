@@ -251,8 +251,15 @@ function deskCFitLists() {
       if (el.scrollHeight <= el.clientHeight + 1) return 0;
       const top = el.getBoundingClientRect().top - el.scrollTop;
       let fit = 0;
-      // Row by row, into each group's band (option A wraps a group in one): a cut never falls mid-row.
-      for (const r of el.querySelectorAll(":scope > :not(.dkn-band), :scope > .dkn-band > .dkn-gh, :scope > .dkn-band > .dkn-bb > *")) {
+      // Row by row, into each group's band (option A wraps a group in one): a cut never falls mid-row. Working's capped
+      // list counts by its rows in sight, then as a whole: taller than the room, counted as one, it cut the card to
+      // Working's heading alone, the rows under it out of reach behind the stacked headings.
+      const rows = [...el.querySelectorAll(":scope > :not(.dkn-band), :scope > .dkn-band > .dkn-gh, :scope > .dkn-band > .dkn-bb > *")].flatMap((r) => {
+        if (!r.matches(".dkn-wl")) return [r];
+        const edge = r.getBoundingClientRect().bottom;
+        return [...[...r.children].filter((c) => c.getBoundingClientRect().bottom <= edge + 1), r];
+      });
+      for (const r of rows) {
         const bottom = r.getBoundingClientRect().bottom - top;
         if (bottom > el.clientHeight) break;
         fit = bottom;
@@ -463,7 +470,7 @@ function deskCList(project, taskApprovals) {
     // Working holds at most DESK_C_WORK_ROWS rows and scrolls within, with its own "↓ N more", so Waiting on you stays in sight.
     const body = key === "working" && list.length > DESK_C_WORK_ROWS ? `<div class="dkn-wl" data-dkn-list="working" data-dkn-cap${deskCWorkCap ? ` style="max-height:${deskCWorkCap}px"` : ""}>${rows}</div><button class="dkn-more dkn-wmore" data-desk-c-all="working"></button>` : rows;
     const say = GRP_SAY[key] ? `<em class="dkn-gsay">${GRP_SAY[key]}</em>` : "";
-    return `<section class="dkn-band dkn-b-${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}"><i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? `<div class="dkn-bb">${body}</div>` : ""}</section>`;
+    return `<section class="dkn-band dkn-b-${key}" data-dkn-band="${key}"><button class="dkn-gh" data-desk2b-group="${key}" data-desk-c-fold="${key}" aria-expanded="${open}"><i class="dkn-gdot" aria-hidden="true"></i>${label} <span>${n}</span>${say}</button>${open ? `<div class="dkn-bb">${body}</div>` : ""}</section>`;
   };
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;

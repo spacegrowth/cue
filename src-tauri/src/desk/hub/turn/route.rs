@@ -155,6 +155,10 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         if let Err(no) = unfinish(st, id, holder.as_ref().filter(|_| !to_new), why, now) {
             return Some(no);
         }
+        // Taken off its finish by the lead (#779): its card says the lead sent it back, not you.
+        if let Some(c) = st.desk.item_mut(id).and_then(|i| i.checks.last_mut()) {
+            c.back_by = by.name.to_string();
+        }
     }
     if to_new {
         if let Some(taken) = fresh_already(st, id, now, fx) {
@@ -247,8 +251,12 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
     }
     fx.items.push(it.id.clone());
     held_by(it, &h, refused, waits.clone(), why, now);
+    // Sent back by the lead (#779): its card says so, not that you did.
     if reopen {
         it.mark_reopened();
+        if let Some(c) = it.checks.last_mut() {
+            c.back_by = by.name.to_string();
+        }
     }
     let words = waits.is_none().then(|| crate::desk::handed_words(it, why, rule));
     let text = routed_text(id, &h.name, waits.as_deref(), (reopen || unfinished) && same, same && was_working);

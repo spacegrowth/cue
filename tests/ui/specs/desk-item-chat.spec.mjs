@@ -25,7 +25,7 @@ test("what you send on its page shows in the chat at once", async ({ page, cue }
   await chat(cue);
   await cue.override("send_to_session", () => new Promise(() => {}));
   await openItem(page, "d5");
-  await page.locator(".dk-right .dk-box textarea").fill("Check the narrow window too");
+  await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await expect(chatOf(page).getByText("Check the narrow window too")).toHaveCount(1);
 });

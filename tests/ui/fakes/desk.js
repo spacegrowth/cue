@@ -218,7 +218,7 @@ CueBridge.area("desk", (w) => {
       for (const c of desk().projects.flatMap((d) => d.checks || [])) if (c.id === it.id) Object.assign(c, { state: it.state }, act === "reopen" ? { commit_wait: null } : {});
       // Sent back: why, on its latest card, as the hub keeps it (pictures counted).
       const last = act === "send_back" && desk().projects.flatMap((d) => d.checks || []).filter((c) => c.id === it.id && c.last).at(-1);
-      if (last) Object.assign(last, { back: text.trim(), back_pics: (images || []).length });
+      if (last) Object.assign(last, { back: text.trim(), back_pics: (images || []).length, back_by: "You" });
       w.changed();
       return null;
     },

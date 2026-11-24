@@ -379,7 +379,8 @@ function deskOpenCrew(lead, agent) {
 /** The Desk's clicks, by attribute: each with its element (desk/clicks.js; the lead's are in desk/lead.js). Added in a few
  *  groups, in this order (the first rule an element has is the one taken). An item's page, its panels and boxes: */
 deskClicks({
-  deskPre: (el) => el.closest(".dk-box")?.querySelector("textarea")?.focus(),
+  // A click on who the box goes to (its "To …" tag) puts the cursor in the box (#132), in either box look.
+  deskPre: (el) => el.closest(".dk-box, .field")?.querySelector("textarea")?.focus(),
   deskPanel: (el) => deskPanelToggle(el.dataset.deskPanel),
   deskItem: (el) => deskShow(deskOpen?.kind === "item" && deskOpen.id === el.dataset.deskItem ? null : { kind: "item", id: el.dataset.deskItem }),
   deskHolder: (el) => deskShow({ kind: "holder", sid: el.dataset.deskHolder }),

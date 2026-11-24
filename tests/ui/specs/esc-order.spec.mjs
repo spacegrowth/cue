@@ -117,7 +117,7 @@ test("a Desk item with nothing at work: Esc closes its page", async ({ page, cue
 
 test("Esc while composing (IME) in the Desk item's box: the Desk doesn't take it, the Board's Esc blurs the box", async ({ page, cue }) => {
   await deskItem(page, cue);
-  const box = page.locator(".dk-right .dk-box textarea");
+  const box = page.locator(".dk-right .foot:not(.held) .composer textarea");
   await box.focus();
   await box.evaluate((t) => t.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true, cancelable: true })));
   expect(await itemOpen(page)).toBe(true);

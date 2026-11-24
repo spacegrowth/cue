@@ -1,13 +1,12 @@
 // What the Items card's Cards view (#666) tested, on the one layout left since #748 (desk/c.js): one view, no List |
 // Cards switch; its own Strip | Line switch two buttons side by side, the picked one filled, flipping both ways at
-// once and kept across a reload; the items with sessions in the white card, Up next and Done today side by side on
+// once and kept across a reload (gone in desk-live, 5ba37d4889: Strip is the one view); the items with sessions in the white card, Up next and Done today side by side on
 // the green with each one's line, the calls while away when Away is on; a row opens its item lit in place, back
 // returns to the lead's chat; narrow, Up next and Done today stack.
 import { test, expect, openDesk, pick } from "./cue.mjs";
 
 const items = (page) => page.locator(".dkn-items");
 const card = (page) => items(page).locator(".dkn-card");
-const sw = (page, k) => card(page).locator(`[data-desk-c-line="${k}"]`);
 const box = (page, k) => items(page).locator(`[data-dkn-drawer="${k}"]`);
 /** The Desk shown again after a reload. */
 const reopen = async (page) => {
@@ -18,52 +17,29 @@ const reopen = async (page) => {
   await card(page).waitFor();
 };
 
-test("no List | Cards switch; Strip | Line shows Strip first and keeps Line across a reload", async ({ page, cue }) => {
+// Strip is the one progress view since desk-live (5ba37d4889 "Strip is the one progress view; the Strip · Line switch
+// is gone"): what the two tests of the Strip | Line switch checked is now that there is none, and Strip stays.
+test("no List | Cards switch and no Strip | Line switch: Strip on every row, kept across a reload", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await expect(page.locator("[data-desk-cards-view], .dkc-sw, .dkc-card")).toHaveCount(0);
-  await expect(sw(page, "strip")).toHaveAttribute("aria-pressed", "true");
+  await expect(card(page).locator("[data-desk-c-line], .dkn-lsw")).toHaveCount(0);
   await expect(card(page).locator(".dkn-row .dkn-ks").first()).toBeVisible();
-  await sw(page, "line").click();
-  await expect(sw(page, "line")).toHaveAttribute("aria-pressed", "true");
-  await expect(card(page).locator(".dkn-row .dkn-tline").first()).toBeVisible();
-  await expect(card(page).locator(".dkn-row .dkn-ks")).toHaveCount(0);
+  await expect(card(page).locator(".dkn-row .dkn-tline")).toHaveCount(0);
   await reopen(page);
-  await expect(sw(page, "line")).toHaveAttribute("aria-pressed", "true");
-  await expect(card(page).locator(".dkn-row .dkn-tline").first()).toBeVisible();
-  // And back to Strip, kept too.
-  await sw(page, "strip").click();
-  await reopen(page);
-  await expect(sw(page, "strip")).toHaveAttribute("aria-pressed", "true");
+  await expect(card(page).locator("[data-desk-c-line], .dkn-lsw")).toHaveCount(0);
+  await expect(card(page).locator(".dkn-row .dkn-ks").first()).toBeVisible();
   await expect(card(page).locator(".dkn-row .dkn-tline")).toHaveCount(0);
 });
 
-test("the switch is two buttons side by side, the picked one filled, and flips both ways at once", async ({ page, cue }) => {
+test("with no switch, the card's head over the rows reads Item, Progress, Now, and every row has its strip", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  const look = (k) => sw(page, k).evaluate((el) => { const c = getComputedStyle(el), r = el.getBoundingClientRect(); return { bg: c.backgroundColor, pad: parseFloat(c.paddingLeft), x: r.x, right: r.right, y: r.y }; });
-  // A switch, not words run together: each option padded, Strip then Line on one line with room between their words.
-  let s = await look("strip"), l = await look("line");
-  expect(s.pad).toBeGreaterThan(4);
-  expect(Math.abs(s.y - l.y)).toBeLessThan(1);
-  expect(l.x).toBeGreaterThanOrEqual(s.right);
-  expect(await sw(page, "strip").evaluate((el) => { const t = document.createRange(); t.selectNodeContents(el); return el.getBoundingClientRect().right - t.getBoundingClientRect().right; })).toBeGreaterThan(4);
-  // The picked one filled, the other not.
-  expect(s.bg).not.toBe(l.bg);
-  expect(l.bg).toBe("rgba(0, 0, 0, 0)");
-  // Line, Strip, Line again with no reload: each click shows its view and marks its button.
-  for (const k of ["line", "strip", "line", "strip"]) {
-    const other = k === "line" ? "strip" : "line";
-    await sw(page, k).click();
-    await expect(sw(page, k)).toHaveAttribute("aria-pressed", "true");
-    await expect(sw(page, other)).toHaveAttribute("aria-pressed", "false");
-    if (k === "line") { await expect(card(page).locator(".dkn-row .dkn-tline").first()).toBeVisible(); await expect(card(page).locator(".dkn-row .dkn-ks")).toHaveCount(0); }
-    else { await expect(card(page).locator(".dkn-row .dkn-ks").first()).toBeVisible(); await expect(card(page).locator(".dkn-row .dkn-tline")).toHaveCount(0); }
-    s = await look("strip"); l = await look("line");
-    expect((k === "line" ? s : l).bg).toBe("rgba(0, 0, 0, 0)");
-    expect((k === "line" ? l : s).bg).not.toBe("rgba(0, 0, 0, 0)");
-  }
-  await expect(page.locator(".dkn-lsw [title]")).toHaveCount(0);
+  await expect(card(page).locator(".dkn-th > span")).toHaveText(["Item", "Progress", "Now"]);
+  const rows = card(page).locator(".dkn-row[data-desk-item]");
+  const n = await rows.count();
+  expect(n).toBeGreaterThan(0);
+  await expect(card(page).locator(".dkn-row[data-desk-item] .dkn-pl .dkn-ks")).toHaveCount(n);
 });
 
 test("the items with sessions in the card; Up next, Done today and the calls while away beside it, side by side", async ({ page, cue }) => {
@@ -89,7 +65,7 @@ test("the items with sessions in the card; Up next, Done today and the calls whi
   const at = await page.evaluate((id) => { const i = deskItem("cue", id); return clockAt(deskMs(i.done_at || i.updated)); }, id);
   await expect(first.locator(".dkn-a2 > span:last-child")).toHaveText(new RegExp(`(^|· )landed ${at.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   // No calls while Away is off; on, the calls since it went on.
-  await expect(card(page).locator('[data-desk2b-fold="away"]')).toHaveCount(0);
+  await expect(card(page).locator('[data-desk2b-group="away"]')).toHaveCount(0);
   await cue.change((st) => {
     const d = st.desk.projects.find((x) => x.project === "cue");
     const since = Math.min(...d.decisions.filter((c) => c.call).map((c) => c.at)) * 1000 - 1000;
@@ -97,7 +73,8 @@ test("the items with sessions in the card; Up next, Done today and the calls whi
   });
   const n = await page.evaluate(() => deskAwayCalls(deskOf("cue")).length);
   expect(n).toBeGreaterThan(0);
-  const fold = card(page).locator('[data-desk2b-fold="away"]');
+  // Calls while away is a band of its own (desk-live, ac3d10347c), its heading folding it.
+  const fold = card(page).locator('.dkn-gh[data-desk2b-group="away"]');
   await expect(fold).toHaveText(new RegExp(`^CALLS WHILE AWAY ${n}`));
   if ((await fold.getAttribute("aria-expanded")) !== "true") await fold.click();
   await expect(card(page)).toContainText(`${n} call${n === 1 ? "" : "s"} while away`);
