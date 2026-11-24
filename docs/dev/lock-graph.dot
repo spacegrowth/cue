@@ -31,6 +31,9 @@ digraph locks {
   "review queue saves" -> "the hub's store";
   "the hub's store" -> "config in memory";
   "the hub's store" -> "folder facts";
+  "the hub's store" -> "landing full run";
+  "the hub's store" -> "landing last";
+  "the hub's store" -> "landing now";
   "the hub's store" -> "leads sweeping for Away";
   "typing gate" -> "CLAUDE";
   "typing gate" -> "DB";
@@ -45,6 +48,9 @@ digraph locks {
   "typing gate" -> "db writes";
   "typing gate" -> "folder facts";
   "typing gate" -> "hosted pickup";
+  "typing gate" -> "landing full run";
+  "typing gate" -> "landing last";
+  "typing gate" -> "landing now";
   "typing gate" -> "leads sweeping for Away";
   "typing gate" -> "machine tails";
   "typing gate" -> "machine tails: links";

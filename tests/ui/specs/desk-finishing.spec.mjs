@@ -35,13 +35,16 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
   await expect(page.locator('.dkn-items [data-desk-act="install_now"], .dkn-items [data-desk-act="skip_install"]')).toHaveCount(0);
   // Counting down: due in under a minute, it says the seconds left, then what it waits on once it's due. The clock held
   // still for it, moved only by the test: running on, a busy machine's second went by before "in 1s" was read.
-  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+  // Paused a moment ahead of the window's clock (paused at the very moment read, a tick between the read and the pause
+  // put it in the past, which is refused), and timed from where it stopped.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
   await page.clock.resume();
-  await cue.change((st, t) => { st.desk.install_at = t; }, due - 30 * 60_000 + 2_000);
+  const t0 = await page.evaluate(() => now());
+  await cue.change((st, t) => { st.desk.install_at = t; }, t0 + 2_000);
   await expect(st).toHaveText(/ · in 2s$/);
   await page.clock.runFor(1000);
   await expect(st).toHaveText(/ · in 1s$/);
-  await cue.change((st, t) => { st.desk.install_at = t; }, due - 30 * 60_000 - 1_000);
+  await cue.change((st, t) => { st.desk.install_at = t; }, t0 - 1_000);
   await expect(st).toHaveText("On main · installs once no session is mid-turn");
   await cue.change((st, t) => { st.desk.install_at = t; }, due);
   // Opened: its session's chat, the item's bar over it with Install now and Skip, no hover text.
