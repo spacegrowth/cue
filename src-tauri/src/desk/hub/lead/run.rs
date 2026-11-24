@@ -423,6 +423,20 @@ fn start_ready(st: &Store, s: &crate::desk::hub::core::desk::NewStart) -> bool {
 /// doesn't start now.
 fn claim_place(st: &mut Store, s: &crate::desk::hub::core::desk::NewStart) -> (Result<Option<crate::desk::copies::OnMachine>, String>, Option<crate::desk::hub::core::desk::Effects>) {
     let place = st.desk.item(&s.id).map(|i| crate::desk::hub::landing::remote_item::start_place(st, i)).unwrap_or(Ok(None));
+    // Every slot taken where it would start (#798, that machine's at once): it waits for one. Your own Start now
+    // asked first already (#712).
+    let at = place.as_ref().ok().map(|p| p.as_ref().map(|o| o.machine.clone()).unwrap_or_default());
+    if s.by != "You" && at.is_some_and(|m| !crate::desk::hub::turn::slots::free_on(st, &s.project, &m, &s.id)) {
+        let mut fx = crate::desk::hub::core::desk::Effects::default();
+        st.desk.run.new_starts.remove(&s.id);
+        if start_ready(st, s) {
+            room_wait(st, s, now_ms(), &mut fx);
+            if let Some(it) = st.desk.item_mut(&s.id).filter(|i| i.room_wait) {
+                it.slot_wait = true;
+            }
+        }
+        return (place, Some(fx));
+    }
     if let Ok(p) = &place {
         let m = p.as_ref().map(|o| o.machine.clone()).unwrap_or_default();
         let slot = st.desk.item(&s.id).is_some_and(|i| crate::desk::hub::landing::remote_item::takes_slot(i, &m));
@@ -785,7 +799,14 @@ fn item_lines(st: &Store, it: &DeskItem, full: bool, failed: &mut Vec<(String, S
         out.push_str(&if why.is_empty() { " | RESUME it when it should go on".to_string() } else { format!(" | paused: {why}") });
     }
     // Its own wait, said (#340): with nothing else shown it read as free to start, and was nudged by hand.
-    if it.state == "queued" && it.holder.is_none() && it.room_wait {
+    // Waiting for a slot with its session, or next for one (#798); one with no session yet is said as waiting for room.
+    if crate::desk::hub::turn::slots::waits(st, it) && !(it.holder.is_none() && it.room_wait) {
+        let m = crate::desk::hub::turn::slots::machine_of(st, it);
+        let n = crate::desk::hub::landing::remote_item::machine_cap(st, &it.project, &m).unwrap_or(0);
+        let on = if m.is_empty() { "this Mac".to_string() } else { crate::machines::display_name(&m) };
+        let to = it.holder.as_ref().or(it.next_for.as_ref()).map_or("a new session".to_string(), |h| h.name.clone());
+        out.push_str(&format!(" | waiting for a free slot on {on}, then to {to}: {n} of this Desk's items are at work there, its at once (the user's setting); it starts by itself as one finishes, in queue order"));
+    } else if it.state == "queued" && it.holder.is_none() && it.room_wait {
         use crate::desk::hub::landing::remote_item::{machine_cap, start_places};
         let places = start_places(st, it);
         let each: Vec<String> = places.iter().map(|m| {

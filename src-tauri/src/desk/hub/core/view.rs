@@ -25,6 +25,8 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     // Waiting for room (#776): where it may start, in words; the machine is picked as it starts.
     out.machine_wait = if it.room_wait && it.holder.is_none() && it.state == "queued" { crate::desk::hub::landing::remote_item::room_words(st, it) } else { String::new() };
+    // Waiting for a free slot (#798): the row says so first, not when a fresh session takes it.
+    out.slot_wait = crate::desk::hub::turn::slots::waits(st, it);
     // Start now would go past the limit on items at once (#712): the window warns first.
     out.start_full = crate::desk::hub::landing::remote_item::start_full(st, it);
     // Next for a busy session (#576): its name as shown now, and when it goes to a fresh session.
@@ -32,7 +34,7 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         if let Some(s) = st.sessions.get(&n.sid).filter(|_| n.lead_sid.is_empty()) {
             n.name = shown_name(s);
         }
-        out.fresh_at = crate::desk::hub::turn::queue::fresh_at(it);
+        out.fresh_at = crate::desk::hub::turn::queue::fresh_at(it).filter(|_| !out.slot_wait);
     }
     // The machine its holder is on (#500), and how long one with its work has been quiet.
     crate::desk::hub::landing::remote_item::shown_machine(st, &mut out);

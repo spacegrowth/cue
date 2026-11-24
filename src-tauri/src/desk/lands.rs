@@ -106,7 +106,11 @@ pub const PARTS: &[Part] = &[
 /// After landing's old choice, before it was steps: read as the app's built-in steps (`app_steps`).
 const OLD_INSTALL: &str = "install";
 
-/// Items at once: the most items of a project at work in copies of their own.
+/// "Working at once", as a build saved it while it was a setting of its own (#798): read once as Items at once.
+const OLD_WORKING: &str = "working";
+
+/// Items at once: the most of a project's items at work on this Mac together (#798: in copies of their own, on a
+/// branch, or in the shared folder alike), and in copy mode the most copies held.
 pub const AT_ONCE: (u32, u32) = (1, 9);
 /// Items at once when not set.
 pub const AT_ONCE_DEFAULT: u32 = 3;
@@ -435,7 +439,10 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
                 l.set(p.key, k);
             }
         }
-        if let Some(n) = s.get("at_once").and_then(Value::as_u64).filter(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(n)) {
+        // A "Working at once" saved by a build that had it as a setting of its own (#798): read as this Mac's number,
+        // unless one is saved; the next save keeps only that.
+        let old = s.get(OLD_WORKING).and_then(Value::as_str).and_then(|w| w.parse::<u64>().ok());
+        if let Some(n) = s.get("at_once").and_then(Value::as_u64).or(old).filter(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(n)) {
             l.at_once = n as u32;
         }
         l.check_steps = s.get("check_steps").and_then(steps_in).unwrap_or_default();
@@ -750,6 +757,7 @@ pub fn checked(value: &Value) -> Result<Value, String> {
                     true
                 }
                 "full_run_on" => v.is_string(),
+                OLD_WORKING => v.is_string(),
                 "at_once" => v.as_u64().is_some_and(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(&n)),
                 // Saved before after landing was steps: kept, and read as the app's built-in steps.
                 "after" if v.as_str() == Some(OLD_INSTALL) => true,
@@ -768,6 +776,15 @@ pub fn checked(value: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_older_builds_working_at_once_is_read_as_items_at_once() {
+        let c = json!({ "project": { "lands": { "p": { "working": "2" } } } });
+        assert_eq!(of_in(&c, "p", Place::Repo).at_once, 2);
+        let c = json!({ "project": { "lands": { "p": { "working": "off", "at_once": 4 } } } });
+        assert_eq!(of_in(&c, "p", Place::Repo).at_once, 4, "a saved number wins; no limit isn't a number");
+        assert!(!of_in(&c, "p", Place::Repo).to_json().as_object().unwrap().contains_key("working"), "never saved again");
+    }
 
     #[test]
     fn a_new_project_gets_the_defaults_and_a_folder_with_no_repository_works_in_place() {
@@ -811,6 +828,7 @@ mod tests {
         assert_eq!(of_in(&c, "p", Place::Repo).how, "squash", "a pull request needs a copy");
         assert!(checked(&json!({ "p": { "where": "nowhere" } })).is_err());
         assert!(checked(&json!({ "p": { "at_once": 0 } })).is_err());
+        assert!(checked(&json!({ "p": { "working": "2" } })).is_ok(), "an older build's Working at once is kept (#798)");
         assert!(checked(&json!({ "p": { "where": "shared", "at_once": 2 } })).is_ok());
     }
 

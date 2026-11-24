@@ -58,7 +58,9 @@ test("a change saved shows on the screen next time; you commit means the shared 
   await expect(dlg.locator(".ld-row", { hasText: "Items at once" }).locator(".ld-hint")).toHaveText("More than two wait for a free copy.");
   await dlg.locator('[data-ld-pick="owner"]').click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
-  await expect(dlg.locator(".ld-n")).toHaveCount(0);
+  // Items at once limits the shared folder too (#798): the number stays, and says what happens past it.
+  await expect(dlg.locator(".ld-n")).toHaveText("2");
+  await expect(dlg.locator(".ld-row", { hasText: "Items at once" }).locator(".ld-hint")).toHaveText("More than two wait in Up next and start by themselves as one finishes.");
   // Saved together by Save (#600), and the screen closes.
   expect(await cue.calls("desk_lands_set")).toHaveLength(0);
   await dlg.locator('[data-ld="save"]').click();

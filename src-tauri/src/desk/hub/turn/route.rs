@@ -37,10 +37,14 @@ pub(crate) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
         }
         let rule = rule_of(st, &project);
         let lead = st.desk.lead.get(&project).cloned();
+        // At once (#798): with no free slot where its session is, it waits there for one.
+        let room = crate::desk::hub::turn::slots::free(st, &project, &wid);
         let Some(it) = st.desk.item_mut(&wid) else { continue };
         it.after = None;
         it.updated = secs(now);
-        start_released(it, &rule, lead.as_ref(), now, fx);
+        if !crate::desk::hub::turn::slots::hold_released(it, room, now) {
+            start_released(it, &rule, lead.as_ref(), now, fx);
+        }
         fx.items.push(it.id.clone());
     }
 }
@@ -222,6 +226,15 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         let q = crate::desk::hub::turn::queue::busy_with(st, h, id).is_some() || crate::desk::hub::turn::queue::ahead_for(st, h, id);
         if waits.is_some() || q {
             return crate::desk::hub::turn::queue::queue_for(st, project, by, id, h, waits, refused, why, now, fx);
+        }
+    }
+    // At once (#798): an item not begun yet, routed while every slot on its session's machine is taken, waits for
+    // one with that session (not sent yet). One already at work, finishing or with you to check goes as it did.
+    if let Some(h) = holder.as_ref().filter(|_| after.is_none() && !unfinished) {
+        let begins = st.desk.item(id).is_some_and(|i| matches!(i.state.as_str(), "new" | "queued") && !crate::desk::hub::turn::slots::takes(st, i));
+        let m = crate::desk::hub::turn::slots::holder_machine(st, h);
+        if begins && !crate::desk::hub::turn::slots::free_on(st, project, &m, id) && may_route(st, project, h, id) {
+            return crate::desk::hub::turn::slots::hold_for(st, project, (by.name, by.sid), id, h, why, now, fx);
         }
     }
     route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)

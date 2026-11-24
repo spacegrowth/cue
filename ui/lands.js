@@ -97,8 +97,9 @@ function landsPart(p, l) {
       ? `<textarea class="ld-cmd" rows="3" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>` : "";
   return `<div class="ld-row"><div class="ld-label">${esc(p.label)}</div><div class="ld-body">${landsSeg(p)}${steps}${now?.hint ? `<div class="ld-hint">${esc(now.hint)}</div>` : ""}${p.key === "where" ? landsWhereNote() : ""}</div></div>`;
 }
+/** Items at once: the most of this Desk's items at work on This Mac together, however they work there (#798: in the
+ *  shared folder and on a branch too; in their own copies it's also the most copies). */
 function landsAtOnce(l) {
-  if (lands.set.where !== "copy") return "";
   // With machines (#711): This Mac's number is in Machines, beside theirs; the model keeps its row here.
   if (lands.mach) return `<div class="ld-row" data-ld-sec="model"><div class="ld-label">New sessions</div><div class="ld-body">${landsModelPick()}</div></div>`;
   const n = lands.set.at_once, min = l.at_once?.min ?? 1, max = l.at_once?.max ?? 9;
@@ -106,7 +107,7 @@ function landsAtOnce(l) {
   return `<div class="ld-row"><div class="ld-label">Items at once</div><div class="ld-body"><div class="ld-line"><div class="ld-step">
     <button class="btn" data-ld="less" aria-label="Fewer"${n <= min ? " disabled" : ""}>−</button><b class="ld-n">${n}</b><button class="btn" data-ld="more" aria-label="More"${n >= max ? " disabled" : ""}>+</button></div>
     <label class="ld-model-at" data-ld-sec="model"><span class="ld-model-l">New sessions start on</span>${landsModelPick()}</label></div>
-    <div class="ld-hint">More than ${n === 1 ? "one waits" : `${n === 2 ? "two" : n === 3 ? "three" : n} wait`} for a free copy.</div></div></div>`;
+    <div class="ld-hint">More than ${n === 1 ? "one waits" : `${n === 2 ? "two" : n === 3 ? "three" : n} wait`} ${lands.set.where === "copy" ? "for a free copy" : "in Up next and start by themselves as one finishes"}.</div></div></div>`;
 }
 /** A size given in KB, as people say it. */
 const landsKb = (kb) => (kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb || 0} KB`);
@@ -159,11 +160,6 @@ function landsModelPick() {
   if (!opts.some((m) => m.value === lands.model)) opts.push({ value: lands.model, label: lands.model });
   return `<select class="nf-in nf-sel ld-model" data-ld-model aria-label="Model new sessions start on">${opts.map((m) => `<option value="${esc(m.value)}" ${m.value === lands.model ? "selected" : ""}>${esc(m.label || m.value)}</option>`).join("")}</select>`;
 }
-/** Its own row when there's no Items at once line to share (work in the shared folder). */
-function landsModel() {
-  if (lands.set.where === "copy") return "";
-  return `<div class="ld-row" data-ld-sec="model"><div class="ld-label">New sessions</div><div class="ld-body">${landsModelPick()}</div></div>`;
-}
 /** Where the Desk's new sessions start (#597): This Mac and your machines, as many as you tick (#661: its new items
  *  spread over them), and for each machine the folder of this repository's clone there and how many of the Desk's
  *  items may work there at once (#711). Only when Cue has a machine. */
@@ -179,11 +175,11 @@ function landsMach() {
   const n = (x) => { const k = m.at[x.name] || 3; return `<div class="ld-step ld-mach-n"><button class="btn" data-ld-mach-n="${esc(x.name)}" data-ld-by="-1" aria-label="Fewer at once on ${esc(x.label)}"${k <= min ? " disabled" : ""}>−</button><b class="ld-n">${k}</b><button class="btn" data-ld-mach-n="${esc(x.name)}" data-ld-by="1" aria-label="More at once on ${esc(x.label)}"${k >= max ? " disabled" : ""}>+</button><span class="ld-mach-at">at once</span></div>`; };
   const folders = ons.length > 1 ? ons.map((x) => `<div class="ld-folder-on"><span class="ld-folder-name">${esc(x.label)}</span>${input(x)}</div>`).join("") : ons.map(input).join("");
   // Every machine's number, ticked or not (#711): a per-item choice or the lead can start items on any of them.
-  // This Mac's is the Desk's Items at once: its items' folders of their own there (none to count in the shared folder).
+  // This Mac's is the Desk's Items at once, however its items work there (#798).
   const l = deskOf(lands.desk)?.lands, k = lands.set.at_once, lo = l?.at_once?.min ?? 1, hi = l?.at_once?.max ?? 9;
-  const mac = lands.set.where === "copy" ? `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">This Mac</span><div class="ld-step ld-mach-n"><button class="btn" data-ld="less" aria-label="Fewer at once on This Mac"${k <= lo ? " disabled" : ""}>−</button><b class="ld-n">${k}</b><button class="btn" data-ld="more" aria-label="More at once on This Mac"${k >= hi ? " disabled" : ""}>+</button><span class="ld-mach-at">at once</span></div></div>` : "";
+  const mac = `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">This Mac</span><div class="ld-step ld-mach-n"><button class="btn" data-ld="less" aria-label="Fewer at once on This Mac"${k <= lo ? " disabled" : ""}>−</button><b class="ld-n">${k}</b><button class="btn" data-ld="more" aria-label="More at once on This Mac"${k >= hi ? " disabled" : ""}>+</button><span class="ld-mach-at">at once</span></div></div>`;
   const at = `<div class="ld-row" data-ld-sec="at-once"><div class="ld-label">At once</div><div class="ld-body">${mac}${ms.map((x) => `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">${esc(x.label)}</span>${n(x)}</div>`).join("")}
-    <div class="ld-hint">The most of this Desk's items working on each machine together${mac ? " (on This Mac, each in a folder of its own until it lands)" : ""}. More ${many ? "go to another place you ticked that has room, or " : ""}wait until one there is done, then start by themselves.</div></div></div>`;
+    <div class="ld-hint">The most of this Desk's items working on each machine together${lands.set.where === "copy" ? " (on This Mac, each in a folder of its own until it lands)" : ""}. More ${many ? "go to another place you ticked that has room, or " : ""}wait until one there is done, then start by themselves.</div></div></div>`;
   const where = ons.length ? `<div class="ld-hint">The folder of this repository's clone on ${ons.length > 1 ? "each machine" : esc(ons[0].label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : "";
   const spread = many ? `<div class="ld-hint">New items start on whichever of these has the fewest of this Desk's items at work. Each item says where it's working.</div>` : "";
   const folder = `${folders}${spread}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
@@ -214,7 +210,7 @@ function landsHtml() {
     ${landsMach()}
     <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
-    <div class="ld-rows">${parts}${landsModel()}</div></div>
+    <div class="ld-rows">${parts}</div></div>
     ${landsAskBefore()}
     <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
   </div>${landsFoot()}</div></div>`;

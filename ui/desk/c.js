@@ -217,6 +217,8 @@ function deskCRow(i) {
 function deskCWhy(i) {
   if (i.state === "held") return "Parked: press Start to begin it";
   if (i.state !== "queued" && i.state !== "new") return "";
+  // Every slot where it would work taken (#798, that machine's at once in Desk settings): it starts as one finishes.
+  if (i.slot_wait) return deskSlotWhy(i, true);
   if (i.holder || i.start_failed || deskCopyWaits(i) || (i.route_failed && !i.next_for)) return "";
   const nf = i.next_for ? esc(deskHolderOf({ holder: i.next_for })) : "";
   const then = nf ? `, then goes to ${nf}` : "";
@@ -231,6 +233,12 @@ function deskCWhy(i) {
   if (nf) return `Next for ${nf} once it finishes what it's on${i.fresh_at ? `; a fresh session takes it at ${deskQHm(i.fresh_at)} if not` : ""}`;
   if (i.state === "new") return "Not given out yet: the Desk lead hasn't picked it up";
   return "Waits for a free session";
+}
+/** Waiting for a free slot (#798), in words: "Waiting for a free slot" and, `full`, the session it goes to and why. */
+function deskSlotWhy(i, full) {
+  if (!full) return "waiting for a free slot";
+  const h = i.holder || i.next_for, to = h ? esc(deskHolderOf({ holder: h })) : "";
+  return `Waiting for a free slot${to ? `, then goes to ${to}` : ""}: it starts by itself as one finishes`;
 }
 function deskCLow(i, line) {
   const on = deskOpen?.kind === "item" && deskIdIs(i, deskOpen.id);
