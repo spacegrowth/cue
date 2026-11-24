@@ -226,7 +226,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const original = conversation(it, s);
   const ex = original.map(deskSaidE);
   // An ask the hub noted ("Bash: …") is drawn as an ask with your answer beside it, not as its words (chatAsks).
-  const { asks, answers, decided } = chatAsks(ex);
+  const { asks, answers, decided, hidden } = chatAsks(ex, asksUp(s?.session_id || it?.session_id));
   const lastAgent = ex.findLastIndex((e, n) => e.role === "agent" && !asks.has(n));
   const agentAt = ex.flatMap((e, n) => (e.role === "agent" && !asks.has(n) ? [n] : []));
   const recent = new Set(agentAt.slice(-OPEN_REPLIES));
@@ -246,7 +246,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
   const stepsOf = page?.noSteps || stepsMode() === "hidden" ? null : sid;
   const counts = replyCounts(stepsOf, s, ex, asks);
-  const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
+  const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, hidden, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, counts };
   const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
   // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them.
@@ -259,8 +259,8 @@ function chatHtml(it, s, harness, paged = false, page = null) {
 /** Message `e`, the `n`th of chatHtml's thread, as drawn there: an ask, a decision, a card of a page's or Cue's own, a
  *  bubble of yours or the agent's reply; "" for one not drawn. `c`: what chatHtml worked out for the whole thread. */
 function chatRowHtml(c, e, n) {
-  const { it, s, harness, page, asks, answers, decided, chose, near, reviews, reviewAt, fold, sid } = c;
-  if (fold?.skip.has(n)) return "";
+  const { it, s, harness, page, asks, answers, decided, hidden, chose, near, reviews, reviewAt, fold, sid } = c;
+  if (fold?.skip.has(n) || hidden.has(n)) return "";
   // From another Desk's session, in a lead's chat: a band across the chat (desk/lead.js, #472).
   if (e.role === "peer") return (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text);
   if (answers.has(n)) return "";
@@ -549,9 +549,11 @@ function whereNow(it, s, steps = true) {
 /** The ask lines in a chat's thread (askLnOf), each with the answer right after it: `asks` (index → { ask, answer },
  *  the answer with its at_ms), `answers` (the indexes of those answers, not drawn on their own), `decided` (index →
  *  answer: one with no ask before it, a terminal dialog's choice or one whose ask scrolled out, drawn as a decision
- *  line, not as a message of yours). */
-function chatAsks(ex) {
-  const asks = new Map(), answers = new Set(), decided = new Map();
+ *  line, not as a message of yours). `hidden` (#801): asks not drawn, each shown once elsewhere: one asked again before
+ *  any answer (the hook lost Cue mid-wait and asked anew: the later copy stands for it), and the newest one while its
+ *  session's ask is up (`live`: asksUp), whose card under the chat is that ask. */
+function chatAsks(ex, live = new Set()) {
+  const asks = new Map(), answers = new Set(), decided = new Map(), hidden = new Set();
   ex.forEach((e, n) => {
     const ask = askLnOf(e);
     if (!ask) {
@@ -563,19 +565,47 @@ function chatAsks(ex) {
     asks.set(n, { ask, answer: answer ? { ...answer, at_ms: ex[n + 1].at_ms } : null });
     if (answer) answers.add(n + 1);
   });
-  return { asks, answers, decided };
+  for (const [n, { answer }] of asks) {
+    if (answer) continue;
+    let k = n + 1;
+    while (k < ex.length && ex[k].role !== "you" && !(asks.has(k) && ex[k].text.trim() === ex[n].text.trim())) k++;
+    if (k < ex.length && ex[k].role !== "you") hidden.add(n);
+  }
+  const lastYou = ex.findLastIndex((e) => e.role === "you");
+  for (const [n, { answer }] of asks) if (!answer && n > lastYou && live.has(ex[n].text.trim())) hidden.add(n);
+  return { asks, answers, decided, hidden };
+}
+/** The asks session `sid` has up now, as the hub words them in its thread (hub/asks.rs asked_line, history.rs summary):
+ *  each one's card under the chat (askFoot) is that ask, so the chat doesn't draw it again (#801). */
+function asksUp(sid) {
+  const up = new Set();
+  for (const i of sid ? state.items : []) {
+    if (i.session_id !== sid || (i.kind !== "permission" && i.kind !== "question")) continue;
+    const t = i.tool_input || {}, tool = String(i.tool_name || "");
+    const what = i.kind === "question" ? `asked: ${t.questions?.[0]?.question ?? t.question ?? ""}`
+      : `${tool}: ${{ bash: t.command ?? "", webfetch: `Fetch ${t.url ?? ""}` }[tool.toLowerCase()] ?? (["edit", "write", "multiedit", "notebookedit"].includes(tool.toLowerCase()) ? `${tool} ${t.file_path ?? ""}` : tool)}`;
+    up.add(what.trim());
+  }
+  return up;
 }
 /** A decision as a line in the chat, in the result line's look: "✓ Chose 1. Yes", "✕ Denied". */
 const chatDecisionLine = ({ text, no }, at, cls = no ? "no" : "") => `<div class="cv-result ${cls}"><span class="sent-check">${no ? "✕" : "✓"}</span><span>${esc(text)}</span><span class="grow"></span><span class="dim nowrap">${ago(at)} ago</span></div>`;
-/** An ask the agent made, as the chat draws it (#501, messages.css .mg.ask): the family's card outlined in deny, its head
- *  "Claude Code · ASKS YOU · 6m ago", what it asked as its words ("Asked to run", "Asked: …"), the command whole in a code
- *  block (never cut or faded), and how you answered as its foot's status, the card back to plain. */
+/** An ask the agent made, as the chat draws it. A tool's ask (#801) is one quiet line once it's settled: how you answered
+ *  ("✓ Allowed", "✕ Denied", or "Not answered here" when it went unanswered in Cue), what it asked and the command's first
+ *  line; while it waits, the card under the chat is that ask and the chat draws none (chatAsks). A question (#501,
+ *  messages.css .mg.ask) stays a card, its words whole: "Claude Code · ASKS YOU · 6m ago", what it asked, and your
+ *  answer as its foot's status, the card back to plain. */
 function chatAskHtml(key, e, { ask, answer }, harness, machine) {
-  const code = !ask.code ? "" : `<pre class="mg-code ask-code"><code>${ask.tool === "Bash" ? `<span class="ask-ps">$ </span>` : ""}${esc(ask.code)}</code></pre>`;
-  const what = ask.tool ? "" : ` <span class="ask-q">${esc(ask.what)}</span>`;
+  if (ask.tool) {
+    const mark = answer ? `<span class="sent-check">${answer.no ? "✕" : "✓"}</span>` : `<span class="sent-check none" aria-hidden="true">–</span>`;
+    const line = String(ask.code || "").split("\n").find((l) => l.trim()) || "";
+    const said = answer ? answer.text : "Not answered here";
+    return `<div class="cv-ask cv-result ask-done${answer?.no ? " no" : ""}${answer ? "" : " none"}">${mark}<span class="ask-said">${esc(said)}</span><span class="ask-head">${esc(ask.head)}</span>${line ? `<code class="ask-line">${esc(line)}</code>` : ""}<span class="grow"></span><span class="dim nowrap">${ago((answer || e).at_ms)} ago</span></div>`;
+  }
+  const what = ` <span class="ask-q">${esc(ask.what)}</span>`;
   const st = answer ? `<span class="mg-st ask-ans${answer.no ? " failed no" : ""}"><span class="mg-mark" aria-hidden="true">${answer.no ? "✕" : "✓"}</span> ${esc(answer.text)}</span>` : "";
   return `<div class="cv-ask mg ask${answer ? " answered" : ""}"><div class="mg-h">${mgAgentHead(harness, machine, e.at_ms).replace(/ · (.*)$/, `<span class="mg-tag">${answer ? "Asked you" : "Asks you"}</span><span class="mg-age">$1</span>`)}</div>
-    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</b>${what}</div>${code}${st ? `<div class="mg-f">${st}</div>` : ""}</div>`;
+    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}:</b>${what}</div>${st ? `<div class="mg-f">${st}</div>` : ""}</div>`;
 }
 /** After a decision: what you chose. Replies need no line, they're already in the chat. */
 function resultLine(it) {

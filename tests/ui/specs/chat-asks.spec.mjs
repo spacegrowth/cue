@@ -1,5 +1,6 @@
 // An ask the agent made (the hub notes "<Tool>: <summary>" in its thread, then your answer as yours: hub/asks.rs) drawn
-// in the chat as an ask: what it asked, the command in a code block (whole, never folded), your answer beside it.
+// in the chat once: a tool's ask settled is one quiet line (how you answered, what it asked, its command's first line);
+// one still waiting is the card under the chat, not drawn in it (#801). A question stays a card with your answer.
 import { test, expect } from "./cue.mjs";
 
 const ASK_CMD = "cat >> notes.md <<'EOF'\n## Router\n- split in two\n- partial fills next\n- tests pass\nEOF";
@@ -10,7 +11,7 @@ const openEngChat = async (page) => {
   return page.locator(".active-pane");
 };
 
-test("an ask in the chat: Asked to run, the command in a code block with Allowed beside it, no paragraph of it", async ({ cue, page }) => {
+test("an answered ask in the chat is one quiet line: Allowed, Asked to run, the command's first line; no card, no paragraph of it", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await cue.change((st, cmd) => {
     const t0 = Date.now() - 600000;
@@ -24,12 +25,14 @@ test("an ask in the chat: Asked to run, the command in a code block with Allowed
   const chat = await openEngChat(page);
   const ask = chat.locator(".cv-ask");
   await expect(ask).toHaveCount(1);
-  await expect(ask.locator(".mg-t")).toHaveText("Asked to run");
-  await expect(ask.locator(".mg-st")).toContainText("Allowed");
-  // The whole command at once: nothing folded, faded or behind a Show all.
-  await expect(ask.locator("pre.mg-code")).toHaveText(`$ ${ASK_CMD}`);
-  await expect(ask.locator(".cv-more")).toHaveCount(0);
-  await expect(ask.locator(".ask-code.folded")).toHaveCount(0);
+  await expect(ask).toHaveClass(/ask-done/);
+  await expect(ask.locator(".ask-said")).toHaveText("Allowed");
+  await expect(ask.locator(".ask-head")).toHaveText("Asked to run");
+  await expect(ask.locator(".ask-line")).toHaveText("cat >> notes.md <<'EOF'");
+  // One line, not a card: no red border, no tag, no code block.
+  await expect(chat.locator(".mg.ask")).toHaveCount(0);
+  const box = await ask.boundingBox();
+  expect(box.height).toBeLessThan(40);
   // Not its words: no reply paragraph holds the command, and "allowed" is no bubble of yours.
   await expect(chat.locator(".cv-agent")).toHaveCount(1);
   await expect(chat.locator(".cv-agent .cv-text")).toHaveText("Split the router in two; writing the notes now.");
@@ -53,9 +56,11 @@ test("a denied ask says so, and an edit names its file; a reply that merely star
   });
   const chat = await openEngChat(page);
   await expect(chat.locator(".cv-ask")).toHaveCount(2);
-  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-st.failed")).toContainText("Denied");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-t")).toHaveText("Asked to edit router.rs");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-st")).toContainText("Allowed always");
+  await expect(chat.locator(".cv-ask").nth(0)).toHaveClass(/\bno\b/);
+  await expect(chat.locator(".cv-ask").nth(0).locator(".ask-said")).toHaveText("Denied");
+  await expect(chat.locator(".cv-ask").nth(0).locator(".sent-check")).toHaveText("✕");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".ask-head")).toHaveText("Asked to edit router.rs");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".ask-said")).toHaveText("Allowed always");
   await expect(chat.locator(".cv-agent .cv-text")).toHaveText("Read: the router is now two files.");
   await expect(chat.locator(".cv-you")).toHaveCount(1);
 });
@@ -74,10 +79,10 @@ test("a message you typed after an unanswered ask, starting with a decision word
   });
   const chat = await openEngChat(page);
   await expect(chat.locator(".cv-ask")).toHaveCount(2);
-  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-st")).toHaveCount(0);
+  await expect(chat.locator(".cv-ask").nth(0).locator(".ask-said")).toHaveText("Not answered here");
   await expect(chat.locator(".cv-you")).toHaveCount(2);
   await expect(chat.locator(".cv-you").nth(1)).toContainText("allowed the plan, but keep build");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-st")).toContainText("Allowed");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".ask-said")).toHaveText("Allowed");
 });
 
 test("any tool's ask is one, a Bash ask with no command too; an answer whose ask scrolled out isn't yours; Read skips asks", async ({ cue, page }) => {
@@ -96,18 +101,65 @@ test("any tool's ask is one, a Bash ask with no command too; an answer whose ask
   });
   const chat = await openEngChat(page);
   await expect(chat.locator(".cv-ask")).toHaveCount(2);
-  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-t")).toHaveText("Asked to update its to-do list");
-  await expect(chat.locator(".cv-ask").nth(0).locator(".mg-st")).toContainText("In the terminal");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-t")).toHaveText("Asked to run");
-  await expect(chat.locator(".cv-ask").nth(1).locator(".mg-st")).toHaveCount(0);
+  await expect(chat.locator(".cv-ask").nth(0).locator(".ask-head")).toHaveText("Asked to update its to-do list");
+  await expect(chat.locator(".cv-ask").nth(0).locator(".ask-said")).toHaveText("In the terminal");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".ask-head")).toHaveText("Asked to run");
+  await expect(chat.locator(".cv-ask").nth(1).locator(".ask-said")).toHaveText("Not answered here");
   // The "allowed" at the top (its ask gone) is no message of yours, but a decision line; "in the morning", typed, is yours.
-  await expect(chat.locator(".cv-result")).toHaveCount(1);
-  await expect(chat.locator(".cv-result")).toContainText("Allowed");
+  await expect(chat.locator(".cv-result:not(.cv-ask)")).toHaveCount(1);
+  await expect(chat.locator(".cv-result:not(.cv-ask)")).toContainText("Allowed");
   await expect(chat.locator(".cv-you")).toHaveCount(2);
   await expect(chat.locator(".cv-you").nth(0)).toContainText("Plan the week");
   await expect(chat.locator(".cv-you").nth(1)).toContainText("in the morning");
   // Read and read-aloud step through its replies only.
   expect(await page.evaluate(() => readerReplies(null, state.sessions.find((x) => x.session_id === "eng")).map((r) => r.text))).toEqual(["The plan is in place."]);
+});
+
+// #801: the hook lost Cue mid-wait and asked again, so the thread holds the same ask twice, while its card is up.
+test("one request asked twice shows once: the card under the chat, none in it; answered, one quiet line, light and dark, wide and small", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  const cmd = "cd /x/eng && rm tests/probe.spec.mjs && git status --short";
+  await cue.change((st, cmd) => {
+    const t0 = Date.now() - 600000;
+    const s = st.sessions.find((x) => x.session_id === "eng");
+    s.state = "deciding";
+    s.thread = [
+      { role: "you", text: "Tidy up the probe", at_ms: t0 },
+      { role: "agent", text: "Removing the probe spec.", at_ms: t0 + 10000 },
+      { role: "agent", text: `Bash: ${cmd}`, at_ms: t0 + 20000 },
+      { role: "agent", text: `Bash: ${cmd}`, at_ms: t0 + 260000 },
+    ];
+    st.items.push({ id: "n801", kind: "permission", harness: "claude", session_id: "eng", cwd: s.cwd, project: s.project, tool_name: "Bash", tool_input: { command: cmd }, suggestions: [], context: [], created_ms: t0 + 260000, status: "pending", outcome: "" });
+  }, cmd);
+  const chat = await openEngChat(page);
+  await expect(page.locator(".act-card")).toHaveCount(1);
+  await expect(page.locator(".act-card")).toContainText("wants to run");
+  await expect(chat.locator(".cv-ask")).toHaveCount(0);
+  await expect(chat.locator(".mg.ask")).toHaveCount(0);
+  await expect(chat.locator(".cv-agent")).toHaveCount(1);
+  // Answered: the card goes, and the request is one quiet line.
+  await cue.change((st) => {
+    st.items = st.items.filter((i) => i.id !== "n801");
+    const s = st.sessions.find((x) => x.session_id === "eng");
+    s.state = "working";
+    s.thread.push({ role: "you", text: "allowed", decision: true, at_ms: s.thread.at(-1).at_ms + 30000 });
+  });
+  await expect(page.locator(".act-card")).toHaveCount(0);
+  await expect(chat.locator(".cv-ask")).toHaveCount(1);
+  await expect(chat.locator(".cv-ask .ask-said")).toHaveText("Allowed");
+  await expect(chat.locator(".mg.ask")).toHaveCount(0);
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const [width, height] of [[1440, 900], [900, 600]]) {
+      await page.setViewportSize({ width, height });
+      const ask = chat.locator(".cv-ask");
+      const [box, pane] = await Promise.all([ask.boundingBox(), chat.boundingBox()]);
+      expect(box.height).toBeLessThan(40);
+      expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width + 1);
+      expect(await chat.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      if (process.env.SHOT_DIR) await ask.screenshot({ path: `${process.env.SHOT_DIR}/801-${scheme}-${width}.png` });
+    }
+  }
 });
 
 test("a terminal dialog's choice (no ask before it) is a decision line: what you picked, not a message of yours", async ({ cue, page }) => {

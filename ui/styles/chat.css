@@ -464,6 +464,13 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ask-code { user-select: text; }
 .ask-ps { opacity: 0.55; user-select: none; }
 .ask-q { overflow-wrap: anywhere; }
+/* A tool's ask once settled (#801): one quiet line, how you answered, what it asked, the command's first line cut to fit. */
+.cv-result.ask-done { gap: 8px; padding: 6px 12px; background: none; font-weight: 400; color: var(--muted); min-width: 0; }
+.cv-result.ask-done .sent-check { width: 18px; height: 18px; }
+.cv-result.ask-done.none .sent-check { background: var(--panel-2); color: var(--muted); }
+.ask-done .ask-said { color: var(--ink); font-weight: 600; flex: none; }
+.ask-done .ask-head { flex: none; }
+.ask-done .ask-line { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--type-small) / var(--type-small-lh) var(--mono); }
 /* Next: solid Moss, the one obvious thing to do after you act. */
 .next-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; padding: 9px 10px 9px 12px; border-radius: var(--radius-tray); background: var(--accent); color: var(--on-accent); font-size: var(--type-body); text-align: left; min-width: 0; cursor: pointer; }
 .next-bar:hover { filter: brightness(1.1); }

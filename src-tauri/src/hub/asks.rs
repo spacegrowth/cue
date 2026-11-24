@@ -79,7 +79,7 @@ impl Hub {
         it.scan_from = first.scan_from;
         // A Desk session's landing clean-up question goes to its Desk lead first (desk/hub/lead/cleanup.rs, #349).
         let to_lead = crate::desk::hub::lead::cleanup::give_lead(st, &mut it);
-        st.sessions.note(&sid, "agent", &asked_line(&it), crate::config::context_keep());
+        st.sessions.note_ask(&sid, &asked_line(&it), crate::config::context_keep());
         let id = it.id.clone();
         let title = notify_title(&it);
         st.items.push(it);
@@ -574,6 +574,25 @@ mod tests {
         assert_eq!(hub.pending().iter().filter(|i| i.origin.session_id == "s1").count(), 1);
         hub.finish(&id, "answered", "allowed");
         assert!(hub.add_keyed_ask(origin("s1"), "r1", bash("rm -rf target", "")).is_some(), "answered: asking again is a new ask");
+    }
+
+    /// #801: the hook lost Cue mid-wait and asked the same thing again. The chat shows that ask once, and once
+    /// answered, the one ask with its answer; the same command asked after that is a new ask.
+    #[test]
+    fn an_ask_asked_again_before_its_answer_is_noted_once() {
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let hub = Hub::new(None);
+        let origin = Origin { session_id: "s801".into(), harness: "claude".into(), cwd: "/x/proj".into(), ..Default::default() };
+        hub.mark_state(&origin, "working");
+        let (first, _a) = hub.add_ask(origin.clone(), bash("rm probe.mjs && git status", ""));
+        crate::server::inbound::gone(&hub, &first);
+        let (_again, _b) = hub.add_ask(origin.clone(), bash("rm probe.mjs && git status", ""));
+        let (third, _c) = hub.add_ask(origin.clone(), bash("rm probe.mjs && git status", ""));
+        let lines = |hub: &Hub| hub.read(|st| st.sessions.thread("s801")).into_iter().map(|e| (e.role, e.text)).collect::<Vec<_>>();
+        assert_eq!(lines(&hub), vec![("agent".to_string(), "Bash: rm probe.mjs && git status".to_string())], "asked three times, noted once");
+        hub.finish(&third, "answered", "allowed");
+        let (_d, _e) = hub.add_ask(origin, bash("rm probe.mjs && git status", ""));
+        assert_eq!(lines(&hub).iter().filter(|(r, _)| r == "agent").count(), 2, "asked after your answer: a new ask");
     }
 
     #[test]

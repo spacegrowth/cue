@@ -80,8 +80,10 @@ for (const scheme of ["light", "dark"]) {
       await expect(you.locator(".mg-text")).toHaveCSS("line-height", "20px");
       await expect(chat.locator(".mg-agent").last().locator(".mg-text")).toHaveCSS("line-height", "20px");
       await expect(chat.locator(".mg-agent").last().locator(".mg-h")).toHaveCSS("font-size", META);
-      await isCard(chat.locator(".mg.ask"));
-      await expect(chat.locator(".mg.ask pre.mg-code")).toHaveCount(1);
+      // A settled tool ask is one quiet line, at the body size, no card (#801).
+      await expect(chat.locator(".cv-ask.ask-done")).toHaveCount(1);
+      await expect(chat.locator(".cv-ask.ask-done")).toHaveCSS("font-size", BODY);
+      await expect(chat.locator(".mg.ask")).toHaveCount(0);
       // Cue's card: out of the session's chat since #789, in its Activity tab, drawn as the family's.
       await expect(chat.locator(".mg.cue-msg")).toHaveCount(0);
       await page.locator('.dk-right .dkn-stab[data-desk-c-stab="activity"]').click();

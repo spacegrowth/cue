@@ -17,6 +17,19 @@ impl Sessions {
         self.note_with(session_id, role, text, &[], keep)
     }
 
+    /// An ask the agent made, as the hub words it ("Bash: …", asks.rs asked_line): noted once. The same ask asked
+    /// again before you answered it (the hook lost Cue mid-wait and asked anew, #801) is the one already there.
+    pub fn note_ask(&mut self, session_id: &str, text: &str, keep: usize) {
+        let text = text.trim();
+        let capped = |t: &str| t.chars().take(EXCHANGE_CHARS).collect::<String>();
+        let again = self.0.get(session_id).is_some_and(|s| {
+            s.thread.iter().rev().take_while(|e| e.role != "you").any(|e| e.role == "agent" && capped(e.text.trim_end_matches('…')) == capped(text))
+        });
+        if !again {
+            self.note(session_id, "agent", text, keep);
+        }
+    }
+
     /// How you answered a permission or a question, as yours in the thread, marked as a decision: it's no
     /// message you wrote (talking by voice goes on through it).
     pub fn note_decision(&mut self, session_id: &str, outcome: &str, keep: usize) {
