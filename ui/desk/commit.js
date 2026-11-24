@@ -3,9 +3,9 @@
 // session at work is editing some of them, the item is done at once and the commit waits ("Commit waiting: <file>
 // (<session> is editing it)"), made on its own once they're free. "Committed <hash> · N files" shows with Undo, which
 // only puts it back to check: the commit stays, no code changes (a waiting commit isn't made).
-// Each time a session says DONE for an item, the Desk's Activity shows one Ready to check line for it (deskCheckLine;
-// not the lead's chat since #789): its item and Check it ›, which opens the item's page, where what to test, Looks
-// right and Send back are. Kept by the hub (desk/hub/lead/checks.rs), so they're there after a restart.
+// Each time a session says DONE for an item, the lead's chat shows one Ready to check line for it (deskCheckRows): its
+// item and Check it ›, which opens the item's page, where what to test, Looks right and Send back are. Kept by the hub
+// (desk/hub/lead/checks.rs), so they're there after a restart.
 // Looks right waits a moment first: "Done · Undo" for DESK_LOOKS_WAIT on the item and in a toast, and Undo in that
 // time leaves it to check with nothing committed (Cue hasn't told the hub yet). Then it goes as above.
 // Commands: desk_looks_right, desk_item_act (reopen).
@@ -118,6 +118,10 @@ function deskBackNote(c) {
   const note = plain(c.back || ""), pics = c.back_pics ? ` · ${c.back_pics === 1 ? "1 picture" : `${c.back_pics} pictures`}` : "";
   if (!note) return c.back_by === "You" ? ` · <span class="dk-chk-note">no note</span>${pics}` : pics;
   return `: <span class="dk-chk-note">“${esc(note.length > 140 ? note.slice(0, 140).replace(/\s+\S*$/, "") + "…" : note)}”</span>${pics}`;
+}
+/** Project `d`'s Ready to check lines for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
+function deskCheckRows(d) {
+  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(dkMark(deskCheckLine(c, d), "ready", c.id), `chk:${c.id}:${c.at}`) }));
 }
 /** A DONE as the family's card (#501) while it's the one to check: "Cue READY TO CHECK Task #125 12m", its title,
  *  Check it ›; the item and Check it › opening its page (what to test, Looks right and Send back are there). Once
