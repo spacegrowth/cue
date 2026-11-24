@@ -14,6 +14,14 @@ pub(crate) use crate::hub::{codex_sessions_dir, pi_sessions_dir, steps_path};
 use std::sync::Arc;
 use tauri::State;
 
+/// The chats open in Cue's window (`chats`: session, scrolled to its newest) and whether it's in front of you
+/// (`front`): what you're reading isn't notified, and a chat you open takes back what was (#799).
+#[tauri::command]
+pub(crate) async fn chats_open(hub: State<'_, Arc<Hub>>, chats: Vec<(String, bool)>, front: bool) -> Result<(), String> {
+    let seen = crate::notify::open_chats("main", chats, Some(front));
+    with_hub(&hub, move |h| h.chats_seen(&seen)).await
+}
+
 /// The chat's ⋯ menu: Compact (typed into the session; opens no window).
 #[tauri::command]
 pub(crate) async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {

@@ -645,7 +645,21 @@ impl Hub {
 
     /// `notify_about` for session `sid`: a click opens that session's item or chat.
     pub(super) fn notify_about_session(&self, key: &str, sid: &str, title: &str, body: &str) {
+        // Its chat open at its newest: you're reading it already (#799).
+        if crate::notify::is_read(sid) {
+            return;
+        }
+        crate::notify::note_about(key, sid);
         self.ports.notes.show(crate::notify::Note { id: key.to_string(), session_id: sid.to_string(), title: title.to_string(), body: body.to_string(), category: String::new(), watched: false });
+    }
+
+    /// You opened the chats of sessions `sids` (notify::open_chats): what's about them, waiting out its minute or
+    /// up in Notification Center already, is taken back (#799).
+    pub(crate) fn chats_seen(&self, sids: &[String]) {
+        let ids: Vec<String> = sids.iter().flat_map(|s| crate::notify::about(s)).collect();
+        if !ids.is_empty() {
+            self.ports.notes.take_back(ids);
+        }
     }
 
     /// Notification Center's part (is Cue in front, the post itself) runs on its own thread (notify::show):
@@ -657,11 +671,12 @@ impl Hub {
         if mutable && !watched && category.starts_with("turn") && sid.as_deref().is_some_and(crate::notify::is_quiet) {
             return;
         }
-        // Its chat open in a mini window: you're reading it already.
+        // Its chat open in a mini window, or in Cue's window in front of you at its newest: you're reading it already.
         if sid.as_deref().is_some_and(crate::notify::is_read) {
             return;
         }
         let note = crate::notify::Note { id: id.to_string(), session_id: sid.clone().unwrap_or_default(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
+        crate::notify::note_about(&note.id, &note.session_id);
         // Noted as notified with the post handed in, under one lock: a draw either sees neither, or sees it
         // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
         self.write(|st| {
