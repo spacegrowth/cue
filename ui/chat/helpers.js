@@ -200,7 +200,14 @@ const crewMateById = (sid, id) => (sessionOf(sid)?.team || []).find((t) => t.age
 function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key = h?.id || "" } = {}) {
   const running = h ? helperRunning(h) : false, items = h?.items || [];
   const end = h && !running ? helperTail(h) : items.length;
-  const reply = h ? items.slice(end).map((x) => x.text).join("\n\n").trim() || answer : answer;
+  // Its answer is only its own words (chat/who.js): anything else in its last run is drawn among its runs below.
+  const own = (x) => chatPlace({ role: "agent", ...x }, "crew") === "reply";
+  const tail = h ? items.slice(end) : [], words = tail.filter(own);
+  const reply = h ? words.map((x) => x.text).join("\n\n").trim() || answer : answer;
+  // Anything else in that last run, by its time: what came before its answer among its runs, what came after it under
+  // it (`later`), as every chat places a row.
+  const replyAt = words.length ? words[0].at_ms : Infinity;
+  const others = tail.filter((x) => !own(x)), sooner = others.filter((x) => !(x.at_ms >= replyAt)), later = others.filter((x) => x.at_ms >= replyAt);
   const out = [];
   // Send to… under its words and its answer (render.js fwdBtn), keyed under its lead's id so it lasts as the lead does.
   const from = sessionOf(sid)?.project || by || "crew member";
@@ -208,9 +215,18 @@ function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key
   if (ask) out.push(agentBriefHtml(sid, key, ask, by));
   // Its steps and words, a run of steps at a time between its words.
   const runs = [];
-  if (h) items.slice(0, end).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
+  if (h) items.slice(0, end).concat(sooner).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
   else if (steps.length) runs.push({ lines: steps });
+  // Who said it, from its tags (chat/who.js, #837): its own words (no role: the agent's), yours as your bubble, Cue's
+  // as Cue's quiet line, never your bubble. "" for its own words.
+  const notOwn = (x) => {
+    const place = chatPlace({ role: "agent", ...x }, "crew");
+    if (place === "bubble") return `<div class="cv-you mg-you" data-key="${esc(x.id || `y:${x.at_ms}`)}">${yourBubble(x, `${sid}:ag:${key}:${x.at_ms}`)}</div>`;
+    return place !== "reply" && typeof cueQuietHtml === "function" ? keyed(cueQuietHtml(x, sessionOf(sid), `${sid}:ag:${key}:${x.at_ms}:cueq`), x.id || `c:${x.at_ms}`) : "";
+  };
   runs.forEach((r, n) => {
+    const theirs = r.say && notOwn(r.say);
+    if (theirs) { out.push(theirs); return; }
     if (r.say) { const id = r.say.id || `s:${r.say.at_ms}`; out.push(`<div class="stx-say msg" data-key="${esc(id)}">${md(r.say.text)}${fwd(id, r.say.text)}</div>`); return; }
     const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = agentRunOpen.has(k);
     const live = running && n === runs.length - 1;
@@ -223,6 +239,7 @@ function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key
   });
   if (!runs.length && !reply) out.push(`<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`);
   if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div>${fwd("reply", reply)}</div>`);
+  for (const x of later) if (x.t !== "step") out.push(notOwn(x));
   return `<div class="ag-chat">${out.join("")}</div>`;
 }
 /** One agent in full, in place of the chat: who it is, and its chat (agentChatHtml: what it was asked, what it did,

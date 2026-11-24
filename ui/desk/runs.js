@@ -67,7 +67,7 @@ const dkActs = (h) => { const k = dkKindOf(h) || dkKindOf(String(h).replace(/^\s
  *  (#816): not your words, not your words that went with a session's (#812), not your answer to a question. */
 function dkNotice(s, e, n, page) {
   if (e.role !== "you" || e.decision) return false;
-  if (typeof deskRelaySplit === "function" && deskRelaySplit(e.text)?.yours) return false;
+  if (chatFrom(e) !== "cue" && typeof deskRelaySplit === "function" && deskRelaySplit(e.text)?.yours) return false;
   return dkLinesOf(s, e, n, page).length > 0;
 }
 /** Reply `n` of `ex` (session `s`'s messages, their Desk summaries dropped) when the turn it answers was only Cue's
@@ -114,7 +114,8 @@ function dkNoticeAnswer(s, e) {
 function dkLinesOf(s, e, n, page, answer = null) {
   const sid = s.session_id;
   if (e.role === "you") {
-    const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && !youBack(e) && chatCueRow(page, s, sid, e, n, new Map());
+    // Marked Cue's (#837, chat/who.js): Cue's whatever its words say; unmarked, a send-back of yours stays yours.
+    const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && (chatFrom(e) === "cue" || !youBack(e)) && chatCueRow(page, s, sid, e, n, new Map());
     if (!h || !dkRow(h)) return [];
     // The lead's answer to it, when that answer left the chat (#816): under it, in the same row.
     return [answer ? h.replace(/<\/div>\s*$/, `${dkNoticeAnswer(s, answer)}</div>`) : h];
