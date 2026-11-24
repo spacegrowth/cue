@@ -36,6 +36,10 @@ pub struct DeskRun {
     /// acted on once they've finished (desk/hub/turn/heard.rs `held_done`), at its next turn's end or as its background
     /// agents are seen done (hub/activity.rs `watch_helpers`). Not saved.
     pub done_held: HashMap<String, String>,
+    /// A session's words for its lead already relayed (TO LEAD, #868; desk/hub/turn/heard.rs `to_lead_said`), by
+    /// "session|item": the words, so the same words again (a turn told twice) aren't relayed again until the lead
+    /// answers that item with a NOTE. Not saved.
+    pub relayed: HashMap<String, String>,
     /// What a project's lead is to be told of its routes Cue couldn't make (desk/hub/turn/said.rs `route_answers`, #248) when it
     /// couldn't be sent then, as the lead was asking the user something: told in its next Desk block instead, and
     /// cleared once that reaches it (`desk_told`). Not saved.

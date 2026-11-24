@@ -56,9 +56,11 @@ impl CueSaid {
 }
 
 /// `text` (a kept message) without Cue's `parts` in it: your words alone, blank lines between them as you wrote them.
+/// A part's Desk block is left out as it's looked for: a lead's kept message has its block made fresh as it goes
+/// (hub/send.rs desk_fresh_held), so the block it was kept with is no longer in it (#868).
 fn without_parts(text: &str, parts: &[String]) -> String {
     let mut rest = text.to_string();
-    for p in parts.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
+    for p in parts.iter().map(|p| crate::desk::without_block(p).trim()).filter(|p| !p.is_empty()) {
         if let Some(i) = rest.find(p) {
             rest.replace_range(i..i + p.len(), "");
         }
@@ -105,10 +107,12 @@ impl Sessions {
             return None;
         }
         let mine = without_parts(&h.text, &h.cue_parts);
-        if mine.is_empty() {
+        // Nothing of yours left but a Desk block, Cue's too (#868): all Cue's, one message.
+        if crate::desk::without_block(&mine).trim().is_empty() {
             return None;
         }
-        Some((mine, h.cue_parts.join("\n\n")))
+        let cues: Vec<&str> = h.cue_parts.iter().map(|p| crate::desk::without_block(p).trim()).filter(|p| !p.is_empty()).collect();
+        Some((mine, cues.join("\n\n")))
     }
 }
 
