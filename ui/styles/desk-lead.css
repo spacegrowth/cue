@@ -178,6 +178,8 @@
   align-self: stretch; margin: 2px -20px; padding: 10px 20px 11px; display: flex; flex-direction: column; gap: 6px;
   background: color-mix(in oklch, var(--pc) 16%, var(--panel)); color: var(--ink); user-select: text; -webkit-user-select: text;
 }
+/* In Activity (#837: another Desk's message to the lead is Activity's): inside its row, not across the chat. */
+.dk-moves .dk-band { margin: 2px 0; padding: 10px 12px 11px; border-radius: var(--radius-qp); }
 .dk-band-h { display: flex; align-items: center; gap: 7px; min-width: 0; font: var(--mg-meta); color: var(--ink); }
 .dk-band-tile { flex: none; width: 22px; height: 22px; border-radius: var(--radius-qp); display: grid; place-items: center; background: var(--pc); color: var(--panel); }
 .dk-band-desk { flex: none; font-weight: 700; color: color-mix(in oklch, var(--pc) 45%, var(--ink)); white-space: nowrap; }
