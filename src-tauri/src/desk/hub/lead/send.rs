@@ -78,6 +78,10 @@ fn for_lead(h: &Arc<Hub>, project: &str, sid: &str, text: &str, going: bool) -> 
 /// Always exactly: the `<desk …>…</desk>` block, a blank line, then the words. The window strips that leading block
 /// from your messages in the lead's chat, so keep this shape.
 pub(super) fn desk_message(summary: &str, text: &str) -> String {
+    // No block when nothing changed (#820): the words alone.
+    if summary.is_empty() {
+        return text.trim().to_string();
+    }
     format!("{summary}\n\n{}", text.trim())
 }
 

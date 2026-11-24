@@ -20,6 +20,11 @@ fn changes_only(m: &str) -> bool {
     m.lines().next().is_some_and(|l| l.ends_with(" changes=\"only\">"))
 }
 
+/// Message `m` carries the whole block.
+fn is_whole(m: &str) -> bool {
+    m.starts_with("<desk ") && !changes_only(m)
+}
+
 /// The block of message `m`.
 fn block(m: &str) -> &str {
     m.split_once("</desk>").map_or(m, |(b, _)| b)
@@ -29,7 +34,8 @@ fn block(m: &str) -> &str {
 fn say(w: &World, project: &str, d: &str, text: &str) -> String {
     crate::ipc::desk_send_with(w.hub(), project, text).unwrap();
     w.settle();
-    let m = sent_to(w, d).into_iter().rev().find(|m| m.ends_with(&format!("</desk>\n\n{text}"))).unwrap_or_default();
+    // With no block when nothing changed (#820): the words alone.
+    let m = sent_to(w, d).into_iter().rev().find(|m| m == text || m.ends_with(&format!("</desk>\n\n{text}"))).unwrap_or_default();
     ends(w, d, "Noted.");
     m
 }
@@ -154,7 +160,7 @@ fn a_change_shows_in_the_very_next_message_and_nothing_else_does() {
     set_item(&w, &b, "queued", None);
     say(&w, &project, &d, "first");
     let quiet = say(&w, &project, &d, "anything?");
-    assert!(changes_only(&quiet) && quiet.contains("Nothing changed."), "{quiet}");
+    assert_eq!(quiet, "anything?", "nothing changed and it's about no item: no block at all");
 
     // A state change.
     set_item(&w, &b, "to_check", Some(&h));
@@ -202,7 +208,7 @@ fn the_whole_block_comes_every_twenty_messages_and_when_the_lead_asks() {
     say(&w, &project, &d, "first");
     let mut whole = 0;
     for i in 0..crate::desk::hub::lead::block::FULL_EVERY {
-        if !changes_only(&say(&w, &project, &d, &format!("m{i}"))) {
+        if is_whole(&say(&w, &project, &d, &format!("m{i}"))) {
             whole += 1;
         }
     }
@@ -215,7 +221,7 @@ fn the_whole_block_comes_every_twenty_messages_and_when_the_lead_asks() {
     ends(&w, &d, "SHOW: desk");
     let told = last(&w, &d);
     assert!(told.contains("Your whole Desk block, as you asked") && !changes_only(&told) && told.contains("Other open items:"), "{told}");
-    assert!(changes_only(&say(&w, &project, &d, "after")));
+    assert!(!is_whole(&say(&w, &project, &d, "after")));
 }
 
 #[test]

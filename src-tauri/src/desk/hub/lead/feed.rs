@@ -145,7 +145,7 @@ pub(crate) fn unsaved(st: &mut Store) -> Vec<Change> {
 fn applies(st: &Store, r: &Change) -> bool {
     // Said once and true still: what you did, Away turned on or off (a later one folds it), your pick (its mocks item
     // may have left memory since: it's done), how a full run of the main line ended.
-    if matches!(r.kind, ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed) {
+    if matches!(r.kind, ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed | ChangeKind::Installed) {
         return true;
     }
     let Some(it) = st.desk.item(&r.item) else { return false };
@@ -173,7 +173,7 @@ fn applies(st: &Store, r: &Change) -> bool {
         ChangeKind::Machine => it.remote.is_some() && matches!(it.state.as_str(), "working" | "finishing"),
         // Not sent back to work since.
         ChangeKind::Finished => matches!(it.state.as_str(), "finishing" | "to_check" | "done"),
-        ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed => true,
+        ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed | ChangeKind::Installed => true,
     }
 }
 

@@ -75,6 +75,10 @@ pub fn with_fresh_block(text: &str, block: &str) -> String {
         last = to;
     }
     rest.push_str(&text[last..]);
+    // Nothing changed since the lead's last block (#820): no block.
+    if block.is_empty() {
+        return rest.trim().to_string();
+    }
     format!("{block}\n\n{}", rest.trim())
 }
 

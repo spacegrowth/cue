@@ -75,6 +75,26 @@ fn heading_of(lines: &Lines, key: &str) -> Option<String> {
     lines[..at].iter().rev().find(|(k, _)| section(k) == "h").map(|(_, t)| t.trim_end_matches(':').trim().to_string())
 }
 
+/// What a block of changes says when nothing changed.
+pub(crate) const NOTHING: &str = "Nothing changed.\n";
+
+/// Where an item line's details begin (run.rs `item_details`): when it's done, what you'll see, its files.
+const DETAILS: [&str; 3] = [" | done when: ", " | you'll see: ", " | files: "];
+
+/// An item line split into its short part and its details ("" when it has none).
+fn split_details(text: &str) -> (&str, &str) {
+    let at = DETAILS.iter().filter_map(|m| text.find(m)).min().unwrap_or(text.len());
+    text.split_at(at)
+}
+
+/// How a changed line is said in a block of changes: an item whose details are as they were (only its state, holder
+/// or wait moved, #820) is its short part alone; the lead keeps the details it was sent before.
+fn changed_words<'a>(key: &str, was: Option<&str>, text: &'a str) -> &'a str {
+    let (short, details) = split_details(text);
+    let same = section(key) == "it" && !details.is_empty() && was.is_some_and(|w| split_details(w).1 == details);
+    if same { short } else { text }
+}
+
 /// The changes from `old` to `new` as the lead reads them: each changed or new line under the heading it's under now,
 /// then what's no longer listed. A line only moved within its heading isn't said, but in Needs routing (your order).
 pub(crate) fn changes(old: &Lines, new: &Lines, ops: &[Op]) -> String {
@@ -98,7 +118,7 @@ pub(crate) fn changes(old: &Lines, new: &Lines, ops: &[Op]) -> String {
             }
             under = Some(now_h);
         }
-        out.push_str(text);
+        out.push_str(changed_words(key, was.map(|(_, t)| t.as_str()), text));
         out.push('\n');
         said += 1;
     }
@@ -111,7 +131,7 @@ pub(crate) fn changes(old: &Lines, new: &Lines, ops: &[Op]) -> String {
         said += 1;
     }
     if said == 0 {
-        out.push_str("Nothing changed.\n");
+        out.push_str(NOTHING);
     }
     out
 }
@@ -234,7 +254,20 @@ mod tests {
         let c: Lines = b.iter().filter(|(k, _)| k != "it|1").cloned().collect();
         let said = changes(&b, &c, &diff(&b, &c));
         assert!(said.contains("No longer listed: #1 (done, dropped or moved)"), "{said}");
-        assert_eq!(changes(&c, &c, &[]), "Nothing changed.\n");
+        assert_eq!(changes(&c, &c, &[]), NOTHING);
+    }
+
+    #[test]
+    fn an_item_whose_details_stand_is_one_short_line() {
+        let full = |state: &str, see: &str| format!("- #3 bug: C | {state} | held by web (session) | done when: it builds | you'll see: {see} | files: a.rs");
+        let a = l(&[("h|open", "Other open items:"), ("it|3", &full("working", "no jump"))]);
+        let mut b = a.clone();
+        b[1].1 = full("finishing", "no jump");
+        let said = changes(&a, &b, &diff(&a, &b));
+        assert_eq!(said, "Other open items:\n- #3 bug: C | finishing | held by web (session)\n");
+        b[1].1 = full("finishing", "the header stays");
+        let said = changes(&a, &b, &diff(&a, &b));
+        assert!(said.contains("you'll see: the header stays"), "new details go in full: {said}");
     }
 
     #[test]
