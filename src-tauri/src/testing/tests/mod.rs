@@ -42,6 +42,7 @@ mod desk_other_repo;
 mod desk_own_work;
 mod desk_clear_land;
 mod desk_copy_guard;
+mod desk_stale_index;
 mod desk_copies;
 mod desk_lands;
 mod desk_branch;

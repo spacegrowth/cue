@@ -189,6 +189,12 @@ impl Hub {
         if !origin.machine.is_empty() || !matches!(tool, "Edit" | "Write" | "MultiEdit" | "NotebookEdit" | "Bash") {
             return None;
         }
+        // Any session's commit from a git index older than HEAD, which would undo the commits since (#807).
+        if tool == "Bash" {
+            if let Some(why) = crate::desk::hub::landing::stale_index::stopped(input["command"].as_str().unwrap_or(""), &origin.cwd) {
+                return Some(why);
+            }
+        }
         let sid = origin.session_id.as_str();
         let held: Vec<(String, Option<ItemTree>)> = self.read(|st| {
             st.desk
