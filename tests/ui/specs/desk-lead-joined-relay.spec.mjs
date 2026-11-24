@@ -24,7 +24,8 @@ for (const [name, words] of [["your words first", `are we moving ?\n\n${RELAY}`]
     const chat = page.locator(".dk-chat");
     const mine = chat.locator(".cv-you-text", { hasText: "are we moving ?" });
     await expect(mine).toHaveCount(1);
-    await expect(mine).toHaveText("are we moving ?");
+    // Only your words, then the Desk's summary folded under them as "+ Desk update" (#822), never its lines.
+    await expect(mine).toHaveText("are we moving ?+ Desk update · whole Desk");
     // Nothing of the session's words, or Cue's line for the lead, in the chat.
     await expect(chat).not.toContainText("stuck in a loop");
     await expect(chat).not.toContainText("Answer it with NOTE");
