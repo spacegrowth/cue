@@ -316,9 +316,9 @@ function deskCRow(i) {
   const o = deskOpen, on = (o?.kind === "item" && deskIdIs(i, o.id)) || ((o?.kind === "chat" || o?.kind === "holder") && !!o.sid && deskHolderSid(i) === o.sid);
   return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>${deskCRowMore(i)}${deskCFull(i)}</div>`;
 }
-/** A row's ⋯ (#839): its page's own menu (page.js deskMoreItems), without opening the item. Shown as you point at the
- *  row and on the open one (desk-c.css .dkn-rwrap); "" when nothing fits. */
-const deskCRowMore = (i) => deskMore(i, deskMoreItems(i), "rmore");
+/** A row's ⋯ (#839): Start now, Park and Drop (page.js deskRowMoreItems), without opening the item. Shown as you point
+ *  at the row and on the open one (desk-c.css .dkn-rwrap); "" when nothing fits. */
+const deskCRowMore = (i) => deskMore(i, deskRowMoreItems(i), "rmore");
 /** A row in Up next or Done today, on the green: #id and title (a grip on the ones you can drag), and a line under it. */
 /** Why an Up next item waits, in full plain words (html, escaped): what it waits for and what starts it. "" when it
  *  isn't waiting on anything Cue knows (then its status line says where it stands). */

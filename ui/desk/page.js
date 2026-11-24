@@ -861,6 +861,18 @@ function deskMoreItems(i) {
     : deskCanRestart(i) ? m("start_now", "Resume")
     : deskFinishing(i) ? mi(deskInstallNow(i, "")) + mi(deskSkipInstall(i, "")) : "";
 }
+/** A row's ⋯ in the item list (#839, as asked): only Start now and Park, Start on a parked one, and Drop; the
+ *  page's other choices (Put it before…, the install ones) stay on its page. Start now and Park on every item nobody
+ *  is at work on yet (new or queued, whatever it waits for); Start now also wakes one whose session stopped mid-turn;
+ *  Drop on any item not done. "" for a done one. */
+function deskRowMoreItems(i) {
+  if (i.state === "done" || i.state === "dropped") return "";
+  const m = (act, label) => `<button role="menuitem" data-desk-act="${act}" data-id="${esc(i.id)}"><span>${esc(label)}</span></button>`;
+  const start = i.state === "held" ? m("start_now", "Start")
+    : i.state === "new" || i.state === "queued" ? m("start_now", "Start now") + m("park", "Park")
+    : deskCanRestart(i) ? m("start_now", "Start now") : "";
+  return start + deskDropMi(i);
+}
 /** Drop this item as a choice in an item's ⋯ (#847): two presses, as the button was; the first arms it ("Drop it",
  *  in red) and leaves the menu open (act.js deskAct). */
 function deskDropMi(i) {

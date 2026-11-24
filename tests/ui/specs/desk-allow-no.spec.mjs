@@ -40,7 +40,7 @@ test("the item list's permission: its row says it asks you, No then Allow on its
   await setup(cue, page);
   await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Asks you");
   // No answer buttons on the row: the row opens the item, its card answers.
-  await expect(page.locator(`${ROW} :is(${NO}, ${YES}, button)`)).toHaveCount(0);
+  await expect(page.locator(`${ROW} :is(${NO}, ${YES}, button:not(.dkn-rmore))`)).toHaveCount(0);   // only its ⋯ (#839)
   await page.locator(ROW).click();
   await expect.poll(() => layout(page, CARD, '[data-act="deny"]', '[data-act="allow"]')).toBe("ok");
 });
