@@ -202,6 +202,12 @@
 .dkn-dr, .dkn-dl, .dkn-nx { min-width: 0; }
 /* Each list scrolls on its own under its heading, which stays put. */
 .dkn-dr { display: flex; flex-direction: column; min-height: 0; }
+/* Up next over Parked in the left column, one open at a time (desk/c.js deskCLowFold): the open one takes the room. */
+.dkn-lcol { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+.dkn-lcol > .dkn-dr { flex: none; }
+.dkn-lcol > .dkn-dr:not(.fold) { flex: 1 1 0; }
+.dkn-lcol > .dkn-dr.fold > :is(.dkn-dl, .dkn-more) { display: none; }
+.dkn-lcol > .dkn-dr.fold .dkn-hint { display: none; }
 .dkn-dr > .dkn-dh { flex: none; }
 .dkn-dl { display: flex; flex-direction: column; gap: 2px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 .dkn-dr > .dkn-more { padding: 6px 6px 0; border-top: 0; color: var(--on-bg-muted); }

@@ -11,6 +11,40 @@ const deskCFolds = (() => { try { return new Set(JSON.parse(localStorage.getItem
 
 const DESK_C_MAC = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>`;
 const DESK_C_CREW = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.5A5 5 0 0 1 21 19"/></svg>`;
+/** Which of Up next and Parked is open ("next", "parked" or "" for neither): one at a time, Up next to begin with. */
+const deskCLowOpen = () => { try { return localStorage.getItem("cue.deskCLow") ?? "next"; } catch { return "next"; } };
+/** Up next or Parked folded or opened as the Board's drawers are (board.js foldDrawer): one open at a time, so a
+ *  click moves the room from one to the other. Both slide at once, in place, with their rows showing (the folded one
+ *  keeps its rows in the page, hidden): measured as they'll end up, then each eased from its height to that. Drawn
+ *  again once they've landed. */
+let deskCLowSliding = 0;
+function deskCLowFold(name) {
+  const to = deskCLowOpen() === name ? "" : name;
+  try { localStorage.setItem("cue.deskCLow", to); } catch { /* this window only */ }
+  const secs = [...document.querySelectorAll("#app .dkn-lcol > .dkn-dr")];
+  if (!secs.length || matchMedia("(prefers-reduced-motion: reduce)").matches) return renderMain();
+  const h = (el) => el.getBoundingClientRect().height;
+  const from = secs.map(h);
+  const set = (sec, open) => {
+    sec.classList.toggle("fold", !open);
+    const head = sec.querySelector(".dkn-dh");
+    head.setAttribute("aria-expanded", String(open));
+    head.firstElementChild.outerHTML = DESK_C_ARROW(open);
+  };
+  secs.forEach((sec) => set(sec, sec.dataset.dknDrawer === to));
+  const end = secs.map(h);
+  // The one folding keeps its rows in sight as it closes.
+  secs.forEach((sec) => { if (sec.dataset.dknDrawer !== to) sec.classList.remove("fold"); sec.style.flex = "none"; sec.style.overflow = "hidden"; });
+  const run = ++deskCLowSliding;
+  const done = () => {
+    if (run !== deskCLowSliding) return;
+    deskCLowSliding = 0;
+    secs.forEach((sec) => { sec.style.flex = sec.style.overflow = ""; });
+    renderMain();
+  };
+  secs.forEach((sec, k) => sec.animate([{ height: `${from[k]}px` }, { height: `${end[k]}px` }], { duration: 260, easing: "cubic-bezier(0.2, 0, 0, 1)" }));
+  setTimeout(done, 280);
+}
 /** Drawers you just opened: key -> when, for their rows' slide in (DESK_C_OPEN_MS, as desk-c.css's dkn-open). */
 const deskCOpened = new Map();
 const DESK_C_OPEN_MS = 260;
@@ -209,11 +243,11 @@ function deskCDoneLine(i) {
 }
 /** A list on the green with the Board's drawer head: the arrow at the left, its name and count; the whole line folds it
  *  to that line. */
-function deskCDrawer(key, label, n, hint, rows, none) {
-  const open = !deskCFolds.has(key);
+/** `keep`: its rows stay in the page while it's folded, hidden, so it can slide open with them (deskCLowFold). */
+function deskCDrawer(key, label, n, hint, rows, none, open = !deskCFolds.has(key), keep = false) {
   // Just opened: its rows slide in, already as far in as the time since (a redraw meanwhile doesn't start it again).
   const since = Date.now() - (deskCOpened.get(key) || 0), anim = open && since < DESK_C_OPEN_MS ? ` dkn-opening" style="animation-delay:-${since}ms` : "";
-  return `<section class="dkn-dr${open ? "" : " fold"}" data-dkn-drawer="${key}"><button class="dkn-dh" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span class="dkn-dn">${n}</span>${hint && open ? `<span class="dkn-hint">· ${hint}</span>` : ""}</button>${open ? `<div class="dkn-dl${anim}" data-dkn-list="${key}"${deskCFitStyle(key)}>${rows || `<div class="dkn-dnone">${none}</div>`}</div><button class="dkn-more" data-desk-c-all="${key}"${deskCFitBy.get(key) ? "" : " hidden"}>${deskCMoreBy.get(key) || ""}</button>` : ""}</section>`;
+  return `<section class="dkn-dr${open ? "" : " fold"}" data-dkn-drawer="${key}"><button class="dkn-dh" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span class="dkn-dn">${n}</span>${hint && (open || keep) ? `<span class="dkn-hint">· ${hint}</span>` : ""}</button>${open || keep ? `<div class="dkn-dl${anim}" data-dkn-list="${key}"${deskCFitStyle(key)}>${rows || `<div class="dkn-dnone">${none}</div>`}</div><button class="dkn-more" data-desk-c-all="${key}"${deskCFitBy.get(key) ? "" : " hidden"}>${deskCMoreBy.get(key) || ""}</button>` : ""}</section>`;
 }
 /** Items' card, Up next and Done today each scroll, and at rest end on a whole row: a list's height is cut to the
  *  last row that fits (what's left goes below it). Under each, "↓ N more" says how many rows are below its edge as
@@ -496,10 +530,13 @@ function deskCList(project, taskApprovals) {
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");
   const why = (i) => deskCWhy(i) || said(i);
   const qRow = deskQRow((i) => deskCLow(i, why(i))), lowRow = (i) => (queued.has(i) ? qRow(i) : deskCLow(i, why(i)));
-  const up = deskCDrawer("next", "UP NEXT", next.length, next.length > 1 ? "drag to reorder" : "", next.map(lowRow).join(""), "Nothing up next.");
+  // Up next and Parked share the left column, one open at a time, as the Board's Starred and Recently answered do:
+  // opening one folds the other (deskCLowFold slides it). Parked stays folded till you open it.
+  const nq = g.queued, up = deskCDrawer("next", "UP NEXT", nq.length, nq.length > 1 ? "drag to reorder" : "", nq.map(lowRow).join(""), "Nothing up next.", deskCLowOpen() === "next", true);
+  const parked = g.held.length ? deskCDrawer("parked", "PARKED", g.held.length, "press Start to begin one", g.held.map(lowRow).join(""), "", deskCLowOpen() === "parked", true) : "";
   const done = deskCDrawer("done", "DONE TODAY", doneToday.length, "", doneToday.map((i) => deskCLow(i, esc(deskCDoneLine(i)))).join(""), "Nothing done today.");
   requestAnimationFrame(deskCFitLists);
-  return `<div class="dk-items dkn-items"><div class="dk-card dkn-card dkn-strip"><div class="dk2b-ih dkn-ih"><b>Items</b>${deskQuickAdd()}${deskAwaySwitch(d)}${deskPausedTag(d)}${deskPauseButton(d)}</div>${body ? head : ""}<div class="dk-scroll dkn-body" data-scroll-key="desk-items:${esc(project)}" data-dkn-list="items"${deskCFitStyle("items")}>${body || `<div class="dk-empty">Nothing waits on you and nothing is working.</div>`}</div><button class="dkn-more" data-desk-c-all="items"${deskCFitBy.get("items") ? "" : " hidden"}>${deskCMoreBy.get("items") || ""}</button></div><div class="dkn-low">${up}${done}</div></div>`;
+  return `<div class="dk-items dkn-items"><div class="dk-card dkn-card dkn-strip"><div class="dk2b-ih dkn-ih"><b>Items</b>${deskQuickAdd()}${deskAwaySwitch(d)}${deskPausedTag(d)}${deskPauseButton(d)}</div>${body ? head : ""}<div class="dk-scroll dkn-body" data-scroll-key="desk-items:${esc(project)}" data-dkn-list="items"${deskCFitStyle("items")}>${body || `<div class="dk-empty">Nothing waits on you and nothing is working.</div>`}</div><button class="dkn-more" data-desk-c-all="items"${deskCFitBy.get("items") ? "" : " hidden"}>${deskCMoreBy.get("items") || ""}</button></div><div class="dkn-low"><div class="dkn-lcol">${up}${parked}</div>${done}</div></div>`;
 }
 
 // ---------- clicks ----------
@@ -518,6 +555,7 @@ deskClicks({
   },
   deskCFold: (el) => {
     const k = el.dataset.deskCFold;
+    if (k === "next" || k === "parked") return deskCLowFold(k);
     if (!deskCFolds.delete(k)) deskCFolds.add(k);
     else deskCOpened.set(k, Date.now());
     try { localStorage.setItem("cue.deskCFolds", JSON.stringify([...deskCFolds])); } catch { /* kept for this window only */ }
