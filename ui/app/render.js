@@ -12,6 +12,7 @@ function applyTheme() {
   else if (root.dataset.theme !== mode) root.dataset.theme = mode;
   root.classList.toggle("away-on", away);
   retheme();
+  refont();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
