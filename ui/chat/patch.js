@@ -201,7 +201,7 @@ function scrollChat(chat, was, lifted, kept) {
   // A reply just opened in the reader (chat/reader.js readerPane): its start, wherever the chat was.
   else if (chat && !kept && chat.dataset.chatFor?.startsWith("r|")) { chat.scrollTop = 0; holdChat = null; }
   else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
-  else if (chat && (key !== activeKey || was.chatPinned)) chat.scrollTop = chat.scrollHeight;
+  else if (chat && (key !== activeKey || was.chatPinned)) boxStickToEnd(chat, false);
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
   else if (chat && !kept && was.oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
   activeKey = key;
@@ -221,7 +221,8 @@ function grow(el) {
   // Growing the box shrinks the chat above it. If you were reading the end of the chat, keep the
   // end in view (the conversation moves up with the box) instead of letting the box cover it.
   // The Desk lead's chat too: its box sits under it in the same card (#704).
-  const chat = el.closest(".active-pane, .crew-page")?.querySelector("[data-chat]") || el.closest(".dk2b-chat")?.querySelector(".dk-chat");
+  // An item's or a session's page on the Desk too: its box under its chat (#855).
+  const chat = el.closest(".active-pane, .crew-page")?.querySelector("[data-chat]") || el.closest(".dk2b-chat, .dkn-spm, .dk-right")?.querySelector(".dk-chat");
   const pinned = boxAtEnd(chat);
   const top = el.scrollTop, atEnd = el.selectionEnd >= el.value.length;
   el.style.height = "auto";
@@ -229,7 +230,7 @@ function grow(el) {
   // The moment collapsed resets where it was scrolled (WebKit doesn't always put it back): with the cursor
   // at the end, the end stays in view; else where you were.
   el.scrollTop = atEnd ? el.scrollHeight : top;
-  if (pinned) chat.scrollTop = chat.scrollHeight;
+  if (pinned) boxStickToEnd(chat, false);
 }
 const picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", multiple: true, hidden: true });
 /** Finder's picker is open (the window lost focus to it, not to another app: the mini window stays open, mini.js). */

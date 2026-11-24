@@ -659,7 +659,7 @@ if (typeof document !== "undefined") {
   document.addEventListener("scroll", (e) => {
     const c = e.target;
     if (!c?.matches?.(".dk-chat")) return;
-    const at = Date.now(), end = boxAtEnd(c);
+    const at = Date.now(), end = boxEndAfterScroll(c);
     if (!end && at - (c._pinAt || 0) < 400 && at - (c._youAt || 0) > 800) return;
     deskChatEnd = end;
   }, true);

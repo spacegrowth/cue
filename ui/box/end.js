@@ -61,7 +61,17 @@ if (boxFollowSizes) {
     for (const c of document.querySelectorAll(BOX_CHATS)) if (!c._follows) boxFollow(c);
   }).observe(document.documentElement, { childList: true, subtree: true });
   // Scrolled (by you, or by a view placing it): where it is now.
-  document.addEventListener("scroll", (e) => { if (e.target?._follows) e.target._wasEnd = boxAtEnd(e.target); }, true);
+  document.addEventListener("scroll", (e) => { if (e.target?._follows) e.target._wasEnd = boxEndAfterScroll(e.target); }, true);
+  // A wheel, touch, key or click of yours in a chat (its scroll bar too): what scrolls it next is you.
+  for (const type of ["wheel", "touchmove", "pointerdown", "keydown"]) document.addEventListener(type, (e) => { const c = e.target?.closest?.(BOX_CHATS); if (c) c._youAt = Date.now(); }, { capture: true, passive: true });
+}
+/** Whether chat `c`, just scrolled, counts as at its end, so what comes in keeps it there (#855). Where it is now, except
+ *  for the scroll of Cue putting it at its end: its event comes a frame later, and by then the box under the chat may
+ *  have grown a line or a reply come in, so it was measured short of the end and the chat stopped following, its last
+ *  lines left under the box. Still where Cue put it, with no wheel, touch, key or click of yours since: at its end. */
+function boxEndAfterScroll(c) {
+  if (c._wasEnd && c.scrollTop === c._pinTop && Date.now() - (c._youAt || 0) > 1000) return true;
+  return boxAtEnd(c);
 }
 
 // ---------- what you're reading: Cue's notifications skip it, and take back what's about a chat you open (#799) ----------
