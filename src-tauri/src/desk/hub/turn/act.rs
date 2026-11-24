@@ -304,7 +304,7 @@ fn next_once_free(st: &mut Store, b: &Back, x: &str, now: u64, fx: &mut Effects)
     let it = item_of(st, id)?;
     let (title, project) = (it.title.clone(), it.project.clone());
     let message = format!("{crew}Desk item #{id} ({title}) isn't done (you said it looks right, and now it's reopened): {}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.{}\n{}{}", crate::desk::with_your_pictures(b.words), b.again, crate::desk::check_words(id), b.pr_open);
-    let hand = reopen_handoff(it, h, &format!("{} is at work on #{x}", h.name), b.words);
+    let hand = reopen_handoff(it, h, &format!("{} is at work on #{x}", h.name), b.words, "the user's");
     it.remember_holder();
     (it.moved_from, it.reopen_note, it.back_message) = (Some(h.clone()), hand, message);
     (it.holder, it.state, it.after, it.next_for, it.queued_at) = (None, "queued".into(), None, Some(h.clone()), now);
@@ -318,7 +318,7 @@ fn to_fresh_session(st: &mut Store, b: &Back, why: &str, now: u64, fx: &mut Effe
     let (id, h, did) = (b.id, b.h, b.did());
     let it = item_of(st, id)?;
     let project = it.project.clone();
-    let hand = reopen_handoff(it, h, why, b.words);
+    let hand = reopen_handoff(it, h, why, b.words, "the user's");
     it.remember_holder();
     (it.moved_from, it.reopen_note) = (Some(h.clone()), hand);
     (it.holder, it.state, it.after) = (None, "new".into(), None);
@@ -350,8 +350,8 @@ fn back_to_same(st: &mut Store, b: &Back, now: u64, fx: &mut Effects) -> Result<
 
 /// What a fresh session taking item `it` back from `h` (closed, or busy: `why`) is told first (#577): what the item
 /// was, who did it and what's on main, its files, and your words. Its holder's note or last reply follow
-/// (route.rs `handoff_words`).
-fn reopen_handoff(it: &DeskItem, h: &Holder, why: &str, words: &str) -> String {
+/// (route.rs `handoff_words`). `whose`: whose words they are ("the user's", or the lead's when it sent it back, #784).
+pub(crate) fn reopen_handoff(it: &DeskItem, h: &Holder, why: &str, words: &str, whose: &str) -> String {
     let id = &it.id;
     let mut out = format!("Hand-off: #{id} was done by {} and is reopened; {why}, so it's yours now.", h.name);
     let commits: Vec<&str> = it.commit_in.iter().map(|(_, c)| c.as_str()).chain(it.commit.split_whitespace()).collect();
@@ -370,7 +370,7 @@ fn reopen_handoff(it: &DeskItem, h: &Holder, why: &str, words: &str) -> String {
         out.push_str(&format!(" Its files: {}{}.", shown.join(", "), if files.len() > 12 { ", …" } else { "" }));
     }
     let said = crate::desk::with_your_pictures(words);
-    out.push_str(&format!("\nWhat isn't right, in the user's words: {said}"));
+    out.push_str(&format!("\nWhat isn't right, in {whose} words: {said}"));
     out
 }
 

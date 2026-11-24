@@ -138,3 +138,49 @@ fn send_back_on_an_item_to_check_stays_with_its_session_while_it_works_on_anothe
     w.settle();
     assert_eq!(it.holder.as_ref().map(|x| x.sid.as_str()), Some(h.as_str()));
 }
+
+/// #784: the lead sends back an item to check to the session that did it, though that session isn't on the Desk's
+/// routes list (here, it's on another project now): found by the holder its item saved, and reopened there.
+#[test]
+fn the_lead_sends_back_an_item_to_check_to_its_holder_off_the_routes_list() {
+    let w = World::new();
+    let (_, project, id) = ready(&w);
+    let (h, _) = holder_of(&w, &project, "Header jumps");
+    w.hub().write(|st| st.sessions.get_mut(&h).unwrap().project = "elsewhere".into());
+    let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    let at = sent_to(&w, &h).len();
+    ends(&w, &lead, &format!("ROUTE: #{id} -> cue-teams | why: the shadow is gone too"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!((it["state"].as_str(), it["holder"]["sid"].as_str()), (Some("working"), Some(h.as_str())), "{it}");
+    assert!(it["route_failed"].as_str().unwrap_or_default().is_empty(), "{it}");
+    assert!(sent_to(&w, &h)[at..].iter().any(|t| t.contains("the shadow is gone too")), "{:?}", sent_to(&w, &h));
+}
+
+/// #784: its session is gone, so nothing wakes it: the lead's send back, to its holder's name or to new, goes to a
+/// new session with a hand-off, as your Send back does; with no why, it's refused and the item stays to check.
+#[test]
+fn the_lead_sends_back_an_item_to_check_to_a_new_session_when_its_holder_has_left() {
+    for to in ["cue-teams", "new"] {
+        let w = World::new();
+        let (_, project, id) = ready(&w);
+        let (h, _) = holder_of(&w, &project, "Header jumps");
+        w.hub().forget(&h);
+        w.settle();
+        let lead = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+        let at = sent_to(&w, &lead).len();
+        ends(&w, &lead, &format!("ROUTE: #{id} -> {to}"));
+        assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check", "no why: it stays");
+        let told = sent_to(&w, &lead)[at..].join("\n");
+        assert!(told.contains(&format!("Refused: #{id} is with the user to check, and cue-teams has left the Desk")), "{to}: {told}");
+
+        ends(&w, &lead, &format!("ROUTE: #{id} -> {to} | why: the shadow is gone too"));
+        w.settle();
+        let (fresh, _) = holder_of(&w, &project, "Header jumps");
+        let it = item(&w, &project, "Header jumps");
+        assert!(!fresh.is_empty() && fresh != h, "{to}: {it}");
+        assert_eq!(it["state"], "working", "{to}: {it}");
+        let told = sent_to(&w, &fresh).join("\n");
+        assert!(told.contains(&format!("Hand-off: #{id} was done by cue-teams and is reopened; cue-teams has left the Desk")), "{to}: {told}");
+        assert!(told.contains("in the Desk lead's words: the shadow is gone too"), "{to}: {told}");
+    }
+}

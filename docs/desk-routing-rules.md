@@ -86,6 +86,10 @@ step 3).
     done item, when it is at work on another item (working, queued or finishing). The fresh
     session gets a hand-off: who did the item, its commits on main, its files, and your words.
     An item that still has its own copy stays with its session (rule 7 queues it there).
+    The lead can do the same for an item to check (#784): a route to the session that did it finds
+    it by the item's saved holder even when it's no longer on the Desk's list, and when that session
+    is closed, the route (to its name, or to new) goes to a fresh session with the same hand-off and
+    the lead's why, and its work on another machine carries over. With no why it's refused.
     Why: a done item's session has often moved on; waiting behind its new work would hide yours.
 
 ## What Cue would need to change
