@@ -264,7 +264,21 @@ function deskGivePlace() {
   m.style.left = `${Math.max(L + pad, Math.min(want, R - pad - w))}px`;
   if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
   m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
+  deskRowMorePlace(m, b, r, w, h, L, pad);
   m.scrollTop = top;   // measuring it unscrolled dropped where you'd scrolled it to (#308)
+}
+/** A row's ⋯ menu in the item card (#839): never over a Now word, its own row's or a neighbour's (lying on the next
+ *  row's "Ready to check" it read as that word turning into "Start now"). Under its ⋯ when there's room, else over it;
+ *  sideways, clear of the Now column: its right edge at that column's left. Narrow, where Now sits under the title at
+ *  the left, it opens at the ⋯'s right edge. Up next's rows have no Now column: placed as any ⋯ menu. */
+function deskRowMorePlace(m, b, r, w, h, L, pad) {
+  const now = b.closest(".dkn-row")?.querySelector(":scope > .dkn-now")?.getBoundingClientRect();
+  if (!now) return;
+  const right = now.top < r.bottom && now.bottom > r.top ? now.left - 8 : r.right;
+  m.style.left = `${Math.max(L + pad, right - w)}px`;
+  const below = innerHeight - r.bottom - 4 - pad, above = r.top - 4 - pad, up = h > below && above > below, room = up ? above : below;
+  if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
+  m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
 }
 addEventListener("scroll", (e) => { if (deskGiveFor && !e.target?.closest?.(".dk-givemenu")) deskGivePlace(); }, true);
 addEventListener("resize", () => { if (deskGiveFor) deskGivePlace(); });

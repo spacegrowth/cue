@@ -41,7 +41,7 @@ test("a row's ⋯ holds only Start now, Park and Drop, and opening it doesn't op
   await expect(row(page, "d4")).toHaveClass(/\bon\b/);
   const side = page.locator(".dk-right");
   await openMore(side);
-  await expect(side.locator(".dk-moremenu [role='menuitem']")).toHaveText(["Start it now", "Put it before Search stays centred", "Park"]);
+  await expect(side.locator(".dk-moremenu [role='menuitem']")).toHaveText(["Start now", "Put it before Search stays centred", "Park"]);
   // One menu at a time: the row's ⋯ shuts the page's.
   await dots(page, "d4").click();
   await expect(page.locator(".dk-moremenu")).toHaveCount(1);
@@ -129,6 +129,25 @@ for (const [name, size] of [["laptop", LAPTOP], ["the smallest window", SMALLEST
         expect(b.y).toBeGreaterThanOrEqual(r.y);
         expect(b.y + b.height).toBeLessThanOrEqual(r.y + r.height + 0.5);
       }
+      // In the card, a row's open menu lies over no Now word, its own or another row's, and each still says what it did
+      // ("Ready to check" never reads as "Start now").
+      const words = () => page.locator(".dkn-card .dkn-row[data-desk-item] .dkn-now").allTextContents();
+      const said = await words();
+      expect(said.join(" ")).toContain("Ready to check");
+      for (const id of ["d1", "d2", "d3", "d5"]) {
+        await row(page, id).hover();
+        await dots(page, id).click();
+        const mb = await menu(page).boundingBox();
+        const over = await page.locator(".dkn-card .dkn-row .dkn-now > *").evaluateAll((els, b) => els.map((e) => e.getBoundingClientRect()).filter((r) => r.width && r.left < b.x + b.width && r.right > b.x && r.top < b.y + b.height && r.bottom > b.y).length, mb);
+        expect(over, `${id}'s menu lies over a Now word`).toBe(0);
+        // Under its ⋯ when there's room, else over it.
+        const bb = await dots(page, id).boundingBox(), vh = page.viewportSize().height;
+        if (vh - (bb.y + bb.height) - 12 >= mb.height) expect(mb.y).toBeGreaterThanOrEqual(bb.y + bb.height);
+        else expect(mb.y + mb.height).toBeLessThanOrEqual(bb.y + 0.5);
+        expect(await words()).toEqual(said);
+        await page.keyboard.press("Escape");
+      }
+      await row(page, "d4").hover();
       await dots(page, "d4").click();
       const m = await menu(page).boundingBox();
       expect(m.x).toBeGreaterThanOrEqual(0);

@@ -38,7 +38,7 @@ function deskNotStarted(i) {
     t = busy ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
     next = busy ? `${who} starts on it when that's done.` : `${who} starts on it when it's free.`;
   }
-  const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">${i.holder ? "Start now" : "Start now in a new session"}</button>`;
+  const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`;
   return `<div class="dk-ns" role="status"><div class="dk-ns-h">${deskStateIcon(i)}<span>Not started yet</span></div><div class="dk-ns-t">${t}</div>${sub ? `<div class="dk-ns-s">${sub}</div>` : ""}<div class="dk-ns-n">${next}</div><div class="dk-ns-a">${go}</div></div>`;
 }
 /** An item's quiet line under its title (#200): who has it, its commit, who added it and when; its state is the
