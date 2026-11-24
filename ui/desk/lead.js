@@ -643,16 +643,29 @@ function deskStopNote(e) {
 }
 /** A session's words for the lead (#474: its TO LEAD: line, desk/hub/turn/heard.rs to_lead_said: "From <name> on #<id> (title):\n
  *  <words>\nAnswer it with NOTE: …", or "From <name>:\n<words>\nIt holds no item here…" when it's on none) as a card:
- *  who it's from, the item it's about (a click opens it), its words. Cue's last line, for the lead, isn't shown. null for
- *  any other message. */
+ *  who it's from, the item it's about (a click opens it), its words. Cue's last line, for the lead, isn't shown. A
+ *  message that joined several (Cue keeps what comes while the lead is busy, one message when its turn ends): a card
+ *  each. In a message that holds your words too (#812), these cards are Activity's; your words stay in the chat
+ *  (deskRelaySplit). null for any other message. */
 function deskFromSession(e) {
-  const text = String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim();
-  const m = /^From ([^\n]+?)(?: on #(\S+) \(([^\n]*)\))?:\n([\s\S]+)\n(?:Answer it with NOTE: #\S+ \| <your words>\.|It holds no item here, so a NOTE can't reach it\.)$/.exec(text);
-  if (!m) return null;
-  const [, who, id, said, words] = m;
-  const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
-  return deskMg({ kind: "from", who: esc(who), tag: "TO LEAD", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
-    body: `${id ? `<div class="mg-t whole">${esc(it?.title || said)}</div>` : ""}${deskCut(`from:${e.at_ms}`, "mg-t whole", esc(words.trim()).replace(/\n/g, "<br>"), words.trim())}` });
+  const split = deskRelaySplit(e.text);
+  if (!split) return null;
+  return split.relays.map(({ who, id, said, words }, k) => {
+    const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
+    return deskMg({ kind: "from", who: esc(who), tag: "TO LEAD", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
+      body: `${id ? `<div class="mg-t whole">${esc(it?.title || said)}</div>` : ""}${deskCut(`from:${e.at_ms}${k ? `:${k}` : ""}`, "mg-t whole", esc(words).replace(/\n/g, "<br>"), words)}` });
+  }).join("");
+}
+/** A session's words for the lead as Cue sent them (to_lead_said), each between blank lines: one or more of them. */
+const DESK_RELAY = /(^|\n\n)From ([^\n]+?)(?: on #(\S+) \(([^\n]*)\))?:\n([\s\S]+?)\n(?:Answer it with NOTE: #\S+ \| <your words>\.|It holds no item here, so a NOTE can't reach it\.)(?=\n\n|$)/g;
+/** Message `text` to the lead taken apart (#812): the sessions' words Cue passed on in it ({ who, id, said: the item's
+ *  title then, words }), and `yours`, whatever else it holds: your words, when you wrote while the lead was busy and
+ *  Cue sent them in one message with a session's. null when it passes on none. */
+function deskRelaySplit(text) {
+  const t = deskSaid(String(text ?? "")).trim();
+  const relays = [...t.matchAll(DESK_RELAY)].map(([, , who, id, said, words]) => ({ who, id, said, words: words.trim() }));
+  if (!relays.length) return null;
+  return { relays, yours: t.replace(DESK_RELAY, "$1").replace(/\n{3,}/g, "\n\n").trim() };
 }
 /** What Cue told the lead of a DONE it couldn't act on (desk/hub/core/desk.rs lead_done: "#69 not closed: it's done already",
  *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):

@@ -271,6 +271,10 @@ function chatRowHtml(c, e, n) {
   if (told) return told;
   // Your send-back of an item ("Not done", #688): your bubble with the item's head, as your other words about it.
   if (e.role === "you" && youBack(e)) return chatYouHtml(c, e, n);
+  // In a Desk chat, your words that went in one message with a session's words for the lead (#812: you wrote while it
+  // was busy): your bubble with only yours, the lead's answer under it; the session's words are Activity's (runs.js).
+  const mixed = e.role === "you" && (page?.lines || page?.dkOut) && typeof deskRelaySplit === "function" && deskRelaySplit(e.text);
+  if (mixed?.yours) return chatYouHtml(c, { ...e, text: mixed.yours }, n);
   const cueRow = e.role === "you" && chatCueRow(page, s, sid, e, n, reviewAt);
   if (cueRow) return cueRow;
   if (reviews.has(n)) return "";
