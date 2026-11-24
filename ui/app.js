@@ -36,6 +36,7 @@ function setState(s) {
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
   watchGhosts();
   if (typeof deskGoneApply === "function") deskGoneApply(s);   // a Desk deleted here stays gone (desk/home.js)
+  if (typeof landsHeldApply === "function") landsHeldApply(s);   // a Desk's settings just saved stay shown (lands.js)
   state = s;
   for (const [sid, c] of Object.entries(s.insight || {})) insCache.set(sid, c);   // the board's numbers, as of this change
   // A rename Cue's update doesn't have yet keeps showing (no flash of the old name).
