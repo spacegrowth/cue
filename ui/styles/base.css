@@ -74,16 +74,16 @@
      --type-scale raises or lowers everything at once: 1.07 is a 16px body with every size following, in whole pixels
      (row and button heights are fixed px, so check them for more than one step). */
   --type-scale: 1;
-  --type-label: round(calc(12px * var(--type-scale)), 1px);    /* section labels (caps, 700, 0.06em), progress-bar times, counts, badges, keys */
-  --type-label-lh: round(calc(16px * var(--type-scale)), 1px);
-  --type-small: round(calc(13px * var(--type-scale)), 1px);    /* buttons, tabs, side-panel text, meta lines (#id · session), status words */
-  --type-small-lh: round(calc(18px * var(--type-scale)), 1px);
-  --type-body: round(calc(15px * var(--type-scale)), 1px);     /* everything people read: chat, item titles, session names, what you type */
-  --type-body-lh: round(calc(22px * var(--type-scale)), 1px);  /* the line a message's words sit on */
-  --type-title: round(calc(17px * var(--type-scale)), 1px);    /* a pane's or a card's title, and the glyphs on small square buttons */
-  --type-title-lh: round(calc(24px * var(--type-scale)), 1px);
-  --type-page: round(calc(22px * var(--type-scale)), 1px);     /* a page's heading */
-  --type-page-lh: round(calc(28px * var(--type-scale)), 1px);
+  --type-label: round(calc(11px * var(--type-scale)), 1px);    /* section labels (caps, 700, 0.06em), progress-bar times, counts, badges, keys */
+  --type-label-lh: round(calc(15px * var(--type-scale)), 1px);
+  --type-small: round(calc(12px * var(--type-scale)), 1px);    /* buttons, tabs, side-panel text, meta lines (#id · session), status words */
+  --type-small-lh: round(calc(17px * var(--type-scale)), 1px);
+  --type-body: round(calc(14px * var(--type-scale)), 1px);     /* everything people read: chat, item titles, session names, what you type */
+  --type-body-lh: round(calc(20px * var(--type-scale)), 1px);  /* the line a message's words sit on */
+  --type-title: round(calc(16px * var(--type-scale)), 1px);    /* a pane's or a card's title, and the glyphs on small square buttons */
+  --type-title-lh: round(calc(22px * var(--type-scale)), 1px);
+  --type-page: round(calc(20px * var(--type-scale)), 1px);     /* a page's heading */
+  --type-page-lh: round(calc(26px * var(--type-scale)), 1px);
   --type-figure: round(calc(32px * var(--type-scale)), 1px);   /* big numbers (Insights) */
   --type-figure-lh: round(calc(36px * var(--type-scale)), 1px);
   /* The design system's corners (tokens.json): every border-radius in the app is one of these, or 50% for a circle.
