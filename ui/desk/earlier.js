@@ -53,7 +53,7 @@ function deskEarlierMarker(m, busy) {
 /** An earlier lead's messages, drawn as the lead's chat draws its own (its Desk lines as lines, Cue's notes short). */
 function deskEarlierRows(sid, msgs) {
   const s = { session_id: sid, harness: "claude", thread: msgs, team: [] };
-  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, dkOut: true, you: deskLeadNote, youHead: deskAboutHead, noActs: true, noSteps: true });
+  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, refs: deskRefs, dkOut: true, you: deskLeadNote, youHead: deskAboutHead, noActs: true, noSteps: true });
   return `<div class="dk-earlier" data-key="lead:${esc(sid)}">${rows}</div>`;
 }
 

@@ -155,12 +155,14 @@ const MD_DROP = "<!--drop-->";
 /** `lines`: a hook for lines of a page's own (the Desk's lead lines, desk/lead.js deskLineHtml): (line, inline) → its
  *  html, MD_DROP to leave it out, or "" for an ordinary line. Lines in code blocks never reach it; a run of them is one block.
  *  `run`: a hook for each such block drawn (and, with `lines`, each block of decisions): its html → what goes in its place. */
-function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run = null } = {}) {
+/** `refs`: a hook for each line's words once drawn (html, links already made) → them with a page's own links added
+ *  (the lead chat's items and sessions, desk/lead.js deskRefs). Never given code blocks. */
+function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run = null, refs = null } = {}) {
   const out = [];
   // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
   // whose paths these are, with no Run on its commands (the mini window).
   const base = sessBase(runIn || pathsOf);
-  const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base);
+  const inline = (s) => { const h = linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base); return refs ? refs(h) : h; };
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {
     if (i % 2 === 1) {
@@ -195,7 +197,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
           const h = decidedHtml(r.lines, inline, !!lines);
           out.push(run && lines ? run(h) : h);
         } else if (r.kind === "quote") {
-          out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"))}</blockquote>`);
+          out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"), { refs })}</blockquote>`);
         } else if (r.kind === "table") {
           out.push(table(r.lines, inline));
         } else if (r.kind === "list") {

@@ -346,7 +346,7 @@ function chatAgentHtml(c, e, n) {
   const cnt = counts?.get(n) || "";
   const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
   // A Desk chat (#688): its Desk lines taken out for the count line around it; a reply of nothing but those leaves whole.
-  const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, run });
+  const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, refs: page?.refs, run });
   const talk = page?.lines && typeof dkReplyTake === "function" ? dkReplyTake(draw) : null;
   const body = talk ? talk.html : draw(null);
   // The lead's answer to a turn of only Cue's notices (#816): in Activity under the notice, unless it acted on it; then

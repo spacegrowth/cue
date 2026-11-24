@@ -122,7 +122,7 @@ function deskChatRows(s, page) {
   // text, not dressed up as cards.
   const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
   // Every Desk chat (#789): Cue's messages to it and its Desk lines go only to Activity.
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
+  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, refs: lead ? deskRefs : undefined, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */

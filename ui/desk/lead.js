@@ -388,6 +388,36 @@ function deskLineHtml(line, inline) {
   // Marked as the Desk's own (desk/runs.js): it leaves the chat for Activity (a count line says it), unless it's for you.
   return html && html !== MD_DROP ? dkMark(html, deskSignOf(m[1])) : html;
 }
+/** An item named in a message: "#826", or with its kind before it ("Bug #826"); not "&#39;" (an escaped quote) or a
+ *  path's "/#x". A session named: a word with a dash in it ("cue-826"), linked only when it is a session's name. */
+const DESK_REF = /(^|[^\w&/#-])(?:((?:bug|feature|task)\s+)?#([a-z0-9]+)\b|([a-z0-9][\w.]*-[\w.-]*\w))/gi;
+/** The lead chat's words (md's `refs`, html with its links made): each item number a link that opens that item, each
+ *  session's name a link that opens its chat. Only what exists: a number no item has, a word no session is named, stays
+ *  as it is. Never inside a link, a button or inline code already there. */
+function deskRefs(h) {
+  if (!/#|-/.test(h)) return h;
+  const p = typeof deskSelection === "function" ? deskSelection() : "";
+  let names = null;
+  const sessBy = (n) => {
+    names ??= new Map(state.sessions.map((s) => [nameOf(s.session_id, s.project).toLowerCase(), s.session_id]));
+    return names.get(n.toLowerCase());
+  };
+  const swap = (t) => t.replace(DESK_REF, (m, pre, kind, id, name) => {
+    if (id) {
+      const it = deskItemAny(p, id.toLowerCase());
+      return it ? `${pre}<a href="#" class="dk-ref" data-desk-chk-item="${esc(it.id)}">${kind || ""}#${id}</a>` : m;
+    }
+    const sid = sessBy(name);
+    return sid ? `${pre}<a href="#" class="dk-ref" data-desk-session="${esc(sid)}">${name}</a>` : m;
+  });
+  // Tags as they are; text between them changed only outside <a>, <button> and <code>.
+  let deep = 0;
+  return h.split(/(<[^>]*>)/).map((part) => {
+    const tag = /^<(\/?)(a|button|code)\b/i.exec(part);
+    if (tag) { deep = Math.max(0, deep + (tag[1] ? -1 : 1)); return part; }
+    return part.startsWith("<") || deep ? part : swap(part);
+  }).join("");
+}
 /** A session's own Desk lines (#685: CHECK, IF PICKED, TO LEAD…), drawn as the lead's are, each with its sign. */
 const DESK_SESS = /^[-*+ ]*(CHECK|IF PICKED|TO LEAD|USER VERIFY|NOT DONE|DECIDED \(minor\))\**\s*:(.*)$/;
 /** A Desk line's kind as its sign and mark name it: "TAKE COPY" → "take-copy", "DECIDED (minor)" → "minor". */
