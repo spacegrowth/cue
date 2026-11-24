@@ -50,7 +50,7 @@ const dkwTag = (d) => `<span class="dkw-tag">${deskKindIcon("tray")}Desk · ${es
 /** "3 at work · 5 to check" (either left out at 0). */
 const dkwCounts = (w) => [w.atWork ? `<b>${w.atWork}</b> at work` : "", w.toCheck ? `<b>${w.toCheck}</b> to check` : ""].filter(Boolean).join(" · ");
 
-/** Desk `w.d`'s card in Waiting (`w` from deskWaitsOf). Its head (the lead, the Desk's tag) opens the Desk. */
+/** Desk `w.d`'s card in Waiting (`w` from deskWaitsOf). A click on it opens the Desk with its lead's chat (#850). */
 function deskLeadCard(w, isOpen) {
   const d = w.d, lead = deskLead(d), s = lead ? sessionOf(lead.sid) : null;
   const [first, ...more] = w.asks;
@@ -59,11 +59,28 @@ function deskLeadCard(w, isOpen) {
   const who = `${projDot(deskWorkspace(d), s?.state === "working")}${s ? badge(s.harness) : ""}<span class="proj">${esc(lead ? deskLeadName(d) : deskName(d))}</span>${dkwTag(d)}`;
   const counts = dkwCounts(w);
   return `<div class="nrow dkw" data-dkw="${esc(d.project)}">`
-    + `<div class="nrow-top"><span class="nrow-who" data-desk-hand="${esc(d.project)}">${who}</span><span class="nrow-side"><span class="age">${ago(w.at)}</span></span></div>`
+    + `<div class="nrow-top"><span class="nrow-who">${who}</span><span class="nrow-side"><span class="age">${ago(w.at)}</span></span></div>`
     + (counts ? `<div class="dkw-cnt">${counts}</div>` : "")
     + `<div class="dkw-in"><div class="dkw-ih">Waits on you · ${w.n}</div>${first ? dkwAsk(w, first, isOpen(first.session_id)) : ""}${shown.map((r) => dkwRow(w, r)).join("")}`
     + (left > 0 ? `<button class="dkw-more" data-desk-hand="${esc(d.project)}">+ ${left} more · Open the Desk ›</button>` : "")
     + `</div></div>`;
+}
+
+/** Desk `project` open on its lead's chat, ready to type to the lead: the Desk opens as a hand-off's link opens it
+ *  (desk/act.js openInDesk), with nothing else open over the lead's chat; its box takes the cursor (desk/view.js). */
+function dkwOpenLead(project) {
+  deskOpen = null; deskPick = null; deskTab = "lead"; readerView = null;
+  deskTurnAt = 0; deskTurnLead = false; deskChatEnd = true;
+  openInDesk(project);
+}
+if (typeof document !== "undefined") {
+  // A click on a Desk's card opens its lead's chat (#850); not one on its answers (Deny, Allow, Choose…), its item
+  // links (they open the item, desk/lead.js) or its other asks (they open in Active, app/clicks_board.js [data-big]).
+  document.addEventListener("click", (e) => {
+    const card = e.target.closest?.("[data-dkw]");
+    if (!card || e.target.closest("button, a, input, textarea, select, [data-big], [data-desk-hand]")) return;
+    dkwOpenLead(card.dataset.dkw);
+  });
 }
 
 /** Desk `w.d`'s line under Sessions while nothing on it waits on you: the tray, the lead, the Desk, its counts, ›. */
