@@ -6,8 +6,25 @@ use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::desk::hub::core::members::{ask_first, join, may_route, UseAsk};
 use crate::desk::hub::core::desk::{Effects, NewStart, ask_of, at_work, holder_of, resolve, rule_of, secs};
 
+/// When items waiting on item `it` start (#808): "landed" or "checked", by its Desk's setting (desk/lands.rs "waits").
+pub(crate) fn waits_point(st: &Store, it: &DeskItem) -> &'static str {
+    crate::desk::lands::lands_of(&it.project, &crate::desk::hub::core::view::holder_folder(st, it)).waits
+}
+
+/// Whether item `id` has landed: to check after its landing, its steps after landing done (#808).
+pub(crate) fn landed(it: &DeskItem) -> bool {
+    it.state == "to_check" && it.finish.as_ref().is_some_and(|f| f.step == "checked")
+}
+
+/// Whether what waits on item `id` may start: it's gone or done, or it has landed on a Desk whose waiting items start
+/// once the one before lands (#808).
+pub(crate) fn let_go(st: &Store, id: &str) -> bool {
+    st.desk.item(id).is_none_or(|it| it.state == "done" || (landed(it) && waits_point(st, it) == "landed"))
+}
+
 /// Items queued after `id` start now, with no reason (why it was queued isn't why it starts): called once `id` is done
-/// (Looks right, #576: a session keeps its item till then), or leaves the queue (`hand_on`). One next for a session
+/// (Looks right, #576: a session keeps its item till then), or has landed where its Desk starts them then (#808,
+/// act.rs `release_landed`), or leaves the queue (`hand_on`). One next for a session
 /// waits for it from now (desk/hub/turn/queue.rs). While its Desk is paused (#366), nothing starts: they stay queued,
 /// and Resume starts them.
 pub(crate) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
@@ -25,6 +42,28 @@ pub(crate) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
         it.updated = secs(now);
         start_released(it, &rule, lead.as_ref(), now, fx);
         fx.items.push(it.id.clone());
+    }
+}
+
+/// `release` for an item that's done or has landed: what it lets go kept on it (`released`), so Undo can hold back
+/// those not started yet and a Send back can tell those at work (act.rs, #808).
+pub(crate) fn release_kept(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    let ids: Vec<String> = st.desk.items.iter().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued" && !crate::desk::hub::away::pause::is_paused(&i.project)).map(|i| i.id.clone()).collect();
+    if let Some(it) = st.desk.item_mut(id).filter(|_| !ids.is_empty()) {
+        for w in ids {
+            if !it.released.contains(&w) {
+                it.released.push(w);
+            }
+        }
+        fx.items.push(id.to_string());
+    }
+    release(st, id, now, fx);
+}
+
+/// Item `id` has landed (`landed`): on a Desk whose waiting items start then (#808), what waits on it starts now.
+pub(crate) fn release_landed(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    if st.desk.item(id).is_some_and(landed) && let_go(st, id) {
+        release_kept(st, id, now, fx);
     }
 }
 

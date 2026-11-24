@@ -86,8 +86,10 @@ pub(crate) fn queue_for(st: &mut Store, project: &str, by: &crate::desk::hub::tu
     }
     let at = st.desk.item(id).map_or(now, |i| i.queued_at) + WAIT_MS;
     let mins = WAIT_MS / 60_000;
+    // When it starts after the one before (#808): that one landed, or its Looks right, as its Desk is set.
+    let point = |a: &str| if st.desk.item(a).is_some_and(|i| crate::desk::hub::turn::route::waits_point(st, i) == "checked") { "gets Looks right" } else { "lands" };
     Some(match (&waits, busy) {
-        (Some(a), _) => format!("Queued: #{id} is next for {0}, after #{a} gets Looks right; then it goes to {0} if it's free, else to a fresh session once {0} has stayed busy {mins} minutes.", h.name),
+        (Some(a), _) => format!("Queued: #{id} is next for {0}, after #{a} {1}; then it goes to {0} if it's free, else to a fresh session once {0} has stayed busy {mins} minutes.", h.name, point(a)),
         (None, Some(x)) => format!("Queued: #{id} is next for {0} (busy with #{x}); it goes to a fresh session at {1} if {0} is still busy.", h.name, clock(at)),
         (None, None) => format!("Queued: #{id} is next for {0}; it goes to a fresh session at {1} if {0} is busy then.", h.name, clock(at)),
     })

@@ -12,7 +12,7 @@
 
 use crate::desk::hub::prelude::*;
 use crate::desk::hub::core::desk::{secs, Effects, NewStart};
-use crate::desk::hub::turn::route::release;
+use crate::desk::hub::turn::route::release_kept;
 
 /// What a session at work on the Desk is told as it pauses.
 pub(crate) const PAUSE_WORDS: &str = "The Desk is paused. Stop at the next safe point: finish the step you're on, leave your work as it is in your copy (don't commit, push or undo anything, and don't say DONE), say in one line where you stopped, and end your turn. Cue tells you when to go on.";
@@ -61,9 +61,10 @@ pub(crate) fn pause_block(desk: &str, now: u64) -> Option<String> {
     })
 }
 
-/// Whether item `id` is over for what's queued after it: done (Looks right, #576), or gone.
+/// Whether item `id` is over for what's queued after it: done (Looks right, #576), landed where its Desk starts them
+/// then (#808), or gone.
 fn over(st: &Store, id: &str) -> bool {
-    st.desk.item(id).is_none_or(|i| i.state == "done")
+    crate::desk::hub::turn::route::let_go(st, id)
 }
 
 impl Hub {
@@ -171,7 +172,7 @@ impl Hub {
             afters.dedup();
             afters.retain(|a| over(st, a));
             for a in afters {
-                release(st, &a, now, &mut fx);
+                release_kept(st, &a, now, &mut fx);
             }
             fx.sends.extend(held);
             for sid in stopped {

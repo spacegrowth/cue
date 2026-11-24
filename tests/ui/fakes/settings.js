@@ -38,11 +38,12 @@ CueBridge.area("settings", (w) => {
     ["after", "After landing", [["nothing", "Nothing", "Landed is the last step."], ["install", "Install or serve Cue", "Window-only changes are served in place, after the check."], ["command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder. The first that fails stops the rest, and the item waits for you. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first."]]],
     ["push", "Send finished work to GitHub", [["after", "Right away", "Each finished item goes to GitHub as soon as it lands, without asking, so GitHub and your other computers stay current. Nothing there is ever overwritten."], ["ask", "Ask me first", "You're asked first. Sending keeps GitHub and your other computers current."], ["never", "Never", "Nothing is sent. GitHub and your other computers get the work only when you push it yourself."]]],
     ["tests", "Tests", [["all", "All tests", ""], ["changed", "Only what changed", ""], ["changed_full", "Changed, full run at landing", ""]]],
+    ["waits", "Items waiting on another start", [["landed", "When it lands", ""], ["checked", "When you've checked it", ""]]],
   ];
   const LANDS_DEFAULT = {
-    cue: { where: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", at_once: 3, check_steps: [], after_steps: [] },
-    repo: { where: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: [], after_steps: [] },
-    folder: { where: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: [], after_steps: [] },
+    cue: { where: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: [], after_steps: [] },
+    repo: { where: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: [], after_steps: [] },
+    folder: { where: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: [], after_steps: [] },
   };
   const landsWhy = (part, key, place) => {
     const hint = LANDS_PARTS.find((p) => p[0] === part)[2].find((c) => c[0] === key);

@@ -144,6 +144,13 @@ impl Hub {
         });
         if checked.is_some() {
             self.desk_finished(id, "check");
+            // Landed: what waits on it starts now where its Desk starts it then (#808).
+            let fx = self.write(|st| {
+                let mut fx = crate::desk::hub::core::desk::Effects::default();
+                crate::desk::hub::turn::route::release_landed(st, id, now, &mut fx);
+                fx
+            });
+            self.desk_done(fx);
         }
         self.desk_close_on_check(id);
     }

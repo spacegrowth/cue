@@ -91,6 +91,17 @@ pub const PARTS: &[Part] = &[
             c("changed_full", "Changed, full run at landing", "", true),
         ],
     },
+    // When an item queued after another (after:) starts (#808; desk/hub/turn/route.rs `release`): once the one before
+    // has landed (on main, its steps after landing done) or once you've said Looks right on it. No words under it, as
+    // Tests (#447).
+    Part {
+        key: "waits",
+        label: "Items waiting on another start",
+        choices: &[
+            c("landed", "When it lands", "", true),
+            c("checked", "When you've checked it", "", true),
+        ],
+    },
 ];
 
 /// Items at once: the most items of a project at work in copies of their own.
@@ -148,6 +159,8 @@ pub struct Lands {
     pub push: &'static str,
     /// What its sessions test (#780): "all", "changed" or "changed_full".
     pub tests: &'static str,
+    /// When an item waiting on one of its items starts (#808): "landed" or "checked".
+    pub waits: &'static str,
     pub at_once: u32,
     /// The check's steps, when it's your own ("command").
     pub check_steps: Vec<String>,
@@ -163,6 +176,7 @@ impl Lands {
             "check" => self.check,
             "after" => self.after,
             "tests" => self.tests,
+            "waits" => self.waits,
             _ => self.push,
         }
     }
@@ -174,23 +188,25 @@ impl Lands {
             "check" => self.check = key,
             "after" => self.after = key,
             "tests" => self.tests = key,
+            "waits" => self.waits = key,
             _ => self.push = key,
         }
     }
 
     pub fn to_json(&self) -> Value {
-        json!({ "where": self.at, "how": self.how, "check": self.check, "after": self.after, "push": self.push, "tests": self.tests, "at_once": self.at_once,
+        json!({ "where": self.at, "how": self.how, "check": self.check, "after": self.after, "push": self.push, "tests": self.tests, "waits": self.waits, "at_once": self.at_once,
             "check_steps": self.check_steps, "after_steps": self.after_steps })
     }
 }
 
 /// The defaults for a project in `place` (part 7). Tests: every test for a new Desk; Cue's own source only what changed,
-/// its check running the whole suite at landing (#780).
+/// its check running the whole suite at landing (#780). An item waiting on another starts once that one has landed,
+/// on every Desk (#808).
 pub fn defaults(place: Place) -> Lands {
     match place {
-        Place::Cue => Lands { at: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
-        Place::Repo => Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
-        Place::NoRepo => Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
+        Place::Cue => Lands { at: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
+        Place::Repo => Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
+        Place::NoRepo => Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
     }
 }
 
@@ -544,8 +560,8 @@ pub fn lead_line(l: &Lands) -> String {
     let label = |part: &str, key: &str| PARTS.iter().find(|p| p.key == part).and_then(|p| p.choices.iter().find(|c| c.key == key)).map_or(key.to_string(), |c| c.label.to_lowercase());
     let steps = |key: &str, steps: &[String]| if key == "command" { format!(" ({})", steps.join(STEP_SEP)) } else { String::new() };
     format!(
-        "How work lands now (LANDS: to propose a change): where: {} · how: {} · check: {}{} · after: {}{} · push: {} · tests: {} · at once: {}\n",
-        label("where", l.at), label("how", l.how), label("check", l.check), steps(l.check, &l.check_steps), label("after", l.after), steps(l.after, &l.after_steps), label("push", l.push), label("tests", l.tests), l.at_once
+        "How work lands now (LANDS: to propose a change): where: {} · how: {} · check: {}{} · after: {}{} · push: {} · tests: {} · waiting items start: {} · at once: {}\n",
+        label("where", l.at), label("how", l.how), label("check", l.check), steps(l.check, &l.check_steps), label("after", l.after), steps(l.after, &l.after_steps), label("push", l.push), label("tests", l.tests), label("waits", l.waits), l.at_once
     )
 }
 
@@ -558,6 +574,7 @@ fn part_words(part: &str) -> &'static str {
         "after" => "after landing",
         "push" => "send finished work to GitHub",
         "tests" => "tests",
+        "waits" => "items waiting on another start",
         _ => "items at once",
     }
 }
@@ -575,7 +592,7 @@ pub fn propose(c: &Value, project: &str, place: Place, part: &str, to: &str, ste
         set["at_once"] = json!(n);
         format!("items at once → {n}")
     } else {
-        let p = PARTS.iter().find(|p| p.key == part).ok_or(format!("{part} isn't a part: where, how, check, after, push, tests or at once"))?;
+        let p = PARTS.iter().find(|p| p.key == part).ok_or(format!("{part} isn't a part: where, how, check, after, push, tests, waits or at once"))?;
         let ch = p.choices.iter().find(|c| c.key == to || c.label.eq_ignore_ascii_case(&to)).ok_or(format!("{to} isn't a choice for {part}"))?;
         if p.key == "push" && ch.key == "after" {
             return Err("a push after each landing is only picked by the user on the settings screen; a push to main keeps asking".into());
@@ -643,10 +660,10 @@ mod tests {
     #[test]
     fn a_new_project_gets_the_defaults_and_a_folder_with_no_repository_works_in_place() {
         let none = json!({});
-        assert_eq!(of_in(&none, "p", Place::Repo), Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: vec![], after_steps: vec![] });
-        assert_eq!(of_in(&none, "cue", Place::Cue), Lands { at: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", at_once: 3, check_steps: vec![], after_steps: vec![] });
+        assert_eq!(of_in(&none, "p", Place::Repo), Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] });
+        assert_eq!(of_in(&none, "cue", Place::Cue), Lands { at: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] });
         let c = json!({ "project": { "lands": { "p": { "where": "copy", "how": "squash" } } } });
-        assert_eq!(of_in(&c, "p", Place::NoRepo), Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: vec![], after_steps: vec![] }, "a copy needs a repository");
+        assert_eq!(of_in(&c, "p", Place::NoRepo), Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] }, "a copy needs a repository");
     }
 
     #[test]

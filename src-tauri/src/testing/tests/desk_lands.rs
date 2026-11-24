@@ -62,7 +62,7 @@ fn a_new_project_shows_the_defaults_and_what_cant_be_picked_says_why() {
     let w = World::new();
     let (_, project, _, _) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
     let l = &desk(&w, &project)["lands"];
-    assert_eq!(l["set"], json!({ "where": "copy", "how": "squash", "check": "none", "after": "nothing", "push": "ask", "tests": "all", "at_once": 3, "check_steps": [], "after_steps": [] }), "{l}");
+    assert_eq!(l["set"], json!({ "where": "copy", "how": "squash", "check": "none", "after": "nothing", "push": "ask", "tests": "all", "waits": "landed", "at_once": 3, "check_steps": [], "after_steps": [] }), "{l}");
     assert_eq!(l["summary"], "own copy, not checked, one commit per item");
     let choice = |part: &str, key: &str| l["parts"].as_array().unwrap().iter().find(|p| p["key"] == part).unwrap()["choices"].as_array().unwrap().iter().find(|c| c["key"] == key).cloned().unwrap();
     assert_eq!(choice("how", "merge")["ok"], true, "merge can be picked in a repository");

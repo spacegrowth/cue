@@ -482,7 +482,7 @@ test("Up next says in full why each item waits", async ({ page, cue }) => {
     add("u3", "Anyone can take this", {});
   });
   const line = (id, drawer = "next") => page.locator(`[data-dkn-drawer="${drawer}"] .dkn-nx[data-desk-item="${id}"] .dkn-a2`);
-  await expect(line("u1")).toContainText("Waits for #d3 to finish first");
+  await expect(line("u1")).toContainText("Waits for #d3 to land first");
   // A parked one is in Parked, under Up next (147f6e329e); opened, it says how it starts.
   await page.locator('[data-dkn-drawer="parked"] [data-desk-c-fold]').click();
   await expect(line("u2", "parked")).toBeVisible();

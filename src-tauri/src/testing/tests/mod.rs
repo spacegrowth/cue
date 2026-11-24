@@ -77,6 +77,7 @@ mod desk_see;
 mod desk_lead;
 mod desk_routing;
 mod desk_queue;
+mod desk_start_point;
 mod desk_spec_queue;
 mod desk_holders;
 mod desk_stops;

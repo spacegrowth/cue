@@ -224,7 +224,9 @@ function deskCWhy(i) {
   const then = nf ? `, then goes to ${nf}` : "";
   if (i.after) {
     const on = deskAfterName(i);
-    return on.startsWith("#") ? `Waits for ${esc(on)} to finish first${then}` : `Waits for ${esc(on)}${then}`;
+    // Which point lets it go, by its Desk's setting (#808, desk/lands.rs "waits"): landed, or your Looks right.
+    const point = deskOf(i.project)?.lands?.set?.waits === "checked" ? "to be checked first" : "to land first";
+    return on.startsWith("#") ? `Waits for ${esc(on)} ${point}${then}` : `Waits for ${esc(on)}${then}`;
   }
   // Nobody has it yet, so no machine of its own (#776): the ones it may start on, each full.
   if (i.machine_wait) return `Waits for room on ${esc(i.machine_wait)}: ${/ or /.test(i.machine_wait) ? "each" : "it"} already runs all the items it can`;

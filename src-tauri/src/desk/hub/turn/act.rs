@@ -5,7 +5,7 @@ use crate::desk::hub::prelude::*;
 use crate::desk::{DeskDecision, DeskItem, Holder, KeptTree};
 use crate::desk::hub::core::members::join;
 use crate::desk::hub::core::desk::{Effects, NewStart, at_work, holder_of, rule_of, secs};
-use crate::desk::hub::turn::route::{decide, give, hand_on, release, send_step, start_released};
+use crate::desk::hub::turn::route::{decide, give, hand_on, let_go, release, release_kept, send_step, start_released};
 use crate::desk::hub::turn::heard::new_item;
 // Picking an option lives in pick.rs; kept reachable here, where the rest of the Desk looks for it.
 pub(crate) use crate::desk::hub::turn::pick::{letter_of, pick, pick_letters};
@@ -131,32 +131,59 @@ fn pr_open(st: &mut Store, id: &str, act: &str) -> String {
     pr.map(|u| format!(" Its pull request stays open on GitHub: {u}")).unwrap_or_default()
 }
 
-/// The items queued after `id` now (on a Desk that isn't paused): what its Looks right lets go.
-fn waiting_on(st: &Store, id: &str) -> Vec<String> {
-    st.desk.items.iter().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued" && !crate::desk::hub::away::pause::is_paused(&i.project)).map(|i| i.id.clone()).collect()
-}
-
-/// Item `id` is no longer done (Undo, or Reopen): those its Looks right let go wait for it again, while none has
-/// started (no holder yet, #576).
+/// Item `id` is no longer done or landed (Undo, Reopen, Send back): those its Looks right or landing let go wait for
+/// it again, while none has started (no holder yet, #576). Those started stay on its list, for a later Send back.
 fn hold_released(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
     let Some(ids) = st.desk.item_mut(id).map(|i| std::mem::take(&mut i.released)) else { return };
+    let mut kept = vec![];
     for w in ids {
-        let Some(it) = st.desk.item_mut(&w).filter(|i| i.holder.is_none() && i.state == "queued" && i.after.is_none()) else { continue };
+        let Some(it) = st.desk.item_mut(&w).filter(|i| i.holder.is_none() && i.state == "queued" && i.after.is_none()) else {
+            kept.push(w);
+            continue;
+        };
         it.after = Some(id.to_string());
         it.updated = secs(now);
         fx.items.push(w);
     }
+    if let Some(i) = st.desk.item_mut(id) {
+        i.released = kept;
+    }
+    fx.items.push(id.to_string());
+}
+
+/// Item `id` sent back with your `words`: each item its landing or Looks right let go that's at work now gets a note
+/// (on its own Steps) to bring the fix in once it's on main (#808).
+fn tell_released(st: &mut Store, id: &str, words: &str, now: u64, fx: &mut Effects) {
+    let Some(it) = st.desk.item(id) else { return };
+    let title = it.title.clone();
+    let at: Vec<(String, String, Holder)> = it
+        .released
+        .iter()
+        .filter_map(|w| st.desk.item(w))
+        .filter(|w| matches!(w.state.as_str(), "working" | "needs_you" | "finishing"))
+        .filter_map(|w| w.holder.clone().map(|h| (w.id.clone(), w.project.clone(), h)))
+        .collect();
+    let said = crate::desk::your_words(words).0.trim().to_string();
+    for (w, project, h) in at {
+        let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
+        let message = format!(
+            "{crew}Note from Cue on Desk item #{w}: #{id} ({title}), which #{w} started after, was sent back for a fix: \"{said}\". Your work may build on what changes. Once #{id}'s fix is on main, rebase #{w}'s work on main to take it in, and check yours still holds."
+        );
+        decide(st, &project, Some(w.clone()), "Cue", "", &format!("#{id} was sent back: rebase on its fix once it's on main"), &format!("note to {}", h.name), now, fx);
+        if let Some(step) = st.desk.decisions.last_mut() {
+            step.undo = "none".into();
+        }
+        send_step(st, &w, h.to(), message, now, fx);
+    }
 }
 
 fn looks_right(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Result<bool, String> {
-    let released = waiting_on(st, id);
     let it = item_of(st, id)?;
-    it.released = released;
     it.state = "done".into();
     it.after = None;
     it.close_on_check = false;
     it.done_at = Some(secs(now));
-    release(st, id, now, fx);
+    release_kept(st, id, now, fx);
     Ok(true)
 }
 
@@ -172,9 +199,7 @@ fn skip_install(st: &mut Store, id: &str, holder: Option<Holder>, now: u64, fx: 
     }
     (it.state, it.after, it.close_on_check, it.done_at) = ("done".into(), None, false, Some(secs(now)));
     let (title, project) = (it.title.clone(), it.project.clone());
-    let released = waiting_on(st, id);
-    item_of(st, id)?.released = released;
-    release(st, id, now, fx);
+    release_kept(st, id, now, fx);
     you_wrote(st, &project, id, "Skip", "closed without an install", now, fx);
     if let Some(h) = holder {
         let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
@@ -197,7 +222,10 @@ fn reopen(st: &mut Store, id: &str, build_gone: bool, now: u64, fx: &mut Effects
     }
     (it.picked, it.built_as) = (String::new(), String::new());
     (it.state, it.done_at, it.commit_wait) = ("to_check".into(), None, None);
-    hold_released(st, id, now, fx);
+    // Still landed where waiting items start then (#808): those it let go keep going.
+    if !let_go(st, id) {
+        hold_released(st, id, now, fx);
+    }
     Ok(true)
 }
 
@@ -217,8 +245,10 @@ fn send_back(st: &mut Store, id: &str, holder: Option<Holder>, text: &str, pr_op
     let h = holder.ok_or("nobody holds it yet")?;
     let words = text.trim().to_string();
     let done = can_send_back(st, id, &words)?;
-    // With a copy of its own still (a landing that stopped), it stays with its holder: the copy is that session's.
-    if done {
+    // What its Looks right or landing let go (#808): those at work told to take its fix in once it's on main, those
+    // not started yet waiting for it again.
+    if done || !item_of(st, id)?.released.is_empty() {
+        tell_released(st, id, &words, now, fx);
         hold_released(st, id, now, fx);
     }
     let gone = back_to(st, &h).err().filter(|_| item_of(st, id).is_ok_and(|i| i.tree.is_none()));
