@@ -531,3 +531,11 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* Cue's own message to a session or a Desk lead (desk/cue_said.js, #478) is the family's card (.mg, #501); what's
    folded besides its words ("· its log") stays quiet. */
 .cue-msg .cue-more { color: var(--muted); }
+
+/* A session's lines for Cue in its reply (core/md.js cueLineHook, #833): IF PICKED one quiet line (how many options, the
+   mocks' link), DESIGNS an Open the mocks button; the rest left out. */
+.msg .cue-ln { margin: 6px 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
+.msg .cue-ln + .cue-ln { margin-top: 4px; }
+.msg a.cue-mocks { text-decoration: none; display: inline-flex; }
+.msg a.cue-mocks-a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.msg a.cue-mocks-a:hover { text-decoration: underline; }

@@ -346,21 +346,21 @@ test("an item a session holds opens that session's chat: back, its top bar, the 
   await expect(page.locator(".dk-ipane, .dk-itabs, [data-desk-itab], .dk2b-ipage")).toHaveCount(0);
 });
 
-test("in a session's chat on the new layout its replies show as written: its IF PICKED and CHECK lines are text, not cards", async ({ page, cue }) => {
+test("in a session's chat on the new layout its lines for Cue never show as written: IF PICKED one quiet line, CHECK left out, no cards (#833)", async ({ page, cue }) => {
   await open(page, cue);
   await cue.change((st) => {
     st.sessions.find((x) => x.session_id === "host").thread.push({ role: "agent", at_ms: Date.now(), text: [
       "Built it and the tests pass.",
       "",
-      "IF PICKED: B | a task follows | You'll see: the switch",
+      "IF PICKED: #d5 | B | task | a task follows | You'll see: the switch | done when: it's there",
       "CHECK: #d5 | Where: the Desk | Do: open a chat | Expect: a switch in its head",
     ].join("\n") });
   });
   await page.locator('.dkn-side [data-desk-chat-of="host"]').click();
   const chat = page.locator('.dk-c > .dk-right .dkn-sp [data-desk-chat="host"]');
   await expect(chat).toContainText("Built it and the tests pass.");
-  await expect(chat).toContainText("IF PICKED: B | a task follows");
-  await expect(chat).toContainText("CHECK: #d5 | Where: the Desk");
+  await expect(chat.locator(".cue-pick")).toHaveText("1 option to pick from");
+  await expect(chat).not.toContainText(/IF PICKED|CHECK:|Where: the Desk/);
   await expect(chat.locator(".dk-sg, .dk-ln")).toHaveCount(0);
   await expect(chat).not.toContainText(/If you pick B|How to check/);
 });

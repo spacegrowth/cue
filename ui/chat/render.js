@@ -335,7 +335,9 @@ function chatYouHtml(c, e, n) {
 function chatAgentHtml(c, e, n) {
   const { it, s, harness, paged, page, ex, lastAgent, recent, project, sid, counts } = c;
   const key = `${s?.session_id || it?.id}:${e.at_ms}`;
-  const long = e.text.length > 280 || e.text.split("\n").length > 4;
+  // Long by what it shows: Cue's lines in it (core/md.js cueLineOf) are left out of it.
+  const shown = e.text.split("\n").filter((l) => !cueLineOf(l));
+  const long = shown.join("\n").length > 280 || shown.length > 4;
   const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
   const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
   fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
@@ -778,6 +780,6 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
 const LISTEN_WORDS = 20;
 /** How many words a reply has of its own, the lines a page draws as cards of its own (`lines`, as md's) left out. */
 function proseWords(text, lines) {
-  const kept = String(text || "").split("\n").filter((l) => l.trim() && !(lines && lines(l, (x) => x)));
+  const kept = String(text || "").split("\n").filter((l) => l.trim() && !cueLineOf(l) && !(lines && lines(l, (x) => x)));
   return kept.join("\n").split(/\s+/).filter((w) => /\w/.test(w)).length;
 }

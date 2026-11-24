@@ -117,9 +117,8 @@ function deskChatRows(s, page) {
   // Nothing in its thread yet: only what you sent from the Desk's box (`page.pending`), drawn as the chat draws it.
   if (!any) return (page?.pending || []).map((o) => outboxRow(o, s, o.key || `p:${o.at}`, page)).join("");
   // A lead's chat: its Desk lines out, a count line for each run of them (desk/runs.js, #688), and Cue's notes as its
-  // short lines (#616) wherever it shows, so one message is drawn one way. On the new layout (desk/c.js), any other
-  // session's chat shows its replies as it wrote them (#744): IF PICKED:, CHECK: and its other lines for Cue as plain
-  // text, not dressed up as cards.
+  // short lines (#616) wherever it shows, so one message is drawn one way. Any other session's chat draws its lines
+  // for Cue as every chat does (core/md.js cueLineHook, #833): left out, IF PICKED one quiet line, DESIGNS a button.
   const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
   // Every Desk chat (#789): Cue's messages to it and its Desk lines go only to Activity.
   return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, refs: lead ? deskRefs : undefined, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, noActs: true, ...page }) : "";
