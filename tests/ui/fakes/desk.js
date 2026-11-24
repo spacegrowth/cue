@@ -18,6 +18,8 @@ CueBridge.area("desk", (w) => {
   /** A project's folder: where a session of it runs (the fake knows none for a project with no session). */
   const folderOf = (p) => deskOf(p).folder || w.state.sessions.find((s) => s.project === (deskOf(p).workspace_project || p) && s.cwd)?.cwd || "";
   return {
+    // Who led a Desk before session `sid` (#792): none, unless a test says so.
+    desk_lead_before: () => null,
     desk_set_lead: ({ project, sid }) => {
       const d = deskOf(project);
       if (sid) {

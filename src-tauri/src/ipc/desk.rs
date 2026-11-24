@@ -27,6 +27,13 @@ pub(crate) async fn desk_set_lead(hub: State<'_, Arc<Hub>>, project: String, sid
     with_hub(&hub, move |h| desk_set_lead_with(h, &project, sid.as_deref().filter(|s| !s.is_empty()), trust.unwrap_or(false))).await?
 }
 
+/// The lead Desk `project` had before session `sid` ran it, for "Show earlier" over the lead chat's hand-off band
+/// (#792): its name, when it handed off, how many messages it has; null when `sid` was the first.
+#[tauri::command]
+pub(crate) async fn desk_lead_before(hub: State<'_, Arc<Hub>>, project: String, sid: String) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_lead_before(&project, &sid)).await
+}
+
 /// A new Desk in `folder` (Desk home's + New Desk, + New's Start a Desk): the folder's project, its lead a new
 /// session Cue starts there. Every call creates an independent Desk. Returns { id, project: id, sid }.
 #[tauri::command]

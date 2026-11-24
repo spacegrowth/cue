@@ -254,7 +254,7 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`), page));
   for (const o of page?.pending || []) rows.push(outboxRow(o, s, K(o.key || `p:${o.at}`), page));
   if (s?.send_at) rows.push(sendAtRow(s, page));
-  return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
+  return rows.length ? (paged && sid && !page?.noOlder ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** Message `e`, the `n`th of chatHtml's thread, as drawn there: an ask, a decision, a card of a page's or Cue's own, a
  *  bubble of yours or the agent's reply; "" for one not drawn. `c`: what chatHtml worked out for the whole thread. */

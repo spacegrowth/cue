@@ -246,6 +246,17 @@ CREATE TABLE IF NOT EXISTS desk_lead (
   set_ms      INTEGER NOT NULL
 );
 
+-- Each Desk's earlier leads (#792): the session that ran it before `next_session` did, the name it went by, and
+-- when it stopped. The lead chat shows them back, one at a time, on "Show earlier".
+CREATE TABLE IF NOT EXISTS desk_lead_past (
+  project      TEXT NOT NULL,
+  session_id   TEXT NOT NULL,
+  name         TEXT NOT NULL DEFAULT '',
+  until_ms     INTEGER NOT NULL,
+  next_session TEXT NOT NULL,
+  PRIMARY KEY (project, session_id)
+);
+
 -- Dropped Desk items' own copies that had work in them, kept and listed on their Desk (desk/model.rs KeptTree).
 CREATE TABLE IF NOT EXISTS desk_kept (
   id          TEXT PRIMARY KEY,

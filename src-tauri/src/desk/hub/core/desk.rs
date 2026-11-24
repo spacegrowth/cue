@@ -255,7 +255,25 @@ impl Hub {
 
     /// `project`'s lead put back as it was before a change of lead that failed (`before`: None when it had none).
     pub(crate) fn desk_put_back_lead(&self, project: &str, before: Option<crate::desk::Lead>) {
+        let failed = self.desk_lead_sid(project).unwrap_or_default();
+        let back = before.as_ref().map(|l| l.sid.clone());
         self.desk_lead_to(project, before);
+        // Back as it was: neither the one put back nor the one that failed is the other's earlier lead (#792).
+        if let Some(sid) = back {
+            crate::db::desk_unpast_lead(project, &sid, &failed);
+        }
+    }
+
+    /// The lead `project`'s Desk had before session `sid` ran it (#792), for the lead chat's "Show earlier": { sid,
+    /// name, at_ms (when it stopped), handoff (it handed off), count, first_ms, last_ms (its messages in Cue's log),
+    /// note (its hand-off note's path, "" for none), cwd }. Null when `sid` was its first.
+    pub(crate) fn desk_lead_before(&self, project: &str, sid: &str) -> serde_json::Value {
+        let Some((old, name, at_ms, handoff)) = crate::db::desk_lead_before(project, sid) else { return serde_json::Value::Null };
+        let (count, first_ms, last_ms) = crate::db::session_log_span(&old);
+        let (known, cwd) = self.read(|st| st.sessions.all().into_iter().find(|s| s.origin.session_id == old).map(|s| (shown_name(&s), s.origin.cwd.clone())).unwrap_or_default());
+        let name = if name.is_empty() { known } else { name };
+        let note = if handoff { crate::db::handoff(&old).map(|k| k.note).unwrap_or_default() } else { String::new() };
+        serde_json::json!({ "sid": old, "name": name, "at_ms": at_ms, "handoff": handoff, "count": count, "first_ms": first_ms, "last_ms": last_ms, "note": note, "cwd": cwd })
     }
 
     /// `project`'s lead from now (`lead`, or none), kept and saved.

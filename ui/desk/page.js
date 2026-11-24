@@ -185,16 +185,19 @@ function deskChat(d) {
   const mine = pending.map((p) => ({ text: p.text, images: p.images, at: p.at, key: `p:${p.at}`, m: p.failed ? { st: "failed", why: esc(p.failed), acts: again(p), to } : { st: "sending", to } }));
   // The lead's own Desk lines drawn as lines, not raw text.
   // Ready to check and the lead's own moves aren't in its chat (#789): they're in Activity. A loop it drafted is yours to start.
-  const rows = s ? deskChatRows(s, { extra: deskActRows(d), noSteps: true, you: deskLeadNote, pending: mine })
-    : mine.map((o) => outboxRow(o, null, o.key)).join("");
+  // After a hand-off (#792): the chat starts at its band, Show earlier over it (desk/earlier.js); its own start needs
+  // no Earlier messages row then.
+  const top = deskEarlierTop(d, s);
+  const rows = top + (s ? deskChatRows(s, { extra: deskActRows(d), noSteps: true, you: deskLeadNote, pending: mine, noOlder: !!top })
+    : mine.map((o) => outboxRow(o, null, o.key)).join(""));
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat. Not while
   // a message of yours is on its way: "Waiting on you for your reply" under it would be wrong (#587).
   const sending = pending.some((p) => !p.failed);
   const where = s && sessionOf(s.session_id) && !sending ? whereNow(null, s, false) : "";
   // Each part keyed: the chat is kept in place across draws, brought up to date by key (chat/patch.js drawAround).
-  const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
+  const empty = (!rows || rows === top) && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   // By the way's panel over the chat, as in a session's chat.
-  return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
+  return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${top}${empty}${rows.slice(top.length)}${where ? keyed(where, "where") : ""}</div>`;
 }
 /** What the lead did on its own (#360: closed, started, sent back, moved up, took back a copy, answered a session; #420: its
  *  routing and housekeeping calls, already in its chat as its own DECIDED lines), newest first. */
