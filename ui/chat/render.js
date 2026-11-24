@@ -213,7 +213,7 @@ function reviewFolds(ex, team) {
 
 /** `page`: a page that draws this chat as its own (the crew's page, team_page.js): `extra`, more rows of its own placed
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. The Desk's lead chat (desk.js deskChat):
- *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (the Desk's lead hands work on by its own lines).
+ *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (only a hand-off's inert tail, desk/earlier.js).
  *  `reply(e, key)`: { text, after } a reply drawn as the page splits it; `say(text)`: the words being written, likewise.
  *  `folds(ex)`: turns the page folds to a line of its own (an item's page, the holder's turns about other items):
  *  { skip: the messages not drawn, by index; rows: its fold lines, placed by time; hides(at): their steps }.

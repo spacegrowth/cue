@@ -116,6 +116,12 @@ pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
                 continue;
             }
         };
+        // The same words on the same item again, not answered since (#868): already with the lead.
+        let key = format!("{sid}|{}", id.as_deref().unwrap_or(""));
+        if st.desk.run.relayed.get(&key).is_some_and(|w| w.trim() == words.trim()) {
+            continue;
+        }
+        st.desk.run.relayed.insert(key, words.clone());
         fx.to_lead.push((message.0, sid.to_string(), message.1, words));
     }
     if !back.is_empty() {

@@ -173,6 +173,55 @@ fn your_words_and_a_sessions_question_go_to_the_lead_apart() {
     assert_eq!(log.iter().filter(|(_, t)| t.starts_with("Yes, we're moving")).count(), 1, "{log:?}");
 }
 
+/// A session's words kept for a lead at work go to it once (#868): its next turn ends with them sent and nothing kept,
+/// and the turns after (the Desk's summary made fresh each time) never bring them back.
+#[test]
+fn a_sessions_words_kept_for_a_busy_lead_go_once() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let lead = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "bug", "Header wraps", "", None).unwrap();
+    w.hub().desk_give(&it.id, &sid).unwrap();
+    w.settle();
+    // The lead at work on your message.
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "Status?", &[], false).unwrap();
+    w.settle();
+    let first = sent_to(&w, &lead).last().cloned().unwrap();
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: first });
+    w.settle();
+    // Meanwhile the holder asks the lead something: kept for it.
+    ends(&w, &sid, "Looked at it.\nTO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    let asked = |w: &World| sent_to(w, &lead).iter().filter(|t| t.contains("Should it wrap on narrow windows?")).count();
+    assert_eq!(asked(&w), 0, "kept while the lead works");
+    // The Desk changes meanwhile, so the summary that goes with them is made fresh, not the one kept.
+    w.hub().desk_add(&project, "task", "Footer", "", None).unwrap();
+    w.settle();
+    // Its turn ends: the session's words go, once, and nothing stays kept.
+    ends(&w, &lead, "Two items are at work.");
+    w.settle();
+    assert_eq!(asked(&w), 1, "{:?}", sent_to(&w, &lead));
+    assert!(w.snapshot().session(&lead)["held"].is_null(), "nothing left kept: {}", w.snapshot().session(&lead)["held"]);
+    // The same words again from it (a turn told twice), not answered yet: not brought to the lead again.
+    ends(&w, &sid, "Looked at it.\nTO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    // The turns after: never again.
+    for k in 0..3 {
+        let last = sent_to(&w, &lead).last().cloned().unwrap();
+        w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: last });
+        w.settle();
+        ends(&w, &lead, &format!("Answered {k}."));
+        w.settle();
+    }
+    assert_eq!(asked(&w), 1, "{:?}", sent_to(&w, &lead));
+    // Answered with a NOTE, it may ask the same again: that goes.
+    ends(&w, &lead, &format!("NOTE: #{} | Yes, wrap it.", it.id));
+    w.settle();
+    ends(&w, &sid, "TO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    assert_eq!(asked(&w), 2, "{:?}", sent_to(&w, &lead));
+}
+
 /// Esc on what's kept for a lead gives back only your words (#831): a session's words kept with them stay kept, and
 /// with none of yours, nothing comes back.
 #[test]

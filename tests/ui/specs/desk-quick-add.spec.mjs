@@ -189,7 +189,7 @@ test("the shots: the lead's Desk, Give to…, Change, the picker", async ({ page
   await page.screenshot({ path: `${dir}/cue-desk-pick1.png` });
 });
 
-test("the lead's own Desk lines are drawn as lines in its chat, code blocks left as they are; no Send to…", async ({ page, cue }) => {
+test("the lead's own Desk lines are drawn as lines in its chat, code blocks left as they are; Send to… on its reply (#854)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await page.evaluate(() => {
@@ -213,6 +213,8 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await expect(reply.locator(".cv-text")).toContainText("Here's the plan.");
   await expect(reply.locator("pre")).toContainText("ITEM: task | an example");
   await expect(reply).not.toContainText("ROUTE:");
+  // Send to… is on the lead's replies as on every chat (#854).
+  await expect(reply.locator(".cv-fwd")).toHaveText("↗ Send to…");
   const said = await deskActivityOpen(page);
   // Each line one short quiet line at the left (#157): no rules, no box, no chip.
   const ln = said.locator(".own-lines .dk-ln");
@@ -251,7 +253,6 @@ test("the lead's own Desk lines are drawn as lines in its chat, code blocks left
   await ln.nth(2).locator(".mg-line").dispatchEvent("click");
   await expect(ln.nth(2).locator(".dk-ln-it")).toHaveCount(1);
   await expect(ln.nth(3).locator(".mg-lh")).toHaveText("Kept host-lead's context");
-  await expect(page.locator(".dk-chat .cv-fwd")).toHaveCount(0);
   // The number is a link: it opens its item, not the line's why; Enter on the line opens the why.
   await page.evaluate(() => deskLnOpen.clear());
   await page.evaluate(() => renderMain());

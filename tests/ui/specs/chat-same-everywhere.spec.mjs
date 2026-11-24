@@ -35,12 +35,20 @@ test("a session's page on the Desk: Send to… and links on a reply, and btw ope
   await expect(page.locator(".dk-right .btw-pop")).toHaveCount(1);
 });
 
-test("the lead's chat still has no Send to…", async ({ page, cue }) => {
+test("the lead's chat: Send to… on a reply opens the same menu and sends it on (#854)", async ({ page, cue }) => {
   await cue.open("desk");
   await reply(cue, "lead", LONG);
   await openDesk(page);
-  await expect(page.locator(".dk-chat .cv-agent").last().locator('a[data-desk-chk-item="d4"]')).toHaveCount(1);
-  await expect(page.locator(".dk-chat .cv-fwd")).toHaveCount(0);
+  const msg = page.locator(".dk-chat .cv-agent").last();
+  await expect(msg.locator('a[data-desk-chk-item="d4"]')).toHaveCount(1);
+  await expect(msg.locator(".cv-fwd")).toHaveText("↗ Send to…");
+  await msg.locator(".cv-fwd").click();
+  await expect(page.locator(".fwd-pop")).toBeVisible();
+  await expect(page.locator('.fwd-pop [data-fwd-to="lead"]')).toHaveCount(0);
+  await page.locator('.fwd-pop [data-fwd-to="site"]').click();
+  await page.locator('.fwd-pop [data-act="send-forward"]').click();
+  const call = await cue.called("send_to_session", { sessionId: "site" });
+  expect(call.args.text).toContain("the rail dot");
 });
 
 test("the Board's chat: #d4 in a reply is a link that opens the item on its Desk", async ({ page, cue }) => {
@@ -122,4 +130,22 @@ test("a parked session's chat: Send to… on its reply opens the same menu", asy
   await expect(msg.locator(".cv-fwd")).toHaveCount(1);
   await msg.locator(".cv-fwd").click();
   await expect(page.locator(".fwd-pop")).toBeVisible();
+});
+
+// A background script or agent clicked under a Desk chat opens in full in the chat's place, as on the Board; Go to
+// chat comes back (#854).
+test("an item's page: a background script under its chat opens in full, and Go to chat comes back", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.override("session_steps", ({ sessionId }, now) => sessionId !== "host" ? { version: 0, turns: [] } : { version: 3, turns: [], helpers: [{
+    id: "b1", desc: "npx playwright test", command: "npx playwright test -c tests/ui/playwright.config.mjs", kind: "", model: "", script: true,
+    step: "", started_ms: now - 180000, last_ms: now - 1000, tokens: 0, running: true, more: 0, items: [], output: ["Running 1127 tests", "  ✓ 1 board"], lines: 2 }] }, Date.now());
+  await openDesk(page);
+  await page.locator('.dkn-items [data-desk-item="d5"]').first().click();
+  const row = page.locator('.dk-right [data-helper="host|b1"]').first();
+  await row.click();
+  await expect(page.locator(".dk-right .bg-view-title.script")).toContainText("npx playwright test");
+  await expect(page.locator(".dk-right .bg-view-out")).toContainText("Running 1127 tests");
+  await page.locator('.dk-right .bg-view-foot [data-helper-back]').click();
+  await expect(page.locator(".dk-right .bg-view-title")).toHaveCount(0);
+  await expect(page.locator('.dk-right [data-helper="host|b1"]').first()).toBeVisible();
 });

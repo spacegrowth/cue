@@ -421,6 +421,9 @@ fn queues(st: &Store, h: &Holder, id: &str) -> bool {
 /// Err: what the lead is told when there's no one to send it to.
 pub(crate) fn note(st: &mut Store, from: &str, by: &By, id: &str, words: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let words = words.trim();
+    // Answered: its holder's words on it may come again (#868, heard.rs to_lead_said).
+    let answered = format!("|{id}");
+    st.desk.run.relayed.retain(|k, _| !k.ends_with(&answered));
     let it = st.desk.item(id).ok_or_else(|| format!("#{id} note not sent: no Desk has an item #{id}"))?;
     let project = it.project.clone();
     let h = it.holder.clone().ok_or_else(|| format!("#{id} note not sent: nobody holds it yet; route it first"))?;
