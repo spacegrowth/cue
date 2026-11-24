@@ -6,17 +6,11 @@
 .hv-open { gap: 5px; }
 .hv-car { opacity: 0.7; }
 
-/* A Desk's dot: amber when it waits on you. */
-.hv-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.7; }
-.hv-dot.ask { background: var(--amber); opacity: 1; }
-
 /* A menu under its chip: Desks ▾. */
 .hv-menu { position: absolute; top: 38px; left: 0; z-index: 30; min-width: 280px; max-height: min(480px, calc(100vh - 80px)); overflow-y: auto; padding: 6px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: var(--radius-card); box-shadow: 0 22px 50px -14px color-mix(in srgb, var(--shade) 50%, transparent), 0 0 0 1px var(--line); }
 .hv-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: var(--radius-qp); color: inherit; font: 500 var(--type-body) var(--sans); text-align: left; white-space: nowrap; }
 .hv-row:is(:hover, .at) { background: var(--panel-2); }
 .hv-row.on { background: var(--panel-2); font-weight: 700; }
-.hv-row .hv-dot { opacity: 1; background: var(--ink); }
-.hv-row .hv-dot.ask { background: var(--amber); }
 /* A Desk's name takes the row's room up to its count, never over it (#240). Too long: its end fades (the fade lies over
    18px of padding, so a name that fits is never faded), and while its row is lit (keys or pointer) it slides left to
    show the rest, back and forth; unlit, it's back at its start. 100cqw is the room, 100% the name's own width. The menu

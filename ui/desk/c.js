@@ -108,7 +108,10 @@ function deskCSessions(project) {
   const mine = all.filter((s) => s !== leadS && deskHasSession(d, s.session_id));
   // At work, or holding an open item, or still warm: shown. Cold ones holding nothing are only in All sessions.
   const busy = (s) => deskSessWithHelpers(s)[0] !== "idle";
-  const shown = mine.filter((s) => busy(s) || !deskSessOlder(d, s));
+  // Closed (#834): no process runs it any more, by Cue's own record, and it holds no open item. Under its own heading
+  // at the foot, folded till you open it (kept as Older's fold is); one that wakes is back with the rest next update.
+  const closed = mine.filter((s) => !busy(s) && deskSessClosed(d, s)).sort((a, b) => (b.since_ms || 0) - (a.since_ms || 0));
+  const shown = mine.filter((s) => !closed.includes(s) && (busy(s) || !deskSessOlder(d, s)));
   const working = mine.filter(busy).length;
   const machines = [...new Set(all.map((s) => s.machine || ""))];
   const lit = (sid) => ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid) || (o?.kind === "item" && deskHolderSid(deskItem(project, o.id)) === sid);
@@ -124,10 +127,10 @@ function deskCSessions(project) {
   const atOnce = (m) => (m ? (d.machines?.machines || []).find((x) => x.name === m || machShort(x.name) === machShort(m))?.at_once : d.lands?.set?.at_once) || 0;
   const busyOn = (m) => items.filter((i) => (i.state === "working" || deskFinishing(i)) && (sessionOf(deskHolderSid(i))?.machine || "") === m).length;
   const row = (s) => {
-    const sid = s.session_id, [dot, line] = deskCSessWord(d, s), on = lit(sid);
+    const sid = s.session_id, shut = closed.includes(s), [dot, line] = shut ? ["idle", "closed"] : deskCSessWord(d, s), on = lit(sid);
     const team = (sessionOf(sid)?.team || []).filter((t) => deskMateLive(sid, t));
     const crew = team.map((t) => deskCMate(project, sid, t, o)).join("");
-    return `<button class="dkn-ss${on ? " on" : ""}" data-desk-chat-of="${esc(sid)}" aria-label="${esc(deskHolderName(sid))}"><span class="dkn-n"><i class="dkn-d ${dot}" aria-hidden="true"></i><span class="dkn-nm">${esc(deskHolderName(sid))}</span>${on ? '<span class="dkn-chev" aria-hidden="true">›</span>' : ""}</span><span class="dkn-s">${line}</span></button>${crew}`;
+    return `<button class="dkn-ss${on ? " on" : ""}${shut ? " closed" : ""}" data-desk-chat-of="${esc(sid)}" aria-label="${esc(deskHolderName(sid))}"><span class="dkn-n"><i class="dkn-d ${dot}" aria-hidden="true"></i><span class="dkn-nm">${esc(deskHolderName(sid))}</span>${on ? '<span class="dkn-chev" aria-hidden="true">›</span>' : ""}</span><span class="dkn-s">${line}</span></button>${crew}`;
   };
   const groups = machines.filter((m) => shown.some((s) => (s.machine || "") === m) || !m).map((m) => {
     // The ones at work first, in their order; then the rest, the one that stopped last first.
@@ -136,9 +139,11 @@ function deskCSessions(project) {
     const head = `<div class="dkn-mg">${DESK_C_MAC}<b>${esc(m ? machShort(m).toUpperCase() : "THIS MAC")}</b><span>· ${of ? `${n} of ${of} busy` : `${n} busy`}</span></div>`;
     return head + (list.map(row).join("") || `<div class="dkn-none">No sessions here yet.</div>`);
   }).join("");
+  const ckey = `closed:${project}`, copen = deskOlderOpen.has(ckey);
+  const closedGroup = closed.length ? `<button class="dkn-mg dkn-cg" data-desk-older="${esc(ckey)}" aria-expanded="${copen}">${DESK_C_ARROW(copen)}<b>CLOSED</b><span>· ${closed.length}</span></button>${copen ? closed.map(row).join("") : ""}` : "";
   // How many are at work, and on how many machines; how many sessions in all is on All N sessions at its foot.
   const count = [`${working} working`, machines.length > 1 ? `${machines.length} machines` : ""].filter(Boolean).join(" · ");
-  return `<nav class="dkn-side" aria-label="Sessions"><div class="dkn-head"><div class="dkn-dn">${deskKindIcon("tray")}<b>${esc(deskName(d))}</b></div><div class="dkn-cnt">${esc(count)}</div></div>${lead}<div class="dkn-rule" aria-hidden="true"></div><div class="dkn-list" data-scroll-key="desk-n-sessions:${esc(project)}">${groups}</div><div class="dkn-foot"><button class="dkn-alls" data-desk2b-sessions aria-label="All ${mine.length + (leadS ? 1 : 0)} sessions">All<span class="dkn-w"> ${mine.length + (leadS ? 1 : 0)} sessions</span> ›</button></div></nav>`;
+  return `<nav class="dkn-side" aria-label="Sessions"><div class="dkn-head"><div class="dkn-dn">${deskKindIcon("tray")}<b>${esc(deskName(d))}</b></div><div class="dkn-cnt">${esc(count)}</div></div>${lead}<div class="dkn-rule" aria-hidden="true"></div><div class="dkn-list" data-scroll-key="desk-n-sessions:${esc(project)}">${groups}${closedGroup}</div><div class="dkn-foot"><button class="dkn-alls" data-desk2b-sessions aria-label="All ${mine.length + (leadS ? 1 : 0)} sessions">All<span class="dkn-w"> ${mine.length + (leadS ? 1 : 0)} sessions</span> ›</button></div></nav>`;
 }
 
 // ---------- Items: one white card, then Up next and Done today on the green ----------
