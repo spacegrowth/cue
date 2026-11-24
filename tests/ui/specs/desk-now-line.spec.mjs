@@ -19,7 +19,7 @@ for (const size of SIZES) {
     const since = (await page.evaluate(() => now())) - 4 * 60_000;
     for (const l of [
       { state: "run", what: "Testing main at 1e01e83", step: "Rust tests", since, note: "", items: ["d2", "d5"], cmd: false, also: "" },
-      { state: "run", what: "Installing Cue", step: "", since, note: "", items: ["d5"], cmd: false, also: "" },
+      { state: "run", what: "Install", step: "", since, note: "", items: ["d5"], cmd: false, also: "" },
       { state: "fail", what: "Failed: desk::tests::header_stays", step: "", since, note: "on 1e01e83", items: ["d2"], cmd: false, also: "" },
     ]) {
       await setLine(cue, "cue", l);
@@ -60,7 +60,7 @@ test("on cue, an item on main says it waits on tests, then which test step it's 
   await expect(row.locator(".dkl-cmd")).toHaveCount(0);
   await setLine(cue, "cue", null);
   await fin({ step: "installing", commit: "abc9999", at: Date.now() });
-  await expect(row).toContainText("On main · installing Cue");
+  await expect(row).toContainText("On main · Install");
   await expect(row).not.toContainText("finishing");
   await expect(page.locator("[data-desk-now-line], .dkl")).toHaveCount(0);
 });

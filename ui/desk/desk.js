@@ -156,7 +156,9 @@ function deskFinStep(i) {
     if (!due) return "On main · waiting for the next install";
     return due > now() ? `On main · installs at ${clockAt(due)} · <span data-until="${due}">${untilIn(due)}</span>` : "On main · installs once no session is mid-turn";
   }
-  const what = { checking: "Checking before it lands", check_failed: "Check failed", building: "On main · building Cue", installing: "On main · installing Cue", starting: "Installed · Cue is restarting" }[f.step] || "Committing";
+  // In its Desk's update after landing (desk/lands.rs APP_STEPS): the step under way, by the name the Desk gives it.
+  const app = deskOf(i.project)?.lands?.set?.after_names?.[f.step] || { building: "Build", installing: "Install", starting: "Restart" }[f.step];
+  const what = app ? `On main · ${esc(app)}` : { checking: "Checking before it lands", check_failed: "Check failed" }[f.step] || "Committing";
   return `${what}${since}`;
 }
 /** A dropped item's copy that had work in it (`k`: { id, title, path, branch, at, item }), kept on disk until you

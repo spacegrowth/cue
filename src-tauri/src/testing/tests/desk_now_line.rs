@@ -43,10 +43,10 @@ fn cues_own_desk_says_its_full_run_the_items_it_carries_and_its_failure() {
         it.finish = Some(crate::desk::Finish { step: "building".into(), at: 7, ..Default::default() });
     });
     let l = line(w.hub(), &project);
-    assert_eq!((l["state"].as_str(), l["what"].as_str(), l["since"].as_u64()), (Some("run"), Some("Building Cue"), Some(7)), "{l}");
+    assert_eq!((l["state"].as_str(), l["what"].as_str(), l["since"].as_u64()), (Some("run"), Some("Build"), Some(7)), "{l}");
     assert_eq!(l["items"], json!([id]));
     w.hub().write(|st| st.desk.item_mut(&id).unwrap().finish.as_mut().unwrap().step = "installing".into());
-    assert_eq!(line(w.hub(), &project)["what"], "Installing Cue");
+    assert_eq!(line(w.hub(), &project)["what"], "Install");
 }
 
 #[test]

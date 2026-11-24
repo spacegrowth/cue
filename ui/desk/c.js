@@ -200,7 +200,9 @@ const deskCMach = (i) => (i?.machine === "This Mac" ? "" : deskMachTag(i));
 function deskCNow(i) {
   // What it asks opens with the row, as Check did: no Choose… button fighting the words for room.
   if (i.state === "needs_you") return `<span class="dkn-nask">Asks you</span>`;
-  if (i.state === "to_check" && !deskInstallWait(i) && !deskUncommitted(i)) return deskLooksSoon.has(i.id) ? `<span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(i.id)}">Undo</button></span>` : `<span class="dkn-nw">Ready to check</span><button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`;
+  // Just said Looks right to, and done since: where it was, ticked, its Undo putting it back to check (#791).
+  if (deskLooksHeld(i)) return `<span class="dk-ok on" aria-hidden="true"></span><span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="reopen" data-id="${esc(i.id)}">Undo</button></span>`;
+  if (i.state === "to_check" && !deskInstallWait(i) && !deskUncommitted(i)) return deskLooksSoon.has(i.id) ? `<span class="dk-ok on" aria-hidden="true"></span><span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(i.id)}">Undo</button></span>` : `<span class="dkn-nw">Ready to check</span><button class="dk-ok" data-desk-act="looks_right" data-id="${esc(i.id)}" aria-label="Looks right"></button>`;
   const [st, mono] = deskB2Status(i);
   return `<span class="dkn-nw${mono ? " mono" : ""}">${st}</span>`;
 }
@@ -209,7 +211,7 @@ function deskCNow(i) {
 function deskCRow(i) {
   // Lit while its page is open, or its holder's chat (that session's chat is the item's chat).
   const o = deskOpen, on = (o?.kind === "item" && deskIdIs(i, o.id)) || ((o?.kind === "chat" || o?.kind === "holder") && !!o.sid && deskHolderSid(i) === o.sid);
-  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div></div>`;
+  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div></div>`;
 }
 /** A row in Up next or Done today, on the green: #id and title (a grip on the ones you can drag), and a line under it. */
 /** Why an Up next item waits, in full plain words (html, escaped): what it waits for and what starts it. "" when it
@@ -280,9 +282,6 @@ function deskCFitLists() {
   }
   const lists = [...document.querySelectorAll("#app .dkn-items [data-dkn-list]:not([data-dkn-cap])")];
   const key = `${innerWidth}x${innerHeight}|${lists.map((el) => `${el.dataset.dknList}:${el.querySelectorAll(".dk-it").length}`).join(",")}`;
-  // Where each list was scrolled, and whether to its end (#791): a row folded shut and gone there must not pull the
-  // rows down as the list is cut again.
-  const tops = lists.map((el) => el.scrollTop), atEnd = lists.map((el) => el.scrollTop > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
   if (key !== deskCFitKey) {
     // "↓ N more" measured with its words in, as it will be drawn (empty, it's a line shorter, and the cut a row too low).
     for (const el of lists) { el.style.maxHeight = ""; el.nextElementSibling.hidden = false; el.nextElementSibling.textContent ||= "↓ 0 more"; }
@@ -305,11 +304,6 @@ function deskCFitLists() {
       }
       return Math.floor(fit);
     });
-    // Scrolled to its end and a row fewer: its cut as it was. A taller one would show more above, the rows coming down.
-    deskCFits = deskCFits.map((fit, k) => {
-      const was = deskCFitBy.get(lists[k].dataset.dknList);
-      return atEnd[k] && was && (fit > was || !fit) && lists[k].scrollHeight > was ? was : fit;
-    });
     deskCFitKey = key;
     deskCFitBy.clear();
     lists.forEach((el, k) => deskCFitBy.set(el.dataset.dknList, deskCFits[k]));
@@ -322,7 +316,6 @@ function deskCFitLists() {
     const go = deskCGoing.get(el.dataset.dknList);
     if (go && Date.now() < go.until && Math.abs(el.scrollTop - go.top) > 1) el.scrollTo({ top: go.top, behavior: "smooth" });
     else deskCGoing.delete(el.dataset.dknList);
-    if (!go && el.scrollTop !== tops[k]) el.scrollTop = tops[k];
   });
   deskCMore();
 }
@@ -495,15 +488,15 @@ function deskCSessChat(sid, from, d, foot, bar = "", item = null) {
   return `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${meta}${bar}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
 }
 /** Items you just sent back, by id: what was open on the Desk then (commit.js deskLooksPlace). Their rows stay where
- *  they were in Waiting on you till you open something else (#791), rather than jump up to Working under you. */
+ *  they were in Waiting on you, greyed, till you open something else (#791), as a done one does after Looks right. */
 const deskCStay = new Map();
-/** Whether item `i` is in Waiting on you only because you just sent it back. */
-const deskCStays = (i) => deskCStay.has(i.id) && i.state !== "to_check" && i.state !== "needs_you";
+/** Whether item `i` is in Waiting on you only because you just acted on it there (Looks right, Send back). */
+const deskCStays = (i) => deskLooksHeld(i) || (deskCStay.has(i.id) && i.state !== "to_check" && i.state !== "needs_you");
 /** Waiting on you's order as it was last drawn. */
 let deskCWaitOrder = [];
-/** Rows you just said Looks right to stay where they were while "Done · Undo" shows and they fold shut, and rows you
- *  sent back till you open something else (#791): that moment moves them from asking to ready to check (list.js
- *  deskGroups), or out to Working, which would otherwise send them to the list's end or out of it under you. */
+/** Rows you just said Looks right to stay where they were while "Done · Undo" shows, and once done till you open
+ *  something else (#791): that moment moves them from asking to ready to check (list.js deskGroups), and done takes
+ *  them out of it, which would otherwise send them to the list's end or out of it under you. */
 function deskCKeepPlace(list) {
   const stay = (i) => deskLooksSoon.has(i.id) || deskCStay.has(i.id);
   const out = list.filter((i) => !stay(i));
@@ -517,7 +510,7 @@ function deskCKeepPlace(list) {
 function deskCList(project, taskApprovals) {
   const g = deskGroups(project, taskApprovals), d = g.d;
   const aw = deskAwayWaiting(d, taskApprovals);
-  // Looks right sent and done: its shut row goes (commit.js deskLooksLetGo). Sent back: kept till you open something else.
+  // Done ones you just said Looks right to stay in their place till you open something else (commit.js deskLooksSoon).
   deskLooksLetGo(d?.items || []);
   for (const [id, at] of deskCStay) if (at !== deskLooksPlace()) deskCStay.delete(id);
   const inWait = new Set([...g.asks, ...g.check].map((i) => i.id));

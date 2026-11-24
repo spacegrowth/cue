@@ -132,25 +132,16 @@
 .dkn-nw.mono { font-family: var(--mono); }
 .dkn-nask { color: var(--deny); white-space: nowrap; }
 .dkn-now :is(.btn, .dk-ok) { flex: none; }
-/* Ticked (commit.js deskLooksSoon, #791): "Done · Undo" in its Now cell for a moment, the row otherwise as the rows
-   round it are (no fill, no greying); nothing on it but Undo takes a click. */
+/* Ticked: its ✓ filled and "Done · Undo", where it was, till you open something else (commit.js deskLooksSoon, #791):
+   nothing folds or slides, so the rows round it stay put. */
+.dkn-now .dk-ok.on { background: var(--accent); color: var(--on-accent); }
+/* …and the rest of the row greys out at once, as a row that's done: nothing on it but Undo takes a click. */
 .dkn-row.soon { pointer-events: none; }
+.dkn-row.soon :is(.dkn-id, .dkn-t, .dkn-pl) { opacity: 0.4; }
 .dkn-row.soon .dk-undo-c { pointer-events: auto; }
-/* Undo comes up under the pointer that ticked it: that mustn't fill the row as a hover. */
-.dkn-row.soon:not(.on):hover { background: none; }
-/* The ✓'s height in its Now cell whatever it says now, so the row doesn't change height before it folds. */
+/* Held where it was after you acted on it (#791): the ✓'s height in its Now cell whatever it says now, so the row
+   doesn't shrink and nothing under it moves. */
 .dkn-row.soon .dkn-now { min-height: 24px; }
-/* Then it folds shut, the rows under it sliding up as it does; Undo still works till it's shut. At once with reduced
-   motion. */
-.dkn-row.dk-leave { box-sizing: border-box; overflow: hidden; animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
-@keyframes dkn-leave {
-  from { height: var(--h); opacity: 1; }
-  to { height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) { .dkn-row.dk-leave { animation: none; display: none; } }
-/* No scroll anchoring while one folds: scrolled to the list's end, the browser's anchoring and the end coming up
-   together moved the rows twice as far as the fold, down. Without it, the rows over it come down as it shuts. */
-.dkn-body:has(.dk-leave) { overflow-anchor: none; }
 .dkn-now .dk-soon { margin-left: 0; order: -1; }
 
 /* Strip (K): one 6px strip, each step's piece as long as it took (desk/c.js deskCStrip sets its share), done ones and

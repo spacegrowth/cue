@@ -78,11 +78,14 @@ test("a finishing item: in WORKING at Landing, then waiting to install with the 
 
   await patchItem(cue, "d5", { finish: { step: "building", commit: "abc9999", at: began } });
   await expect(page.locator('[data-desk-act="install_now"], [data-desk-act="skip_install"]')).toHaveCount(0);
-  await expect(st).toHaveText(`On main · building Cue · since ${since}`);
+  await expect(st).toHaveText(`On main · Build · since ${since}`);
   await patchItem(cue, "d5", { finish: { step: "installing", commit: "abc9999", at: began } });
-  await expect(st).toHaveText(`On main · installing Cue · since ${since}`);
+  await expect(st).toHaveText(`On main · Install · since ${since}`);
+  // The step under way by the name its Desk gives it in its settings (#796).
+  await cue.change((st) => { const d = st.desk.projects.find((x) => x.project === "cue"); d.lands = { ...(d.lands || {}), set: { ...(d.lands?.set || {}), after_names: { building: "Compile", installing: "Put in place", starting: "Start again" } } }; });
+  await expect(st).toHaveText(`On main · Put in place · since ${since}`);
   await patchItem(cue, "d5", { finish: { step: "starting", commit: "abc9999", at: began } });
-  await expect(st).toHaveText(`Installed · Cue is restarting · since ${since}`);
+  await expect(st).toHaveText(`On main · Start again · since ${since}`);
   expect(await groupOf(page, "d5")).toBe("WORKING");
 });
 

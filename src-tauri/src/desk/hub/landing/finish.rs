@@ -440,7 +440,8 @@ impl Hub {
         let tops: Vec<String> = if tops.is_empty() && !before.is_empty() { vec![before] } else { tops.to_vec() };
         // Its project (another repository's when routed there, #635) set to nothing after landing (desk/lands.rs): Cue's own work isn't installed or served.
         let project = self.read(|st| st.desk.item(id).map(|i| crate::desk::hub::landing::other_repo::lands_project(i).to_string())).unwrap_or_default();
-        let cue = tops.iter().find(|t| crate::desk::hub::lead::checks::builds_this_cue(t) && crate::desk::lands::lands_of(&project, t).after == "install");
+        // After landing updates the running app (its built-in steps, desk/lands.rs APP_STEPS) from a main line that's its source.
+        let cue = tops.iter().find(|t| crate::desk::hub::lead::checks::builds_this_cue(t) && crate::desk::lands::app_source_lands(&project).updates_app());
         let top = cue.or(tops.first()).cloned().unwrap_or_default();
         // The main line's tip: the folder's HEAD, or, while another item works on its own branch there, the main line it
         // came from (desk/hub/landing/in_place.rs).
@@ -469,8 +470,9 @@ impl Hub {
             self.desk_push_after(id, &project, &top);
         }
         // After landing, your own steps (desk/lands.rs): in order in the project's main folder, each stopped past its cap;
-        // the first that fails stops the rest, and the item waits for you, saying which. No lock is held here.
-        if cue.is_none() && !top.is_empty() && self.finish_after_steps(id, &project, &top, &head) {
+        // the first that fails stops the rest, and the item waits for you, saying which. No lock is held here. The app's
+        // built-in steps after them go with the next update (below).
+        if !top.is_empty() && self.finish_after_steps(id, &project, &top, &head) {
             return;
         }
         if self.finish_in_place(id, &top, &head, cue.is_some()) {
@@ -508,8 +510,8 @@ impl Hub {
     /// After landing, item `id`'s project's own steps in `top`: true when one failed (it waits for you, saying which).
     /// Never while an item's branch is put in that folder ("A branch", in_place.rs): placing one waits while they run.
     fn finish_after_steps(&self, id: &str, project: &str, top: &str, head: &str) -> bool {
-        let l = crate::desk::lands::lands_of(project, top);
-        if l.after == "command" {
+        let steps = crate::desk::lands::lands_of(project, top).plain_after();
+        if !steps.is_empty() {
             // Beside no placement: checked holding the landing line's claim, and marked running before it's let go.
             let Ok(guard) = Claim::landing(self) else {
                 self.finish_wait_folder(id, top, head, "it's on main; its steps after landing wait for a landing under way in the project's folder".into());
@@ -522,8 +524,8 @@ impl Hub {
             }
             let running = Claim::take(self, &crate::desk::hub::landing::in_place::steps_key(top));
             drop(guard);
-            let live = crate::desk::hub::landing::now_line::Steps::begin(self, &self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default(), id, "after", l.after_steps.first().map(String::as_str).unwrap_or(""));
-            let ran = crate::desk::lands::run_steps_seen(top, &l.after_steps, &|s| live.at(s));
+            let live = crate::desk::hub::landing::now_line::Steps::begin(self, &self.read(|st| st.desk.item(id).map(|i| i.project.clone())).unwrap_or_default(), id, "after", steps.first().map(String::as_str).unwrap_or(""));
+            let ran = crate::desk::lands::run_steps_seen(top, &steps, &|s| live.at(s));
             live.end(ran.as_ref().err().map(|e| e.step.as_str()));
             if running.is_some() {
                 drop(running);

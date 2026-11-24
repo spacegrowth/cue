@@ -2,12 +2,12 @@
 //! it lands, the check, after landing, push, items at once). Kept in config.json as `project.lands`: project → the
 //! parts you saved, next to Ask me before (desk/one_way.rs). Never in the project's files. A project not there has the
 //! defaults (part 7): its own copy per item, three at once, one commit per item, no check, nothing after, ask before
-//! a push. Cue's own project has Cue's setup (its check, then installed or served in place), and a folder that isn't a
-//! git repository can only work in place, its work committed by you.
+//! a push. Cue's own project has Cue's setup (its check, then the app's build, install and restart as named steps after
+//! landing, `APP_STEPS`), and a folder that isn't a git repository can only work in place, its work committed by you.
 //!
 //! A choice shown before Cue can do it can't be picked, and says so (none now). A check or an
 //! after landing of your own is its steps, kept here too (`check_steps`, `after_steps`): run in order, the first that
-//! fails stops the rest (`run_steps`). Cue's own check and install stay Cue's (its project's defaults); any other
+//! fails stops the rest (`run_steps`); a step is named by "[Name]" at its line's start. Cue's own check stays Cue's; any other
 //! project starts with no check and nothing after landing. A pull request and the push choices are built (desk/hub/landing/pr.rs). The Desk reads the rest as it works (desk/hub/landing/trees.rs,
 //! desk/hub/landing/finish.rs, desk/hub/landing/commit.rs).
 
@@ -67,8 +67,7 @@ pub const PARTS: &[Part] = &[
         label: "After landing",
         choices: &[
             c("nothing", "Nothing", "Landed is the last step: an item is done when it's on main.", true),
-            c("install", "Install or serve Cue", "Window-only changes are served in place, after the check. Others join the install every half hour.", true),
-            c("command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder. The first that fails stops the rest, and the item waits for you. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first.", true),
+            c("command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder. Start a line with [Name] to name its step. The first that fails stops the rest, and the item waits for you. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first.", true),
         ],
     },
     Part {
@@ -104,6 +103,9 @@ pub const PARTS: &[Part] = &[
     },
 ];
 
+/// After landing's old choice, before it was steps: read as the app's built-in steps (`app_steps`).
+const OLD_INSTALL: &str = "install";
+
 /// Items at once: the most items of a project at work in copies of their own.
 pub const AT_ONCE: (u32, u32) = (1, 9);
 /// Items at once when not set.
@@ -115,6 +117,62 @@ pub const STEPS_MAX: usize = 10;
 /// What goes between two steps in the lead's `LANDS: … | steps: <one> ;; <two>` (desk/parse.rs): never a step's own
 /// `;` or `|`, so `npm test | tail -5` and `cd web; make` stay one step each.
 pub const STEP_SEP: &str = " ;; ";
+
+/// A step's name, when its line starts with one in brackets ("[Build] npm run build"); else the step is named by its
+/// command. A shell's `[ -f x ]` (a space after the bracket) is a command, not a name.
+pub fn step_name(step: &str) -> &str {
+    named(step).map_or(step.trim(), |(n, _)| n)
+}
+
+/// What a step runs: its line without its name.
+pub fn step_run(step: &str) -> &str {
+    named(step).map_or(step.trim(), |(_, r)| r)
+}
+
+fn named(step: &str) -> Option<(&str, &str)> {
+    let s = step.trim().strip_prefix('[')?;
+    if s.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let (name, run) = s.split_once(']')?;
+    let (name, run) = (name.trim(), run.trim());
+    (!name.is_empty() && !run.is_empty()).then_some((name, run))
+}
+
+/// The steps after landing that update the app you're running from its own source, built in: what each runs, its
+/// default name, and the updater's word for it while it runs (desk/installer.rs). They run together, in this order,
+/// as the last steps: gathered for the next update (every half hour, or Update now), the app built from a clean copy
+/// at main (with the add-on when it's there), put in place and started, the one before put back if the new one
+/// doesn't start. Only a project whose folder is the running app's own source can have them (`Place::Cue`).
+pub const APP_STEPS: [(&str, &str, &str); 3] = [("app:build", "Build", "building"), ("app:install", "Install", "installing"), ("app:restart", "Restart", "starting")];
+
+/// Whether step `s` is one of the app's built-in steps.
+pub fn app_step(s: &str) -> bool {
+    APP_STEPS.iter().any(|(run, _, _)| step_run(s) == *run)
+}
+
+/// The app's built-in steps as a Desk's after landing has them by default.
+pub fn app_steps() -> Vec<String> {
+    APP_STEPS.iter().map(|(run, name, _)| format!("[{name}] {run}")).collect()
+}
+
+/// Why `steps` can't be after landing's steps in `place`: the app's built-in steps outside its own source, or not all
+/// three, in order, at the end.
+fn refused_app_steps(steps: &[String], place: Place) -> Result<(), String> {
+    let at: Vec<usize> = (0..steps.len()).filter(|k| app_step(&steps[*k])).collect();
+    if at.is_empty() {
+        return Ok(());
+    }
+    if place != Place::Cue {
+        return Err("the app's own build, install and restart are only for the app's own source".into());
+    }
+    let runs: Vec<&str> = at.iter().map(|k| step_run(&steps[*k])).collect();
+    let want: Vec<&str> = APP_STEPS.iter().map(|(r, _, _)| *r).collect();
+    if runs != want || at.first() != Some(&(steps.len() - 3)) {
+        return Err(format!("{} go together, in that order, as the last steps", want.join(", ")));
+    }
+    Ok(())
+}
 
 /// What a choice that isn't built yet says.
 pub const NOT_YET: &str = "not yet";
@@ -194,8 +252,29 @@ impl Lands {
     }
 
     pub fn to_json(&self) -> Value {
+        let names: Map<String, Value> = APP_STEPS.iter().filter_map(|(_, _, word)| self.app_step_name(word).map(|n| (word.to_string(), json!(n)))).collect();
         json!({ "where": self.at, "how": self.how, "check": self.check, "after": self.after, "push": self.push, "tests": self.tests, "waits": self.waits, "at_once": self.at_once,
-            "check_steps": self.check_steps, "after_steps": self.after_steps })
+            "check_steps": self.check_steps, "after_steps": self.after_steps, "after_names": names })
+    }
+
+    /// Whether after landing updates the app you're running (its built-in steps are among the steps).
+    pub fn updates_app(&self) -> bool {
+        self.after == "command" && self.after_steps.iter().any(|s| app_step(s))
+    }
+
+    /// After landing's own commands, run as each item lands (the app's built-in steps left out: they run together
+    /// later).
+    pub fn plain_after(&self) -> Vec<String> {
+        if self.after != "command" {
+            return vec![];
+        }
+        self.after_steps.iter().filter(|s| !app_step(s)).cloned().collect()
+    }
+
+    /// The name of the built-in step the updater calls `word` ("building"), as this Desk names it.
+    pub fn app_step_name(&self, word: &str) -> Option<String> {
+        let run = APP_STEPS.iter().find(|(_, _, w)| *w == word)?.0;
+        self.updates_app().then(|| self.after_steps.iter().find(|s| step_run(s) == run).map(|s| step_name(s).to_string())).flatten()
     }
 }
 
@@ -204,7 +283,7 @@ impl Lands {
 /// on every Desk (#808).
 pub fn defaults(place: Place) -> Lands {
     match place {
-        Place::Cue => Lands { at: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
+        Place::Cue => Lands { at: "copy", how: "squash", check: "cue", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: app_steps() },
         Place::Repo => Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
         Place::NoRepo => Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
     }
@@ -308,14 +387,14 @@ pub fn run_steps_seen(dir: &str, steps: &[String], seen: &dyn Fn(&str)) -> Resul
     let until = std::time::Instant::now() + total;
     for step in steps {
         seen(step);
-        let fail = |why: String, said: String| StepFailed { step: step.clone(), why, said };
+        let fail = |why: String, said: String| StepFailed { step: step_name(step).to_string(), why, said };
         let left = until.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
             return Err(fail(format!("didn't start: your steps took over {} in all", cap_words(total)), String::new()));
         }
         let this = cap.min(left);
         let mut cmd = std::process::Command::new(login_shell());
-        cmd.arg("-lc").arg(step).current_dir(dir);
+        cmd.arg("-lc").arg(step_run(step)).current_dir(dir);
         match crate::terminal::focus::capped_group(&mut cmd, this) {
             Ok(o) if o.status.success() => {}
             Ok(o) => {
@@ -340,7 +419,7 @@ pub fn allowed(part: &str, key: &str, place: Place) -> Result<&'static str, &'st
         return Err(NOT_YET);
     }
     match (part, key, place) {
-        ("check", "cue", p) | ("after", "install", p) if p != Place::Cue => Err("only for Cue's own project"),
+        ("check", "cue", p) if p != Place::Cue => Err("only for Cue's own project"),
         ("where", "copy" | "branch", Place::NoRepo) | ("how", "squash" | "merge" | "pr", Place::NoRepo) => Err("needs a git repository"),
         _ => Ok(ch.key),
     }
@@ -360,14 +439,29 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
             l.at_once = n as u32;
         }
         l.check_steps = s.get("check_steps").and_then(steps_in).unwrap_or_default();
-        l.after_steps = s.get("after_steps").and_then(steps_in).unwrap_or_default();
+        // After landing's steps as saved; none saved, the defaults' (the app's built-in steps on its own source).
+        if let Some(steps) = s.get("after_steps").and_then(steps_in) {
+            l.after_steps = steps;
+        }
+        // Saved before after landing was steps: "install" is the app's built-in steps.
+        if s.get("after").and_then(Value::as_str) == Some(OLD_INSTALL) && place == Place::Cue {
+            (l.after, l.after_steps) = ("command", app_steps());
+        }
+        // The app's built-in steps where they can't be: as if not there.
+        if refused_app_steps(&l.after_steps, place).is_err() {
+            l.after_steps.retain(|s| !app_step(s));
+        }
     }
     // Your own steps with none saved: as if not picked.
     if l.check == "command" && l.check_steps.is_empty() {
         l.check = defaults(place).check;
     }
     if l.after == "command" && l.after_steps.is_empty() {
-        l.after = defaults(place).after;
+        (l.after, l.after_steps) = (defaults(place).after, defaults(place).after_steps);
+    }
+    // Nothing after landing: no steps kept with it.
+    if l.after != "command" {
+        l.after_steps.clear();
     }
     // You commit: there's no copy for it to land from.
     if l.how == "owner" {
@@ -413,6 +507,12 @@ fn stored<'c>(c: &'c Value, project: &str) -> Option<&'c Value> {
 pub fn lands_of(project: &str, folder: &str) -> Lands {
     crate::logs::repos::first_look(folder);
     lands_known(project, folder)
+}
+
+/// How work lands for `project` whose folder was just found on disk to be the running app's own source (`Place::Cue`),
+/// whatever the folder's facts, looked at earlier, say. Reads no folder: safe with any lock held.
+pub fn app_source_lands(project: &str) -> Lands {
+    of_in(&crate::config::load(), project, Place::Cue)
 }
 
 /// `lands_of` from what's known of `folder` now, never waiting: for code that holds the store's lock.
@@ -527,6 +627,11 @@ pub fn save(project: &str, place: Place, value: &Value) -> Result<Lands, String>
             None => vec![],
         };
         refused_steps(&steps).map_err(|why| format!("{label}: {why}"))?;
+        if part == "after" {
+            refused_app_steps(&steps, place).map_err(|why| format!("{label}: {why}"))?;
+        } else if steps.iter().any(|s| app_step(s)) {
+            return Err(format!("{label}: the app's own build, install and restart go after landing"));
+        }
         if out.get(part).and_then(Value::as_str) == Some("command") {
             if steps.is_empty() {
                 return Err(format!("{label}: give at least one step"));
@@ -608,8 +713,13 @@ pub fn propose(c: &Value, project: &str, place: Place, part: &str, to: &str, ste
                 return Err(format!("{part}: at most {STEPS_MAX} steps"));
             }
             refused_steps(steps)?;
+            if p.key == "after" {
+                refused_app_steps(steps, place)?;
+            } else if steps.iter().any(|s| app_step(s)) {
+                return Err("the app's own build, install and restart go after landing".into());
+            }
             set[format!("{}_steps", p.key)] = json!(steps);
-            w = format!("{} → {}", part_words(p.key), steps.join(", then "));
+            w = format!("{} → {}", part_words(p.key), steps.iter().map(|s| step_name(s)).collect::<Vec<_>>().join(", then "));
         }
         // You commit, a pull request and merge decide where an item works, as on the screen.
         match (p.key, ch.key) {
@@ -641,6 +751,8 @@ pub fn checked(value: &Value) -> Result<Value, String> {
                 }
                 "full_run_on" => v.is_string(),
                 "at_once" => v.as_u64().is_some_and(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(&n)),
+                // Saved before after landing was steps: kept, and read as the app's built-in steps.
+                "after" if v.as_str() == Some(OLD_INSTALL) => true,
                 part => PARTS.iter().find(|p| p.key == part).is_some_and(|p| p.choices.iter().any(|c| Some(c.key) == v.as_str())),
             };
             if !ok {
@@ -661,7 +773,7 @@ mod tests {
     fn a_new_project_gets_the_defaults_and_a_folder_with_no_repository_works_in_place() {
         let none = json!({});
         assert_eq!(of_in(&none, "p", Place::Repo), Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] });
-        assert_eq!(of_in(&none, "cue", Place::Cue), Lands { at: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] });
+        assert_eq!(of_in(&none, "cue", Place::Cue), Lands { at: "copy", how: "squash", check: "cue", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: vec![], after_steps: app_steps() });
         let c = json!({ "project": { "lands": { "p": { "where": "copy", "how": "squash" } } } });
         assert_eq!(of_in(&c, "p", Place::NoRepo), Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] }, "a copy needs a repository");
     }
@@ -705,11 +817,14 @@ mod tests {
     #[test]
     fn cues_own_project_keeps_its_check_and_install_and_a_new_project_gets_neither() {
         let cue = of_in(&json!({}), "cue", Place::Cue);
-        assert_eq!((cue.check, cue.after, cue.push), ("cue", "install", "ask"), "Cue's own setup, nothing saved");
+        assert_eq!((cue.check, cue.after, cue.push), ("cue", "command", "ask"), "Cue's own setup, nothing saved");
+        assert_eq!(cue.after_steps, ["[Build] app:build", "[Install] app:install", "[Restart] app:restart"]);
+        assert!(cue.updates_app() && cue.plain_after().is_empty());
         let new = of_in(&json!({}), "web", Place::Repo);
         assert_eq!((new.check, new.after, new.push), ("none", "nothing", "ask"), "no check, nothing after landing");
         assert!(new.check_steps.is_empty() && new.after_steps.is_empty());
-        assert_eq!(allowed("after", "install", Place::Repo), Err("only for Cue's own project"));
+        assert_eq!(allowed("after", "install", Place::Repo), Err("not a choice"));
+        assert_eq!(allowed("after", "install", Place::Cue), Err("not a choice"), "no choice of its own: steps (#796)");
     }
 
     #[test]
@@ -822,7 +937,64 @@ mod tests {
         assert_eq!(set["after_steps"], json!(["make deploy"]));
         assert!(propose(&c, "cue", Place::Cue, "push", "after", &[]).unwrap_err().contains("keeps asking"));
         assert!(propose(&c, "cue", Place::Cue, "check", "command", &[]).is_err(), "your own steps need steps");
-        assert!(propose(&c, "web", Place::Repo, "after", "install", &[]).is_err(), "only for Cue's own project");
+        assert!(propose(&c, "web", Place::Repo, "after", "install", &[]).is_err(), "not a choice");
+        assert!(propose(&c, "web", Place::Repo, "after", "command", &app_steps()).is_err(), "the app's own steps, on its own source only");
+        let (set, words) = propose(&c, "cue", Place::Cue, "after", "command", &["[Docs] make docs".into(), "[Build] app:build".into(), "[Install] app:install".into(), "[Restart] app:restart".into()]).unwrap();
+        assert_eq!(words, "after landing → Docs, then Build, then Install, then Restart");
+        assert_eq!(set["after_steps"][0], "[Docs] make docs");
         assert_eq!(propose(&c, "cue", Place::Cue, "at once", "2", &[]).unwrap().1, "items at once → 2");
+    }
+
+    #[test]
+    fn a_step_is_named_by_its_brackets_or_by_its_command() {
+        assert_eq!((step_name("[Build] npm run build"), step_run("[Build] npm run build")), ("Build", "npm run build"));
+        assert_eq!((step_name("[Put in place]  ./go.sh"), step_run("[Put in place]  ./go.sh")), ("Put in place", "./go.sh"));
+        assert_eq!((step_name("npm test"), step_run("npm test")), ("npm test", "npm test"));
+        assert_eq!((step_name("[ -f x ] && make"), step_run("[ -f x ] && make")), ("[ -f x ] && make", "[ -f x ] && make"), "a shell test is a command");
+        assert_eq!(step_name("[Empty]"), "[Empty]", "a name with nothing to run is a command");
+    }
+
+    #[test]
+    fn a_desk_saved_with_the_old_install_choice_reads_as_the_apps_steps() {
+        let c = json!({ "project": { "lands": { "cue": { "after": "install", "check": "cue" }, "web": { "after": "install" } } } });
+        let l = of_in(&c, "cue", Place::Cue);
+        assert_eq!((l.after, l.after_steps.clone()), ("command", app_steps()));
+        assert_eq!((l.app_step_name("building"), l.app_step_name("starting")), (Some("Build".into()), Some("Restart".into())));
+        assert_eq!(of_in(&c, "web", Place::Repo).after, "nothing", "elsewhere it was never allowed");
+        assert!(checked(&json!({ "cue": { "after": "install" } })).is_ok(), "an old setting still saves");
+    }
+
+    #[test]
+    fn the_apps_steps_go_together_last_and_only_on_its_own_source() {
+        let named = vec!["[Docs] make docs".to_string(), "[Compile] app:build".into(), "[Swap] app:install".into(), "[Relaunch] app:restart".into()];
+        let c = json!({ "project": { "lands": { "cue": { "after": "command", "after_steps": named } } } });
+        let l = of_in(&c, "cue", Place::Cue);
+        assert!(l.updates_app());
+        assert_eq!(l.plain_after(), ["[Docs] make docs"], "your own steps run as it lands; the app's go with the next update");
+        assert_eq!(l.app_step_name("installing"), Some("Swap".into()));
+        assert_eq!(l.to_json()["after_names"], json!({ "building": "Compile", "installing": "Swap", "starting": "Relaunch" }));
+        // Elsewhere they're left out.
+        let web = of_in(&json!({ "project": { "lands": { "web": c["project"]["lands"]["cue"].clone() } } }), "web", Place::Repo);
+        assert!(!web.updates_app());
+        assert_eq!(web.after_steps, ["[Docs] make docs"]);
+        // Not all three, out of order, or not last: refused.
+        for bad in [vec!["app:build", "app:install"], vec!["app:install", "app:build", "app:restart"], vec!["app:build", "app:install", "app:restart", "make docs"]] {
+            let bad: Vec<String> = bad.into_iter().map(String::from).collect();
+            assert!(refused_app_steps(&bad, Place::Cue).is_err(), "{bad:?}");
+        }
+        assert!(refused_app_steps(&app_steps(), Place::Repo).is_err());
+        assert!(refused_app_steps(&app_steps(), Place::Cue).is_ok());
+    }
+
+    #[test]
+    fn a_named_step_runs_its_command_and_fails_by_its_name() {
+        let dir = std::env::temp_dir().join(format!("cue-lands-named-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = dir.to_string_lossy().to_string();
+        let e = run_steps(&d, &["[Make it] echo made > out".to_string(), "[Break] exit 2".to_string()]).unwrap_err();
+        assert_eq!(e.step, "Break");
+        assert_eq!(std::fs::read_to_string(dir.join("out")).unwrap(), "made\n");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

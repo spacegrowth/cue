@@ -9,7 +9,7 @@
 
 use crate::desk::hub::landing::full_run_kit::{FullRunState, Running};
 use crate::desk::hub::prelude::*;
-use crate::desk::lands::Lands;
+use crate::desk::lands::{Lands, APP_STEPS};
 use serde_json::{json, Value};
 
 /// One line: "run" (a step under way), "wait" (one due, not begun), "fail" (the last one failed), "ok" (it passed),
@@ -242,17 +242,18 @@ fn lines_of(st: &Store, desk: &str, k: &str, l: &Lands, full: Option<Line>) -> V
         let all = crate::locking::lock(&LIVE, "landing now");
         all.iter().filter(|x| x.desk == k).cloned().collect()
     };
-    let installs = l.after == "install" || full.is_some();
+    let installs = l.updates_app() || full.is_some();
     let mut out = Vec::new();
-    // Cue's build and install, after its full run.
+    // The app's built-in steps after landing (desk/lands.rs APP_STEPS), by the names the Desk gives them: the latest first.
     if installs {
-        let now = [("starting", "Cue is restarting"), ("installing", "Installing Cue"), ("building", "Building Cue")].into_iter().map(|(s, w)| (at(st, desk, &[s]), w)).find(|(on, _)| !on.is_empty());
-        out.extend(now.map(|(on, what)| line_for("run", what, &on)));
+        let now = APP_STEPS.iter().rev().map(|(_, _, word)| (at(st, desk, &[word]), app_name(l, word))).find(|(on, _)| !on.is_empty());
+        out.extend(now.map(|(on, what)| line_for("run", &what, &on)));
     }
     out.extend(checking(st, desk, l, &live));
     out.extend(live.iter().filter(|x| x.kind == "after").map(|x| {
         let mut line = Line::new("run", format!("After landing #{}", x.item));
-        (line.step, line.since, line.items, line.cmd) = (x.step.clone(), x.since, vec![x.item.clone()], true);
+        (line.step, line.cmd) = step_shown(&x.step);
+        (line.since, line.items) = (x.since, vec![x.item.clone()]);
         line
     }));
     out.extend(full.iter().filter(|f| f.state == "run").cloned());
@@ -268,7 +269,7 @@ fn lines_of(st: &Store, desk: &str, k: &str, l: &Lands, full: Option<Line>) -> V
     out.extend(ended);
     let queued = at(st, desk, &["queued"]);
     if installs && !queued.is_empty() {
-        let mut line = line_for("wait", "Waiting to install", &queued);
+        let mut line = line_for("wait", &format!("Waiting for {}", app_name(l, APP_STEPS[0].2)), &queued);
         line.note = queued.iter().filter_map(|i| i.finish.as_ref()).map(|f| f.wait.trim()).find(|w| !w.is_empty()).unwrap_or("").to_string();
         out.push(line);
     }
@@ -286,7 +287,8 @@ fn checking(st: &Store, desk: &str, l: &Lands, live: &[Live]) -> Vec<Line> {
             let x = live.iter().find(|x| x.kind == "check" && x.item == c.id);
             line.since = x.map_or(0, |x| x.since);
             match x.filter(|x| !x.step.is_empty()) {
-                Some(x) => (line.step, line.cmd) = (x.step.clone(), l.check == "command"),
+                Some(x) if l.check == "command" => (line.step, line.cmd) = step_shown(&x.step),
+                Some(x) => line.step = x.step.clone(),
                 None => line.step = if l.check == "command" { "its check".into() } else { "Cue's own check".into() },
             }
             line.items = vec![c.id.clone()];
@@ -299,14 +301,29 @@ fn last_line(x: &Last) -> Line {
     let kind = if x.kind == "check" { "Check" } else { "After landing" };
     let mut line = if x.failed.is_empty() { Line::new("ok", format!("{kind} passed on #{}", x.item)) } else { Line::new("fail", format!("{kind} failed on #{}", x.item)) };
     (line.step, line.since, line.items) = (x.failed.clone(), x.at, vec![x.item.clone()]);
-    // After landing names the step that failed as typed; a check says it in its own words ("\"npm test\" failed").
-    line.cmd = x.kind == "after";
+    // After landing names the step that failed (as typed when it has no name); a check says it in its own words
+    // ("\"npm test\" failed").
+    if x.kind == "after" && !x.failed.is_empty() {
+        (line.step, line.cmd) = step_shown(&x.failed);
+    }
     line
+}
+
+/// A step of yours as the line shows it: its name, or its command as typed (`cmd`) when it has none.
+fn step_shown(step: &str) -> (String, bool) {
+    let name = crate::desk::lands::step_name(step);
+    (name.to_string(), name == crate::desk::lands::step_run(step))
+}
+
+/// The app's built-in step the updater calls `word`, by the name Desk `l` gives it (its default name when the Desk has
+/// none: the full run's line on a Desk with nothing after landing).
+fn app_name(l: &Lands, word: &str) -> String {
+    l.app_step_name(word).unwrap_or_else(|| APP_STEPS.iter().find(|(_, _, w)| *w == word).map_or(word, |(_, n, _)| n).to_string())
 }
 
 /// What the Desk's steps are, before any has run: "Check before landing: npm test, then lint · After landing: make deploy".
 fn idle_line(l: &Lands) -> Line {
-    let steps = |s: &[String]| s.join(", then ");
+    let steps = |s: &[String]| s.iter().map(|s| crate::desk::lands::step_name(s)).collect::<Vec<_>>().join(", then ");
     let check = match l.check {
         "command" => format!("Check before landing: {}", steps(&l.check_steps)),
         "cue" => "Cue's own check before landing, every test after".into(),
@@ -314,7 +331,6 @@ fn idle_line(l: &Lands) -> Line {
     };
     let after = match l.after {
         "command" => format!("After landing: {}", steps(&l.after_steps)),
-        "install" => "Installed after landing".into(),
         _ => String::new(),
     };
     let mut line = Line::new("idle", [check, after].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · "));
@@ -382,5 +398,17 @@ mod tests {
         let i = idle_line(&l);
         assert_eq!(i.what, "Check before landing: npm test, then npm run lint · After landing: make deploy");
         assert_eq!(i.note, "sent to GitHub as each lands");
+    }
+
+    #[test]
+    fn steps_show_by_their_names() {
+        let mut l = crate::desk::lands::defaults(crate::desk::lands::Place::Cue);
+        assert_eq!(idle_line(&l).what, "Cue's own check before landing, every test after · After landing: Build, then Install, then Restart");
+        l.after_steps = vec!["[Docs] make docs".into(), "[Compile] app:build".into(), "[Swap] app:install".into(), "[Relaunch] app:restart".into()];
+        assert_eq!((app_name(&l, "building"), app_name(&l, "starting")), ("Compile".to_string(), "Relaunch".to_string()));
+        l.after = "nothing";
+        assert_eq!(app_name(&l, "installing"), "Install", "no steps of its own: the default name");
+        assert_eq!(step_shown("[Deploy] make deploy"), ("Deploy".to_string(), false));
+        assert_eq!(step_shown("make deploy"), ("make deploy".to_string(), true));
     }
 }
