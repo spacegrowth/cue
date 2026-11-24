@@ -343,6 +343,9 @@ impl Hub {
     /// "Send now" on a queued message: the same Esc as Stop (the agent then reads the queued message
     /// straight away), but nobody stopped anything, so no "⏹ stopped it" line and no stopped state.
     pub fn send_queued_now(&self, session_id: &str) -> Result<String, String> {
+        // Cue's own stop, to send yours (as stop_to_send): the interrupt its log shows isn't a turn you stopped, so no
+        // "Interrupted" card (activity.rs catch_interrupted). A hosted session's stop goes in interrupt_direct (#787).
+        self.write(|st| st.stopped_to_send.insert(session_id.to_string(), now_ms()));
         let (origin, direct) = self.interrupt_direct(session_id);
         if !direct {
             let origin = origin.ok_or("that session is gone")?;

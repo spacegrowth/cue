@@ -73,7 +73,10 @@ impl Translator {
             }
             Inbound::System(v) => task(v).or_else(|| compacting(v)).into_iter().collect(),
             Inbound::Assistant(v) => {
-                self.in_turn = true;
+                // Its own lines only: a background agent's go on after its turn has ended (#787).
+                if parent(v).is_none() {
+                    self.in_turn = true;
+                }
                 api_error(v).into_iter().chain(assistant(v)).collect()
             }
             Inbound::User(v) => self.user(v),
