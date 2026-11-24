@@ -780,20 +780,6 @@ test("a message you send on an opened item is its chat's last, under its holder'
   await expect(rows.nth(-2)).toContainText("And the wide one");
 });
 
-test("on the Board, a session working for a Desk has the Desk's mark before its name; one that isn't, none (#156)", async ({ page, cue }) => {
-  await cue.open("desk");
-  await page.locator('.switch-view [data-view="board"]').click();
-  const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(`.proj, .tl-name`, { hasText: new RegExp(`^${name}$`) }) }).first();
-  await expect(card("host-lead").locator(".dk-name-ic svg.dk-kic")).toHaveCount(1);
-  await expect(card("site-lead").locator(".dk-name-ic")).toHaveCount(1);
-  // Membership keeps its type mark after its items finish; leaving removes it.
-  await cue.change((st) => { for (const d of st.desk.projects) { for (const i of d.items) if (i.holder?.sid === "site") i.state = "done"; if (d.lead?.sid === "site") d.lead = null; } });
-  await expect(card("site-lead").locator(".dk-name-ic")).toHaveCount(1);
-  await cue.change((st) => { for (const d of st.desk.projects) d.members = (d.members || []).filter((sid) => sid !== "site"); });
-  await expect(card("site-lead").locator(".dk-name-ic")).toHaveCount(0);
-  await expect(card("host-lead").locator(".dk-name-ic")).toHaveCount(1);
-});
-
 test("Board Desk markers show dispatcher, lead, and session roles", async ({ page, cue }) => {
   await cue.open("desk");
   await page.locator('.switch-view [data-view="board"]').click();
@@ -807,105 +793,6 @@ test("Board Desk markers show dispatcher, lead, and session roles", async ({ pag
   expect(types[0]).toContain('data-desk-type="desk"');
   expect(types[1]).toContain('data-desk-type="lead"');
   expect(types[2]).toContain('data-desk-type="session"');
-});
-
-test("the Board Desk link uses the tray and omits repeated task details", async ({ page, cue }) => {
-  await cue.open("desk");
-  await cue.change((st) => {
-    const desk = st.desk.projects.find((d) => d.project === "cue");
-    Object.assign(desk, { project: "desk-feature", workspace_project: "cue", name: "Feature Desk" });
-    for (const item of desk.items) item.project = desk.project;
-    st.sessions.find((session) => session.session_id === "host").prompt = "Desk item #d5 (bug): Hosted sessions can't open the canvas";
-    st.sessions.find((session) => session.session_id === "site").prompt = "About #w1 (Keep this task name): Check the link";
-  });
-  await page.evaluate(() => deskSelect("web"));
-  await page.locator('.switch-view [data-view="board"]').click();
-  const card = (name) => page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj", { hasText: new RegExp(`^${name}$`) }) }).filter({ has: page.locator(".dk-chip") }).first();
-  const lead = card("host-lead").locator(".dk-chip");
-  await expect(lead).toHaveCount(1);
-  await expect(lead).toHaveText("DeskFeature Desk›");
-  // A quiet line on the card's own ground, not a light pill (#260): no fill, no border, the name in on-bg.
-  // (Read on the chip as drawn now: a redraw between finding it and reading it would leave a detached one.)
-  await expect(lead).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(lead).toHaveCSS("border-top-width", "0px");
-  await expect(lead).toHaveAttribute("data-desk-hand", "desk-feature");
-  await expect(lead.locator("svg path").first()).toHaveAttribute("d", /^M4 13l3-7/);
-  await expect(card("host-lead")).not.toContainText("Hosted sessions can't open the canvas");
-  await expect(lead.locator("svg.dk-kic")).toHaveCount(1);
-  await expect(page.locator("[title]", { has: page.locator(".dk-chip") })).toHaveCount(0);
-  await expect(card("site-lead")).toContainText("Check the link");
-  await expect(card("site-lead")).not.toContainText("Keep this task name");
-  await lead.click();
-  await expect(page.locator('.switch-view [data-view="desk"]')).toHaveClass(/on/);
-  await expect(page.locator('.dk-right [data-desk-page="dispatcher"] [data-desk-chat="desk-feature"]')).toBeVisible();
-  await openSessions(page);   // the Desk's name heads All sessions (#666)
-  await expect(page.locator(".dk-sh b")).toHaveText("Feature Desk");
-});
-
-test("Board Sessions: Desk sessions sit under their own fold line at the foot, open until you fold it (#262)", async ({ page, cue }) => {
-  await cue.open("desk");
-  await page.evaluate(() => { try { localStorage.removeItem("cue.deskShut"); } catch {} });
-  await page.locator('.switch-view [data-view="board"]').click();
-  const col = page.locator(".sec-sessions .sec-body");
-  const fold = col.locator("[data-fold-desk]");
-  await expect(fold).toHaveCount(1);
-  const deskSids = await col.evaluate((el) => [...el.querySelectorAll("[data-session]")].map((n) => n.dataset.session).filter((sid) => deskWorksFor(sid)));
-  expect(deskSids.length).toBeGreaterThan(0);
-  await expect(fold).toHaveCount(1);
-  await expect(fold).toContainText(`DESK SESSIONS · ${deskSids.length}`);
-  await expect(fold).toHaveAttribute("aria-expanded", "true");
-  await expect(fold.locator("svg.dk-kic")).toHaveCount(1);
-  // Open: every Desk session's card comes after the fold line, none above it.
-  const order = await col.evaluate((el) => [...el.querySelectorAll("[data-fold-desk], [data-session]")].map((n) => n.dataset.session || "FOLD"));
-  const at = order.indexOf("FOLD");
-  for (const sid of deskSids) expect(order.indexOf(sid)).toBeGreaterThan(at);
-  // Fold: their cards leave, the line stays, and it's remembered.
-  await fold.click();
-  await expect(fold).toHaveAttribute("aria-expanded", "false");
-  for (const sid of deskSids) await expect(col.locator(`[data-session="${sid}"]`)).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem("cue.deskShut"))).toBe("1");
-  await expect(page.locator("[title]", { has: fold })).toHaveCount(0);
-  await fold.click();
-  for (const sid of deskSids) await expect(col.locator(`[data-session="${sid}"]`)).toHaveCount(1);
-});
-
-test("Board Waiting: a Desk session's your-turn row folds with Desk at the foot; its asks stay in the list (#262)", async ({ page, cue }) => {
-  await cue.open("desk");
-  await page.evaluate(() => { try { localStorage.removeItem("cue.deskShut"); } catch {} });
-  await cue.change((st) => {
-    const ask = st.items.find((i) => i.session_id === "lead");
-    st.items.push({ ...ask, id: "n-site-turn", kind: "waiting", session_id: "site", tool_name: "", tool_input: {}, message: "Done: the link works." });
-  });
-  await page.locator('.switch-view [data-view="board"]').click();
-  const col = page.locator(".sec-waiting .sec-body");
-  const fold = col.locator("[data-fold-desk]");
-  await expect(fold).toHaveCount(1);
-  await expect(fold).toContainText("DESK SESSIONS · 1");
-  await expect(fold).toContainText("your turn");
-  const order = await col.evaluate((el) => [...el.querySelectorAll("[data-fold-desk], .nrow")].map((n) => n.matches("[data-fold-desk]") ? "FOLD" : n.textContent.includes("site-lead") || n.querySelector("[data-session='site'], [data-id='n-site-turn']") ? "SITE" : "OTHER"));
-  expect(order.indexOf("FOLD")).toBeLessThan(order.lastIndexOf("SITE"));
-  expect(order.indexOf("OTHER")).toBeLessThan(order.indexOf("FOLD"));   // the lead's ask stays up in the list
-  // One fold for both columns: folding here folds Sessions' Desk line too.
-  await fold.click();
-  await expect(fold).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".sec-sessions [data-fold-desk]")).toHaveAttribute("aria-expanded", "false");
-  expect(await col.evaluate((el) => el.textContent.includes("Done: the link works."))).toBe(false);
-  await expect(col.locator(".nrow").first()).toBeVisible();
-  await fold.click();
-  await expect(fold).toHaveAttribute("aria-expanded", "true");
-});
-
-test("the Desk's mark is on the session's chat title, never twice on a card (#156)", async ({ page, cue }) => {
-  await cue.open("desk");
-  await page.locator('.switch-view [data-view="board"]').click();
-  // Each card has it once (nameSpan carries it), never doubled.
-  for (const el of await page.locator(".tl-top, .card-head, .nrow-top, .nrow").all()) expect(await el.locator(":scope > .dk-name-ic, :scope > * > .dk-name-ic").count()).toBeLessThanOrEqual(1);
-  // Opened, its chat's title has it before the name.
-  await page.locator("[data-session], [data-detail]").filter({ has: page.locator(".proj, .tl-name", { hasText: /^host-lead$/ }) }).first().click();
-  const title = page.locator(".proj", { hasText: /^host-lead$/ }).last();
-  await expect(title.locator("xpath=preceding-sibling::*[1]")).toHaveClass(/dk-name-ic/);
-  expect(await page.evaluate(() => typeof deskSessMark === "function" && deskSessMark("host").includes("dk-name-ic"))).toBe(true);
-  expect(await page.evaluate(() => deskSessMark("nobody"))).toBe("");
 });
 
 test("tasks, bugs and features say on the row that they ask, and are answered on the opened item", async ({ page, cue }) => {

@@ -508,18 +508,6 @@ function workColumn(all, isOpen, desks = []) {
     + (desks.length ? `<div class="col-sub dkw-sub">${deskKindIcon("tray")}DESKS · ${desks.length}</div>${desks.map(deskLine).join("")}` : "")
     || `<div class="col-sub">NO OTHER SESSIONS</div>`;
 }
-/** Sessions' Desk group: one fold line (open until you fold it, remembered), then the Desks' cards, working first. */
-const deskShut = () => { try { return localStorage.getItem("cue.deskShut") === "1"; } catch { return false; } };
-function foldDesk() {
-  try { localStorage.setItem("cue.deskShut", deskShut() ? "0" : "1"); } catch {}
-  renderMain();
-}
-function deskFold(desk, card) {
-  if (!desk.length) return "";
-  const busy = desk.filter((s) => !idleNote(s)), shut = deskShut();
-  return `<button class="col-sub fold-head sub-fold desk-fold" data-fold-desk aria-expanded="${!shut}"><span class="fold-arrow">${shut ? "▸" : "▾"}</span> ${deskKindIcon("tray")}DESK SESSIONS · ${desk.length}${busy.length ? `<span class="desk-fold-n">· ${busy.length} working</span>` : ""}</button>`
-    + (shut ? "" : [...busy, ...desk.filter((s) => idleNote(s))].map(card).join(""));
-}
 
 /** A drawer under Sessions or Waiting: its heading folds it; `body()` is drawn only while it's open. */
 function drawerHtml(name, title, count, body) {
