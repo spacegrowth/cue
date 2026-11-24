@@ -365,13 +365,16 @@ test("Up next and Done today sit side by side on the green and fold to their hea
   const head = next.locator("[data-desk-c-fold]");
   await head.click();
   await expect(head).toHaveAttribute("aria-expanded", "false");
-  await expect(next.locator(".dkn-nx")).toHaveCount(0);
+  // Folded, its rows stay in the page (so it can slide open again) but out of sight.
+  await expect(next.locator(".dkn-nx").first()).toBeHidden();
+  await expect(next.locator(".dkn-nx").nth(1)).toBeHidden();
   await page.reload();
   await page.locator('#app [data-view="board"]').waitFor();
   await openDesk(page).catch(() => {});
   await expect(page.locator('[data-dkn-drawer="next"] [data-desk-c-fold]')).toHaveAttribute("aria-expanded", "false");
   await page.locator('[data-dkn-drawer="next"] [data-desk-c-fold]').click();
   await expect(page.locator('[data-dkn-drawer="next"] .dkn-nx')).toHaveCount(2);
+  await expect(page.locator('[data-dkn-drawer="next"] .dkn-nx').first()).toBeVisible();
 });
 
 test("a laptop's window: the sessions a strip, Items never under 520; the smallest window fits", async ({ page, cue }) => {
@@ -469,9 +472,12 @@ test("Up next says in full why each item waits", async ({ page, cue }) => {
     add("u2", "Parked for later", { state: "held" });
     add("u3", "Anyone can take this", {});
   });
-  const line = (id) => page.locator(`[data-dkn-drawer="next"] .dkn-nx[data-desk-item="${id}"] .dkn-a2`);
+  const line = (id, drawer = "next") => page.locator(`[data-dkn-drawer="${drawer}"] .dkn-nx[data-desk-item="${id}"] .dkn-a2`);
   await expect(line("u1")).toContainText("Waits for #d3 to finish first");
-  await expect(line("u2")).toContainText("Parked: press Start to begin it");
+  // A parked one is in Parked, under Up next (147f6e329e); opened, it says how it starts.
+  await page.locator('[data-dkn-drawer="parked"] [data-desk-c-fold]').click();
+  await expect(line("u2", "parked")).toBeVisible();
+  await expect(line("u2", "parked")).toContainText("Parked: press Start to begin it");
   await expect(line("u3")).toContainText("Waits for a free session");
 });
 

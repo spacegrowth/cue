@@ -767,13 +767,16 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
     d.items.push({ id: "q7", project: "cue", kind: "task", title: "Tidy the footer", state: "queued", created: Date.now() / 1000, updated: Date.now() / 1000, holder: null, from: "you" });
   });
   const rows = page.locator(".dkn-items");
-  // B2 (#666): parked rows sit in UP NEXT, after the queued ones, their status saying how they start; no group of
-  // their own, and no Start or Park on a row: they're on the item's page.
-  expect(await groupOf(page, "h1")).toBe("UP NEXT");
+  // Parked rows have their own section under UP NEXT (147f6e329e), folded while Up next is open, their status saying
+  // how they start; no Start or Park on a row: they're on the item's page.
+  expect(await groupOf(page, "h1")).toBe("PARKED");
   expect(await groupOf(page, "q7")).toBe("UP NEXT");
   const o = await listOrder(page);
   expect(o.indexOf("h1")).toBeGreaterThan(o.indexOf("q7"));
-  await expect(rows.locator(".dkn-gh, .dkn-dh", { hasText: /Parked|On hold/ })).toHaveCount(0);
+  await expect(rows.locator(".dkn-dh", { hasText: "PARKED" })).toHaveCount(1);
+  await expect(rows.locator(".dkn-gh, .dkn-dh", { hasText: /On hold/ })).toHaveCount(0);
+  await rows.locator('[data-desk-c-fold="parked"]').click();
+  await expect(rows.locator('[data-desk-item="h1"]')).toBeVisible();
   // Up next says in full why it waits (desk-live, 8fa85063b8).
   await expect(statusOf(page, "h1")).toHaveText("Parked: press Start to begin it");
   await expect(rows.locator('[data-desk-act="start_now"], [data-desk-act="park"]')).toHaveCount(0);
@@ -785,6 +788,8 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   await expect(pane.locator('[data-desk-act="park"]')).toHaveCount(0);
   // A queued item's page has Park too.
   await page.locator(".dk-right .dkn-sback .dk-back").click();
+  // Parked is open, so Up next is folded: open it again (one at a time).
+  await rows.locator('[data-desk-c-fold="next"]').click();
   await rows.locator('[data-desk-item="q7"]').click();
   await openMore(page.locator(".dk-right .dkn-ib"));
   await expect(page.locator('.dk-right .dkn-ib [data-desk-act="park"]')).toHaveText("Park");

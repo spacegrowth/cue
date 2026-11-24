@@ -208,6 +208,9 @@
 .dkn-lcol > .dkn-dr:not(.fold) { flex: 1 1 0; }
 .dkn-lcol > .dkn-dr.fold > :is(.dkn-dl, .dkn-more) { display: none; }
 .dkn-lcol > .dkn-dr.fold .dkn-hint { display: none; }
+/* Narrow, the sections stack in one column and the green scrolls: Up next and Parked stack in it like Done today,
+   each its rows' height. */
+@container dknl (max-width: 460px) { .dkn-lcol { display: contents; } }
 .dkn-dr > .dkn-dh { flex: none; }
 .dkn-dl { display: flex; flex-direction: column; gap: 2px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 .dkn-dr > .dkn-more { padding: 6px 6px 0; border-top: 0; color: var(--on-bg-muted); }

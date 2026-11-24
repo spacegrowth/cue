@@ -22,8 +22,9 @@ const park = (cue) => cue.change((st) => {
     created: Date.now() / 1000, updated: Date.now() / 1000, from: "you", held: [Math.floor(Date.now() / 1000), "You", ""] });
 });
 /** C's order, top to bottom (#748, desk-live 670449c234: Working above Waiting on you): what's at work, what waits on
- *  you (questions, then what's ready to check), what's up next (queued, then parked), and Done today. */
-const ORDER = ["working", "you", "next", "done"];
+ *  you (questions, then what's ready to check), what's up next, what's parked (its own section under Up next since
+ *  147f6e329e), and Done today. */
+const ORDER = ["working", "you", "next", "parked", "done"];
 
 test("the list's groups in order: Waiting on you, Working, Up next, Done today; light and dark (#602, #748)", async ({ page, cue }) => {
   for (const colorScheme of ["light", "dark"]) {
@@ -32,13 +33,13 @@ test("the list's groups in order: Waiting on you, Working, Up next, Done today; 
     await openDesk(page);
     await park(cue);
     await expect.poll(() => heads(page)).toEqual(ORDER);
-    // Each one's rows under it: the question before the finished one; the queue in your order, the parked one last.
-    await expect.poll(async () => (await listOrder(page)).slice(0, 11)).toEqual(["# WORKING", "d3", "d5", "# WAITING ON YOU", "d1", "d2", "# UP NEXT", "d4", "d6", "p1", "# DONE TODAY"]);
+    // Each one's rows under it: the question before the finished one; the queue in your order, then Parked's.
+    await expect.poll(async () => (await listOrder(page)).slice(0, 12)).toEqual(["# WORKING", "d3", "d5", "# WAITING ON YOU", "d1", "d2", "# UP NEXT", "d4", "d6", "# PARKED", "p1", "# DONE TODAY"]);
     // Up next says in full why it waits (desk-live, 8fa85063b8).
     await expect(statusOf(page, "p1")).toHaveText("Parked: press Start to begin it");
     // Done today starts open, its rows after its head.
     await expect(page.locator('.dk-items [data-desk-c-fold="done"]')).toHaveAttribute("aria-expanded", "true");
-    expect((await listOrder(page)).slice(11)).toContain("d7");
+    expect((await listOrder(page)).slice(12)).toContain("d7");
   }
 });
 
@@ -62,9 +63,10 @@ test("the order holds with Done today opened, groups emptied, and after a restar
   await expect(page.locator('.dk-items [data-desk2b-group="you"] > span:not(.dkn-fa)')).toHaveText("1");
   await expect.poll(() => heads(page)).toEqual(ORDER);
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.id === "d2") { i.state = "working"; delete i.finish; } });
-  await expect.poll(() => heads(page)).toEqual(["working", "next", "done"]);
+  await expect.poll(() => heads(page)).toEqual(["working", "next", "parked", "done"]);
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.state === "working") i.state = "done"; });
-  await expect.poll(() => heads(page)).toEqual(["next", "done"]);
+  await expect.poll(() => heads(page)).toEqual(["next", "parked", "done"]);
+  // Nothing parked: Parked goes too.
   await cue.change((st) => { for (const i of st.desk.projects.find((d) => d.project === "cue").items) if (i.state === "held") i.state = "queued"; });
   await expect.poll(() => heads(page)).toEqual(["next", "done"]);
   expect(await groupOf(page, "p1")).toBe("UP NEXT");
