@@ -13,7 +13,9 @@
 #                 commit. What git ignores stays (src-tauri/target, node_modules), so its build is warm.
 #   logs/         one log per step of the latest run (find-<commit>-<step>.log: the search for the culprit)
 #   result.json   the latest run's result (--out puts it elsewhere)
-#   lock          one run at a time per work folder: a second call waits for the first
+#   lock          one run at a time per work folder: a second call waits for the first, using no processor while
+#                 it waits; a call waiting for an older commit than another waiting call isn't made (exit 2)
+#   queue/        the calls waiting for their turn, one file each
 # Asked again for a run already made (the result file holds a finished result for the same --at and --since), it
 # runs nothing: it prints that file's path and exits as that run did. So a caller that lost track of a run (it quit,
 # its connection dropped) asks for the same run again, waits behind the one still going, and gets its result.
@@ -88,22 +90,48 @@ fi
 
 # One run at a time per work folder. The turn is this open file: nothing a step starts keeps it (9>&- below).
 # lockf where there is one, flock where there isn't (CUE_FULL_RUN_LOCKF names lockf's program: a test's way to
-# have none).
+# have none). A call that has to wait asks again every few seconds (CUE_FULL_RUN_POLL) and sleeps in between: lockf
+# waiting on a descriptor (`lockf 9`) spins a whole processor core for as long as it waits.
 LOCKF="${CUE_FULL_RUN_LOCKF:-lockf}"
 if command -v "$LOCKF" >/dev/null 2>&1; then
   lock_try() { "$LOCKF" -s -t 0 9; }
-  lock_wait() { "$LOCKF" -s 9; }
 elif command -v flock >/dev/null 2>&1; then
   lock_try() { flock -n 9; }
-  lock_wait() { flock 9; }
 else
   die "neither lockf nor flock is here: one run at a time can't be kept"
 fi
+# The calls waiting for the turn: queue/<pid> holds the commit each waits to run. A call waiting for an older commit
+# than another waiting call gives up: that one's run covers it.
+QUEUE="$DIR/queue"
+mkdir -p "$QUEUE" || die "couldn't make $QUEUE"
+trap 'rm -f "$QUEUE/$$"' EXIT
+# The later commit of this one's line another live call waits for, if any.
+newer_waiting() {
+  local f pid c
+  for f in "$QUEUE"/*; do
+    [ -f "$f" ] || continue
+    pid="${f##*/}"
+    [ "$pid" != "$$" ] || continue
+    if ! kill -0 "$pid" 2>/dev/null; then rm -f "$f"; continue; fi
+    c="$(cat "$f" 2>/dev/null)"
+    [ -n "$c" ] && [ "$c" != "$AT_FULL" ] || continue
+    if git -C "$REPO" merge-base --is-ancestor "$AT_FULL" "$c" 2>/dev/null; then echo "$c"; return 0; fi
+  done
+  return 1
+}
 exec 9>>"$DIR/lock"
-if ! lock_try; then
-  echo "full-run: another full run is using $DIR; waiting for its end…" >&2
-  lock_wait || die "couldn't take the turn in $DIR"
-fi
+echo "$AT_FULL" >"$QUEUE/$$"
+said_waiting=0
+while :; do
+  if newer="$(newer_waiting)"; then
+    echo "full-run: not made: a run of a later commit ($(git -C "$REPO" rev-parse --short "$newer")) is waiting, and it covers this one" >&2
+    exit 2
+  fi
+  lock_try && break
+  if [ "$said_waiting" = 0 ]; then echo "full-run: another full run is using $DIR; waiting for its end…" >&2; said_waiting=1; fi
+  sleep "${CUE_FULL_RUN_POLL:-5}"
+done
+rm -f "$QUEUE/$$"
 
 # The run already made: the result file is written whole, so one that is there is finished; it starts with the
 # commits and whether it passed (write_result).

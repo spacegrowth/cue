@@ -13,7 +13,8 @@
 #   unit  Rust tests (the app and src-tauri/xtask), then the protocol tests against a private, silent Cue: its own socket (CUE_HOME), no
 #         notifications, no windows (CUE_QUIET). Your real Cue keeps running untouched. Then scripts/release.sh's
 #         gates against stand-ins (tests/release/gates.test.sh): nothing built or published.
-#         And scripts/full-run.sh against stand-in steps (tests/release/full_run.test.sh).
+#         And scripts/full-run.sh against stand-in steps (tests/release/full_run.test.sh), and scripts/test-runner.sh
+#         waiting its turn (tests/release/test_runner_lock.test.sh).
 #   ui    every node test (tests/*.test.js, tests/ui/*.test.js), then the real UI in headless Chromium on the fake
 #         bridge (tests/ui: screens against their baselines, and interactions). Needs `npm ci` once.
 #   e2e   the real app driven over WebDriver, a private Cue per journey (tests/e2e/run.sh, docs/dev/e2e.md).
@@ -58,6 +59,7 @@ unit() {
   python3 "$ROOT/tests/test_protocol.py"
   "$ROOT/tests/release/gates.test.sh"
   "$ROOT/tests/release/full_run.test.sh"
+  "$ROOT/tests/release/test_runner_lock.test.sh"
   "$ROOT/tests/release/debug_only.test.sh"
 }
 
