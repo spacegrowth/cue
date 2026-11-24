@@ -87,7 +87,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
     let mut last_new: Option<String> = None;
     // What the lead is told of its routes, in one message once its lines are read (#248).
     let mut answers: Vec<String> = Vec::new();
-    let (away, mut back) = (crate::desk::hub::away::away::away_in_force(st, project, now), Vec::new());
+    let (away, mut back) = (crate::desk::hub::away::away::away_in_force(st, project), Vec::new());
     for line in parse::lines(text) {
         match line {
             Line::Item { kind, title, see, done_when, follows, picked, .. } => {

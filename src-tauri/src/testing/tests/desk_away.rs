@@ -1,5 +1,5 @@
-//! Away mode on a Desk (desk/hub/away/away.rs): turned on, its rules in the lead's summary and the lead told; ended by its
-//! end time (with no turn ending) or at a Desk session's turn end; turned off. Ask me before still waits for the owner
+//! Away mode on a Desk (desk/hub/away/away.rs): turned on, its rules in the lead's summary and the lead told; no end
+//! time (#790): it stays on until turned off, or pauses at a Desk session's turn end once its budget is spent. Ask me before still waits for the owner
 //! while it's on; a session or lead a usage limit stopped is skipped and carried on after the reset.
 
 use super::desk::{desk, ends, holder, item, new_lead, sent_to};
@@ -20,7 +20,7 @@ fn feed_goes(w: &World) {
 }
 
 #[test]
-fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
+fn away_mode_turns_on_tells_the_lead_has_no_end_time_and_turns_off() {
     let w = World::new();
     let (h, project) = holder(&w);
     let d = new_lead(&w, &project);
@@ -29,14 +29,15 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     assert_eq!((away["on"].clone(), away["active"].clone(), away["ended"].clone(), away["rules"]["route"].clone(), away["rules"]["what"].clone()), (json!(false), json!(false), json!(""), json!(true), json!(false)), "{away}");
     assert!(!summary(&w, &project).contains("Away mode"));
 
+    // An end time sent (as an older window would) is ignored: Away has none (#790).
     let until = crate::clock::now_ms() + 60 * 60 * 1000;
     let v = w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": 20, "rules": { "how": false } })).unwrap();
     w.settle();
-    assert_eq!((v["on"].clone(), v["active"].clone(), v["until"].clone(), v["budget"].clone(), v["rules"]["how"].clone(), v["rules"]["route"].clone()), (json!(true), json!(true), json!(until), json!(20.0), json!(false), json!(true)), "{v}");
+    assert_eq!((v["on"].clone(), v["active"].clone(), v["until"].clone(), v["budget"].clone(), v["rules"]["how"].clone(), v["rules"]["route"].clone()), (json!(true), json!(true), json!(null), json!(20.0), json!(false), json!(true)), "{v}");
     assert!(v["since"].as_u64().unwrap() > 0, "{v}");
     assert_eq!(desk(&w, &project)["away"], v);
     let s = summary(&w, &project);
-    assert!(s.contains("Away mode:") && s.contains("with a $20.00 budget"), "{s}");
+    assert!(s.contains("The owner is away, with a $20.00 budget") && !s.contains("away until"), "{s}");
     assert!(s.contains("- Route, split and merge items; wake or start sessions (up to 3 new)") && s.contains("DECIDED: <what you chose> — <why>"), "{s}");
     let may = s.split("Don't write ASK").next().unwrap();
     assert!(!may.contains("'How' questions") && !may.contains("'What' questions"), "switched off: not decided alone: {s}");
@@ -55,17 +56,16 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": 20, "rules": { "how": false, "what": false, "outside": false } })).unwrap();
     w.settle();
 
-    // Its end time passes on an idle Desk (no turn ends): noticed then, the lead told once, though Away was set three
-    // times (three timers) and a turn ends after.
+    // Past the time that was sent, on an idle Desk and after a turn ends: still on and in force, nothing paused.
     w.advance(2 * 60 * 60 * 1000);
     feed_goes(&w);
-    assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 1, "{:?}", sent_to(&w, &d));
-    let away = desk(&w, &project)["away"].clone();
-    assert_eq!((away["on"].clone(), away["active"].clone(), away["ended"].clone()), (json!(true), json!(false), json!("until")), "{away}");
-    let s = summary(&w, &project);
-    assert!(s.contains("Away is paused: its end time has passed") && !s.contains("You may decide"), "{s}");
     ends(&w, &d, "Still routing.");
-    assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 1, "{:?}", sent_to(&w, &d));
+    feed_goes(&w);
+    assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 0, "{:?}", sent_to(&w, &d));
+    let away = desk(&w, &project)["away"].clone();
+    assert_eq!((away["on"].clone(), away["active"].clone(), away["ended"].clone()), (json!(true), json!(true), json!("")), "{away}");
+    let s = summary(&w, &project);
+    assert!(s.contains("You may decide") && !s.contains("Away is paused"), "{s}");
 
     // Off: the block is gone, the lead told.
     let v = w.hub().desk_away_set(&project, &json!({ "on": false, "until": null, "budget": null, "rules": {} })).unwrap();
@@ -74,8 +74,8 @@ fn away_mode_turns_on_tells_the_lead_ends_at_its_time_and_turns_off() {
     assert!(!summary(&w, &project).contains("Away mode"));
     feed_goes(&w);
     assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode is off")), "{:?}", sent_to(&w, &d));
-    // How long (to its end time, an hour) and what moved, in one line, and no recap from the lead (#612).
-    assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode is off: the owner is back (1h, ") && t.contains("calls made)") && t.contains("don't welcome them back or recap it")), "{:?}", sent_to(&w, &d));
+    // How long (until it was turned off) and what moved, in one line, and no recap from the lead (#612).
+    assert!(sent_to(&w, &d).iter().any(|t| t.starts_with("Away mode is off: the owner is back (2h 18m, ") && t.contains("calls made)") && t.contains("don't welcome them back or recap it")), "{:?}", sent_to(&w, &d));
 }
 
 #[test]
@@ -206,21 +206,34 @@ fn away_keeps_its_limits_honest_a_zero_budget_is_none_routing_off_starts_nothing
     let s = summary(&w, &project);
     assert!(s.contains("with no budget set") && !s.contains("new sessions while the owner is away"), "{s}");
 
-    // Ended by its time; a rule changed after (same limits): still ended, the lead not told "paused" again.
-    let until = crate::clock::now_ms() + 60 * 1000;
-    w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": null, "rules": { "route": false } })).unwrap();
-    w.advance(2 * 60 * 1000);
-    ends(&w, &d, "Still routing.");
-    w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": null, "rules": { "route": true } })).unwrap();
+    // Ended by its budget at the lead's turn end; a rule changed after (same budget): still ended, the lead not told
+    // "paused" again.
+    w.hub().desk_away_set(&project, &json!({ "on": true, "budget": 1, "rules": { "route": false } })).unwrap();
+    w.hosted_says(&d, HostedEvent::TurnEnded { text: "Still routing.".into(), failed: false, cost_usd: 2.0, unprompted: false });
+    w.settle();
+    w.hub().desk_away_set(&project, &json!({ "on": true, "budget": 1, "rules": { "route": true } })).unwrap();
     ends(&w, &d, "Still routing.");
     w.settle();
-    assert_eq!(desk(&w, &project)["away"]["ended"], json!("until"));
+    assert_eq!(desk(&w, &project)["away"]["ended"], json!("budget"));
+    assert!(summary(&w, &project).contains("Away is paused: its budget is spent"));
     // Both on the Desk's change feed before it went: folded into the latest, the rule change's block.
     feed_goes(&w);
     assert_eq!(sent_to(&w, &d).iter().filter(|t| t.contains("Away is paused")).count(), 1, "told once, with the rule change's block: {:?}", sent_to(&w, &d));
-    // A later end time: it holds again.
-    let v = w.hub().desk_away_set(&project, &json!({ "on": true, "until": crate::clock::now_ms() + 60 * 60 * 1000, "budget": null, "rules": { "route": true } })).unwrap();
+    // A bigger budget: it holds again.
+    let v = w.hub().desk_away_set(&project, &json!({ "on": true, "budget": 10, "rules": { "route": true } })).unwrap();
     assert_eq!((v["active"].clone(), v["ended"].clone()), (json!(true), json!("")), "{v}");
+
+    // An end time saved before #790, already passed and marked as its reason to pause: ignored, Away in force.
+    crate::config::update_with("desk.away", |c| {
+        let mut map = c.pointer("/desk/away").cloned().unwrap();
+        map[project.as_str()]["until"] = json!(crate::clock::now_ms() - 60 * 1000);
+        map[project.as_str()]["ended"] = json!("until");
+        Ok((Some(map), ()))
+    })
+    .unwrap();
+    let v = desk(&w, &project)["away"].clone();
+    assert_eq!((v["active"].clone(), v["ended"].clone(), v["until"].clone()), (json!(true), json!(""), json!(null)), "{v}");
+    assert!(!summary(&w, &project).contains("Away is paused"));
 }
 
 #[test]
@@ -287,18 +300,19 @@ fn each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held() {
     let undo = desk(&w, &project)["away_log"][0]["calls"].as_array().unwrap().iter().find(|c| c["id"] == call["id"]).unwrap()["undo"].clone();
     assert_ne!(undo, "can", "{undo}");
 
-    // A second stretch, ended by its time: newest first, and it ends when its time came, not when you turned it off.
+    // A second stretch, past the time an older window sent: newest first, and it runs until you turn it off (#790).
     w.advance(60 * 1000);
     let until = crate::clock::now_ms() + 10 * 60 * 1000;
     w.hub().desk_away_set(&project, &json!({ "on": true, "until": until, "budget": null, "rules": {} })).unwrap();
     w.settle();
     w.advance(60 * 60 * 1000);
+    let off = crate::clock::now_ms();
     w.hub().desk_away_set(&project, &json!({ "on": false, "until": null, "budget": null, "rules": {} })).unwrap();
     w.settle();
     let log = desk(&w, &project)["away_log"].clone();
     assert_eq!(log.as_array().unwrap().len(), 2, "{log}");
-    assert_eq!((log[0]["ended"].clone(), log[0]["held"].clone()), (json!("until"), json!([])), "{log}");
-    assert!(log[0]["end"].as_u64().unwrap() < until + 60 * 1000 && log[0]["since"].as_u64() > log[1]["since"].as_u64(), "{log}");
+    assert_eq!((log[0]["ended"].clone(), log[0]["held"].clone(), log[0]["until"].clone()), (json!(""), json!([]), json!(null)), "{log}");
+    assert!(log[0]["end"].as_u64().unwrap() >= off && log[0]["since"].as_u64() > log[1]["since"].as_u64(), "{log}");
 }
 
 /// #471: while Away is in force the lead asks you nothing. Its ASK (with or without an item) isn't a card waiting on

@@ -340,7 +340,6 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-aw-sw.on .dk-knob, .dk-tg.on { background: var(--accent); }
 .dk-aw-sw.on .dk-knob::after, .dk-tg.on::after { left: 12px; }
 .dk-aw-st { display: inline-flex; min-width: 0; max-width: 260px; font-weight: 500; white-space: pre; }
-.dk-aw-until { flex: none; }
 .dk-aw-spent { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-aw-st::before { content: "· "; }
 .dk-aw-st.ended { color: var(--deny); }

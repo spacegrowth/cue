@@ -539,7 +539,7 @@ fn summary_tail(st: &Store, project: &str, with_skill: bool, out: &mut String, n
         out.push('\n');
         out.push_str(&paused);
     }
-    if let Some(away) = crate::desk::hub::away::away::away_block(st, project, now) {
+    if let Some(away) = crate::desk::hub::away::away::away_block(st, project) {
         out.push('\n');
         out.push_str(&away);
     }

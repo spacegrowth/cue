@@ -406,7 +406,7 @@ fn feed_go(st: &mut Store, desk: &str, now: u64) -> Option<Go> {
         }
         return Some(Go { lead, parked, summary: false, text: String::new(), told: Vec::new(), marks: (f.sent.clone(), f.heard.clone()) });
     }
-    let away = crate::desk::hub::away::away::away_in_force(st, desk, now);
+    let away = crate::desk::hub::away::away::away_in_force(st, desk);
     if !feed::wakes(&live, now, away) || (parked && !live.iter().any(|r| r.kind.wake_in(away) == Wake::AtOnce)) {
         return None;
     }

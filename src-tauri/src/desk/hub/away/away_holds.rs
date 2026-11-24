@@ -65,9 +65,9 @@ pub(crate) fn given(behavior: &str, message: Option<&str>) -> oneshot::Receiver<
 }
 
 /// The Desk session `sid` is on whose Away is in force now, if any.
-fn away_desk(st: &Store, sid: &str, now: u64) -> Option<String> {
+fn away_desk(st: &Store, sid: &str) -> Option<String> {
     let desks: Vec<String> = st.desk.lead.keys().cloned().collect();
-    desks.into_iter().find(|d| crate::desk::hub::away::away::away_in_force(st, d, now) && crate::desk::hub::away::away::on_desk(st, d, sid))
+    desks.into_iter().find(|d| crate::desk::hub::away::away::away_in_force(st, d) && crate::desk::hub::away::away::on_desk(st, d, sid))
 }
 
 /// `state.desk.projects[i].held`: Desk `desk`'s steps not answered yet, oldest first.
@@ -105,7 +105,7 @@ impl Hub {
             Err(e) => eprintln!("cue: couldn't read the held steps: {e}"),
         }
         let now = now_ms();
-        let desk = self.read(|st| away_desk(st, &sid, now))?;
+        let desk = self.read(|st| away_desk(st, &sid))?;
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = format!("held-{now}-{}", N.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
         let entry = json!({ "id": id, "desk": desk, "sid": sid, "tool": tool_name, "command": command, "input": tool_input, "kinds": kinds, "at": now, "answer": "", "sent": false });

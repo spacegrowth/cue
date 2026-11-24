@@ -57,7 +57,8 @@
 .dk2b-ih .dk-qa { flex: 1 1 160px; min-width: 0; padding: 0; border: 0; }
 /* Away's knob gives it no words to line up on: it sits at the line's top, its 24px pill centred on the 32px add line. */
 .dk2b-ih .dk-aw-sw { margin-left: 0; flex: none; align-self: flex-start; margin-top: 4px; }
-.dk2b-ih .dk-aw-spent { display: none; }
+/* What it spent has no room here: just "Away" (#790: no end time either); a pause still says why. */
+.dk2b-ih .dk-aw-st:not(.ended) { display: none; }
 /* Its check line's label and canvas link (#436, #526) at the line's own size. */
 .dk2b-fold { display: flex; align-items: center; gap: 6px; width: 100%; padding: 11px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--muted); font: 700 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: 0.06em; text-align: left; cursor: pointer; }
 .dk2b-fold i { font-style: normal; color: var(--ink); }
