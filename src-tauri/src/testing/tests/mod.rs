@@ -31,6 +31,7 @@ mod desk_tell;
 mod desk_to_user;
 mod desk_cleanup;
 mod desk_commit;
+mod desk_committed;
 mod desk_reopen;
 mod desk_copy_wait;
 mod desk_land;

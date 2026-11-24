@@ -2,6 +2,7 @@
 
 pub(crate) mod finish;
 pub(crate) mod commit;
+pub(crate) mod committed;
 pub(crate) mod trees;
 pub(crate) mod copies;
 pub(crate) mod copy_guard;

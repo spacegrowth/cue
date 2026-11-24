@@ -487,6 +487,11 @@ fn an_item_in_the_line_whose_copy_turns_out_empty_is_finished_where_it_was() {
     w.hub().desk_tick_now();
     let it = item(&w, &project, "Header jumps");
     assert_ne!(it["state"], "finishing", "not left finishing: {it}");
+    // Nothing of it anywhere: back to its holder once (#830); its DONE again finishes it where it was.
+    super::desk_commit::sent_back_then_done_again(&w, &project, &id, &h);
+    w.hub().desk_tick_now();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "to_check", "{it}");
     assert!(it["tree"].is_null() && !path.exists(), "its empty copy is gone");
 }
 

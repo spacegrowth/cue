@@ -270,6 +270,10 @@ impl Hub {
         for top in &tops {
             self.desk_clear_helpers(id, top, None);
         }
+        // Its files left uncommitted, or nothing of it on main: back to its holder, never to check (#830).
+        if self.sent_back_uncommitted(id, &tops) {
+            return;
+        }
         self.finish_after(id, &tops);
     }
 
