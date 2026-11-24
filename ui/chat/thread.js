@@ -250,7 +250,7 @@ function msgLine(m) {
     held: "<b>Not sent yet</b> · Cue sends it when its turn ends",
     queued: `<b>Queued for ${to}</b> · it reads this after its current step`,
     delivered: [m.from ? "" : m.by ?? "You", m.at ? `<span data-ago="${m.at}">${ago(m.at)}</span> ago` : ""].filter(Boolean).join(" · "),
-    failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
+    failed: `<b>${m.head || "Couldn't send"}</b>${m.why ? ` · ${m.why}` : ""}`,
   }[m.st];
   if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
   // The foot of the message (#501, messages.css): how it went at the left (.mg-st), its actions at the right (.mg-acts).

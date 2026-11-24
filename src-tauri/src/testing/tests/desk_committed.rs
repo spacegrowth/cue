@@ -47,3 +47,36 @@ fn a_second_done_with_still_nothing_on_main_goes_to_check_as_it_is() {
     super::desk_commit::sent_back_then_done_again(&w, &project, &id, &h);
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
 }
+
+/// #810: its first holder changed the file, then the item went to another session, which changed nothing itself and
+/// said DONE. The first holder's change is the item's: committed with it, so it reaches your check with it on main.
+#[test]
+fn a_change_its_former_holder_made_is_committed_at_the_next_holders_done() {
+    use super::desk::desk;
+    use super::desk_commit::log;
+    use crate::hosted::HostedEvent;
+    use crate::ipc::{start_session_with, StartOpts};
+    let w = World::new();
+    let (dir, project, id, h) = routed_with(&w, |_, _, _| {}, |w, h, dir| {
+        let a = dir.join("a.txt");
+        std::fs::write(&a, "the first holder wrote this\n").unwrap();
+        log(w, h).tool_use("toolu_w1", "Write", serde_json::json!({ "file_path": a, "content": "the first holder wrote this\n" }));
+        w.settle();
+    });
+    let d = desk(&w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+    ends(&w, &h, "Over to someone else.");
+    let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+    let r = start_session_with(w.hub(), "claude", &dir.to_string_lossy(), "hello", "checker", &opts).unwrap();
+    let b = r["session_id"].as_str().unwrap().to_string();
+    w.hosted_says(&b, HostedEvent::Taken { text: "hello".into() });
+    ends(&w, &b, "Hi.");
+    w.hub().desk_set_member(&project, &b, true).unwrap();
+    ends(&w, &d, &format!("ROUTE: #{id} -> checker | why: a second look"));
+    assert_eq!(item(&w, &project, "Header jumps")["holder"]["sid"].as_str(), Some(b.as_str()));
+    w.advance(1000);
+    ends(&w, &b, &format!("Checked it: it's right.\nDONE: #{id}"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "to_check", "{it}");
+    assert_eq!(git(&dir, &["show", "HEAD:a.txt"]), "the first holder wrote this\n", "the first holder's change is on main");
+    assert_eq!(git(&dir, &["status", "--porcelain", "--", "a.txt"]).trim(), "", "nothing of it left uncommitted");
+}

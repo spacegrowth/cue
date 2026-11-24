@@ -12,7 +12,7 @@ const around = (page, id) => page.evaluate((id) => {
   return { rows, bar: bar && Math.round(bar.getBoundingClientRect().height), chat: chat && top(chat), last: chat?.lastElementChild && top(chat.lastElementChild) };
 }, id);
 
-/** The page's clock stopped where it is, so the 4 s run only as runFor moves them (a slow run's own seconds don't). */
+/** The page's clock stopped where it is, so the 1.2 s run only as runFor moves them (a slow run's own seconds don't). */
 const pause = async (page) => page.clock.pauseAt(await page.evaluate(() => Date.now() + 500));
 /** The tests' window has animations off (load.js ?still=1): back on, to see the fold as you would. */
 const motionOn = (page) => page.evaluate(() => { for (const st of document.querySelectorAll("style")) if (st.textContent.includes("animation:none!important")) st.remove(); });
@@ -26,7 +26,7 @@ const frames = async (page, ms) => {
   return out;
 };
 
-test("Looks right on an opened item: Done · Undo for 4 s with nothing round it moving and its bar one height; then its row folds shut, the row under it sliding up with no jump; Undo works till it's shut", async ({ page, cue }) => {
+test("Looks right on an opened item: Done · Undo for 1.2 s with nothing round it moving and its bar one height; then its row folds shut, the row under it sliding up with no jump; Undo works till it's shut", async ({ page, cue }) => {
   await page.setViewportSize({ width: 1800, height: 1095 });   // a list with room for all its rows: nothing scrolls
   await cue.open("desk");
   await cue.change((s) => { s.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d1").state = "to_check"; });
@@ -47,7 +47,7 @@ test("Looks right on an opened item: Done · Undo for 4 s with nothing round it 
 
   await bar.locator('[data-desk-act="looks_right"]').click();
   await expect(bar.locator(".dk-soon")).toHaveText("Done · Undo · back to check");
-  await page.clock.runFor(3900);
+  await page.clock.runFor(1100);
   expect(await around(page, "d2")).toEqual(opened);
   await expect(row).not.toHaveClass(/\bdk-leave\b/);
 
@@ -86,7 +86,7 @@ test("a list scrolled to its end: as the row folds shut the rows over it come do
   const start0 = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".dkn-items .dkn-row[data-desk-item]")].map((el) => [el.dataset.deskItem, el.getBoundingClientRect().top])));
   await row.locator(".dk-ok").click();
   await motionOn(page);
-  await page.clock.runFor(4050);
+  await page.clock.runFor(1250);
   await expect(row).toHaveClass(/\bdk-leave\b/);
   const tall = start0.d1 - start0.d2;
   const start = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".dkn-items .dkn-row[data-desk-item]")].map((el) => [el.dataset.deskItem, el.getBoundingClientRect().top])));
@@ -114,7 +114,7 @@ test("Undo while the row folds shut: it opens again where it was, still to check
   await row.scrollIntoViewIfNeeded();
   const at = await row.boundingBox();
   await row.locator(".dk-ok").click();
-  await page.clock.runFor(4100);
+  await page.clock.runFor(1300);
   await expect(row).toHaveClass(/\bdk-leave\b/);
   await row.locator('[data-desk-act="looks_undo"]').click();
   await expect(row).not.toHaveClass(/\b(dk-leave|soon)\b/);
@@ -123,14 +123,14 @@ test("Undo while the row folds shut: it opens again where it was, still to check
   expect(await cue.calls("desk_looks_right")).toEqual([]);
 });
 
-test("with reduced motion the row goes at once after its 4 s, no fold", async ({ page, cue }) => {
+test("with reduced motion the row goes at once after its 1.2 s, no fold", async ({ page, cue }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await cue.open("desk");
   await openDesk(page);
   await pause(page);
   const row = page.locator('.dkn-items .dkn-row[data-desk-item="d2"]');
   await row.locator(".dk-ok").click();
-  await page.clock.runFor(4100);
+  await page.clock.runFor(1300);
   await expect(row).toBeHidden();
   await cue.called("desk_looks_right", { id: "d2" });
 });

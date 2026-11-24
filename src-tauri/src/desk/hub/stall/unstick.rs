@@ -330,7 +330,7 @@ pub(crate) fn unhold(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Re
 }
 
 /// UNPARK (#499): a parked item back to be routed as any new item, only when the message the lead's turn answers is
-/// yours (sent from the Desk) and names it. Parking stays yours: the lead never unparks one on its own.
+/// yours (sent from the Desk) and asks for it back, in your own words (desk/unpark_said.rs, #853). Parking stays yours: the lead never unparks one on its own.
 fn unpark(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let was = shown_state(st, id);
     if st.desk.item(id).is_none_or(|i| i.state != "held") {
@@ -363,8 +363,15 @@ fn drop_said(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u
 fn you_asked(st: &Store, sid: &str, id: &str) -> bool {
     let Some(prompt) = st.sessions.get(sid).map(|s| s.prompt.clone()) else { return false };
     let words = prompt.split_once("</desk>").map_or(prompt.as_str(), |(_, w)| w).trim();
-    let yours = st.desk.run.yours.get(sid).is_some_and(|y| y.iter().any(|m| !m.is_empty() && words.starts_with(m.as_str())));
-    yours && words.split(|c: char| !(c.is_ascii_alphanumeric() || c == '#')).any(|w| w.trim_start_matches('#').eq_ignore_ascii_case(id))
+    let Some(mine) = st.desk.run.yours.get(sid).and_then(|y| y.iter().rev().find(|m| !m.is_empty() && words.starts_with(m.as_str()))) else {
+        return false;
+    };
+    // The lead's reply before your message, for "unpark it" (#853): the last of its replies ahead of your message.
+    let thread = st.sessions.thread(sid);
+    let at = thread.iter().rposition(|e| e.role == "you" && e.text.contains(mine.as_str()));
+    let before = at.and_then(|i| thread[..i].iter().rev().find(|e| e.role == "agent")).map(|e| e.text.as_str());
+    let parked: Vec<String> = st.desk.items.iter().filter(|i| i.state == "held").map(|i| i.id.clone()).collect();
+    crate::desk::unpark_said::asks_to_unpark(words, id, before, &parked)
 }
 
 /// Item `id`'s state as the lead is told it.

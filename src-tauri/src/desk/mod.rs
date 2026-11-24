@@ -21,6 +21,7 @@ pub mod tell;
 pub(crate) mod move_desk;
 pub mod parse;
 pub mod state;
+pub(crate) mod unpark_said;
 
 pub use installer::{InstallStatus, Installer};
 pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, InRepo, KeptTree, OnMachine, RemoteWork, Lead, StartFull, Stint, Waiting};

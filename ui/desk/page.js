@@ -617,7 +617,8 @@ function deskPickLineIn(t) {
   const line = lines.find((x) => /^(pick|choose|which)\b/i.test(x)) || lines.find((x) => x.endsWith("?")) || lines[0];
   return line ? line.replace(/^(not done yet|still to do)\s*:\s*/i, "").replace(/^./, (c) => c.toUpperCase()) : "";
 }
-/** The options its newest reply lists, each on a line of its own, its key first ("A: compact rows", "**M2** — a
+/** What its newest reply says of each option, on a line of its own, its key first (only a name for an option its
+ *  IF PICKED: lines offer, #859, never an option of its own) ("A: compact rows", "**M2** — a
  *  strip", "- Option C) …", "4. a calm list"): Map key → its words, cut short (#445, #619). */
 function deskOptionWords(i) {
   const out = new Map();
@@ -648,20 +649,19 @@ function deskPickRun(line) {
   }
   return [];
 }
-/** The options an item asks you to pick from, A, B, C…, M1, M2… or 1, 2… (#445, #543, #619): those its pick line
- *  names ("… working items: D, E or F" → D, E, F; "Which option, 1 to 10?"); else, for one with a canvas or with
- *  what follows each option (IF PICKED: lines), the two or more its newest reply lists one to a line, or those its
- *  IF PICKED: lines name: those when the list shares none of them (a numbered list that isn't its options); none once
- *  picked. */
+/** The options an item asks you to pick from, A, B, C…, M1, M2… or 1, 2… (#445, #543, #619, #859): only those its
+ *  session offers for picking, its IF PICKED: lines. Those lines' options, or, for one IF PICKED: line for any option,
+ *  those its pick line runs through ("… working items: D, E or F" → D, E, F; "Which option, 1 to 10?"). Never from
+ *  lines of its reply that only look like options ("- D3 it stays just above…"); none once picked. */
 function deskPickOptions(i) {
   if (i.picked || !DESK_PICK_STATES.has(i.state)) return [];
+  const opts = (i.next || []).map((n) => String(n.option || ""));
+  // In order, A before B and 4 before 10, however its lines came.
+  const named = [...new Set(opts.filter((o) => o && o !== "any"))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  if (named.length > 1) return named;
+  if (!opts.includes("any")) return [];
   const run = deskPickRun(deskPickLine(i));
-  if (run.length > 1) return run;
-  if (!deskCanvas(i) && !(i.next || []).length) return [];
-  const listed = [...deskOptionWords(i).keys()];
-  const named = [...new Set((i.next || []).map((n) => String(n.option)).filter((o) => o && o !== "any"))];
-  if (listed.length > 1 && (named.length < 2 || listed.some((o) => named.includes(o)))) return listed;
-  return named.length > 1 ? named : [];
+  return run.length > 1 ? run : [];
 }
 /** Its options as a short list, each with what it is (when its reply says) and a Pick (#281, #445, #543): Cue closes
  *  the item, then files and routes what its holder said follows the one you picked. */
@@ -819,7 +819,7 @@ function deskWaitsOn(i) {
 /** An item's buttons, by where it is. */
 const deskCanRestart = (i) => (i.state === "needs_resume" || i.stopped) && !!sessionOf(i.holder?.lead_sid || i.holder?.sid);
 
-function deskItemActs(i) {
+function deskItemActs(i, bare = false) {
   const b = (act, label, look = "") => `<button class="btn small ${look}" data-desk-act="${act}" data-id="${esc(i.id)}">${esc(label)}</button>`;
   if (deskBackFor === i.id) return deskBackHtml(i.id);
   // A feature nobody holds is only its pieces (#282): they're given out, not it.
@@ -834,8 +834,10 @@ function deskItemActs(i) {
     // Reopen (#577): your words back to the session that did it, or a fresh one when it's closed or on other work.
     : i.state === "done" && !i.picked ? `<div class="dk-chk-after">${deskCommitLine(i)}</div>${i.holder ? b("send_back", "Reopen") : ""}` : "";
   const give = !i.holder && i.state !== "done" && i.state !== "held" ? deskGive(i, "pane") : "";
-  const dots = deskMore(i, deskMoreItems(i));
-  return acts || give || dots ? `<div class="dk-acts">${give}${acts}${dots}</div>` : "";
+  // Parked (#847): Start out as its main button, Drop this item in its ⋯ (its page's only: a row's has both).
+  const start = i.state === "held" ? b("start_now", "Start", "primary") : "";
+  const dots = deskMore(i, i.state === "held" ? (bare ? deskDropMi(i) : "") : deskMoreItems(i));
+  return acts || give || start || dots ? `<div class="dk-acts">${give}${start}${acts}${dots}</div>` : "";
 }
 /** What item `i`'s ⋯ menu holds (#669), by where it is: Start, Park, Put it before…, Resume, the install choices; ""
  *  when nothing fits (and when its page shows something else in their place: Send back's box, a feature's pieces, what
@@ -848,8 +850,8 @@ function deskMoreItems(i) {
   const first = i.after && deskItem(i.project, i.after);
   return i.state === "to_check" || i.state === "done" ? ""
     : (i.state === "new" || i.state === "queued") && !i.holder && i.start_failed ? m("start_now", "Retry")
-    // Parked (#385): Start queues it as a new item, for the lead to give out.
-    : i.state === "held" ? m("start_now", "Start")
+    // Parked (#385): Start queues it as a new item, for the lead to give out; or drop it (#847).
+    : i.state === "held" ? m("start_now", "Start") + deskDropMi(i)
     // Waiting for a free working folder (#401): its session starts on it now, without one.
     : deskCopyWaits(i) ? m("start_now", "Start now") + m("park", "Park")
     : i.state === "queued" ? m("start_now", i.holder ? "Start it now" : "Start it now in a new session") + (first ? m("put_before", `Put it before ${deskShort(first.title)}`) : "") + m("park", "Park")
@@ -858,6 +860,24 @@ function deskMoreItems(i) {
     // session where it left off (#375).
     : deskCanRestart(i) ? m("start_now", "Resume")
     : deskFinishing(i) ? mi(deskInstallNow(i, "")) + mi(deskSkipInstall(i, "")) : "";
+}
+/** A row's ⋯ in the item list (#839, as asked): only Start now and Park, Start on a parked one, and Drop; the
+ *  page's other choices (Put it before…, the install ones) stay on its page. Start now and Park on every item nobody
+ *  is at work on yet (new or queued, whatever it waits for); Start now also wakes one whose session stopped mid-turn;
+ *  Drop on any item not done. "" for a done one. */
+function deskRowMoreItems(i) {
+  if (i.state === "done" || i.state === "dropped") return "";
+  const m = (act, label) => `<button role="menuitem" data-desk-act="${act}" data-id="${esc(i.id)}"><span>${esc(label)}</span></button>`;
+  const start = i.state === "held" ? m("start_now", "Start")
+    : i.state === "new" || i.state === "queued" ? m("start_now", "Start now") + m("park", "Park")
+    : deskCanRestart(i) ? m("start_now", "Start now") : "";
+  return start + deskDropMi(i);
+}
+/** Drop this item as a choice in an item's ⋯ (#847): two presses, as the button was; the first arms it ("Drop it",
+ *  in red) and leaves the menu open (act.js deskAct). */
+function deskDropMi(i) {
+  const armed = deskDropArm === i.id;
+  return `<button role="menuitem" class="dk-mi-drop${armed ? " armed" : ""}" data-desk-act="drop" data-id="${esc(i.id)}"><span>${armed ? "Drop it" : "Drop this item"}</span></button>`;
 }
 /** Whether `at` names an item's ⋯ menu: its page's ("more") or its row's in the item list ("rmore", #839). */
 const deskMoreAt = (at) => at === "more" || at === "rmore";
@@ -872,7 +892,7 @@ function deskMore(i, items, at = "more") {
   const row = at === "rmore";
   const btn = row
     ? `<button class="dk-more-btn dkn-rmore" data-desk-more="${esc(i.id)}" data-at="rmore" aria-label="More" aria-haspopup="menu" aria-expanded="${open}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`
-    : `<button class="btn small dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}">⋯</button>`;
+    : `<button class="dk-more-btn dk-more" data-desk-more="${esc(i.id)}" aria-label="More" aria-haspopup="menu" aria-expanded="${open}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`;
   return `<span class="dk-givewrap dk-morewrap${row ? " dkn-rwrap" : ""}">${btn}${menu}</span>`;
 }
 /** Which items' build logs are open in full (Show all), by id. */

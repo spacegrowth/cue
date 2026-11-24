@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 305 |
 | Lock-graph edges | 60 |
 | Spawn sites | 96 |
-| External calls: fs / db / process / notify / login / socket | 539 / 240 / 62 / 4 / 1 / 5 |
+| External calls: fs / db / process / notify / login / socket | 539 / 241 / 62 / 4 / 1 / 5 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -977,7 +977,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `voice/talk.rs::save` | write | 1 |
 | `voice/talk.rs::set` | write | 1 |
 
-### db (240)
+### db (241)
 
 | In | Call | Times |
 |---|---|---|
@@ -1133,6 +1133,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `desk/hub/core/view.rs::Hub::desk_done_page` | db::desk_pieces | 1 |
 | `desk/hub/core/view.rs::Hub::desk_moves_clear` | db::desk_moves_clear | 1 |
 | `desk/hub/core/view.rs::Hub::desk_moves_page` | db::desk_moves_page | 1 |
+| `desk/hub/landing/commit.rs::Hub::desk_change_sources` | db::ended_session | 1 |
 | `desk/hub/landing/remote_item.rs::Hub::remote_drop` | db::desk_put_item | 1 |
 | `desk/hub/landing/trees.rs::Hub::desk_kept_remove` | db::desk_drop_kept | 1 |
 | `desk/hub/landing/trees.rs::Hub::desk_tree_dropped` | db::desk_put_kept | 2 |

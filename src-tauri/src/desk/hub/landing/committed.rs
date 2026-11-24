@@ -37,6 +37,14 @@ pub(crate) fn named_on_main(top: &str, id: &str) -> bool {
     git("", top, &[], &["log", "-1", "-E", "--format=%H", &grep, &main, "--"]).is_some_and(|o| !o.trim().is_empty())
 }
 
+/// Whether a commit on `top`'s main line that names item `id` changed `file` (absolute, in `top`'s repository).
+fn named_on_main_in(top: &str, id: &str, file: &str) -> bool {
+    let Some(main) = main_ref(top) else { return false };
+    let Some(rel) = std::path::Path::new(file).strip_prefix(top).ok().map(|r| r.to_string_lossy().to_string()) else { return false };
+    let grep = format!("--grep=#{id}([^0-9]|$)");
+    git("", top, &[], &["log", "-1", "-E", "--format=%H", &grep, &main, "--", &rel]).is_some_and(|o| !o.trim().is_empty())
+}
+
 /// Whether item `it`'s round before this one was sent back by Cue for no commit alone.
 fn told_no_commit(it: &DeskItem) -> bool {
     let n = it.checks.len();
@@ -81,25 +89,35 @@ impl Hub {
         (out, landed, all_ignored)
     }
 
-    /// Item `id`, its DONE's commit made and merged (its main lines `tops`): true when it went back to its holder
-    /// because its own changes aren't all committed, or nothing of it is on main (#830). Never for an item with no
-    /// holder, nor one whose "done when" says the repository doesn't change, nor one whose work isn't on main for
-    /// a reason its landing says itself (on a branch of its own, in a clone; reopened with nothing new: `finish_after`).
-    pub(crate) fn sent_back_uncommitted(&self, id: &str, tops: &[String]) -> bool {
+    /// Item `id`, its DONE's commit made and merged (its main lines `tops`; `made`: this round committed some of it):
+    /// true when it went back to its holder because its own changes aren't all committed, or nothing of it is on main
+    /// (#830). A commit from an earlier round doesn't count (#810: an old round's commit let it through with this
+    /// round's file left out). Files of it left out for another session hold it back when nothing else of it was
+    /// committed, whatever its "done when" says. Otherwise not for an item whose "done when" says the repository
+    /// doesn't change, nor one whose work isn't on main for a reason its landing says itself (on a branch of its own,
+    /// in a clone; reopened with nothing new: `finish_after`).
+    pub(crate) fn sent_back_uncommitted(&self, id: &str, tops: &[String], made: bool) -> bool {
         let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
-        if it.holder.is_none() || crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
+        if it.holder.is_none() {
+            return false;
+        }
+        let merged = it.finish.as_ref().is_some_and(|f| !f.merges.is_empty());
+        let left: Vec<String> = it.finish.as_ref().map(|f| f.without.clone()).unwrap_or_default();
+        let repos = if tops.is_empty() { self.item_repos(&it) } else { tops.to_vec() };
+        // Its own lines in a file another session changed too: none committed, none named in a commit of its own.
+        if !made && !merged && !left.is_empty() && !repos.iter().any(|t| left.iter().any(|f| named_on_main_in(t, id, f))) {
+            self.finish_back(&it, &not_committed_words(id, &left), "uncommitted", "", true);
+            return true;
+        }
+        if crate::desk::hub::landing::unlanded::rules_out_code(&it.done_when) {
             return false;
         }
         if self.desk_nothing_new(id) || self.desk_unlanded(id) > 0 || !self.holder_work(&it).off.is_empty() {
             return false;
         }
         let (uncommitted, landed, all_ignored) = self.own_uncommitted(&it);
-        if uncommitted.is_empty() {
-            let merged = it.finish.as_ref().is_some_and(|f| !f.merges.is_empty());
-            let repos = if tops.is_empty() { self.item_repos(&it) } else { tops.to_vec() };
-            if !it.commit_in.is_empty() || merged || landed || all_ignored || told_no_commit(&it) || repos.iter().any(|t| named_on_main(t, id)) {
-                return false;
-            }
+        if uncommitted.is_empty() && (made || merged || landed || all_ignored || told_no_commit(&it) || repos.iter().any(|t| named_on_main(t, id))) {
+            return false;
         }
         self.finish_back(&it, &not_committed_words(id, &uncommitted), "uncommitted", "", true);
         true

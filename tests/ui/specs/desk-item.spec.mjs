@@ -439,7 +439,7 @@ test("Desk approvals send Allow and No for the pending request, from the opened 
       st.items.push({ ...st.items.find((i) => i.id === "n-focus-ask"), id, kind: "permission", tool_name: "Bash", tool_input: { command: "npm test" } });
     }, id);
     await expect(statusOf(page, "d1")).toHaveText("Needs your OK");
-    await expect(row.locator("button")).toHaveCount(0);
+    await expect(row.locator("button:not(.dkn-rmore)")).toHaveCount(0);   // only its ⋯ (#839)
     await row.click();
     await page.locator(`.dk-right .act-card [data-act="${behavior}"][data-id="${id}"]`).click();
     await cue.called("respond", { id, decision: { behavior } });
@@ -483,7 +483,7 @@ test("an item's question opens at the page's foot; the row only says it asks", a
   await openDesk(page);
   // A question with nothing suggested: the row says it asks, with no buttons (#738); opened, its foot has the whole card.
   await expect(statusOf(page, "d1")).toHaveText("Asks you");
-  await expect(page.locator('.dk-items [data-desk-item="d1"] button')).toHaveCount(0);
+  await expect(page.locator('.dk-items [data-desk-item="d1"] button:not(.dkn-rmore)')).toHaveCount(0);   // only its ⋯ (#839)
   await page.locator('.dk-items [data-desk-item="d1"]').click();
   const foot = page.locator(".dk-right .dk-ask");
   // Its card is the foot, in the box's place.
@@ -813,7 +813,7 @@ test("tasks, bugs and features say on the row that they ask, and are answered on
   // Each row says it asks, no buttons (#738); answered at the opened item's foot.
   for (const id of ["d1", "d2", "d3"]) {
     await expect(statusOf(page, id)).toHaveText("Asks you");
-    await expect(page.locator(`.dk-items [data-desk-item="${id}"] button`)).toHaveCount(0);
+    await expect(page.locator(`.dk-items [data-desk-item="${id}"] button:not(.dkn-rmore)`)).toHaveCount(0);   // only its ⋯ (#839)
   }
   await page.locator('.dk-items [data-desk-item="d1"]').click();
   const foot = page.locator(".dk-right .dk-ask");

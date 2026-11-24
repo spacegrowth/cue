@@ -4,11 +4,11 @@
    half the pane (placeTeamRows). */
 .crew-tray { position: relative; flex: none; margin: 8px 12px 0; display: flex; flex-direction: column; border: 1.5px solid var(--line); border-bottom: 0; border-radius: var(--radius-tray) var(--radius-tray) 0 0; background: var(--panel-2); color: var(--ink); }
 .crew-tray + .foot { padding-top: 0; border-top: 0; }
-/* One edge for the tray and the box under it: quiet (the line colour) until you're in the box, then the accent, as
- *  the box alone does (board.css .field). */
+/* One edge for the tray and the box under it: quiet (the line colour) until you're in the box, then a little stronger
+ *  (--line-focus), as the box alone does (board.css .field). */
 .crew-tray + .foot .field { border-radius: 0 0 var(--radius-btn) var(--radius-btn); box-shadow: inset 0 0 0 1.5px var(--line); }
-.crew-tray + .foot .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent); }
-.crew-tray:has(+ .foot .field:focus-within) { border-color: var(--accent); }
+.crew-tray + .foot .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--line-focus); }
+.crew-tray:has(+ .foot .field:focus-within) { border-color: var(--line-focus); }
 .crew-tray + .foot .cmd-slot { bottom: 100%; }
 /* No box under it (the lead's own ask stands there): it ends on its own edge. */
 .crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--line); border-radius: var(--radius-tray); margin-bottom: 8px; }

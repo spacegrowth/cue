@@ -8,7 +8,7 @@ const deskActivityOpen = async (page) => {
   await page.evaluate(() => deskOpenActivity());
   return page.locator(".dk-moves");
 };
-import { listOrder, groupOf, statusOf, openMore } from "./desk.mjs";
+import { listOrder, groupOf, statusOf, openMore, fullOf } from "./desk.mjs";
 /** Item `id` is open in the middle (desk/c.js): its session's chat or, with no session, its own page; its bar either way. */
 const itemShown = async (page, id) => {
   await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", id]);
@@ -714,7 +714,7 @@ test("an interrupted assignment needs resume while a dependency stays queued", a
   await pane.locator(".dkn-sback .dk-back").click();
   // B2 (#666): still under WORKING, after what's at work, saying so; what waits after it says so too.
   expect(await groupOf(page, "d5")).toBe("WORKING");
-  await expect(statusOf(page, "d5")).toHaveText("Stopped before it was done");
+  await expect(fullOf(page, "d5")).toHaveText("Stopped before it was done");
   expect(await listOrder(page)).toEqual(expect.arrayContaining(["# WORKING", "d3", "d5"]));
   const o = await listOrder(page);
   expect(o.indexOf("d5")).toBe(o.indexOf("d3") + 1);
@@ -750,7 +750,7 @@ test("an item the lead paused shows as paused and keeps its holder (#365)", asyn
   const rows = page.locator(".dkn-items");
   // Under WORKING, saying who paused it.
   expect(await groupOf(page, "d5")).toBe("WORKING");
-  await expect(statusOf(page, "d5")).toHaveText("Paused by the Desk lead");
+  await expect(fullOf(page, "d5")).toHaveText("Paused by the Desk lead");
   await rows.locator('[data-desk-item="d5"]').click();
   const pane = page.locator(".dk-right");
   await itemShown(page, "d5");
@@ -786,8 +786,10 @@ test("a parked item sits in its own quiet group with a Start button; queued rows
   await rows.locator('[data-desk-item="h1"]').click();
   const pane = page.locator('.dk-right .dkn-sp[data-desk-page="item"]');
   await expect(pane.locator(".dkn-smeta")).toContainText("Parked");
+  // Start out as its main button, Drop this item in its ⋯ (#847).
+  await expect(pane.locator('.dkn-ib .btn.primary[data-desk-act="start_now"]')).toHaveText("Start");
   await openMore(pane);
-  await expect(pane.locator('[data-desk-act="start_now"]')).toHaveText("Start");
+  await expect(pane.locator('.dk-moremenu [role="menuitem"]')).toHaveText(["Drop this item"]);
   await expect(pane.locator('[data-desk-act="park"]')).toHaveCount(0);
   // A queued item's page has Park too.
   await page.locator(".dk-right .dkn-sback .dk-back").click();
@@ -813,7 +815,8 @@ test("an item's page has no row of Start and Park buttons, only a ⋯ that opens
   const more = side.locator(".dk-more");
   // Shut: the ⋯ alone, none of what's in it on show.
   await expect(more).toHaveCount(1);
-  await expect(more).toHaveText("⋯");
+  await expect(more).toHaveText("");
+  await expect(more.locator("svg")).toHaveCount(1);
   await expect(more).toHaveAttribute("aria-label", "More");
   await expect(side.locator('[data-desk-act="start_now"], [data-desk-act="park"]')).toHaveCount(0);
   // Open: Start it now and Park, as a menu, whole inside the window.

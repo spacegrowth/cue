@@ -21,6 +21,11 @@ pub struct HostedStart {
     pub model: Option<String>,
 }
 
+/// How long a paused hosted session Cue started again for a message has to take it (#857). Past this it didn't wake:
+/// a resume can stall (a very large chat to read back), and the message would sit on "Sending…" for good. Under a
+/// minute, so you hear within one.
+pub(crate) const WAKE_LIMIT_MS: u64 = 50_000;
+
 /// Claude Code's flag that starts it in fast mode.
 pub(crate) fn fast_mode() -> [String; 2] {
     ["--settings".to_string(), r#"{"fastMode":true}"#.to_string()]
@@ -132,8 +137,11 @@ impl Hub {
             }
         });
         self.changed();
+        // A wake that failed (its agent wouldn't start again) is the session not waking, not the message refused.
+        let mut wake_failed = false;
+        let mut woke = None;
         let handed = self.hosted_origin(sid).ok_or_else(|| "that session is gone".to_string()).and_then(|o| {
-            self.wake_hosted(&o)?;
+            woke = self.wake_hosted(&o).inspect_err(|_| wake_failed = true)?;
             // On a machine, its images copied there first, so the paths in the message open there.
             let there = crate::uploads::on_machine(&o.machine, saved, &|_, _| {})?;
             let message = crate::uploads::with_paths(typed, &there);
@@ -143,23 +151,45 @@ impl Hub {
                 None => self.hosted().send(sid, &message),
             }
         });
-        self.write(|st| match &handed {
-            Ok(()) => st.sessions.note_delivery(sid, text, "handed to it directly"),
+        self.handed_over(sid, text, &handed, woke, wake_failed);
+        handed.map(|()| if busy { "queued: it reads this at its next step".into() } else { "sent".into() })
+    }
+
+    /// How the hand-over of `text` to session `sid` went, in its chat: handed (`woke`: started again for it, as that
+    /// process, which then has WAKE_LIMIT to take it, `wake_check`), not woken for (`wake_failed`: its agent wouldn't
+    /// start again, #857), or not sent.
+    fn handed_over(&self, sid: &str, text: &str, handed: &Result<(), String>, woke: Option<i32>, wake_failed: bool) {
+        self.write(|st| match handed {
+            Ok(()) => st.sessions.note_delivery(sid, text, if woke.is_some() { "handed to it directly, once started again" } else { "handed to it directly" }),
+            Err(e) if wake_failed => {
+                st.sessions.set_pending(sid, text, true);
+                st.sessions.no_wake_pending(sid, &format!("it didn't wake: {e}"));
+                st.sessions.set_queued(sid, None);
+            }
             Err(e) => {
                 st.sessions.mark_unsent(sid, text, e);
                 st.sessions.set_queued(sid, None);
             }
         });
         self.changed();
-        handed.map(|()| if busy { "queued: it reads this at its next step".into() } else { "sent".into() })
+        // Started again for this: it has WAKE_LIMIT to take it (`wake_check`).
+        if let (Ok(()), Some(pid)) = (handed, woke) {
+            self.write(|st| st.hosted_waking.insert(sid.to_string(), pid));
+            let (sid, text) = (sid.to_string(), text.to_string());
+            self.later(WAKE_LIMIT_MS, move |h| h.wake_check(&sid, &text, pid));
+        }
+        // Its Desk item's lead hears it (feed.rs holder_gone), off this send's typing gate.
+        if wake_failed {
+            self.later(0, |h| h.desk_feed_watch());
+        }
     }
 
     /// A paused hosted session started again on its conversation, with the model it last used and its MCP
-    /// selection, before a message goes to it. Nothing to do for one that runs.
-    pub(crate) fn wake_hosted(&self, origin: &Origin) -> Result<(), String> {
+    /// selection, before a message goes to it: the process it now runs as. Nothing to do for one that runs (None).
+    pub(crate) fn wake_hosted(&self, origin: &Origin) -> Result<Option<i32>, String> {
         let sid = origin.session_id.as_str();
         if self.hosted().running(sid) {
-            return Ok(());
+            return Ok(None);
         }
         let woken = self.resume_hosted_as(origin)?;
         // A new process: teammates of the one before ended with it, however that one went.
@@ -168,7 +198,39 @@ impl Hub {
             st.sessions.team_process_ended(sid, crate::clock::now_ms());
         });
         self.changed();
-        Ok(())
+        Ok(woken.agent_pid)
+    }
+
+    /// WAKE_LIMIT after Cue started session `sid` again (as process `pid`) for `text`: still not taken, and no turn
+    /// under way, it didn't wake (#857). Its process is closed (a late take would answer a message you've been told
+    /// didn't go), what waited for it is marked so, with Try again and Send to a fresh session, and the lead of a
+    /// Desk item it holds hears it. Taken meanwhile, ended (its exit said so), or started again since: nothing to do.
+    pub(crate) fn wake_check(&self, sid: &str, text: &str, pid: i32) {
+        let stalled = self.write(|st| {
+            if st.hosted_waking.get(sid) != Some(&pid) {
+                return false;
+            }
+            let working = st.sessions.state(sid).as_deref() == Some("working");
+            if working || !st.sessions.is_pending(sid, text) {
+                st.hosted_waking.remove(sid);
+                return false;
+            }
+            st.hosted_waking.remove(sid);
+            true
+        });
+        if !stalled {
+            return;
+        }
+        self.hosted().close(sid);
+        let secs = WAKE_LIMIT_MS / 1000;
+        self.write(|st| {
+            st.sessions.set_pid(sid, None);
+            st.sessions.team_process_ended(sid, crate::clock::now_ms());
+            st.sessions.no_wake_pending(sid, &format!("it didn't wake: started again, it took nothing in {secs}s"));
+            st.sessions.set_queued(sid, None);
+        });
+        self.changed();
+        self.desk_feed_watch();
     }
 
     /// Hosted sessions an earlier Cue left running under cue-host, picked up (at launch): each gets its process
@@ -351,6 +413,7 @@ impl Hub {
     /// (as it's sent, which may be just after this): nothing to note here, only the message to settle.
     fn hosted_taken(&self, origin: Origin, text: String) {
         let sid = origin.session_id.clone();
+        self.write(|st| st.hosted_waking.remove(&sid));
         if self.read(|st| st.sessions.state(&sid).as_deref() == Some("working")) {
             // Nothing settled: the message that started this turn, already taken when the turn started.
             if self.write(|st| st.sessions.got_message(&sid, &text, "it took it mid-turn")) {
@@ -452,12 +515,23 @@ impl Hub {
             self.finish(&id, "gone", "Claude Code exited");
         }
         let paused = Origin { agent_pid: None, ..origin };
-        self.write(|st| {
+        // Started again for a message and gone before taking it: it didn't wake (#857).
+        let waking = self.write(|st| {
+            let waking = st.hosted_waking.remove(&sid).is_some() && st.sessions.first_pending(&sid).is_some();
             st.sessions.set_pid(&sid, None);
             st.sessions.team_process_ended(&sid, crate::clock::now_ms());
-            st.sessions.unsend_pending(&sid, "Claude Code exited first");
+            if waking {
+                let code = code.map_or("a signal".to_string(), |c| format!("code {c}"));
+                st.sessions.no_wake_pending(&sid, &format!("it didn't wake: Claude Code exited ({code}) before taking it"));
+            } else {
+                st.sessions.unsend_pending(&sid, "Claude Code exited first");
+            }
             st.sessions.set_queued(&sid, None);
+            waking
         });
+        if waking {
+            self.desk_feed_watch();
+        }
         if during_turn {
             let why = last_words.lines().rev().find(|l| !l.trim().is_empty()).map(str::trim).unwrap_or("");
             let code = code.map_or("a signal".to_string(), |c| format!("code {c}"));

@@ -347,6 +347,25 @@ fn a_holder_that_ended_with_an_item_at_work_wakes_the_lead() {
 }
 
 #[test]
+fn a_holder_that_didnt_wake_for_a_message_wakes_the_lead() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    let id = at_work(&w, &h, &l, &project);
+    // Its Claude ends mid-turn: paused, the item still at work with it.
+    w.hosted.exits(&h);
+    w.hosted_says(&h, HostedEvent::Exited { code: Some(1), during_turn: true, last_words: String::new() });
+    w.settle();
+    // A message to it starts it again, and it dies before taking it.
+    w.send_to(&h, "carry on");
+    w.hosted.exits(&h);
+    w.hosted_says(&h, HostedEvent::Exited { code: Some(1), during_turn: false, last_words: String::new() });
+    w.settle();
+    let t = told(&w, &l, "didn't wake for the last message sent to it");
+    assert!(t.len() == 1 && t[0].contains(&format!("#{id} (Header)'s holder ")), "{:?}", sent_to(&w, &l));
+}
+
+#[test]
 fn a_holder_asking_you_reaches_the_lead_alone_after_five_minutes() {
     let w = World::new();
     let (h, project) = holder(&w);

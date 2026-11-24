@@ -608,10 +608,10 @@ test("the header's Desk chips: the pinned Desks in a fixed order, the open one l
   await expect(hot).toHaveAttribute("data-hv-desk", "docs");
   await expect(page.locator('.top .hv-chip[data-hv-desk="website"]')).toHaveCount(1);
   expect(await order()).toEqual(["cue", "docs", "website"]);
-  // A Desk waiting on you shows a dot on its chip, and says so to a screen reader.
+  // A Desk waiting on you has no dot on its chip (#848), and says so to a screen reader.
   expect(await page.evaluate(() => hvDeskGoing(deskOf("cue")).waits), "cue waits on you in the scenario").toBeGreaterThan(0);
   const cueChip = page.locator('.top .hv-chip[data-hv-desk="cue"]');
-  await expect(cueChip.locator(".hv-dot.ask")).toHaveCount(1);
+  await expect(cueChip.locator("i")).toHaveCount(0);
   await expect(cueChip).toHaveAttribute("aria-label", /^cue, \d+ waits? on you$/);
   await cueChip.click();
   await expect.poll(() => page.evaluate(() => deskSelection())).toBe("cue");

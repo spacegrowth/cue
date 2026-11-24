@@ -406,7 +406,8 @@ deskClicks({
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
-  deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
+  // A choice shuts its ⋯ menu, but Drop's first press (it arms) keeps it open, for its second (#847).
+  deskAct: (el) => { if (!(el.dataset.deskAct === "drop" && deskDropArm !== el.dataset.id && el.closest(".dk-moremenu"))) deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskTick: (el) => { const id = el.dataset.deskTick; if (!deskTicked.delete(id)) deskTicked.add(id); if (!deskTicked.size) deskGoBackOpen = null; renderMain(); },
   deskShowAll: (el) => { const k = el.dataset.deskShowAll; if (!deskShowAll.delete(k)) deskShowAll.add(k); renderMain(); },
@@ -659,7 +660,7 @@ if (typeof document !== "undefined") {
   document.addEventListener("scroll", (e) => {
     const c = e.target;
     if (!c?.matches?.(".dk-chat")) return;
-    const at = Date.now(), end = boxAtEnd(c);
+    const at = Date.now(), end = boxEndAfterScroll(c);
     if (!end && at - (c._pinAt || 0) < 400 && at - (c._youAt || 0) > 800) return;
     deskChatEnd = end;
   }, true);

@@ -38,9 +38,9 @@ const CARD = ".dk-right .act-card";
 
 test("the item list's permission: its row says it asks you, No then Allow on its chat's card (#426, #666)", async ({ cue, page }) => {
   await setup(cue, page);
-  await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Asks you");
+  await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Needs your OK");
   // No answer buttons on the row: the row opens the item, its card answers.
-  await expect(page.locator(`${ROW} :is(${NO}, ${YES}, button)`)).toHaveCount(0);
+  await expect(page.locator(`${ROW} :is(${NO}, ${YES}, button:not(.dkn-rmore))`)).toHaveCount(0);   // only its ⋯ (#839)
   await page.locator(ROW).click();
   await expect.poll(() => layout(page, CARD, '[data-act="deny"]', '[data-act="allow"]')).toBe("ok");
 });
@@ -83,7 +83,7 @@ test("a long command shows a few lines with more; more opens the rest in place, 
 
 test("a short command shows in full, with no more (#426)", async ({ cue, page }) => {
   await setup(cue, page, "npm test");
-  await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Asks you");
+  await expect(page.locator(`${ROW} .dkn-now`)).toHaveText("Needs your OK");
   await expect(page.locator(`${ROW} [data-req-more]`)).toHaveCount(0);
   await page.locator('.dk-items [data-desk-item="227"]').click();
   await expect(page.locator(".dk-right .act-card pre.slab")).toContainText("npm test");

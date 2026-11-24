@@ -95,6 +95,7 @@ mod desk_comments;
 mod db_open;
 mod handoffs;
 mod hosted;
+mod hosted_wake;
 mod insights;
 mod kept_race;
 mod send_at;

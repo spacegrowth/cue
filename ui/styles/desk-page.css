@@ -105,7 +105,6 @@
 .dk-sb-x:hover { color: var(--ink); }
 .dk-box.dk-sb-box { margin: 0; }
 .dk-pane .dk-sb { padding: 14px 24px 0; }
-.dk-box.dk-sb-box:focus-within { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
 /* "Done when" as a checklist (desk.js deskDoneWhenHtml): a point a line, small, room between; a quiet ring in front. */
 .dk-dwl { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: var(--type-body); line-height: 1.45; color: var(--ink); }
 .dk-dwl li { display: flex; gap: 9px; align-items: baseline; }
@@ -288,9 +287,7 @@
 .dk-items .dk-scroll > .dk-gh:not(:first-child)::before, .dk-items .dk-scroll > .dk-holder::before { content: ""; position: absolute; left: 4px; right: 4px; top: -11px; border-top: 1px solid var(--line); pointer-events: none; }
 /* A Desk on the Board (#825, board/desk_cards.js): its lead's card in Waiting while anything on it waits on you, with
    that inside it; else a line under Sessions. The Desk's tag is outlined like the machine pills (no fill, 5px corners). */
-.dkw { cursor: default; }
-.dkw:hover { background: var(--panel); }
-.dkw .nrow-who { cursor: pointer; }
+.dkw { cursor: pointer; }
 .dkw-tag { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px 0 5px; border: 1px solid currentColor; border-radius: var(--radius-tag); font: 600 var(--type-label)/16px var(--sans); white-space: nowrap; flex: none; box-sizing: border-box; }
 .dkw-tag > .dk-kic { width: 11px; height: 11px; margin: 0; color: inherit; }
 .dkw-cnt { font-size: var(--type-small); line-height: 18px; color: var(--muted); }
@@ -307,9 +304,7 @@
 .dkw-from b { font-weight: 600; color: inherit; }
 .dkw-ask:not(.on) .dkw-from b { color: var(--ink); }
 .dkw-for { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-.dkw-for:hover { text-decoration: underline; }
 .dkw-ir { display: flex; align-items: baseline; gap: 8px; font: var(--type-small)/18px var(--sans); color: var(--ink); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; min-width: 0; width: 100%; }
-.dkw-ir:hover .dkw-tt { text-decoration: underline; }
 .dkw-id { font: 600 var(--type-small)/18px var(--mono); flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkw-tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dkw-st { flex: none; color: var(--muted); }

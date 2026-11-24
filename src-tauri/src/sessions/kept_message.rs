@@ -18,7 +18,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] }),
         }
     }
 

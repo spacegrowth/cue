@@ -25,49 +25,64 @@ async function open(page, cue, size = LAPTOP) {
   await expect(row(page, "p1")).toHaveCount(1);
 }
 
-test("a row's ⋯ holds what its page's ⋯ holds, and opening it doesn't open the item", async ({ page, cue }) => {
+test("a row's ⋯ holds only Start now, Park and Drop, and opening it doesn't open the item; its page keeps its own menu", async ({ page, cue }) => {
   await open(page, cue);
-  // Up next: d4 waits on d3 and has a session.
+  // Up next: d4 waits on d3 and has a session. No Put it before… here: that stays on its page.
   await dots(page, "d4").click();
   await expect(menu(page)).toHaveAttribute("role", "menu");
-  const fromRow = await menu(page).locator('[role="menuitem"]').allTextContents();
-  expect(fromRow[0]).toBe("Start it now");
-  expect(fromRow).toContain("Park");
+  await expect(menu(page).locator('[role="menuitem"]')).toHaveText(["Start now", "Park", "Drop this item"]);
   // Nothing opened: no row lit, the lead's chat still in the middle.
   await expect(page.locator(".dkn-items .on[data-desk-item]")).toHaveCount(0);
   await expect(page.locator(".dk-right .dkn-ib")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(menu(page)).toHaveCount(0);
-  // Its page's menu: the same choices, in the same order.
+  // Its page's menu is as it was, Put it before… in it.
   await row(page, "d4").click();
   await expect(row(page, "d4")).toHaveClass(/\bon\b/);
   const side = page.locator(".dk-right");
   await openMore(side);
-  await expect(side.locator(".dk-moremenu [role='menuitem']")).toHaveText(fromRow);
+  await expect(side.locator(".dk-moremenu [role='menuitem']")).toHaveText(["Start it now", "Put it before Search stays centred", "Park"]);
   // One menu at a time: the row's ⋯ shuts the page's.
   await dots(page, "d4").click();
   await expect(page.locator(".dk-moremenu")).toHaveCount(1);
   await expect(menu(page)).toHaveCount(1);
 });
 
-test("Waiting on you, Working, Up next and Parked: each row's ⋯ opens its choices; a choice does it", async ({ page, cue }) => {
+test("Waiting on you, Working, Up next and Parked: Start now and Park wherever nothing is at work yet, Drop on all but done", async ({ page, cue }) => {
   await open(page, cue);
-  const cases = [["d1", ["Resume"]], ["d3", ["Resume"]], ["d6", ["Start it now in a new session", "Park"]]];
+  const cases = [
+    ["d1", ["Start now", "Drop this item"]],   // asks you, its session stopped: Start now wakes it
+    ["d3", ["Start now", "Drop this item"]],   // working, stopped
+    ["d5", ["Drop this item"]],                // at work: nothing to start or park
+    ["d2", ["Drop this item"]],                // ready to check
+    ["d6", ["Start now", "Park", "Drop this item"]],   // new, couldn't be given out
+  ];
   for (const [id, want] of cases) {
     await dots(page, id).click();
     await expect(menu(page).locator('[role="menuitem"]')).toHaveText(want);
     await page.keyboard.press("Escape");
     await expect(menu(page)).toHaveCount(0);
   }
+  // Park does it and shuts the menu.
+  await dots(page, "d6").click();
+  await menu(page).locator('[data-desk-act="park"]').click();
+  await cue.called("desk_item_act", { id: "d6", act: "park" });
+  await expect(menu(page)).toHaveCount(0);
+  // Drop takes two presses: the first arms it and keeps the menu open.
+  await dots(page, "d5").click();
+  await menu(page).locator('[data-desk-act="drop"]').click();
+  await expect(menu(page).locator('[data-desk-act="drop"]')).toHaveText("Drop it");
+  await menu(page).locator('[data-desk-act="drop"]').click();
+  await cue.called("desk_item_act", { id: "d5", act: "drop" });
   // Parked: open its drawer, Start.
   await page.locator('.dkn-items [data-desk-c-fold="parked"]').click();
   await dots(page, "p1").click();
-  await expect(menu(page).locator('[role="menuitem"]')).toHaveText(["Start"]);
+  await expect(menu(page).locator('[role="menuitem"]')).toHaveText(["Start", "Drop this item"]);
   await menu(page).locator('[data-desk-act="start_now"]').click();
   await cue.called("desk_item_act", { id: "p1", act: "start_now" });
   await expect(menu(page)).toHaveCount(0);
-  // Rows with nothing to offer have no ⋯: ready to check, at work, done.
-  for (const id of ["d2", "d5", "d7"]) await expect(row(page, id).locator(".dkn-rwrap")).toHaveCount(0);
+  // Done rows have no ⋯.
+  await expect(row(page, "d7").locator(".dkn-rwrap")).toHaveCount(0);
 });
 
 test("the ⋯ shows as you point at a row and stays on the open one, and showing it moves nothing", async ({ page, cue }) => {

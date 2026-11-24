@@ -128,6 +128,15 @@ test("more than three things waiting: the rest are one line that opens the Desk 
   const card = deskCard(page, "cue");
   await expect(card.locator(".dkw-ir")).toHaveCount(3);
   await expect(card.locator(".dkw-more")).toHaveText(/^\+ \d+ more · Open the Desk ›$/);
+  // A hand over it, never an underline, in either look (#850).
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const el of [card.locator(".dkw-more"), card.locator(".dkw-ir").first()]) {
+      await el.hover();
+      expect(await el.evaluate((e) => [e, ...e.querySelectorAll("*")].map((x) => getComputedStyle(x).textDecorationLine).filter((t) => t !== "none"))).toEqual([]);
+      expect(await el.evaluate((e) => getComputedStyle(e).cursor)).toBe("pointer");
+    }
+  }
   await card.locator(".dkw-more").click();
   await expect(page.locator('.switch-view [data-view="desk"]')).toHaveClass(/on/);
 });

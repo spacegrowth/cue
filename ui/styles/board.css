@@ -164,10 +164,16 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .told-meta { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); vertical-align: -1px; }
 .watch-mark { display: grid; place-items: center; width: 22px; height: 22px; margin: 0 -4px 0 -6px; color: var(--accent); }
 .field { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: var(--radius-btn); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); padding: 3px 4px 3px 10px; position: relative; }
-.field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+/* One focus look for every message box (#845): a 1px line a little stronger than at rest, no thick frame. */
+.field:focus-within { box-shadow: inset 0 0 0 1px var(--line-focus); }
+:is(.dk-box, .m-dk-box):focus-within { border-color: var(--line-focus); }
 .field-row { display: flex; align-items: flex-end; gap: 4px; }
 /* Who the box goes to, at the left of where you type (desk/view.js deskCBox): a tag filled in the box's own tint. */
 .field-to { flex: none; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 1px; margin: 1px 8px 1px -6px; padding: 0 12px; border-radius: calc(var(--radius-btn) - 3px); background: var(--panel-2); color: var(--muted); font: 600 var(--type-small)/1.4 var(--sans); white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; }
+/* A box's pictures before they're sent: their own strip across the top of the box, over the text row and its "To …"
+   tag, never in the tag's column (#860). A hairline from edge to edge closes the strip; many wrap within it. */
+.field > .chips { margin: 0 -4px 3px -10px; padding: 6px 8px 6px 10px; border-bottom: 1px solid var(--line); }
+.field > .quick + .chips { margin-top: 3px; }
 .field-to1 { font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .field-to2 { font-size: var(--type-body); font-weight: 650; color: var(--ink); }
 .field textarea { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--type-body); line-height: 1.45; resize: none; padding: 5px 0; max-height: 180px; overflow-y: auto; }

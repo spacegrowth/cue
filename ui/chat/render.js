@@ -302,7 +302,7 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   if (cue) return dk(cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n)));
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
   // folded under it (desk/cue_said.js).
-  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
+  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: e.no_wake ? "it didn't wake for this" : "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
   if (cm) return dk(cm);
   // Any other message Cue sent it, marked Cue's by the hub as it went (#836): one quiet line of Cue's, never your bubble.
   return e.role === "you" && e.cue && typeof cueQuietHtml === "function" ? dk(cueQuietHtml(e, s, `${sid}:${e.at_ms}:cueq`)) : "";
@@ -314,6 +314,9 @@ const youHeadOf = (page, e) => (page?.youHead ? page.youHead(e) : typeof deskAbo
 const youBack = (e) => typeof cueBackOf === "function" && !!cueBackOf(e?.text);
 /** Send again on a message of yours that didn't go (`attrs`: what sends it, the board's resend or a page's own). */
 const sendAgainBtn = (attrs) => `<button class="q-now" ${attrs}>Send again</button>`;
+/** Your message (`text`) that session `sid` didn't wake for (#857): Try again wakes it once more; Send to a fresh session
+ *  starts one in its place, from its last reply, with this message (the old one closes, Closed keeps it). */
+const noWakeActs = (sid, text) => sid ? `${sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(text)}"`).replace(">Send again<", ">Try again<")} <button class="q-now" data-act="fresh-send" data-sid="${esc(sid)}" data-text="${esc(text)}">Send to a fresh session</button>` : "";
 /** Your message `e` (the `n`th) in chatHtml's thread: your bubble, with how it went. */
 function chatYouHtml(c, e, n) {
   const { it, s, page, original, sid } = c;
@@ -324,7 +327,9 @@ function chatYouHtml(c, e, n) {
   // seen it take it: Queued while it's mid-turn (#531), else Sending until it does (past half a minute, that Cue
   // hasn't seen it yet).
   const resend = sid ? sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}"`) : "";
-  const m = e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
+  // Cue started it again for this, and it ended or never took it (#857): said plainly, the message kept.
+  const m = e.unsent && e.no_wake ? { st: "failed", head: `${esc(msgTo(s) || "It")} didn't wake`, why: "your message is kept here", acts: noWakeActs(sid, original[n].text) }
+    : e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
     : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
     : { st: queued ? "queued" : "delivered", at: msgTaken(e) };
   // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
@@ -701,7 +706,7 @@ function moreMenu(sid, s, closable = false) {
  *  yourself (ipc/move_out.rs). Only for moving away from Cue, so it's here, not a button, and says so. Not while it
  *  works or asks you something. */
 function moveOutItem(sid, s) {
-  if (!s || !(s.hosted || (inTmux(sid) && !s.machine))) return "";
+  if (!s || !(s.hosted || (inTmux(sid) && !s.machine)) || isDeskLead(sid)) return "";   // never a Desk's lead (#842)
   const why = s.state === "working" ? "When this turn ends" : s.state === "deciding" ? "Once you've answered what it asks" : "";
   const where = s.hosted && s.machine ? `in tmux on ${machName(s.machine)}` : `in a ${termName()} tab`;
   return `<button data-act="move-term" data-sid="${esc(sid)}" ${why ? "disabled" : ""}>Move to terminal<span>${why || `Only if you're moving away from Cue: the conversation goes on ${esc(where)}, and Cue stops running it`}</span></button>`;

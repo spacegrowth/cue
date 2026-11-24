@@ -1,7 +1,7 @@
 // Cue UI app — the header's area after the waiting count follows the view (#666). Loaded before app/render.js.
 // Board and Read (and the views not in the switch): the projects, as before. Desk: a Desks ▾
 // menu first, with every Desk (each with a pin), All Desks, New Desk… and Desk settings…, then the pinned Desks as chips in
-// the order pinned (a dot when that Desk waits on you), never reordered by use; a chip opens its Desk, the one open brings its lead's chat back.
+// the order pinned (no dot: Cue has one color, #848; a Desk that waits on you says so to a screen reader and in the Desks menu), never reordered by use; a chip opens its Desk, the one open brings its lead's chat back.
 // An add-on's view: what its optional head() gives, else nothing.
 
 /** The menu open in this area: "desks", or "" for none. */
@@ -72,22 +72,21 @@ function hvMenuSet(m) {
 function headDesks() {
   const all = typeof deskSorted === "function" ? deskSorted() : [];
   const now = hvDeskNow();
-  const dot = (g) => `<i class="hv-dot${g.waits ? " ask" : ""}" aria-hidden="true"></i>`;
   const chip = (d) => {
     const g = hvDeskGoing(d), on = d.project === now;
-    return `<button class="hchip hv-chip${on ? " hot" : ""}" data-hv-desk="${esc(d.project)}" aria-current="${on}"${g.waits ? ` aria-label="${esc(deskName(d))}, ${esc(hvGoingText(g))}"` : ""}>${dot(g)}<span class="hv-cn">${esc(deskName(d))}</span></button>`;
+    return `<button class="hchip hv-chip${on ? " hot" : ""}" data-hv-desk="${esc(d.project)}" aria-current="${on}"${g.waits ? ` aria-label="${esc(deskName(d))}, ${esc(hvGoingText(g))}"` : ""}><span class="hv-cn">${esc(deskName(d))}</span></button>`;
   };
   const open = hvMenu === "desks";
   const found = hvDeskFound(), at = Math.min(hvAt, found.length - 1);
   const pins = hvDeskPins(all);
   const pin = (d) => { const p = pins.includes(d.project); return `<button class="pj-pin hv-pin${p ? " on" : ""}" data-hv-pin="${esc(d.project)}" aria-label="${p ? "Unpin" : "Pin"} ${esc(deskName(d))}" aria-pressed="${p}">${PIN_ICON}</button>`; };
-  const row = (d, k) => { const g = hvDeskGoing(d), on = d.project === now; return `<div class="hv-row${on ? " on" : ""}${k === at ? " at" : ""}" role="menuitem" tabindex="-1" data-hv-desk="${esc(d.project)}"><span class="hv-tick" aria-hidden="true">${on ? "✓" : ""}</span>${dot(g)}<span class="hv-rn"><span>${esc(deskName(d))}</span></span><span class="hv-rs">${esc(hvGoingText(g))}</span>${pin(d)}</div>`; };
+  const row = (d, k) => { const g = hvDeskGoing(d), on = d.project === now; return `<div class="hv-row${on ? " on" : ""}${k === at ? " at" : ""}" role="menuitem" tabindex="-1" data-hv-desk="${esc(d.project)}"><span class="hv-tick" aria-hidden="true">${on ? "✓" : ""}</span><span class="hv-rn"><span>${esc(deskName(d))}</span></span><span class="hv-rs">${esc(hvGoingText(g))}</span>${pin(d)}</div>`; };
   const find = `<input class="hv-find" data-text="hv-desk-find" placeholder="Find a Desk…" aria-label="Find a Desk" spellcheck="false" autocomplete="off" value="${esc(draft("hv-desk-find").text || "")}"/>`;
   const menu = open ? `<div class="hv-menu" role="menu">${find}${found.map(row).join("") || `<div class="hv-none">No Desk matches.</div>`}${all.length ? `<div class="hv-sep"></div>` : ""}<button class="hv-row" role="menuitem" data-hv-desk-home>All Desks</button><button class="hv-row" role="menuitem" data-hv-new-desk>New Desk…</button>${now && hvSettingsOpener() ? `<button class="hv-row" role="menuitem" data-hv-desk-set="${esc(now)}">Desk settings…</button>` : ""}${now && hvB2() ? `<button class="hv-row" role="menuitem" data-hv-desk-sessions>All sessions</button><button class="hv-row" role="menuitem" data-hv-desk-ren="${esc(now)}">Rename this Desk…</button>` : ""}</div>` : "";
   const car = `<svg class="hv-car" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
   // The Desks menu first, as the projects chip is on the Board: it reads the Desk open when that one isn't pinned.
   const loose = now && !pins.includes(now) ? all.find((d) => d.project === now) : null;
-  const main = `<span class="hv-wrap"><button class="hchip hv-chip hv-open${loose ? " hot" : ""}" data-hv-menu="desks" aria-label="Desks${loose ? `, ${esc(deskName(loose))}` : ""}" aria-expanded="${open}">${loose ? `${dot(hvDeskGoing(loose))}<span class="hv-cn">${esc(deskName(loose))}</span>` : "Desks"}${car}</button>${menu}</span>`;
+  const main = `<span class="hv-wrap"><button class="hchip hv-chip hv-open${loose ? " hot" : ""}" data-hv-menu="desks" aria-label="Desks${loose ? `, ${esc(deskName(loose))}` : ""}" aria-expanded="${open}">${loose ? `<span class="hv-cn">${esc(deskName(loose))}</span>` : "Desks"}${car}</button>${menu}</span>`;
   return `${main}${hvDeskChips(all).map(chip).join("")}`;
 }
 

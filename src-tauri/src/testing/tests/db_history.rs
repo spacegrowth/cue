@@ -236,7 +236,7 @@ fn a_cue_message_keeps_its_kind_in_the_saved_chat_and_an_older_database_has_none
         "driven_by": "", "queued": null, "since_ms": 1, "prompt": "", "segments": [], "thread": []
     }))
     .unwrap();
-    let you = |at: u64, text: &str, kind: &str| crate::model::Exchange { role: "you".into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: !kind.is_empty(), kind: kind.into(), cue_parts: vec![] };
+    let you = |at: u64, text: &str, kind: &str| crate::model::Exchange { role: "you".into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: !kind.is_empty(), kind: kind.into(), cue_parts: vec![] };
     s.thread = vec![you(10, "Desk item #4 has moved to docs: stop work on it.", "route"), you(20, "fix the footer", "")];
     crate::db::save_ended(&[(30, s)]);
     let log = crate::db::session_log("k");

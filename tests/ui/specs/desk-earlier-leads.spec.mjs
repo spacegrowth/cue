@@ -140,3 +140,29 @@ test("a hand-off that takes too long opens the box again and says so", async ({ 
   await expect(page.locator(".dk-chat .dk-hwait")).toContainText("The hand-off is taking longer than 3 minutes.");
   await expect(page.locator(".dk2b-chat .foot .composer")).not.toHaveClass(/held/);
 });
+
+test("a lead's chat never offers Move to Cue or its terminal: before, during and after a hand-off", async ({ page, cue }) => {
+  // #842: the lead, and the new lead taking over, look like a terminal app's Claude session to the chat (no hosting, no
+  // tmux): still nothing about terminals, because each is the Desk's lead.
+  await cue.open("desk");
+  await cue.change((st) => {
+    const asTerminal = (s) => Object.assign(s, { harness: "claude", hosted: false, tmux_pane: null, term_program: "iTerm.app", state: "waiting" });
+    asTerminal(st.sessions.find((s) => s.session_id === "lead"));
+    st.sessions.push(asTerminal({ ...st.sessions.find((s) => s.session_id === "lead"), session_id: "l2", name: "desk-lead-2", thread: [] }));
+  });
+  await openDesk(page);
+  const box = page.locator(".dk2b-chat .foot");
+  await expect(box.locator(".composer")).toBeVisible();
+  const offers = page.locator(".tplace, [data-act=move-cue], [data-act=move-term], [data-act=go-session]");
+  await expect(offers).toHaveCount(0);
+  // Handing off: the old lead's note done, the new lead started but not yet the Desk's lead.
+  await cue.change((st) => { const d = st.desk.projects.find((p) => p.lead?.sid === "lead"); d.lead.handoff = { from: "lead", to: "l2", since_ms: Date.now() - 4 * 60e3 }; });
+  await expect(page.locator(".dk-chat .dk-hwait")).toBeVisible();
+  await expect(offers).toHaveCount(0);
+  expect(await page.evaluate(() => [placeTab("lead"), placeTab("l2")])).toEqual(["", ""]);
+  // After: the new lead is the Desk's lead.
+  await cue.change((st) => { const d = st.desk.projects.find((p) => p.lead?.sid === "lead"); d.lead.sid = "l2"; d.lead.handoff = null; });
+  await expect(page.locator(".dk-chat .dk-hwait")).toHaveCount(0);
+  await expect(offers).toHaveCount(0);
+  expect(await page.evaluate(() => placeTab("l2"))).toBe("");
+});

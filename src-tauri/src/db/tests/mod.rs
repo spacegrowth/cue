@@ -15,7 +15,7 @@ fn session(id: &str, driven_by: &str) -> Session {
         "driven_by": driven_by, "queued": null, "since_ms": now_ms(), "prompt": "", "segments": [], "thread": []
     }))
     .unwrap();
-    s.thread = vec![Exchange { role: "agent".into(), text: "done".into(), at_ms: 1, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] }];
+    s.thread = vec![Exchange { role: "agent".into(), text: "done".into(), at_ms: 1, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] }];
     s
 }
 
@@ -220,7 +220,7 @@ fn a_save_from_an_older_copy_of_a_chat_never_deletes_what_it_doesnt_have() {
     std::fs::create_dir_all(&dir).unwrap();
     std::env::set_var("CUE_HOME", &dir);
     reset();
-    let ex = |role: &str, text: &str, at: u64| Exchange { role: role.into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] };
+    let ex = |role: &str, text: &str, at: u64| Exchange { role: role.into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] };
     let log = || session_log("lead").iter().map(|e| (e["at_ms"].as_u64().unwrap(), e["text"].as_str().unwrap().to_string())).collect::<Vec<_>>();
     let mut s = session("lead", "");
     s.thread = vec![ex("agent", "I run the Desk now.", 10), ex("you", "are we moving ?\n\nFrom cue-790 on #790 (Away):\nclose it?\nAnswer it with NOTE: #790 | <your words>.", 20), ex("agent", "Yes, we're moving.", 30)];
