@@ -251,11 +251,9 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
     }
     fx.items.push(it.id.clone());
     held_by(it, &h, refused, waits.clone(), why, now);
-    if reopen {
-        it.mark_reopened();
-    }
     // Sent back by the lead (#779): its card says so, not that you did.
     if reopen {
+        it.mark_reopened();
         if let Some(c) = it.checks.last_mut() {
             c.back_by = by.name.to_string();
         }

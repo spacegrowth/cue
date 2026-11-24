@@ -1275,7 +1275,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 
 | Function |  |  |
 |---|---|---|
-| `src-tauri/src/desk/hub/turn/route.rs::route_to_holder` |  |  |
 | `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
@@ -1287,7 +1286,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/testing/tests/desk_away.rs::each_away_stretch_is_kept_with_what_moved_the_calls_and_what_was_held` | test |  |
 | `src-tauri/src/testing/tests/desk_feed.rs::every_desk_change_names_you_to_the_lead` | test |  |
 
-Files over 1000 lines: `src-tauri/src/desk/model.rs`.
+Files over 1000 lines: .
 
 ## What this can't see
 
