@@ -24,13 +24,14 @@ for (const scheme of ["light", "dark"]) {
     await expect(chat).toContainText("I'll hand these out now.");
     await expect(chat).toContainText("Both are moving. Anything else?");
     await expect(chat.locator(".dk-ln, .decided")).toHaveCount(0);
-    await expect(chat.locator(".dk-cnt").last()).toHaveText(/^4 Desk updates · gave #d2 and #d4, #d3 done, decided 1 · Activity ›$/);
+    // Nothing in their place (#789): no count line.
+    await expect(chat.locator(".dk-cnt")).toHaveCount(0);
     // Still so after a redraw.
     await page.evaluate(() => renderMain());
     await noSwitch(page);
     await expect(chat.locator(".dk-ln, .decided")).toHaveCount(0);
     // In Activity: every line, each with its kind's sign; a DONE's sign filled; the decision shown.
-    await chat.locator(".dk-cnt-b").last().click();
+    await page.evaluate(() => deskOpenActivity());
     const act = page.locator(".dk-moves");
     await expect(act.locator(".dk-ln.dk-sgl", { hasText: "Gave" })).toHaveCount(2);
     await expect(act.locator(".decided")).toBeVisible();
@@ -40,7 +41,7 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
-test("Cue's messages and the lead's lines next to each other are one count line; your words and the lead's stay", async ({ page, cue }) => {
+test("Cue's messages and the lead's lines leave the chat, no count line in their place; your words and the lead's stay (#789)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   const t = Date.now();
@@ -55,12 +56,10 @@ test("Cue's messages and the lead's lines next to each other are one count line;
   const chat = page.locator(".dk-chat");
   for (const w of ["Put the search box at the top please", "On it.", "That's all for now."]) await expect(chat).toContainText(w);
   await noSwitch(page);
-  const run = chat.locator(".dk-cnt").filter({ hasText: "gave #d2" });
-  await expect(run).toHaveCount(1);
-  await expect(run).toHaveText(/^2 Desk updates · gave #d2, 1 from Cue · Activity ›$/);
+  await expect(chat.locator(".dk-cnt")).toHaveCount(0);
   await expect(chat.locator(".dk-cue, [data-dk=\"route\"]")).toHaveCount(0);
   // Both in Activity.
-  await run.locator(".dk-cnt-b").click();
+  await page.evaluate(() => deskOpenActivity());
   await expect(page.locator(".dk-moves .dk-cue")).toHaveCount(1);
   await expect(page.locator('.dk-moves [data-dk="route"]')).toHaveCount(1);
 });

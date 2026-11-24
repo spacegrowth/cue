@@ -199,12 +199,3 @@
 
 /* A run of the Desk's lines between your turns, as one plain count line (#688, desk/runs.js): how many, what they were,
    and Activity ›, which the click opens. No fill, no rule; the newest has a small dot. */
-.dk-cnt { margin: 2px 0; }
-.dk-cnt-b { all: unset; user-select: none; -webkit-user-select: none; box-sizing: border-box; display: flex; align-items: baseline; gap: 0; max-width: 100%; padding: 3px 0; cursor: pointer; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); min-width: 0; }
-.dk-cnt-b b { font-weight: 600; white-space: nowrap; }
-.dk-cnt-s { overflow: hidden; text-overflow: ellipsis; white-space: pre; min-width: 0; }
-.dk-cnt-a { flex: none; white-space: pre; }
-.dk-cnt-b:hover { color: var(--ink); }
-.dk-cnt-b:hover .dk-cnt-a { text-decoration: underline; }
-.dk-cnt-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
-.dk-cnt-dot { flex: none; align-self: center; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--accent); }

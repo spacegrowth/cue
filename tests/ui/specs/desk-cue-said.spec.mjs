@@ -98,18 +98,23 @@ const IN_LEAD = TO_LEAD.filter(([t]) => !/^(Cue couldn't start|Your ASK)/.test(t
 const YOURS = TO_SESSION[0][0];
 const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) ") && t !== YOURS);
 
+/** Cue's messages to the host session and to the lead, as each test starts. */
+async function cueSaidSetup(page, cue, scheme) {
+  await page.emulateMedia({ colorScheme: scheme });
+  await page.setViewportSize({ width: 1500, height: 950 });
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, { s, l, at }) => {
+    const host = st.sessions.find((x) => x.session_id === "host"), lead = st.sessions.find((x) => x.session_id === "lead");
+    s.filter(([t]) => !t.startsWith("(Cue) ")).forEach(([text], n) => host.thread.push({ role: "you", text, at_ms: at + n * 1000 }));
+    host.thread.push({ role: "you", text: "Can you make the header blue?", at_ms: at + 99_000 });
+    l.forEach(([text], n) => lead.thread.push({ role: "you", text, at_ms: at + n * 1000 }));
+  }, { s: TO_SESSION, l: TO_LEAD, at: NOW - 3 * 60 * 1000 });
+}
+
 for (const scheme of ["light", "dark"]) {
-  test(`Cue's messages show as short lines in the session's and the lead's chats, the full text folded under each (${scheme}) (#478)`, async ({ page, cue }) => {
-    await page.emulateMedia({ colorScheme: scheme });
-    await page.setViewportSize({ width: 1500, height: 950 });
-    await cue.open("desk");
-    await openDesk(page);
-    await cue.change((st, { s, l, at }) => {
-      const host = st.sessions.find((x) => x.session_id === "host"), lead = st.sessions.find((x) => x.session_id === "lead");
-      s.filter(([t]) => !t.startsWith("(Cue) ")).forEach(([text], n) => host.thread.push({ role: "you", text, at_ms: at + n * 1000 }));
-      host.thread.push({ role: "you", text: "Can you make the header blue?", at_ms: at + 99_000 });
-      l.forEach(([text], n) => lead.thread.push({ role: "you", text, at_ms: at + n * 1000 }));
-    }, { s: TO_SESSION, l: TO_LEAD, at: NOW - 3 * 60 * 1000 });
+  test(`Cue's messages to a session leave its chat; in Activity each is a short line, the full text folded under it (${scheme}) (#478, #789)`, async ({ page, cue }) => {
+    await cueSaidSetup(page, cue, scheme);
     await page.evaluate(() => deskShow({ kind: "chat", sid: "host" }));
     const chat = page.locator('.dk-right [data-desk-chat="host"]');
     // Your own words keep their bubble, your send-back too: its item's head and your words, no rules (#688).
@@ -118,22 +123,27 @@ for (const scheme of ["light", "dark"]) {
     await expect(yours).toHaveCount(1);
     await expect(yours.locator(".dk-about")).toContainText("#d5");
     await expect(yours).not.toContainText("Its fixes stay");
-    // Cue's messages to a session are cards in its chat (#744), oldest first.
-    await expect(chat.locator(".dk-cnt")).toHaveCount(0);
-    const act = page.locator(".dk-moves"), R = IN_CHAT;
-    const lines = chat.locator(".mg.cue-msg");
+    // Cue's messages to a session aren't in its chat (#789): they're cards in Activity, newest first, each saying who
+    // it went to.
+    await expect(chat.locator(".dk-cnt, .mg.cue-msg")).toHaveCount(0);
+    if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
+    // All of them at once (the tab shows 30 till you scroll).
+    await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+    const act = page.locator(".dk-moves"), R = [...IN_CHAT].reverse();
+    const to = await page.evaluate(() => `Cue to ${deskHolderName("host")}`);
+    const lines = act.locator(".dk-mv-ln", { hasText: to }).locator(".mg.cue-msg");
     await expect(lines).toHaveCount(IN_CHAT.length);
     await expect(lines.locator(".mg-t")).toHaveText(words(R));
     await heads(lines, R);
-    await expect(lines.first().locator(".mg-tag")).toHaveText("Not done");
-    await expect(lines.first().locator(".mg-tag")).toHaveCSS("text-transform", "none");
-    await expect(chat.locator(".mg-hand")).toHaveCount(0);
+    const first = lines.last();
+    await expect(first.locator(".mg-tag")).toHaveText("Not done");
+    await expect(first.locator(".mg-tag")).toHaveCSS("text-transform", "none");
+    await expect(act.locator(".mg-hand")).toHaveCount(0);
     // Each has the one line every message has (#422): delivered, to whom.
     await expect(lines.locator(".msg-line.ml-delivered")).toHaveCount(IN_CHAT.length);
-    await expect(lines.first().locator(".cue-more")).toHaveText("· its log");
-    await expect(lines.nth(13).locator(".cue-more")).toHaveText("· 1 more item");
+    await expect(first.locator(".cue-more")).toHaveText("· its log");
+    await expect(lines.nth(IN_CHAT.length - 1 - 13).locator(".cue-more")).toHaveText("· 1 more item");
     // Folded: the standing words aren't in the line; a click opens Cue's full text under it, again closes it.
-    const first = lines.first();
     await expect(first).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-full")).toHaveCount(0);
     await first.locator(".mg-lk", { hasText: "More" }).click();
@@ -145,27 +155,30 @@ for (const scheme of ["light", "dark"]) {
     // No left stripe, no hover text.
     // Found and measured in one go: a redraw replaces the chat, and a locator finds it in one call and measures it in the
     // next, which a redraw can land between (then it measures the old line, gone: no box, no style).
-    const border = await page.evaluate(() => getComputedStyle(document.querySelector('.dk-right [data-desk-chat="host"] .mg.cue-msg')).borderLeftWidth);
+    const border = await page.evaluate(() => getComputedStyle(document.querySelector(".dk-moves .mg.cue-msg")).borderLeftWidth);
     expect(border).toBe("0px");
     await expect(page.locator("[title]")).toHaveCount(0);
-    if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
     await first.locator(".mg-lk", { hasText: "Less" }).click();
     await expect(first.locator(".mg-full")).toHaveCount(0);
     // Its item's number opens the item.
-    await lines.first().locator("button.mg-id").click();
+    await first.locator("button.mg-id").click();
     await expect.poll(() => page.evaluate(() => deskOpen && [deskOpen.kind, deskOpen.id])).toEqual(["item", "d5"]);
+  });
 
+  test(`Cue's messages to the lead leave its chat; in Activity each is one quiet line, a click opening its full text (${scheme}) (#478, #616, #789)`, async ({ page, cue }) => {
+    await cueSaidSetup(page, cue, scheme);
     // Cue's messages to the lead: out of its chat too (#688); in Activity each one quiet line (#616), "+ Cue · its
     // tag", its item's chip and age, its words under them; a click opens Cue's full text.
     await page.evaluate(() => deskShow({ kind: "chat", sid: "lead" }));
     const lchat = page.locator(".dk2b-chat .dk-chat");   // the lead's chat is the left card (#666)
     await expect(lchat.locator(".dk-cue, .mg.cue-msg")).toHaveCount(0);
-    // Its start failure keeps its own note, and your answer to its ASK stays with the ASK's card.
-    await expect(lchat).toContainText("no agent");
+    // Its start failure is Cue's note too (#789): in Activity, not the chat; your answer to its ASK stays with the ASK's card.
+    await expect(lchat).not.toContainText("no agent");
     await expect(lchat).not.toContainText("The answer: Blue");
     if (process.env.SHOT_DIR) await lchat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-lead-${scheme}.png` });
     // All of them at once (the tab shows 30 till you scroll; the session's lines are in it too).
     await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+    const act = page.locator(".dk-moves");
     const RL = [...IN_LEAD].reverse(), llines = act.locator(".dk-cue");
     await expect(llines).toHaveCount(IN_LEAD.length);
     await expect(llines.locator(".dk-cue-w")).toHaveText(words(RL));
@@ -182,6 +195,7 @@ for (const scheme of ["light", "dark"]) {
     await expect(top.locator(".mg-full")).toContainText("The lead answers it");
     await expect(top.locator(".mg-full")).not.toContainText("ANSWER: #d5");
     await expect(act).not.toContainText("The answer: Blue");
+    await expect(act).toContainText("no agent");
     await expect(page.locator("[title]")).toHaveCount(0);
   });
 }

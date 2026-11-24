@@ -1,10 +1,11 @@
 // The Desk: the quick-add line, the lead's own lines and Cue's notes as its chat draws them, an item's pane,
 // paused and parked items, and items back to check.
 import { test, expect, pick, openDesk, deskAllSessions, deskShowPanel } from "./cue.mjs";
-// The Desk's own lines left its chats for Activity (#688, option D): the chat's newest count line opens it, newest
-// first, each line as it was drawn in the chat.
+// The Desk's own lines left its chats for Activity (#688, option D; #789: no count line in their place): its tab has
+// them, newest first, each line as it was drawn in the chat.
 const deskActivityOpen = async (page) => {
-  await page.locator(".dk-chat .dk-cnt-b").last().click();
+  await expect(page.locator(".dk-chat .dk-cnt")).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
   return page.locator(".dk-moves");
 };
 import { listOrder, groupOf, statusOf, openMore } from "./desk.mjs";
@@ -345,9 +346,9 @@ test("a reply with little to read has no Listen or Read: a lone ROUTE line, a sh
   const say = (text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
   const last = page.locator(".dk-chat .cv-agent").last();
   await say("ROUTE: #d2 -> web-lead | why: it's free and warm, and the owner wants mocks first. Make 2-3 quick mocks on the Desk picks canvas of how Looks right could show less: a quiet tick that turns into Looks right on hover, one \"Check 3\" button, and so on. Post the link here.");
-  // The lone line leaves the chat for Activity (#688, option D): only its count line stays, with no Listen or Read.
-  await expect(page.locator(".dk-chat .dk-cnt").last()).toHaveText(/^1 Desk update · gave #d2 · Activity ›$/);
-  await expect(page.locator(".dk-chat .dk-cnt").last().locator("[data-listen], [data-read]")).toHaveCount(0);
+  // The lone line leaves the chat for Activity (#688, option D; #789): nothing of it stays, so no Listen or Read on it.
+  await expect(page.locator(".dk-chat .dk-ln")).toHaveCount(0);
+  await expect(page.locator(".dk-chat")).not.toContainText("quick mocks");
   const moves = await deskActivityOpen(page), row = moves.locator(".dk-mv-ln").first();
   await expect(row.locator(".dk-ln")).toHaveCount(1);
   // No box around it; its why shut until you click.
@@ -400,7 +401,7 @@ test("Cue's New item note shows as a small card an item, without its words for t
   await itemShown(page, "d2");
 });
 
-test("Cue's word on a stopped item is a card from Cue, not a message from You; its words for the lead stay hidden (#244)", async ({ page, cue }) => {
+test("Cue's word on a stopped item is a card from Cue in Activity, not in the chat, not a message from You; its words for the lead stay hidden (#244, #789)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   // As desk/hub/stall/stall.rs stop_words and desk/hub/lead/run.rs start_failed say them.
@@ -411,8 +412,13 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
     lead.thread.push({ at_ms: t, role: "you", text: "Cue couldn't start a new session for #d9 (Something new): no folder for cue. It's still new; ROUTE it to a session, or to new to try again." });
     renderMain();
   });
+  // Not in the lead's chat (#789): Cue's notes are in Activity.
+  const chat = page.locator(".dk-chat");
+  await expect(chat.locator('[data-mg="stop"]')).toHaveCount(0);
+  await expect(chat).not.toContainText("ended its turn");
   // Cards from Cue in the message family (#501): what happened as the tag, the item as the id, its title, one plain line.
-  const cards = page.locator('.dk-chat [data-mg="stop"]');
+  await page.evaluate(() => deskOpenActivity());
+  const act = page.locator(".dk-moves"), cards = act.locator('[data-mg="stop"]');
   await expect(cards).toHaveCount(3);
   await expect(cards.nth(0).locator(".mg-who")).toHaveText(["Cue", "desk-ui"]);
   await expect(cards.nth(0).locator(".mg-tag")).toHaveText("Stopped, not committed");
@@ -433,11 +439,10 @@ test("Cue's word on a stopped item is a card from Cue, not a message from You; i
   await expect(cards.nth(2).locator(".mg-tag")).toHaveText("Couldn't start");
   await expect(cards.nth(2).locator(".dk-mq")).toHaveText("Cue couldn't start a session for it: no folder for cue.");
   // Not from You, and none of Cue's words for the lead.
-  const chat = page.locator(".dk-chat");
-  await expect(chat).not.toContainText("Settle it");
-  await expect(chat).not.toContainText("ROUTE it to a session");
-  await expect(chat.locator('[data-mg="stop"] [title]')).toHaveCount(0);
-  if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-stop-card.png` });
+  await expect(act).not.toContainText("Settle it");
+  await expect(act).not.toContainText("ROUTE it to a session");
+  await expect(act.locator('[data-mg="stop"] [title]')).toHaveCount(0);
+  if (process.env.SHOT_DIR) await act.screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-stop-card.png` });
   await cards.nth(1).locator(".mg-h .mg-id").click();
   await itemShown(page, "d9");
 });

@@ -366,8 +366,9 @@ test("the lead's MERGE line reads as a short line: the copy folded into the item
   await cue.open("desk");
   await openDesk(page);
   await page.evaluate(() => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "MERGE: #x9 into #d2 | why: the same ask again" }); renderMain(); });
-  // The Desk's own line (#688): a count line in the chat, the line itself in Activity.
-  await expect(page.locator(".dk-chat .dk-cnt").last()).toHaveText(/^1 Desk update · folded #d2 · Activity ›$/);
+  // The Desk's own line (#789): not in the chat at all, no count line either; the line itself in Activity.
+  await expect(page.locator(".dk-chat .dk-cnt")).toHaveCount(0);
+  await expect(page.locator(".dk-chat")).not.toContainText("Folded");
   await page.evaluate(() => deskOpenActivity());
   const ln = page.locator(".dk-moves .dk-mv-ln .dk-ln");
   await expect(ln).toHaveCount(1);
@@ -447,8 +448,9 @@ test("an item's row has no You'll see line in B2; its Done when stays the sessio
     sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: "SEE: #d4 | the dot blinks only for you | done when: rail.spec passes" });
     renderMain();
   });
-  // The Desk's own line (#688): a count line in the chat, the line itself in Activity.
-  await expect(page.locator(".dk-chat .dk-cnt").last()).toHaveText(/^1 Desk update · said what you'll see for #d4 · Activity ›$/);
+  // The Desk's own line (#789): not in the chat at all, no count line either; the line itself in Activity.
+  await expect(page.locator(".dk-chat .dk-cnt")).toHaveCount(0);
+  await expect(page.locator(".dk-chat")).not.toContainText("Said what you'll see for");
   await page.evaluate(() => deskOpenActivity());
   const ln = page.locator(".dk-moves .dk-mv-ln .own-lines .dk-ln");
   await expect(ln).toHaveCount(1);

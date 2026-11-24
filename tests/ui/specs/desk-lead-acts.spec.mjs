@@ -128,7 +128,8 @@ test("a long reopen, note and start leave the lead's chat; in Activity the note 
   const did = page.locator(".dk-right .dk-panel .dk-pdid", { hasText: "Reopened" }).locator(".dk-prs");
   await expect.poll(() => did.evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)))).toBeLessThanOrEqual(2);
   // In Activity: the note's card, its words cut to two lines under its head, then More.
-  await chat.locator(".dk-cnt-b").last().click();
+  await expect(chat.locator(".dk-cnt")).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
   const tab = page.locator(".dk-moves");
   await expect(tab.locator(".dk-mv:not(.dk-mv-ln)", { hasText: "Reopened #d3 for cue-387" })).toContainText("12. The right column");
   const r = tab.locator('[data-mg="note"]');

@@ -74,6 +74,12 @@
 .dk-mv { display: flex; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: var(--type-body); line-height: 1.45; }
 .dk-mv-at { flex: none; width: 92px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .dk-mv-line { min-width: 0; }
+/* Activity's search and filters (#789): the box, then Item, Who and Kind of move, wrapping when narrow. */
+.dk-mv-find { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 10px; }
+.dk-mv-q { flex: 1 1 180px; min-width: 0; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font: var(--type-small) var(--sans); outline: none; }
+.dk-mv-q:focus { border-color: var(--accent); }
+.dk-mv-sel { flex: 0 1 auto; max-width: 220px; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-btn); background: var(--panel); color: var(--ink); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); }
+.dkn-sact { padding: 4px 20px; }
 .dk-mv-more { min-height: 24px; padding: 8px 0; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-pall { all: unset; cursor: pointer; padding: 4px 8px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dk-pall:hover { color: var(--ink); text-decoration: underline; }

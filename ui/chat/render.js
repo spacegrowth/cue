@@ -218,6 +218,8 @@ function reviewFolds(ex, team) {
  *  `folds(ex)`: turns the page folds to a line of its own (an item's page, the holder's turns about other items):
  *  { skip: the messages not drawn, by index; rows: its fold lines, placed by time; hides(at): their steps }.
  *  `acts({ st, sid, held })`: a held or queued message's controls as the page has them (heldRow, queuedRow).
+ *  `dkOut`: a Desk chat that doesn't draw the lead's lines (a session's, an item's): Cue's messages to it (hand-offs,
+ *  sent back, landed…) leave it all the same, for Activity (#789).
  *  `pending`: what you sent from the page's own box that the thread doesn't show yet (the Desk's, #688), each drawn
  *  as the chat's own outbox is (outboxRow): { text, images, at, key, m: its msgLine state, head, picsHtml }. */
 function chatHtml(it, s, harness, paged = false, page = null) {
@@ -247,8 +249,8 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, counts };
   const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
-  // A Desk chat (#688, desk/runs.js): each run of the Desk's own rows between your turns is one count line; Activity has them.
-  const rows = page?.lines && typeof dkFoldRows === "function" ? dkFoldRows(drawn) : drawn;
+  // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them.
+  const rows = (page?.lines || page?.dkOut) && typeof dkFoldRows === "function" ? dkFoldRows(drawn) : drawn;
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`), page));
   for (const o of page?.pending || []) rows.push(outboxRow(o, s, K(o.key || `p:${o.at}`), page));
   if (s?.send_at) rows.push(sendAtRow(s, page));
@@ -286,12 +288,12 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   // Your pick (#667, "… picked option B2 on #d5 …") and your words Cue passed on (on its question, #651) are yours,
   // not the Desk's: they stay.
   const mine = () => (/\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
-  const dk = (h) => (page?.lines && typeof dkMark === "function" ? dkMark(h, mine()) : h);
+  const dk = (h, kind = mine()) => ((page?.lines || page?.dkOut) && typeof dkMark === "function" ? dkMark(h, kind) : h);
   const own = e.role === "you" && page?.you?.(e, n);
   if (own) return dk(own);
   // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk/lead.js).
   const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
-  if (hand) return dk(hand);
+  if (hand) return dk(hand, "route");
   const cue = e.role === "you" && cueSaid(e.text);
   if (cue) return dk(cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n)));
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
