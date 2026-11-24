@@ -45,3 +45,22 @@ test("an item a Desk's own step carries says that step on its row; no line over 
   await expect(page.locator('.dkn-items [data-desk-item="w1"]')).toContainText("Checking before it lands: npm test");
   await expect(page.locator("[data-desk-now-line], .dkl")).toHaveCount(0);
 });
+
+test("on cue, an item on main says it waits on tests, then which test step it's in, then that Cue installs it; not just finishing (#783)", async ({ page, cue }) => {
+  await page.setViewportSize(SIZES[0]);
+  await cue.open("desk");
+  await openDesk(page);
+  const row = page.locator('.dkn-items [data-desk-item="d5"]');
+  const fin = (f) => cue.change((st, ff) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "finishing", finish: ff }); }, f);
+  await fin({ step: "queued", wait: "waiting for the full run", commit: "abc9999", at: Date.now() });
+  await expect(row).toContainText("On main · waiting on tests");
+  const since = (await page.evaluate(() => now())) - 60_000;
+  await setLine(cue, "cue", { state: "run", what: "Testing main at 1e01e83", step: "Rust tests", since, note: "", items: ["d5"], cmd: false, also: "" });
+  await expect(row).toContainText("On main · being tested · Rust tests");
+  await expect(row.locator(".dkl-cmd")).toHaveCount(0);
+  await setLine(cue, "cue", null);
+  await fin({ step: "installing", commit: "abc9999", at: Date.now() });
+  await expect(row).toContainText("On main · installing Cue");
+  await expect(row).not.toContainText("finishing");
+  await expect(page.locator("[data-desk-now-line], .dkl")).toHaveCount(0);
+});

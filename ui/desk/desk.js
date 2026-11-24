@@ -147,6 +147,8 @@ function deskFinStep(i) {
   // Install now said while another install runs (#641): it starts the moment that one ends, and says so.
   if (f.step === "queued" && f.now) return `On main · Install now: ${esc(f.wait || "starting")}`;
   // Landed after the last commit a full run passed: the install takes it once its run has (install_pick.rs).
+  // Waiting for Cue's run of every test (install_pick.rs FULL_RUN_WAIT): said in plain words.
+  if (f.step === "queued" && f.wait === "waiting for the full run") return "On main · waiting on tests";
   if (f.step === "queued" && f.wait) return `On main · ${esc(f.wait)}`;
   if (f.step === "queued") {
     // Cue installs half an hour after the first item waits (desk/hub/landing/finish.rs), once no session is mid-turn.
