@@ -120,13 +120,13 @@
 .dkn-row:hover { background: var(--panel-2); }
 .dkn-row.on { background: var(--sel); color: var(--on-sel); }
 .dkn-id { font: 600 var(--type-small)/var(--type-small-lh) var(--mono); color: inherit; white-space: nowrap; }
-.dkn-row.on :is(.dkn-id, .dkn-sub, .dkn-kt, .dkn-nw) { color: var(--on-sel); }
+.dkn-row.on:not(.dkn-b-blocked *) :is(.dkn-id, .dkn-sub, .dkn-kt, .dkn-nw) { color: var(--on-sel); }
 .dkn-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .dkn-tt { font-weight: 600; font-size: var(--type-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-sub { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-k { display: inline-flex; vertical-align: -2px; margin-right: 4px; }
 /* On a selected row the icon takes the row's text colour: the accent it has elsewhere is the selection's own fill. */
-:is(.dkn-row, .dkn-nx).on .dk-kic { color: var(--on-sel); }
+:is(.dkn-row, .dkn-nx).on:not(.dkn-b-blocked *) .dk-kic { color: var(--on-sel); }
 .dkn-now { min-width: 0; font-size: var(--type-small); line-height: var(--type-small-lh); display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow: hidden; }
 .dkn-nw { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .dkn-nw.mono { font-family: var(--mono); }
@@ -173,10 +173,10 @@
 /* The step it's at: the Board's waiting stripes, moving while a session works on it right now. */
 .dkn-kp.cur i { background: repeating-linear-gradient(45deg, var(--accent) 0 2px, var(--panel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: inset 0 0 0 1px var(--accent); }
 .dkn-kp.cur.live i { animation: dkn-march .9s linear infinite; }
-.dkn-row.on .dkn-kp i { background: color-mix(in srgb, var(--on-sel) 25%, transparent); }
-.dkn-row.on .dkn-kp.done i { background: var(--on-sel); }
-.dkn-row.on .dkn-kp.cur i { background: repeating-linear-gradient(45deg, var(--on-sel) 0 2px, var(--sel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: inset 0 0 0 1px var(--on-sel); }
-.dkn-row.on .dkn-kp.cur .dkn-kt { color: var(--on-sel); }
+.dkn-row.on:not(.dkn-b-blocked *) .dkn-kp i { background: color-mix(in srgb, var(--on-sel) 25%, transparent); }
+.dkn-row.on:not(.dkn-b-blocked *) .dkn-kp.done i { background: var(--on-sel); }
+.dkn-row.on:not(.dkn-b-blocked *) .dkn-kp.cur i { background: repeating-linear-gradient(45deg, var(--on-sel) 0 2px, var(--sel) 2px 4px); background-size: 5.66px 5.66px; box-shadow: inset 0 0 0 1px var(--on-sel); }
+.dkn-row.on:not(.dkn-b-blocked *) .dkn-kp.cur .dkn-kt { color: var(--on-sel); }
 @keyframes dkn-march { to { background-position: 5.66px 0; } }
 /* An item's page (today's short bars): the step it's at in the same stripes. */
 .dk-c :is(.dk2b-trk i.cur, .dk2b-step.cur i) { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); background-size: 8.49px 8.49px; box-shadow: inset 0 0 0 1px var(--accent); }
@@ -311,6 +311,12 @@
 .dkn-band.dkn-b-blocked .dkn-gdot { background: var(--deny); }
 .dkn-band.dkn-b-working .dkn-gdot { background: var(--accent); }
 .dkn-band.dkn-b-blocked .dkn-gh { color: var(--deny); }
+/* Its rows keep the pink when you point at one or open it (#802): a thin outline in the band's red marks the one
+   under the pointer, a thicker one the open one; text and steps keep their colours (the selected-row rules above
+   skip this band). */
+.dkn-b-blocked .dkn-row:is(:hover, .on) { background: none; }
+.dkn-b-blocked .dkn-row.on { color: inherit; box-shadow: inset 0 0 0 2px var(--deny); }
+.dkn-b-blocked .dkn-row:not(.soon, .on):hover { box-shadow: inset 0 0 0 1px var(--deny); }
 .dkn-gsay { margin-left: 4px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
 /* Each band's heading sticks at the top of the list once its rows scroll under it, stacked under the ones above, each
    in its band's own colour, with nothing showing behind it. */
