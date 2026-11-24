@@ -134,7 +134,7 @@ test("a machine pill only when it isn't This Mac, at the end of the line; Up nex
   await expect(d7.locator(".dkn-a2 .mach")).toHaveCount(0);
 });
 
-test("the ✓: it fills, the row greys with Done · Undo where it was and stays there, done, till you open something else (#791); Undo leaves it to check", async ({ page, cue }) => {
+test("the ✓: Done · Undo where it was for 4 s, the row otherwise as the others; then it folds shut and goes, Undo working till then (#791)", async ({ page, cue }) => {
   await open(page, cue);
   await cue.override("desk_looks_right", ({ id }) => {
     const it = CueBridge.world.state.desk.projects[0].items.find((i) => i.id === id);
@@ -142,44 +142,45 @@ test("the ✓: it fills, the row greys with Done · Undo where it was and stays 
     CueBridge.emit("state", CueBridge.world.snapshot());
     return { commit: "", files: 0, waiting: [] };
   });
+  // The clock stopped, so the 4 s run only as runFor moves them (a slow run's own seconds don't).
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 500));
   const card = page.locator(".dkn-card");
   const ids = () => card.locator(".dkn-row[data-desk-item]").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
   const order = await ids();
   const d2 = card.locator('.dkn-row[data-desk-item="d2"]'), at = await d2.boundingBox();
+  const look = (loc) => loc.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el.querySelector(".dkn-t")).opacity]);
+  const quiet = await look(d2);
   await d2.locator(".dk-ok").click();
-  await expect(d2.locator(".dk-ok.on")).toHaveCount(1);
-  expect(await d2.locator(".dk-ok.on").evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
   await expect(d2).toHaveClass(/\bsoon\b/);
-  expect(Number(await d2.locator(".dkn-t").evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(1);
   await expect(d2.locator(".dk-soon")).toHaveText("Done · Undo");
-  // It keeps its place while it shows, and isn't opened by the click.
+  // No fill, no greying: it looks as it did, its place and size the same, and the click didn't open it.
+  expect(await look(d2)).toEqual(quiet);
+  await expect(d2.locator(".dk-ok")).toHaveCount(0);
   expect(await ids()).toEqual(order);
   expect(await d2.boundingBox()).toEqual(at);
   await expect(d2).not.toHaveClass(/\bon\b/);
   // Undo: back to its ✓, nothing sent.
   await d2.locator('.dk-soon [data-desk-act="looks_undo"]').click();
-  await expect(d2.locator(".dk-ok:not(.on)")).toHaveCount(1);
+  await expect(d2.locator(".dk-ok")).toHaveCount(1);
   await expect(d2).not.toHaveClass(/\bsoon\b/);
-  await page.clock.runFor(3500);
+  await page.clock.runFor(5000);
   expect(await cue.calls("desk_looks_right")).toEqual([]);
-  // Left alone after the ✓, it's sent once the 3 s are up. Done, it stays where it was, greyed, its Undo now putting
-  // it back to check; nothing round it moves, and it isn't in Done today twice (#791).
+  // Left alone: still Done · Undo just before 4 s; then it folds shut, and Undo while it folds still takes it back.
   await d2.locator(".dk-ok").click();
-  await expect(d2.locator(".dk-soon")).toHaveText("Done · Undo");
-  await page.clock.runFor(2500);
-  expect(await cue.calls("desk_looks_right")).toEqual([]);
-  await expect(d2).toHaveClass(/\bsoon\b/);
-  const boxes = () => card.locator(".dkn-row[data-desk-item]").evaluateAll((els) => els.map((e) => `${e.dataset.deskItem}@${Math.round(e.getBoundingClientRect().top)}`));
-  const before = await boxes();
+  await page.clock.runFor(3900);
+  await expect(d2).not.toHaveClass(/\bdk-leave\b/);
+  await page.clock.runFor(200);
+  await expect(d2).toHaveClass(/\bdk-leave\b/);
+  await d2.locator('.dk-soon [data-desk-act="looks_undo"]').click();
+  await expect(d2).not.toHaveClass(/\b(dk-leave|soon)\b/);
   await page.clock.runFor(1000);
+  expect(await cue.calls("desk_looks_right")).toEqual([]);
+  // Once more, left alone: sent only once the fold has ended; then it's gone, and in Done today.
+  await d2.locator(".dk-ok").click();
+  await page.clock.runFor(4100);
+  expect(await cue.calls("desk_looks_right")).toEqual([]);
   await page.clock.runFor(400);
   await cue.called("desk_looks_right", { id: "d2" });
-  await expect(d2.locator('.dk-soon [data-desk-act="reopen"]')).toHaveText("Undo");
-  await expect(d2).toHaveClass(/\bsoon\b/);
-  expect(await boxes()).toEqual(before);
-  await expect(page.locator('[data-dkn-drawer="done"] .dkn-nx[data-desk-item="d2"]')).toHaveCount(0);
-  // Opening something else lets it go: out of Waiting on you, into Done today.
-  await card.locator(`.dkn-row[data-desk-item="${order.find((x) => x !== "d2")}"] .dkn-tt`).click();
   await expect(d2).toHaveCount(0);
   await expect(page.locator('[data-dkn-drawer="done"] .dkn-nx[data-desk-item="d2"]')).toHaveCount(1);
 });
