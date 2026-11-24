@@ -19,7 +19,8 @@ const deskCommitted = new Map();
  *  fold ends; only then does it go. Its row looks as the rows round it do, no fill or greying, and keeps its place
  *  and height till it folds; then the rows under it slide up as it shuts (#791). */
 const deskLooksSoon = new Map();
-const DESK_LOOKS_WAIT = 4000, DESK_LOOKS_GOING = "going";
+/** 1.2s of "Done · Undo", then the 0.3s fold (deskLeaveMs): about 1.5s from the click to gone (#856). */
+const DESK_LOOKS_WAIT = 1200, DESK_LOOKS_GOING = "going";
 /** What's open on the Desk, as where a sent-back row was kept (desk/c.js deskCStay): the Desk, and the item, session
  *  or chat open on it. */
 const deskLooksPlace = () => JSON.stringify([deskSelection(), deskOpen?.kind || "", deskOpen?.id || deskOpen?.sid || deskOpen?.key || ""]);

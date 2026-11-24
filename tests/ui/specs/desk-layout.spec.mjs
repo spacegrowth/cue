@@ -136,7 +136,7 @@ test("a machine pill only when it isn't This Mac, at the end of the line; Up nex
   await expect(d7.locator(".dkn-a2 .mach")).toHaveCount(0);
 });
 
-test("the ✓: Done · Undo where it was for 4 s, the row otherwise as the others; then it folds shut and goes, Undo working till then (#791)", async ({ page, cue }) => {
+test("the ✓: Done · Undo where it was for 1.2 s, the row otherwise as the others; then it folds shut and goes, Undo working till then (#791)", async ({ page, cue }) => {
   await open(page, cue);
   await cue.override("desk_looks_right", ({ id }) => {
     const it = CueBridge.world.state.desk.projects[0].items.find((i) => i.id === id);
@@ -144,7 +144,7 @@ test("the ✓: Done · Undo where it was for 4 s, the row otherwise as the other
     CueBridge.emit("state", CueBridge.world.snapshot());
     return { commit: "", files: 0, waiting: [] };
   });
-  // The clock stopped, so the 4 s run only as runFor moves them (a slow run's own seconds don't).
+  // The clock stopped, so the 1.2 s run only as runFor moves them (a slow run's own seconds don't).
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 500));
   const card = page.locator(".dkn-card");
   const ids = () => card.locator(".dkn-row[data-desk-item]").evaluateAll((els) => els.map((e) => e.dataset.deskItem));
@@ -167,9 +167,9 @@ test("the ✓: Done · Undo where it was for 4 s, the row otherwise as the other
   await expect(d2).not.toHaveClass(/\bsoon\b/);
   await page.clock.runFor(5000);
   expect(await cue.calls("desk_looks_right")).toEqual([]);
-  // Left alone: still Done · Undo just before 4 s; then it folds shut, and Undo while it folds still takes it back.
+  // Left alone: still Done · Undo just before 1.2 s; then it folds shut, and Undo while it folds still takes it back.
   await d2.locator(".dk-ok").click();
-  await page.clock.runFor(3900);
+  await page.clock.runFor(1100);
   await expect(d2).not.toHaveClass(/\bdk-leave\b/);
   await page.clock.runFor(200);
   await expect(d2).toHaveClass(/\bdk-leave\b/);
@@ -179,7 +179,7 @@ test("the ✓: Done · Undo where it was for 4 s, the row otherwise as the other
   expect(await cue.calls("desk_looks_right")).toEqual([]);
   // Once more, left alone: sent only once the fold has ended; then it's gone, and in Done today.
   await d2.locator(".dk-ok").click();
-  await page.clock.runFor(4100);
+  await page.clock.runFor(1300);
   expect(await cue.calls("desk_looks_right")).toEqual([]);
   await page.clock.runFor(400);
   await cue.called("desk_looks_right", { id: "d2" });
