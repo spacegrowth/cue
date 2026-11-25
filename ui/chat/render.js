@@ -63,7 +63,7 @@ function hookFold(sid, turn, hooked) {
  *  after the hook starts a turn of its own, and the hook's part stays in the one before. */
 const hookInChat = (sid, since) => stepsMode() !== "hidden" && !!stepFeeds.get(sid)?.turns?.some((t) => t.hooked_ms && t.hooked_ms >= since);
 /** The chat with each turn's steps put in by time: after your message, before the reply. `extra`:
- *  more lines to place by time (what you chose on a decision, when you chose it). `hides(at)`: a turn's steps that
+ *  more lines to place by time (what you chose on a decision, when you chose it). `hides(at, turn)`: a turn's steps that
  *  aren't drawn (a page's folded turns, chatHtml `page.folds`). `say(text)`: the words being written as a page shows
  *  them (chatHtml `page.say`). */
 function withSteps(sid, s, ex, rows, extra = [], hides = null, say = null) {
@@ -87,9 +87,10 @@ function withSteps(sid, s, ex, rows, extra = [], hides = null, say = null) {
       return cuts.concat([null]).map((_, k) => ({
         at: k === 0 ? start : cuts[k - 1] + 0.5,
         html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", latest, { from: bounds[k], to: bounds[k + 1] }, said, replied, say),
+        turn: t,
       }));
     })
-    .filter((b) => !hides?.(b.at))
+    .filter((b) => !hides?.(b.at, b.turn))
     .concat(extra)
     .filter((b) => b.html)
     .sort((a, b) => a.at - b.at);
@@ -99,6 +100,23 @@ function withSteps(sid, s, ex, rows, extra = [], hides = null, say = null) {
   ex.forEach((e, n) => { while (b < blocks.length && blocks[b].at < e.at_ms) out.push(blocks[b++].html); out.push(rows[n]); });
   while (b < blocks.length) out.push(blocks[b++].html);
   return out;
+}
+/** In a Desk chat, whether turn `t` of session `sid`'s steps left the chat with its messages (#914): what started it
+ *  (chat/who.js chatTurnOf; Cue's hand-off ask, a notice, a failed run) and every reply in it gone to Activity (`rows`,
+ *  the chat's message rows, desk/runs.js dkRow). Its steps go too, or they'd sit in the chat with no words under them;
+ *  a turn of yours keeps its steps, whatever its reply does. `lead`: the Desk lead's chat. */
+function dkTurnLeft(sid, ex, rows, t, lead) {
+  const turns = stepFeeds.get(sid)?.turns || [];
+  const start = t.items[0]?.at_ms ?? t.at_ms, next = turns[turns.indexOf(t) + 1]?.at_ms ?? Infinity;
+  const replies = ex.flatMap((e, n) => (e.role === "agent" && e.at_ms >= start && e.at_ms < next ? [n] : []));
+  // No reply yet: only the lead's chat knows its turn is Activity's from what started it (a Desk session at work on
+  // Cue's hand-off keeps its steps in view).
+  if (!replies.length && !lead) return false;
+  // Its turn by its first reply (the thread's copy of what started it can be stamped a moment after the step feed's);
+  // no reply yet, the newest messages.
+  const from = chatTurnOf(ex, replies[0] ?? ex.length);
+  const left = (n) => !rows[n] || dkRow(rows[n]);
+  return from.length > 0 && from.every(left) && replies.every(left);
 }
 /** Agent replies left open: the newest few, so the one you were reading doesn't fold the moment the next lands. */
 const OPEN_REPLIES = 3;
@@ -164,9 +182,11 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, hidden, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, chat };
   const msgRows = ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`)));
-  const drawn = withSteps(stepsOf, s, ex, msgRows, chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
-  // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them.
+  // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them, and a turn's steps go with
+  // its messages (#914).
   const dkChat = (page?.lines || page?.dkOut) && typeof dkFoldRows === "function";
+  const hides = !dkChat ? fold?.hides : (at, t) => !!fold?.hides?.(at) || (!!t && dkTurnLeft(sid, ex, msgRows, t, !!page?.lines));
+  const drawn = withSteps(stepsOf, s, ex, msgRows, chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), hides, page?.say);
   const rows = dkChat ? dkFoldRows(drawn) : drawn;
   // …so a page of Cue's log can be all the Desk's (a run of its updates and the lead's answers to them, as after an
   // install, #869) and draw nothing: the chat loads the next page by itself until enough of the conversation shows,
