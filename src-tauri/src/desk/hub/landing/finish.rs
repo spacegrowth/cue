@@ -587,6 +587,8 @@ impl Hub {
         let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
         if self.desk_nothing_new(id) {
             let words = crate::desk::hub::landing::unlanded::nothing_new_words(id, self.desk_unlanded(id));
+            // Once: a DONE with its CHECK line after this goes to check as it is (#811). Set while it's still finishing.
+            self.finish_set(id, |i| i.told_nothing_new = true);
             self.finish_back(&it, &words, "nothing_new", "", true);
             return true;
         }

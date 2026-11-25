@@ -369,6 +369,11 @@ pub struct DeskItem {
     /// its session as "nothing landed since it was reopened". Cleared with `reopened`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reopened_unseen: bool,
+    /// Sent back once since its reopen as "nothing new landed" (#811). Its next DONE with a CHECK line goes on to check
+    /// as it is: its holder looked again and stands by it (nothing needed changing), so it never goes round. Cleared
+    /// with `reopened`, and by a new reopen.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub told_nothing_new: bool,
     /// Its work went to check as mocks, notes or plans only, nothing the app runs (#408, `Finish::mocks`): kept past
     /// a reopen, which clears its `finish`, so its next DONE isn't held for something new on main (#549).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -466,7 +471,7 @@ impl DeskItem {
     pub(crate) fn mark_reopened(&mut self) {
         let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
         self.reopened = Some((wall, self.commit_in.len()));
-        self.reopened_unseen = false;
+        (self.reopened_unseen, self.told_nothing_new) = (false, false);
     }
 
     /// `mark_reopened`, sent back while it was still finishing (`unseen`: its install not run yet, so what you checked

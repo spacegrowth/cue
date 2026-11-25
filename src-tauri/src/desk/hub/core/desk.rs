@@ -844,6 +844,13 @@ fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
     (went_with, kept_back)
 }
 
+/// Message `text` as its session gets it: pictures as their paths after the words (hub/send.rs deliver), so its
+/// prompt is known as the Desk's (desk_prompt_taken).
+pub(crate) fn as_delivered(text: &str) -> String {
+    let (words, pictures) = crate::desk::as_sent(text);
+    if pictures.is_empty() { words } else { crate::uploads::with_paths(&words, &pictures) }
+}
+
 /// In the store: each send kept as sent to its session, and items at work stamped for their holder; then the items
 /// and steps to save.
 /// A message the Desk sends a session: to whom, its words, and what kind of Cue's message it is (#837). Your notes
@@ -860,8 +867,7 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
         let sent = st.desk.run.sent.entry(to.clone()).or_default();
         // As the session gets it: pictures as their paths after the words (hub/send.rs deliver), so its prompt is
         // known as the Desk's (desk_prompt_taken).
-        let (words, pictures) = crate::desk::as_sent(text);
-        sent.push(if pictures.is_empty() { words } else { crate::uploads::with_paths(&words, &pictures) });
+        sent.push(as_delivered(text));
         if sent.len() > 8 {
             sent.remove(0);
         }

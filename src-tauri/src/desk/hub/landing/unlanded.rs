@@ -166,7 +166,7 @@ const KEEPS_THE_REPO: [&str; 15] = [
 ];
 
 /// What a reopened item's DONE with nothing new landed says, back to its session.
-pub(crate) const NOTHING_NEW: &str = "Nothing of it landed on main since it was reopened, so it isn't done: what it was sent back for still needs a change. Make it, then say DONE";
+pub(crate) const NOTHING_NEW: &str = "Nothing of it landed on main since it was reopened, so it isn't done: what it was sent back for still needs a change. Make it, then say DONE. If you've looked again and it truly needs no change (its work is all on main already), say DONE again with its CHECK line: it goes to check as it is";
 
 /// `NOTHING_NEW`, saying so when `n` of its changes sit on its own branch, not main.
 pub(crate) fn nothing_new_words(id: &str, n: usize) -> String {
@@ -215,6 +215,12 @@ impl Hub {
             self.finish_set(id, |i| i.reopened = None);
             return false;
         }
+        // Sent back once as nothing new, and said DONE again with what you check (#811): its holder looked again and
+        // what it was reopened for needed no change (#790: reopened by a note, its work all on main). To check as it is.
+        if it.told_nothing_new && it.check.is_some() {
+            self.finish_set(id, |i| (i.reopened, i.told_nothing_new) = (None, false));
+            return false;
+        }
         let merged = it.finish.as_ref().is_some_and(|f| !f.merges.is_empty());
         let own = |top: &String| -> Vec<String> {
             let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
@@ -229,7 +235,7 @@ impl Hub {
             || landed_elsewhere(&self.desk_edits_elsewhere(id), at, &known)
             || self.holder_landed_since(&it, at, &known)
         {
-            self.finish_set(id, |i| i.reopened = None);
+            self.finish_set(id, |i| (i.reopened, i.told_nothing_new) = (None, false));
             return false;
         }
         true

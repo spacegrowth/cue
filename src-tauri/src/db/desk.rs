@@ -256,6 +256,17 @@ pub fn desk_put_numbered(desk: &crate::desk::Desk, changed: &[(String, String)])
     }
 }
 
+/// What the Desk sent session `sid` since `since_ms` (#811), as saved with its steps: by this Cue before it restarted,
+/// or by another Cue on the same data, so a message of either is never taken for words you typed. Newest first.
+pub fn desk_sent_to(sid: &str, since_ms: u64) -> Vec<String> {
+    with(|c| {
+        let mut q = c.prepare("SELECT data FROM desk_decisions WHERE at_ms >= ?1 AND data LIKE '%\"delivery\"%' ORDER BY at_ms DESC LIMIT 200")?;
+        let rows = q.query_map(params![(since_ms / 1000 * 1000) as i64], |r| r.get::<_, String>(0))?;
+        Ok(rows.flatten().filter_map(|d| serde_json::from_str::<DeskDecision>(&d).ok()).filter_map(|d| d.delivery).filter(|d| d.session_id == sid).map(|d| d.text).collect())
+    })
+    .unwrap_or_default()
+}
+
 /// A decision saved as it is now.
 pub fn desk_put_decision(d: &DeskDecision) {
     let data = serde_json::to_string(d).unwrap_or_default();
