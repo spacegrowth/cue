@@ -247,6 +247,8 @@
 .dkn-lcol > .dkn-dr:not(.fold) { flex: 1 1 0; }
 .dkn-lcol > .dkn-dr.fold > :is(.dkn-dl, .dkn-more) { display: none; }
 .dkn-lcol > .dkn-dr.fold .dkn-hint { display: none; }
+/* A faint line above Parked, as above each of the Board's drawers (board.css .sec-drawer). */
+.dkn-lcol > .dkn-dr + .dkn-dr { border-top: 1px solid color-mix(in srgb, var(--on-bg) 16%, transparent); padding-top: 12px; }
 /* Narrow, the sections stack in one column and the green scrolls: Up next and Parked stack in it like Done today,
    each its rows' height. */
 @container dknl (max-width: 460px) { .dkn-lcol { display: contents; } }

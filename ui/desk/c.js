@@ -13,10 +13,10 @@ const DESK_C_MAC = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" 
 const DESK_C_CREW = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.5A5 5 0 0 1 21 19"/></svg>`;
 /** Which of Up next and Parked is open ("next", "parked" or "" for neither): one at a time, Up next to begin with. */
 const deskCLowOpen = () => { try { return localStorage.getItem("cue.deskCLow") ?? "next"; } catch { return "next"; } };
-/** Up next or Parked folded or opened as the Board's drawers are (board.js foldDrawer): one open at a time, so a
- *  click moves the room from one to the other. Only these two move, in place, with their rows showing (the folded one
- *  keeps its rows in the page, hidden): measured as they'll end up, then each eased from its height to that, and the
- *  green under the card with them when it grows or shrinks (both folded it's their headings alone). Nothing is drawn
+/** Up next or Parked folded or opened as the Board's drawers are (board.js foldDrawer, at its DRAWER_SLIDE pace): one
+ *  open at a time; the one you click slides, in place, with its rows showing (a folded one keeps its rows in the page,
+ *  hidden), and the other, if open, folds at once (#871). Measured as it'll end up, then eased from its height to that,
+ *  and the green under the card with it when it grows or shrinks (both folded it's their headings alone). Nothing is drawn
  *  afresh: redraws wait while they slide (`folding`, app/render.js), and on landing they're left as they are, the
  *  lists' cuts measured again; a redraw held meanwhile happens then (#838: the slide ended a frame early, at its
  *  natural heights, then the whole list was drawn again, and a redraw mid-slide jumped it to the end). */
@@ -40,8 +40,11 @@ function deskCLowFold(name) {
   for (const el of [low, ...secs]) { el.getAnimations().forEach((a) => a.cancel()); el.style.flex = el.style.overflow = el.style.minHeight = el.style.height = ""; }
   secs.forEach((sec) => set(sec, sec.dataset.dknDrawer === to));
   const end = secs.map(h), lowEnd = h(low);
-  // The one folding keeps its rows in sight as it closes.
-  secs.forEach((sec) => { if (sec.dataset.dknDrawer !== to) sec.classList.remove("fold"); sec.style.flex = "none"; sec.style.overflow = "hidden"; });
+  // Only the one clicked slides (the other, if it was open, is shut already); folding, it keeps its rows in sight.
+  const k = secs.findIndex((sec) => sec.dataset.dknDrawer === name), sec = secs[k];
+  if (!sec) return land();
+  if (to !== name) sec.classList.remove("fold");
+  sec.style.flex = "none"; sec.style.overflow = "hidden";
   const lowMoves = Math.abs(lowEnd - lowFrom) > 0.5;
   if (lowMoves) { low.style.flex = "none"; low.style.minHeight = "0"; }
   const run = ++deskCLowSliding;
@@ -51,18 +54,18 @@ function deskCLowFold(name) {
     deskCLowSliding = 0;
     folding = false;
     // Landed, in the same frame: the folded one shut, every height its own again, the cuts measured again.
-    secs.forEach((sec) => { if (sec.dataset.dknDrawer !== to) sec.classList.add("fold"); });
+    if (to !== name) sec.classList.add("fold");
     for (const el of [low, ...secs]) { el.getAnimations().forEach((a) => a.cancel()); el.style.flex = el.style.overflow = el.style.minHeight = ""; }
     land();
     if (heldDraw) { heldDraw = false; renderMain(); }
   };
   // Each holds its last frame until done() puts it as it is: no frame at its natural height between.
-  const opts = { duration: DESK_C_OPEN_MS, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "forwards" };
-  const anims = secs.map((sec, k) => sec.animate([{ height: `${from[k]}px` }, { height: `${end[k]}px` }], opts));
+  const opts = { ...DRAWER_SLIDE, fill: "forwards" };
+  const anims = [sec.animate([{ height: `${from[k]}px` }, { height: `${end[k]}px` }], opts)];
   if (lowMoves) anims.push(low.animate([{ height: `${lowFrom}px` }, { height: `${lowEnd}px` }], opts));
   Promise.all(anims.map((a) => a.finished)).then(done, () => {});
   // A redraw that went ahead anyway (the page drawn afresh) drops the animations and their finish.
-  setTimeout(done, DESK_C_OPEN_MS + 200);
+  setTimeout(done, DRAWER_SLIDE.duration + 200);
 }
 /** How long a drawer's slide takes, as desk-c.css's dkn-open. */
 const DESK_C_OPEN_MS = 260;

@@ -139,6 +139,8 @@ function laterOpen() {
   try { return localStorage.getItem("cue.laterOpen") === "1"; } catch { return false; }
 }
 const drawerOpen = (name) => name === "later" ? laterOpen() : openDrawer() === name;
+/** How a drawer slides open or shut; the Desk's Up next and Parked slide the same (desk/c.js deskCLowFold). */
+const DRAWER_SLIDE = { duration: 220, easing: "ease-in-out" };
 /** Open or fold a drawer like a drawer: folding, its height shrinks up into its heading while Sessions
  *  grows into the room; opening, it grows back down (the other one, if open, folds at once). Snaps with
  *  Reduce motion. */
@@ -156,8 +158,8 @@ function foldDrawer(name) {
     col.classList.add("drawers-shut");             // Sessions may use whatever the drawer gives up
     sec.style.flex = "none";
     sec.style.overflow = "hidden";
-    sec.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 220, easing: "ease-in-out" }).onfinish = end;
-    setTimeout(end, 300);                          // a redraw mid-way drops the animation, and its onfinish
+    sec.animate([{ height: `${from}px` }, { height: `${to}px` }], DRAWER_SLIDE).onfinish = end;
+    setTimeout(end, DRAWER_SLIDE.duration + 80);                         // a redraw mid-way drops the animation, and its onfinish
   };
   const closedHeight = (sec) => sec.querySelector(".fold-head").offsetHeight + parseFloat(getComputedStyle(sec).paddingTop);
   let sec = document.querySelector(`.sec-${name}`);
