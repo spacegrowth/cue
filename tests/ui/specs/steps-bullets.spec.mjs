@@ -1,5 +1,5 @@
 // Settings → Chat → "Bullets with a clock" (#931), off unless you turn it on: a turn's words as bullets, each with
-// when it started and a mark per step on the left; the live one pulses with its running step under it; "N steps ›"
+// when it started on the left; the live one pulses with its running step under it; "N steps ›"
 // opens a bullet's steps as rows. The turn's count sits in a bar at the top while it works, a "Worked …" chip after.
 import { test, expect, openDesk } from "./cue.mjs";
 
@@ -55,14 +55,13 @@ test("while it works: a bar with the count, a bullet per thing it said, times an
   await expect(rows.nth(0)).toHaveClass(/done/);
   await expect(rows.nth(0)).toHaveClass(/fail/);
   await expect(rows.nth(0).locator(".bul-t")).toHaveText("0:10");
-  await expect(rows.nth(0).locator(".bul-m i")).toHaveCount(2);
-  await expect(rows.nth(0).locator(".bul-m i.bad")).toHaveCount(1);
+  // No marks per step: the time alone on the left; the red ring and the count say what failed.
+  await expect(rows.nth(0).locator(".bul-c")).toHaveText("0:10");
   await expect(rows.nth(0).locator(".bul-n")).toHaveText("1 failed · 2 steps ›");
   const live = rows.nth(1);
   await expect(live).toHaveClass(/now/);
   await expect(live.locator(".bul-x")).toHaveText("Found it: the header centres on the wrong box.");
   await expect(live.locator(".bul-t")).toHaveText(/^2:0\d$/);
-  await expect(live.locator(".bul-m i.run")).toHaveCount(1);
   await expect(live.locator(".bul-run")).toContainText("Running cargo test --lib");
   await expect(live.locator(".bul-run [data-ago]")).toHaveCount(1);
   // No step rows until you open a bullet's steps.

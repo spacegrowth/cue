@@ -519,7 +519,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .msg a.cue-mocks-a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .msg a.cue-mocks-a:hover { text-decoration: underline; }
 /* Settings → Chat → Bullets with a clock (#931, chat/render.js bulletsBlock): each thing it said a bullet, when it
-   started and a mark per step on the left; the live one pulses with its running step under it. No stripe: the
+   started on the left; the live one pulses with its running step under it. No stripe: the
    marks and the dot carry the colour. */
 .stx.bul { gap: 10px; }
 .stx-head.bul-pin { position: sticky; top: 0; z-index: 4; gap: 8px; padding: 6px 10px 6px 9px; border-radius: 9px; background: var(--panel-2); font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 0; font-variant-numeric: tabular-nums; }
@@ -533,10 +533,6 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .bul-c { flex: none; width: 46px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 3px; }
 .bul-t { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
 .bul-row.now .bul-t { color: var(--accent); font-weight: 700; }
-.bul-m { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; max-width: 46px; }
-.bul-m i { width: 3px; height: 9px; border-radius: 1px; background: var(--work); }
-.bul-m i.run { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
-.bul-m i.bad { background: var(--deny); }
 .bul-dot { flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--work); }
 .bul-row.now .bul-dot { background: var(--accent); animation: bulRing 1.4s ease-out infinite; }
 .bul-row.fail .bul-dot { background: transparent; box-shadow: inset 0 0 0 2px var(--deny); }
@@ -552,4 +548,4 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .bul-cmd { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bul-cmd .mono { font-size: 11.5px; }
 .bul-run > .dim { flex: none; }
-@media (prefers-reduced-motion: reduce) { .bul-row.reveal, .bul-m i.run, .bul-row.now .bul-dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .bul-row.reveal, .bul-row.now .bul-dot { animation: none; } }
