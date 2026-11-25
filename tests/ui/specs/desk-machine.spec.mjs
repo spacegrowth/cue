@@ -2,7 +2,7 @@
 // the Desk's sessions list; nothing for this Mac), and an item worked there says how that machine is doing in one quiet
 // line: not answering for how long, what it waits for, when it last pushed.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
-import { statusOf } from "./desk.mjs";
+import { statusOf, fullOf } from "./desk.mjs";
 
 test("a holder on another machine shows the machine, and its item says how that machine is doing", async ({ page, cue }) => {
   await cue.open("desk");
@@ -17,7 +17,7 @@ test("a holder on another machine shows the machine, and its item says how that 
   const row = page.locator('.dkn-row[data-desk-item="d5"]');
   // The label at the end of the line under the row's title, the machine's line its Now.
   await expect(row.locator(".dkn-sub .mach")).toHaveText("remote-1");
-  await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
+  await expect(fullOf(page, "d5")).toHaveText("Machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
   // This Mac's: no label, no line.
   const mine = page.locator('.dkn-row[data-desk-item="d2"]');
   await expect(mine.locator(".mach")).toHaveCount(0);
@@ -32,7 +32,7 @@ test("a holder on another machine shows the machine, and its item says how that 
   await expect(statusOf(page, "d5")).not.toContainText("not answering");
   // Quiet, and nothing of it was ever pushed (#598): its work is only there, and the item says so.
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: Date.now() - 31 * 60000, pushed_at: 0, sha: "" }));
-  await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 31 min · its work is on the machine, not pushed");
+  await expect(fullOf(page, "d5")).toHaveText("Machine not answering for 31 min · its work is on the machine, not pushed");
   await expect(page.locator(".dkn-items [title]")).toHaveCount(0);
 });
 
