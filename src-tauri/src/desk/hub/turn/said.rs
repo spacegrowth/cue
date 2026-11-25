@@ -125,6 +125,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
             Line::Disagree { to, item, text } => answers.push(crate::desk::escalate::disagree_said(st, project, &name, lsid, &to, item, &text, now, fx)),
             Line::Answer { id, text } => cleanup_said(st, project, &by, &id, Some(text), now, fx, &mut answers),
             Line::Lands { part, to, steps, why } => fx.lands.push(crate::desk::hub::lead::lands::Proposal { lsid: lsid.to_string(), desk: project.to_string(), part, to, steps, why }),
+            Line::Install => fx.install.push((project.to_string(), lsid.to_string())),
             Line::Pause { on, why } => fx.pause.push((project.to_string(), on, name.clone(), lsid.to_string(), why)),
             Line::Pass { id, .. } => cleanup_said(st, project, &by, &id, None, now, fx, &mut answers),
             Line::Loop(d) => loop_said(st, project, &by, d, loops, now, fx, &mut answers),

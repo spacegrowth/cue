@@ -9,6 +9,7 @@ pub(crate) mod copy_guard;
 pub(crate) mod stale_index;
 pub(crate) mod install;
 pub(crate) mod install_pick;
+pub(crate) mod install_shown;
 pub(crate) mod pr;
 pub(crate) mod tree_files;
 pub(crate) mod main_line;

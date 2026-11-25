@@ -690,6 +690,8 @@ impl Hub {
     /// wait tried again, items the running Cue now has to check, installs followed, and the next install started
     /// once it's due.
     pub(crate) fn desk_finish_tick(&self) {
+        // The install the Desk shows, whoever started it (desk/hub/landing/install_shown.rs): not held up by a tick.
+        self.desk_install_watch();
         let Some(_claim) = Claim::take(self, "tick") else { return };
         self.finish_tick();
         // Pull requests open for review: read once a minute (desk/hub/landing/pr.rs).

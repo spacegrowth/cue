@@ -100,6 +100,9 @@ pub enum Line {
     /// The lead asking to see more of its Desk (#818): `SHOW: #<id> #<id>` (those items in full) or `SHOW: desk` (`desk`:
     /// the whole Desk block).
     Show { ids: Vec<String>, desk: bool },
+    /// The Desk lead installing what's on main now, through Cue so the Desk shows it (#867): `INSTALL: main`, or a
+    /// plain `INSTALL:`.
+    Install,
 }
 
 /// What a LOOP: line says (#583). A part with no label of its own goes on the one before it, so a goal or a check
@@ -197,6 +200,9 @@ fn one(t: &str) -> Option<Line> {
     let l = unmarked(t);
     let (word, body) = l.split_once(':')?;
     let body = body.trim().trim_start_matches("**").trim().trim_end_matches('*').trim();
+    if word.trim_end_matches('*').trim() == "INSTALL" {
+        return install(body);
+    }
     if body.is_empty() || body.starts_with('<') {
         return None;
     }
@@ -250,6 +256,14 @@ fn one(t: &str) -> Option<Line> {
         "SHOW" => show(body),
         _ => None,
     }
+}
+
+/// `INSTALL: main`, `INSTALL: main | why: …` or a plain `INSTALL:` (#867): Line::Install. Anything else after it (the line
+/// explained in prose) isn't one.
+fn install(body: &str) -> Option<Line> {
+    let (head, _) = body.split_once('|').unwrap_or((body, ""));
+    let head = head.trim().trim_matches(['`', '*']).trim();
+    (head.is_empty() || head.eq_ignore_ascii_case("main")).then_some(Line::Install)
 }
 
 /// `LOOP: <project> | name: … | goal: … | done when: … | check: … | rounds: … | time: … | spend: … | decisions: …`

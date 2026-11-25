@@ -77,6 +77,9 @@ function deskCSessWord(d, s) {
   const sid = s.session_id, it = deskSessItem(d, sid), [dot] = deskSessWithHelpers(s);
   const pre = it ? `#${it.id} · ` : "";
   if (dot === "ask" || it?.state === "needs_you") return ["ask", `${pre}<span class="dkn-ask">asks you</span>`];
+  // Its turn over while its own work runs on, or a script failed since (#867): "your turn", the pills saying what.
+  const pills = dot === "idle" ? bgPills(s, false) : "";
+  if (pills) return ["idle", `${esc(pre)}your turn${pills}`];
   // Ready to check is the Items card's (on white, with its ✓); here it's a session that finished and sits still.
   if (it?.state === "to_check" && dot !== "") return ["idle", `${esc(pre)}idle${s.since_ms ? ` <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span>` : ""}`];
   if (dot === "" && it) {
@@ -120,7 +123,7 @@ function deskCSessions(project) {
   if (leadSid) {
     const s = sessionOf(leadSid), [dot, word] = s ? deskSessWithHelpers(s, false) : ["idle", "ended"];
     const on = !o && deskPick !== project;
-    lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-c-lead aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span><span class="dkn-st">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${on ? " ›" : ""}</span></span></button>`;
+    lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-c-lead aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span><span class="dkn-st">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${dot === "idle" && s ? bgPills(s, false) : ""}${on ? " ›" : ""}</span></span></button>`;
   }
   // A machine's busy count: the Desk's items at work there, of as many as it runs at once (Desk settings, #711).
   const items = d.items || [];
@@ -674,7 +677,7 @@ function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
     const empty = !rows && !where ? `<div class="dk-empty" data-key="empty">Nothing said yet.</div>` : "";
     // By the way's panel over the chat, as on the Board (its button is in the head above, #832); the status line under
     // it as on the Board too: a hand-off on its way and its background agents, not just where it is.
-    main = `${btwPanel(sid)}<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`;
+    main = `${btwPanel(sid)}<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}${cueInstallTray(sid)}</div>`;
   }
   // An item's page (its holder's chat under its bar) goes back to the list as an item without a holder does; a session
   // opened from the left has no back (deskChatBack).

@@ -109,8 +109,165 @@ function bgRow(sid, h, times = false) {
   const when = !times
     ? (running ? span : `${endWord} · ${span}`)
     : `started ${bgClock(h.started_ms)} · ${running ? `running ${span}` : `${endWord} ${bgClock(h.finished_ms || h.last_ms || h.started_ms)} · took ${span}`}`;
-  return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times ? "" : "· script "}· ${when}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
+  return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times || end === "failed" ? "" : "· script "}· ${when}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
 }
+
+// ---------- what still runs once a session's turn is over (#867): its scripts, its agents, Cue's own update ----------
+/** A session's background work as its card and Desk row count it: `scripts` running, `agents` running (the
+ *  backend's `background`, every running helper in its feed, teammates too (steps running_background), less its
+ *  scripts and its crew at work, who have their own rows), and `failed`: a script of
+ *  it that failed since its turn ended (`task_failed_ms`, kept by Cue till its next turn starts). */
+function bgCounts(s) {
+  if (!s) return { scripts: 0, agents: 0, failed: false };
+  const scripts = +s.scripts || 0;
+  const crew = (s.team || []).filter((t) => t.agent_id && (t.state === "working" || t.state === "reviewing")).length;
+  const agents = s.background != null ? Math.max(0, (+s.background || 0) - scripts - crew) : s.state === "agent" ? Math.max(0, (+s.helpers || 0) - crew) : 0;
+  const failed = !!s.task_failed_ms && s.state !== "working" && (!s.since_ms || s.task_failed_ms >= s.since_ms);
+  return { scripts, agents, failed };
+}
+/** Session `sid`'s scripts that failed since its turn ended (its chat's full rows): they stay in its tray, red, and
+ *  the Scripts tab counts them, till its next turn starts. */
+function bgFailedScripts(sid) {
+  const s = sessionOf(sid);
+  if (!s || s.state === "working") return [];
+  const since = s.since_ms || 0;
+  return helpersOf(sid).filter((h) => h.script && !helperRunning(h) && h.failed && !h.stopped && (h.finished_ms || h.last_ms || h.started_ms || 0) >= since);
+}
+/** Its pills, on a Board card and a Desk row: red "1 failed", "1 script" / "N scripts", "2 agents" (running only: they
+ *  go when they're done), and on a Desk lead Cue's update ("updating Cue", red "update failed"). `button`: each opens
+ *  its session on that tab (a card); a Desk row is a button itself, so there they're plain. "" when it has none. */
+function bgPills(s, button = true) {
+  if (!s?.session_id) return "";
+  const sid = s.session_id, c = bgCounts(s), out = [];
+  const pill = (text, tab, bad = false) => button && tab
+    ? `<button class="bg-pill${bad ? " bad" : ""}" data-bg-open="${esc(sid)}" data-bg-open-tab="${tab}">${text}</button>`
+    : `<span class="bg-pill${bad ? " bad" : ""}">${text}</span>`;
+  const x = cueInstallFor(sid);
+  if (x?.run) out.push(pill("updating Cue", ""));
+  else if (x?.bad) out.push(pill("update failed", "", true));
+  if (c.failed) out.push(pill("1 failed", "scripts", true));
+  if (c.scripts) out.push(pill(`${c.scripts} script${c.scripts === 1 ? "" : "s"}`, "scripts"));
+  if (c.agents) out.push(pill(`${c.agents} agent${c.agents === 1 ? "" : "s"}`, "agents"));
+  return out.join("");
+}
+/** "2 failed · 410 passed" said short, for the status line: "2 of 412"; any other line cut to a few words. */
+function bgFailShort(line) {
+  const t = String(line || "").trim(), f = t.match(/(\d+)\s+failed/i), p = t.match(/(\d+)\s+passed/i);
+  if (f && p) return `${f[1]} of ${+f[1] + +p[1]}`;
+  return t.length > 40 ? t.slice(0, 40).replace(/\s+\S*$/, "") + "…" : t;
+}
+/** The status line of a session whose turn is over while its own work runs on (#867), "" otherwise: "Your turn ·
+ *  npm test runs on · 4m" (live, from the script's start); a Desk lead while Cue updates itself: "Your turn ·
+ *  Updating Cue runs on · 3m". Failed since its turn ended, nothing running: "Your turn · npm test failed · 2 of 412 ·
+ *  2:08pm", red, with the waiting stripe. Its background agents keep their own line ("Waiting on …"). */
+function bgWaitLine(it, s) {
+  // Only for a turn that's simply over: a question or a permission it waits on keeps its own line.
+  if (s?.state !== "waiting" || !s.session_id || waitingFor(it, s) !== "your reply") return "";
+  const sid = s.session_id, tip = tipFor(it, s, "waiting");
+  const live = (what, n, from) => `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Your turn · ${esc(what)} ${n > 1 ? "run" : "runs"} on</span>${from ? `<span class="dim"> · <span data-ago="${from}">${ago(from)}</span></span>` : ""}${tip}</div>`;
+  const failed = (what, tail, at) => `<div class="mg-status cv-status"><i class="sw z live"></i><span class="cv-what">Your turn · <span class="bg-bad">${esc(what)} failed</span></span><span class="dim">${tail ? ` · ${esc(tail)}` : ""}${at ? ` · ${clockAt(at)}` : ""}</span>${tip}</div>`;
+  const x = cueInstallFor(sid);
+  if (x?.run) return live("Updating Cue", 1, x.began || x.at);
+  const run = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms);
+  const n = Math.max(run.length, +s.scripts || 0);
+  if (n) return live(run[0] ? `${bgName(run[0])}${n > 1 ? ` and ${n - 1} more` : ""}` : `${n} script${n === 1 ? "" : "s"}`, n, run[0]?.started_ms || s.since_ms);
+  if (x?.bad) return failed("Updating Cue", "", x.at);
+  if (bgCounts(s).failed) return failed(s.task_failed || bgFailedScripts(sid)[0]?.desc || "A script", bgFailShort(s.task_failed_line), s.task_failed_ms);
+  return "";
+}
+
+/** Cue updating itself (`state.desk.install`: built from main, swapped in, restarted), while it's worth showing:
+ *  building, installing or restarting (`run`); installed, for 10 minutes after (`ok`); failed or rolled back, for an
+ *  hour or till a newer one starts (`bad`). Null otherwise. */
+const CUE_INSTALL_STEPS = { building: "build", installing: "install", starting: "restart" };
+function cueInstallNow() {
+  const x = state.desk?.install;
+  if (!x?.step) return null;
+  const age = now() - (x.at || 0);
+  if (x.step in CUE_INSTALL_STEPS) return { ...x, run: true };
+  if (x.step === "installed") return age < 10 * 60000 ? { ...x, ok: true } : null;
+  if (x.step === "failed" || x.step === "rolled_back") return age < 3600000 ? { ...x, bad: true } : null;
+  return null;
+}
+/** The update as session `sid` shows it: only a Desk lead's (its pill, its tray, its status line). */
+function cueInstallFor(sid) {
+  const x = sid && cueInstallNow();
+  if (!x) return null;
+  return (state.desk?.projects || []).some((d) => d.lead?.sid === sid && (!x.project || x.project === d.project)) ? x : null;
+}
+/** The step it failed at, in a word ("build"); a rolled-back one failed at its restart. */
+const cueInstallFailStep = (x) => CUE_INSTALL_STEPS[x.failed_step] || (x.step === "rolled_back" ? "restart" : "");
+/** Its row in the lead's tray: the C mark, "Updating Cue", what it carries and where it is ("· #805, #807 · build ·
+ *  3m"), the live dot, its newest log line; installed: "· installed · 6m", "Cue restarted on #807"; failed: red,
+ *  "· failed at build · 7m", its last log line, Show why. "" when it's not this session's to show. */
+function cueInstallRow(sid) {
+  const x = cueInstallFor(sid);
+  if (!x) return "";
+  const items = (x.items || []).map((i) => `#${i}`).join(", ");
+  const took = tookText(Math.max(0, (x.at || now()) - (x.began || x.at || now())));
+  let meta, tail, live = "", why = "";
+  if (x.run) {
+    const from = x.began || x.at;
+    meta = `${items ? `· ${esc(items)} ` : ""}· ${CUE_INSTALL_STEPS[x.step]} · <span data-ago="${from}">${ago(from)}</span>`;
+    live = `<span class="dot-live"></span>`;
+    tail = x.line || "";
+  } else if (x.ok) {
+    meta = `· installed · ${took}`;
+    tail = x.items?.length ? `Cue restarted on #${x.items.at(-1)}` : x.commit ? `Cue restarted on ${String(x.commit).slice(0, 7)}` : "Cue restarted";
+  } else {
+    const at = cueInstallFailStep(x);
+    meta = `· <span class="bad">failed</span>${at ? ` at ${at}` : ""} · ${took}`;
+    tail = String(x.log || x.line || "").trimEnd().split("\n").at(-1) || "";
+    why = `<button class="bg-go" data-cue-install-why>Show why</button>`;
+  }
+  return `<div class="stx-line bg-row cu-row ${x.bad ? "bad" : ""}" data-key="cue-install"><i class="stx-ic k-cue">C</i><span class="bg-name">Updating Cue</span><span class="bg-meta">${meta}</span>${live}<span class="bg-tail">${esc(tail)}</span>${why}</div>`;
+}
+/** The lead's tray where no other tray is drawn (the Desk's own chat of its lead): just the update's row. */
+const cueInstallTray = (sid) => { const r = cueInstallRow(sid); return r ? `<div class="bg-rows" data-key="bg-rows">${r}</div>` : ""; };
+/** The Desk's top line chip while Cue updates: "● Updating Cue · build · 3m"; failed: red "Cue update failed · Show
+ *  why". Either opens the update's sheet (cueInstallSheet). "" on other views, and once it's installed. */
+function cueInstallChip() {
+  const x = view === "desk" ? cueInstallNow() : null;
+  if (!x || x.ok) return "";
+  if (x.bad) return `<button class="hchip cu-chip bad" data-cue-install-why>Cue update failed<span class="hsub"> · Show why</span></button>`;
+  const from = x.began || x.at;
+  return `<button class="hchip cu-chip" data-cue-install-why><span class="dot-live"></span>Updating Cue<span class="hsub"> · ${CUE_INSTALL_STEPS[x.step]} · <span data-ago="${from}">${ago(from)}</span></span></button>`;
+}
+/** Show why: the update's log in a plain sheet (as Settings' are), its newest lines in view. Esc, a click on Esc or
+ *  outside closes it. */
+let cueInstallWhy = false;
+function cueInstallSheet() {
+  const x = cueInstallWhy ? cueInstallNow() : null;
+  if (!x) { cueInstallWhy = false; return ""; }
+  const at = x.bad ? cueInstallFailStep(x) : "";
+  const title = x.run ? `Updating Cue · ${CUE_INSTALL_STEPS[x.step]}` : x.ok ? "Cue updated" : `Cue update failed${at ? ` at ${at}` : ""}`;
+  const meta = [(x.items || []).map((i) => `#${i}`).join(", "), x.commit ? String(x.commit).slice(0, 7) : "", x.began ? `started ${clockAt(x.began)}` : "", !x.run && x.at ? `${x.bad ? "ended" : "done"} ${clockAt(x.at)}` : ""].filter(Boolean).join(" · ");
+  const log = String(x.log || x.line || "").trimEnd();
+  return `<div class="scrim cu-scrim" data-cue-install-scrim><div class="sheet cu-sheet" role="dialog" aria-labelledby="cu-title">
+    <div class="sheet-head"><h3 class="move-title" id="cu-title">${esc(title)}</h3><span class="grow"></span><kbd class="ld-esc" data-cue-install-close role="button" aria-label="Close">Esc</kbd></div>
+    <div class="sheet-body">${meta ? `<div class="dim cu-meta">${esc(meta)}</div>` : ""}${log ? `<pre class="dk-flog open cu-log">${esc(log)}</pre>` : `<div class="dim">No log yet.</div>`}</div></div></div>`;
+}
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t.closest?.("[data-cue-install-why]")) {
+    e.stopPropagation(); e.preventDefault();
+    cueInstallWhy = true;
+    renderMain();
+    requestAnimationFrame(() => { const l = document.querySelector(".cu-log"); if (l) l.scrollTop = l.scrollHeight; });
+    return;
+  }
+  if (cueInstallWhy && (t.closest?.("[data-cue-install-close]") || t.matches?.("[data-cue-install-scrim]"))) {
+    e.stopPropagation(); e.preventDefault();
+    cueInstallWhy = false;
+    renderMain();
+  }
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !cueInstallWhy) return;
+  e.stopPropagation(); e.preventDefault();
+  cueInstallWhy = false;
+  renderMain();
+}, true);
 /** The runs of an agent's steps opened from their fold line (agentChatHtml), each "sid|agent|its first step". */
 const agentRunOpen = new Set();
 /** The leads' briefs opened in full (agentChatHtml), each "sid|agent". */

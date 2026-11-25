@@ -205,7 +205,9 @@ function deskChat(d) {
   // Each part keyed: the chat is kept in place across draws, brought up to date by key (chat/patch.js drawAround).
   const empty = (!rows || rows === top) && !where ? `<div class="dk-empty" data-key="empty">Tell ${esc(deskLeadName(d))} about a bug, a feature or a task. It adds them here, hands each to a session, and says why.</div>` : "";
   // By the way's panel over the chat, as in a session's chat.
-  return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${top}${empty}${rows.slice(top.length)}${where ? keyed(where, "where") : ""}</div>`;
+  // Under it, Cue updating itself as a row of the lead's tray (#867, chat/helpers.js cueInstallRow).
+  const tray = s ? cueInstallTray(s.session_id) : "";
+  return `${s ? btwPanel(s.session_id) : ""}<div class="dk-chat" data-desk-chat="${esc(d.project)}">${top}${empty}${rows.slice(top.length)}${where ? keyed(where, "where") : ""}${tray}</div>`;
 }
 /** How long the chat holds its box for a hand-off before it opens again (#841). */
 const DESK_HANDOFF_WAIT = 3 * 60000;
@@ -545,7 +547,7 @@ function deskSessChat(sid, from, d, foot = "", top = "") {
     mark: `${DESK_MARKS[kind]} · `, title: deskSessName(sid, deskHolderName(sid), "dk-shn"), meta,
     now: deskPnow({ dot, word, say, acts: stop, fold: on ? `on #${esc(on.id)}` : "" }),
     panel: deskPsec("Who", deskPwho("On", its.length ? its.map(deskItemLink).join(", ") : "nothing yet")) + deskSessFiles(sid),
-    main: `${top}<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}</div>`, foot });
+    main: `${top}<div class="dk-chat" data-desk-chat="${esc(sid)}">${empty}${rows}${where ? keyed(where, "where") : ""}${cueInstallTray(sid)}</div>`, foot });
 }
 /** The session whose steps the Desk follows live (chat/thread.js followSteps): its lead's, while its chat shows, or
  *  the session's whose chat is open. */

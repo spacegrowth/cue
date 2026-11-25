@@ -573,6 +573,9 @@ function whereNow(it, s, steps = true) {
   // count since the turn started, so a long think doesn't look stuck.
   const prompt = (typeof cueMsgPlain === "function" && cueMsgPlain(s?.prompt, msgTo(s))) || deskSaid(s?.prompt);
   if (s?.state === "working") return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  // Its turn over while its scripts (or, for a Desk lead, Cue's update) run on, or one failed since (#867).
+  const bgWait = bgWaitLine(it, s);
+  if (bgWait) return bgWait;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="mg-status cv-status"><i class="sw z live"></i><span class="cv-what">Waiting on you for ${esc(waitingFor(it, s))}</span><span class="dim"> · ${ago(s.since_ms)}</span>${tipFor(it, s, "waiting")}</div>`;
   // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
   const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";

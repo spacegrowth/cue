@@ -80,9 +80,11 @@ fn a_failed_background_task_is_told_once_even_when_its_transcript_is_read_again(
     sessions.mark(&origin("s1"), "working", None);
     assert!(sessions.set_task_failed("s1", 100, "tests", "exit 1"));
     assert!(!sessions.set_task_failed("s1", 100, "tests", "exit 1"));
-    // Its state changes (the line goes), then Cue reads the transcript again from the top (a restart): the same
-    // failure, and an older one before it, are no news.
+    // Kept while it waits; its next turn starts (the line goes), then Cue reads the transcript again from the top (a
+    // restart): the same failure, and an older one before it, are no news.
     sessions.mark(&origin("s1"), "waiting", None);
+    assert_eq!(get(&sessions, "s1").task_failed_ms, 100);
+    sessions.mark(&origin("s1"), "working", None);
     assert_eq!(get(&sessions, "s1").task_failed_ms, 0);
     assert!(!sessions.set_task_failed("s1", 50, "build", "exit 2"));
     assert!(!sessions.set_task_failed("s1", 100, "tests", "exit 1"));
