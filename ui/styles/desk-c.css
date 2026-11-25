@@ -47,7 +47,7 @@
 .dkn-dn b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-cnt { font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--on-bg-muted); font-variant-numeric: tabular-nums; }
 /* The lead at rest is a plain row like the sessions under it (a fill read as selected); its Lead tag sets it apart. */
-.dkn-lead { margin: 0 0 2px; padding: 10px 12px; border-radius: var(--radius-card); display: flex; flex-direction: column; }
+.dkn-lead { margin: 0 0 2px; padding: 10px; border-radius: var(--radius-card); display: flex; flex-direction: column; }
 .dkn-lead:hover { background: color-mix(in srgb, var(--on-bg) 9%, transparent); }
 .dkn-lead.on { background: color-mix(in srgb, var(--sel) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sel) 55%, transparent); }
 .dkn-lead .dkn-n { font-size: var(--type-body); }
@@ -66,9 +66,12 @@
 .dkn-st { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); }
 /* The lead's row (#878): Lead at the name's right end (then › while open), its state on a muted line under the name,
    in from the left by the icon and its gap, so the name has the row's width and keeps it as the state changes. */
+/* Lined up with the sessions under it (#878): its icon centred where their dot is (8px wide in the row, as the dot), so
+   its name and state line start where theirs do. */
+.dkn-lead .dk-kic { margin: 0 -2.5px; }
 .dkn-lead .dkn-lp { margin-left: auto; }
 .dkn-lo { flex: none; font-weight: 500; }
-.dkn-ls { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0 21px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); white-space: nowrap; overflow: hidden; }
+.dkn-ls { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0 16px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); white-space: nowrap; overflow: hidden; }
 .dkn-lead.on .dkn-ls { color: inherit; opacity: .8; }
 .dkn-chev { margin-left: auto; font-size: var(--type-title); line-height: 1; }
 .dkn-s { margin-left: 16px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
