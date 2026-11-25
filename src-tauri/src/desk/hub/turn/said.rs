@@ -134,7 +134,7 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
                 answers.push(crate::desk::move_desk::move_said(st, project, &name, lsid, &id, &to, &why, now, fx));
             }
             Line::Show { ids, desk } => show_said(st, project, lsid, &ids, desk, fx, &mut answers),
-            Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
+            Line::Context { .. } | Line::Designs { .. } | Line::IfPicked { .. } | Line::Picked { .. } | Line::ToLead { .. } | Line::Check { .. } | Line::NotDone { .. } => {}
         }
     }
     started_after_queued(st, &mut answers, fx);
