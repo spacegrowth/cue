@@ -64,10 +64,12 @@
 .dkn-n { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--type-body); font-weight: 700; }
 .dkn-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-st { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); }
-.dkn-lead .dkn-st { color: inherit; }
-/* The state word's own slot (#874): wide enough for the dot, "working" and the open mark, so the name keeps its width
-   as the lead goes from idle to working and back. */
-.dkn-lead .dkn-st { min-width: calc(14px + 9.5ch); justify-content: flex-end; }
+/* The lead's row (#878): Lead at the name's right end (then › while open), its state on a muted line under the name,
+   in from the left by the icon and its gap, so the name has the row's width and keeps it as the state changes. */
+.dkn-lead .dkn-lp { margin-left: auto; }
+.dkn-lo { flex: none; font-weight: 500; }
+.dkn-ls { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0 21px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); white-space: nowrap; overflow: hidden; }
+.dkn-lead.on .dkn-ls { color: inherit; opacity: .8; }
 .dkn-chev { margin-left: auto; font-size: var(--type-title); line-height: 1; }
 .dkn-s { margin-left: 16px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-ask { color: color-mix(in srgb, var(--deny) 40%, #fff); }
@@ -95,7 +97,7 @@
 
 /* A laptop's window: a strip of dots, each with the start of its name; what it's on is in the chat when opened. */
 @media (max-width: 1499px) {
-  .dkn-head, .dkn-cr, .dkn-s, .dkn-st, .dkn-lp, .dkn-chev, .dkn-mg :is(b, span), .dkn-none, .dkn-alls .dkn-w { display: none; }
+  .dkn-head, .dkn-cr, .dkn-s, .dkn-st, .dkn-ls, .dkn-lo, .dkn-lp, .dkn-chev, .dkn-mg :is(b, span), .dkn-none, .dkn-alls .dkn-w { display: none; }
   .dkn-lead, .dkn-ss { align-items: center; padding: 8px 2px; }
   .dkn-n { flex-direction: column; gap: 4px; font-size: var(--type-label); line-height: var(--type-label-lh); width: 100%; }
   .dkn-lead .dkn-n { font-size: var(--type-label); line-height: var(--type-label-lh); }

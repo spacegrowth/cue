@@ -124,7 +124,7 @@ function deskCSessions(project) {
   const working = mine.filter(busy).length;
   const machines = [...new Set(all.map((s) => s.machine || ""))];
   const lit = (sid) => ((o?.kind === "chat" || o?.kind === "holder") && o.sid === sid) || (o?.kind === "item" && deskHolderSid(deskItem(project, o.id)) === sid);
-  // The lead: its name, Lead, how it stands; lit while its chat is what's in the middle.
+  // The lead (#878): its name, Lead at the right end, how it stands on a small line under; lit while its chat is what's in the middle.
   let lead = "";
   if (leadSid) {
     const s = sessionOf(leadSid);
@@ -138,7 +138,7 @@ function deskCSessions(project) {
       deskLeadWorkTimer = setTimeout(renderMain, DESK_LEAD_WORK_MS - Math.max(0, worked) + 50);
     }
     const on = !o && deskPick !== project;
-    lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-c-lead aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span><span class="dkn-st">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${dot === "idle" && s ? bgPills(s, false) : ""}${on ? " ›" : ""}</span></span></button>`;
+    lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-c-lead aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span>${on ? '<span class="dkn-lo" aria-hidden="true">›</span>' : ""}</span><span class="dkn-ls">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${dot === "idle" && s ? bgPills(s, false) : ""}</span></button>`;
   }
   // A machine's busy count: the Desk's items at work there, of as many as it runs at once (Desk settings, #711).
   const items = d.items || [];
