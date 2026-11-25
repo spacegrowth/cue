@@ -45,7 +45,9 @@ function landsChange(desk) {
   const picked = (d.machines?.picked || [d.machines?.machine || ""]).filter((n) => !n || ms.some((m) => m.name === n));
   const mach = ms.length ? { list: picked.length ? picked : [""], folders: Object.fromEntries(ms.map((m) => [m.name, m.folder || ""])), at: Object.fromEntries(ms.map((m) => [m.name, m.at_once || 3])) } : null;
   const model = d.model || "default";
-  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders }, at: { ...mach.at } } : null, model } };
+  // How its item list looks (#896, desk/c.js deskLookOf): today's short words or a sentence under each title.
+  const look = deskLookOf(d.id || d.project || desk);
+  lands = { desk, set: { ...l.set }, steps, ab, mach, model, look, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders }, at: { ...mach.at } } : null, model, look } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -62,7 +64,8 @@ const landsSetChanged = (a) => !landsSame(landsOut(a.set, a.steps), landsOut(a.w
 const landsAskChanged = (a) => !!a.ab && [...a.ab.ticks].sort().join() !== [...a.was.ticks].sort().join();
 const landsModelChanged = (a) => (a.model || "default") !== (a.was.model || "default");
 const landsMachChanged = (a) => !!a.mach && (a.mach.list.join("\n") !== a.was.mach.list.join("\n") || a.mach.list.some((n) => !!n && (a.mach.folders[n] || "").trim() !== (a.was.mach.folders[n] || "").trim()) || Object.keys(a.mach.at).some((n) => a.mach.at[n] !== a.was.mach.at[n]));
-const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a) || landsModelChanged(a));
+const landsLookChanged = (a) => a.look !== a.was.look;
+const landsChanged = (a) => !!a && (landsSetChanged(a) || landsAskChanged(a) || landsMachChanged(a) || landsModelChanged(a) || landsLookChanged(a));
 /** Where an item works changed while items are open: what happens to them, said before it's saved. An item already
  *  started keeps the folder it has (desk/hub/landing/trees.rs gives a copy only as an item starts working). */
 function landsWhereNote() {
@@ -188,6 +191,15 @@ function landsMach() {
     <div class="ld-hint ld-sub">Where this Desk's new sessions start, and how many of its items each machine works on at once.</div>
     <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div>${at}</div></div>`;
 }
+/** How the Desk's item list looks (#896): today's few words in a Now column, or #810's option B, a sentence under
+ *  each title saying what it's doing and what's next (no Now column; rows three lines tall). Saved with the rest. */
+const LANDS_LOOKS = [["short", "Short words", "A few words per item in the Now column; the full line shows on the item you open."], ["sentence", "Sentence under the title", "Each item says what it's doing and what's next under its title. No Now column; rows are three lines tall."]];
+function landsLook() {
+  const now = LANDS_LOOKS.find(([k]) => k === lands.look) || LANDS_LOOKS[0];
+  const seg = `<div class="seg ld-seg" role="radiogroup" aria-label="Item list">${LANDS_LOOKS.map(([k, label]) => `<button role="radio" aria-checked="${k === lands.look}" class="${k === lands.look ? "on" : ""}" data-ld-look="${k}">${label}</button>`).join("")}</div>`;
+  return `<div class="ld-sec" data-ld-sec="look"><div class="set-group ld-h">Item list</div>
+    <div class="ld-rows"><div class="ld-row"><div class="ld-label">Each item shows</div><div class="ld-body">${seg}<div class="ld-hint">${now[2]}</div></div></div></div></div>`;
+}
 /** Ask me before, its kinds on one line, saved with the rest (ask_before.js has the rows and their words). */
 function landsAskBefore() {
   if (!lands.ab) return "";
@@ -212,6 +224,7 @@ function landsHtml() {
     ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
     <div class="ld-rows">${parts}</div></div>
     ${landsAskBefore()}
+    ${landsLook()}
     <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
   </div>${landsFoot()}</div></div>`;
 }
@@ -280,6 +293,15 @@ function landsSave() {
       (e) => { throw `${e}`; },
     ));
   }
+  if (landsLookChanged(a)) {
+    const look = a.look, key = deskOf(a.desk)?.id || deskOf(a.desk)?.project || a.desk;
+    const all = { ...(state.settings?.project?.look || {}) };
+    if (look === "sentence") all[key] = "sentence"; else delete all[key];
+    jobs.push(invoke("set_setting", { key: "project.look", value: all }).then(
+      () => { a.was.look = look; const p = state.settings?.project; if (p) p.look = all; },
+      (e) => { throw `the item list: ${e}`; },
+    ));
+  }
   if (landsAskChanged(a)) {
     const ticks = [...a.ab.ticks], kinds = askBeforeKinds().map((x) => x.key).filter((x) => ticks.includes(x));
     jobs.push(invoke("ask_before_set", { project: a.ab.project, kinds }).then(
@@ -322,6 +344,13 @@ document.addEventListener("click", (e) => {
     e.stopPropagation();
     const r = deskOf(lands.desk)?.machines?.at_once || {}, k = mn.dataset.ldMachN;
     lands.mach.at[k] = Math.min(r.max ?? 9, Math.max(r.min ?? 1, (lands.mach.at[k] || 3) + Number(mn.dataset.ldBy)));
+    lands.leaving = false;
+    return renderMain();
+  }
+  const lk = e.target.closest?.("[data-ld-look]");
+  if (lands && lk) {
+    e.stopPropagation();
+    lands.look = lk.dataset.ldLook;
     lands.leaving = false;
     return renderMain();
   }

@@ -187,6 +187,17 @@
 .dkn-xn { color: var(--muted); }
 .dkn-row.on:not(.dkn-b-blocked *) .dkn-xl { border-top-color: color-mix(in srgb, var(--on-sel) 25%, transparent); }
 .dkn-row.on:not(.dkn-b-blocked *) :is(.dkn-xl > b, .dkn-xn) { color: var(--on-sel); }
+/* The sentence look (#896, #810 option B, a Desk setting): no Now column; under each title what it's doing and what's
+   next, in full, up to two lines, between the title and its #id line; Ready to check keeps its ✓ beside it. */
+.dkn-sent :is(.dkn-th, .dkn-row) { grid-template-columns: minmax(130px, 1fr) 180px 24px; }
+.dkn-fl { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.dkn-full { min-width: 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dkn-full.ask { color: var(--deny); font-weight: 600; }
+.dkn-full.amber { color: color-mix(in srgb, var(--amber) 72%, var(--ink)); font-weight: 500; }
+.dkn-full.ok { font-weight: 500; }
+.dkn-fl > :is(.dk-ok, .dk-soon) { flex: none; }
+.dkn-fl > .dk-soon { margin-left: 0; font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dkn-row.on:not(.dkn-b-blocked *) .dkn-full { color: var(--on-sel); }
 
 /* Strip (K): one 6px strip, each step's piece as long as it took (desk/c.js deskCStrip sets its share), done ones and
    the one it's at never under 18px, steps to come 8px stubs; the one it's at in the Board's waiting stripes; each time
@@ -387,7 +398,7 @@
    or crew member's chat (an item's bar, #827) drops its own bottom line. */
 .dkn-sp > :has(+ .dkn-stabs) { border-bottom: 0; }
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
-/* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: a band between two lines,
+/* The lead's tabs (Chat · Decisions · Activity · Away, desk/view.js) the same way: a band between two lines,
    the picked one filled moss. */
 .dk-c .dk-ptabs { gap: 0; min-height: 0; margin-top: 8px; padding: 0 6px; /* first label under the heading text (20px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .dk-c .dk-ptabs .dk-tab, .dk-c .dk-ptabs .dk-tname > .dk-tab { align-self: stretch; padding: 7px 14px; border: 0; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
