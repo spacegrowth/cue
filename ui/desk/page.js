@@ -206,7 +206,7 @@ function deskChat(d) {
   // After a hand-off (#792): the chat starts at its band, Show earlier over it (desk/earlier.js); its own start needs
   // no Earlier messages row then.
   const top = deskEarlierTop(d, s);
-  const rows = top + (s ? deskChatRows(s, { extra: [...deskActRows(d), ...deskAwcRows(d)], noSteps: true, you: deskLeadNote, pending: mine, noOlder: !!top })
+  const rows = top + (s ? deskChatRows(s, { extra: [...deskActRows(d), ...deskAwcRows(d)], you: deskLeadNote, pending: mine, noOlder: !!top })
     : mine.map((o) => outboxRow(o, null, o.key)).join(""));
   // Where the lead is now (working on what, its latest step, stuck, compacting), as under any session's chat. Not while
   // a message of yours is on its way: "Waiting on you for your reply" under it would be wrong (#587).

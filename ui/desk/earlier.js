@@ -54,7 +54,7 @@ function deskEarlierMarker(m, busy) {
 /** An earlier lead's messages, drawn as the lead's chat draws its own (its Desk lines as lines, Cue's notes short). */
 function deskEarlierRows(sid, msgs) {
   const s = { session_id: sid, harness: "claude", thread: msgs, team: [] };
-  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, refs: deskRefs, dkOut: true, you: deskLeadNote, youHead: deskAboutHead, noSteps: true });
+  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, refs: deskRefs, dkOut: true, you: deskLeadNote, youHead: deskAboutHead });
   return `<div class="dk-earlier" data-key="lead:${esc(sid)}">${rows}</div>`;
 }
 
@@ -100,7 +100,7 @@ function deskEarlierTail(e, m) {
   if (!msgs?.length) return "";
   const s = { session_id: m.sid, harness: "claude", thread: msgs, team: [] };
   // Inert while the new lead gets ready: no Send to… on buttons nothing can press.
-  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, refs: deskRefs, dkOut: true, you: deskLeadNote, youHead: deskAboutHead, noActs: true, noSteps: true });
+  const rows = chatHtml(null, s, "claude", false, { lines: deskLineHtml, refs: deskRefs, dkOut: true, you: deskLeadNote, youHead: deskAboutHead, noActs: true });
   return `<div class="dk-earlier dk-tail" data-key="tail:${esc(m.sid)}" inert>${rows}</div>`;
 }
 
