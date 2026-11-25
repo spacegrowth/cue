@@ -1,8 +1,8 @@
-//! At start, what brings the sessions back: settings watched, sessions a reboot killed opened again, waiting
+//! At start, what brings the sessions back: settings watched, sessions left in Cue's old terminal moved to hosted, waiting
 //! cards and unsure messages rechecked, and the agents on your machines watched over SSH.
 
 use crate::hub::Hub;
-use crate::ipc::{bring_back_cards, restore_machine, restore_sessions};
+use crate::ipc::{bring_back_cards, move_machine_sessions, move_terminal_sessions};
 use crate::{config, machines};
 use std::sync::Arc;
 
@@ -12,22 +12,20 @@ pub(super) fn bring_back(hub: &Arc<Hub>) {
     // change redraws the window.
     let h = hub.clone();
     config::watch(move || h.redraw());
-    // A reboot killed every tmux pane: open each live session again (before the watcher, so a
-    // stale pid can't drop it before its new pane is recorded).
-    restore_sessions(hub);
-    // Waiting sessions always come back with their card (a rebuilt one gets it above; the
-    // rest, whose card vanished another way, get it here).
+    // Sessions still running in Cue's old terminal (tmux) move to hosted, each once it's between turns.
+    move_terminal_sessions(hub);
+    // Waiting sessions always come back with their card, however it vanished.
     bring_back_cards(hub);
     // A message Cue was still unsure about when it last ran: its log may say by now, and what's
     // still open is watched again (a restart used to leave its ring on for good).
     hub.recheck_unsettled();
 }
 
-/// The agents on your machines: their events watched, their sessions back when a machine is reached, and
+/// The agents on your machines: their events watched, their sessions in Cue's old terminal moved to hosted when a machine is reached, and
 /// the logs of sessions already known there copied on again.
 pub(super) fn machines(hub: &Arc<Hub>) {
     let h = hub.clone();
-    machines::hooks::on_reached(move |m| restore_machine(&h, m));
+    machines::hooks::on_reached(move |m| move_machine_sessions(&h, m));
     // A new session there: the machine read now (its setup screens), not at the next poll.
     let h = hub.clone();
     machines::hooks::on_new_session(move |m| {

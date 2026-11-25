@@ -2,7 +2,7 @@
 //! what it refuses, a restart that can't stop its agent, a restart that fails after its park (its tmux
 //! session vanished), and what a relaunch after a reboot brings back by itself.
 
-use crate::ipc::{move_to_terminal_now, park, rebuildable, restart_session_now};
+use crate::ipc::{move_to_terminal_now, park, restart_session_now};
 use crate::testing::{AgentProcess, World};
 use serde_json::json;
 
@@ -181,20 +181,6 @@ fn a_session_keeps_its_last_five_restarts() {
     let lines = w.snapshot().0["restarted"]["a"].as_array().unwrap().clone();
     assert_eq!(lines.len(), 5);
     assert_eq!(lines.iter().map(|l| l["secs"].as_u64().unwrap()).collect::<Vec<_>>(), [3, 4, 5, 6, 7], "the latest, each with how long it took");
-}
-
-#[test]
-fn after_a_reboot_cue_brings_back_its_claude_sessions_in_tmux() {
-    let mut w = World::new();
-    for sid in ["mine", "E"] {
-        w.session(sid).in_tmux("%1").prompt("go").stop("Done.");
-    }
-    w.session("plain").prompt("go").stop("Done.");
-    w.session("cx").codex().in_tmux("%2").prompt("go").stop("Done.");
-    w.relaunch();
-    let mut back: Vec<String> = w.hub().saved_sessions().into_iter().filter(|s| rebuildable(&s.origin)).map(|s| s.origin.session_id).collect();
-    back.sort();
-    assert_eq!(back, ["E", "mine"], "not a session with no pane, nor one only Claude can --resume");
 }
 
 /// ⋯ → Move to terminal for a session in Cue's own terminal (ipc/move_out.rs): its agent ended as Close does, then

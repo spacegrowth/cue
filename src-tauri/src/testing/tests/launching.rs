@@ -1,9 +1,9 @@
 //! Starting a session's agent (stability plan §4, Sessions / Hand-offs / Parking): + New, Continue in a new
 //! session, Start fresh, Fork, Resume and Move to Cue, each hosted (FakeHosted records what it was asked to start),
-//! and a pane rebuilt after a restart through the launcher port. A start that's refused leaves everything as it was.
+//! and, at launch, sessions left in Cue's old terminal moved to hosted. A start that's refused leaves everything as it was.
 
 use crate::hosted::Start;
-use crate::ipc::{fork, handoff_continue_now, handoff_fresh_now, move_session_to_cue, park, rebuild, resume_parked_session, start_session_with, StartOpts};
+use crate::ipc::{fork, handoff_continue_now, handoff_fresh_now, move_between_turns, launch_moves, move_session_to_cue, park, resume_parked_session, start_session_with, StartOpts};
 use crate::terminal::launch::Place;
 use crate::testing::{AgentProcess, World};
 
@@ -165,21 +165,40 @@ fn resume_brings_back_a_closed_terminal_session_hosted() {
     assert_eq!(w.hosted.sent().last(), Some(&("a".to_string(), "pick it up".to_string())));
 }
 
+/// Launch (ipc/restore.rs): a session still running in Cue's old terminal moves to hosted with its conversation, once
+/// it's between turns: one mid-turn, or with a prompt open in its terminal, is left until that's over. One in your own
+/// tmux, or whose agent ended, isn't touched.
 #[test]
-fn after_a_restart_a_session_whose_pane_died_is_resumed_in_a_new_one_with_its_card() {
+fn at_launch_sessions_in_cues_terminal_move_to_hosted_each_once_its_turn_is_over() {
     let mut w = World::new();
-    w.session("a").in_tmux("%40").prompt("go").stop("Done.");
+    let (idle, busy) = (AgentProcess::start(), AgentProcess::start());
+    let t = w.session("t").in_folder(w.home()).in_tmux("%990").running_as(idle.pid);
+    t.transcript().prompt("go").assistant("Done.").turn_end();
+    t.prompt("go").stop("Done.");
+    let b = w.session("b").in_folder(w.home()).in_tmux("%991").running_as(busy.pid);
+    b.transcript().prompt("go").assistant("On it.");
+    b.prompt("go");
+    w.session("yours").in_folder(w.home()).in_tmux("%992").prompt("go").stop("Done.");
+    w.session("gone").in_folder(w.home()).in_tmux("%993").prompt("go").stop("Done.");
     w.relaunch();
-    let saved = w.hub().saved_sessions().into_iter().find(|s| s.origin.session_id == "a").unwrap();
-    rebuild(w.hub(), &saved.origin, "work-a");
-    w.settle();
-    let l = w.launcher.last();
-    assert!(l.line.starts_with("cd '/work/a' && claude --resume 'a'"), "{}", l.line);
-    assert_eq!((l.name.as_str(), l.place), ("work-a", Some(Place::Tmux)));
-    assert_eq!(pane_of(&w, "a"), l.pane, "the new pane, not the one the reboot took");
-    let s = w.snapshot();
-    assert_eq!(s.state("a"), "waiting");
-    assert_eq!(s.cards_of("a").len(), 1, "its finished turn is still the turn to answer");
+    let running: std::collections::HashSet<String> = ["t", "b", "yours"].map(String::from).into();
+    let mut sids = launch_moves(w.hub().saved_sessions(), &running, |pane, _| pane != "%992");
+    sids.sort();
+    assert_eq!(sids, ["b", "t"], "not one in your own tmux, nor one whose agent ended");
+    let left = move_between_turns(w.hub(), sids);
+    assert_eq!(left, ["b"], "mid-turn: left to finish");
+    assert!(!idle.running() && busy.running());
+    assert!(w.hub().session_origin("t").is_some_and(|o| o.hosted && o.tmux_pane.is_empty()), "moved, its pane gone with it");
+    assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(Start::Resume("t".into())), "resumed: the same conversation");
+    let b = w.session("b").in_folder(w.home()).in_tmux("%991").running_as(busy.pid);
+    b.terminal_ask("Allow Bash: rm -rf build?");
+    let left = move_between_turns(w.hub(), left);
+    assert_eq!(left, ["b"], "a prompt open in its terminal: left until it's answered");
+    b.stop("Done.");
+    assert!(move_between_turns(w.hub(), left).is_empty());
+    assert!(!busy.running(), "its turn over, it's moved");
+    assert!(w.hub().session_origin("b").is_some_and(|o| o.hosted));
+    assert!(w.hub().session_origin("yours").is_some_and(|o| !o.hosted), "yours is left where it is");
 }
 
 #[test]
