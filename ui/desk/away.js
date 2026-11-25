@@ -227,12 +227,15 @@ function deskAwayShown() {
   return p ? on.filter((d) => d.project === p) : on;
 }
 /** The head's mark off a Desk's own page: one Desk away named, "cue: Away · $3.40 of $10" (or why it
- *  paused); with several Desks away, how many. On a Desk's page none: its Items card's switch says it. */
+ *  paused); with several Desks away, how many. On a Desk's page none: its Items card's switch says it; nor for the
+ *  Desk whose lead's chat the Board shows. */
 function deskAwayHeadMark() {
   // On a Desk's own page the Items card's Away switch says it, so the head leaves room (#666).
   const own = view === "desk" && typeof deskSelection === "function" && !!deskSelection();
   if (own) return "";
-  const on = deskAwayShown();
+  // The Board's chat pane showing a Desk's lead (#850): that Desk's Away stays on its own page, as above (#875).
+  const leadOpen = view === "board" && typeof active !== "undefined" && active?.sid;
+  const on = deskAwayShown().filter((d) => !leadOpen || deskLead(d)?.sid !== active.sid);
   if (!on.length) return "";
   const a = deskAwayOf(on[0]);
   const main = on.length > 1 ? `Away on ${on.length} Desks` : `${own ? "" : `${deskName(deskOf(on[0].project))}: `}Away`;
