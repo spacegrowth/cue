@@ -142,7 +142,8 @@ fn lead_said(st: &mut Store, project: &str, lsid: &str, text: &str, (repos, loop
 }
 
 /// The lead asked to see more (`SHOW:`, #818): items in full, told with its other answers; the whole Desk block,
-/// sent at once as Cue's own message, which carries it whole.
+/// sent at once as Cue's own message, which carries it whole: an answer like the others (#909), so the lead's chat
+/// leaves it for Activity, not another Desk's band.
 #[allow(clippy::too_many_arguments)]
 fn show_said(st: &mut Store, project: &str, lsid: &str, ids: &[String], desk: bool, fx: &mut Effects, answers: &mut Vec<String>) {
     for id in ids {
@@ -154,7 +155,7 @@ fn show_said(st: &mut Store, project: &str, lsid: &str, ids: &[String], desk: bo
     }
     if desk {
         Hub::desk_block_whole_next(st, project);
-        fx.tells.push((project.to_string(), "Your whole Desk block, as you asked (SHOW: desk).".to_string(), lsid.to_string()));
+        fx.tells.push((project.to_string(), "Your whole Desk block, as you asked (SHOW: desk).".to_string(), lsid.to_string(), crate::sessions::Kind::Answer));
     }
 }
 

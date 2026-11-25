@@ -287,11 +287,12 @@ function cueQuietHtml(e, s, key, m = null) {
   const who = g.mate || (s ? nameOf(s.session_id, s.project) : "");
   const it = g.id ? (state.desk?.projects || []).flatMap((d) => d.items || []).find((i) => deskIdIs(i, g.id)) : null;
   const chip = !g.id ? "" : typeof deskMgId === "function" ? ` ${deskMgId(g.id, it?.kind || "", deskNum(it || { id: g.id }))}` : ` <span class="mg-id">#${esc(g.id)}</span>`;
-  const open = openAsks.has(key), full = deskSaid(String(e.text ?? "")).trim();
+  // Nothing more than its line (#909: "Your whole Desk block, as you asked"): no fold that says it again.
+  const full = deskSaid(String(e.text ?? "")).trim(), more = full !== String(g.what ?? "").trim(), open = more && openAsks.has(key);
   const st = m?.st === "held" ? " · goes when its turn ends" : m?.st === "queued" ? " · queued" : e.unsent ? " · not sent" : e.pending ? " · not read yet" : "";
   const to = who || st ? ` <span class="mg-v">${who ? `→ ${esc(who)}` : ""}${st}</span>` : "";
   return `<div class="dk-ln dk-cue cue-quiet${open ? " open" : ""}"><div class="mg-line"><button class="dk-cue-t" data-ask-open="${esc(key)}" aria-expanded="${open}">`
-    + `<span class="dk-cue-pm">${open ? "−" : "+"}</span>${cueMark()}<b class="mg-who">Cue</b>${to}</button>${chip}`
+    + `${more ? `<span class="dk-cue-pm">${open ? "−" : "+"}</span>` : ""}${cueMark()}<b class="mg-who">Cue</b>${to}</button>${chip}`
     + `${e.at_ms ? `<span class="mg-age">${ago(e.at_ms)}</span>` : ""}</div><button class="dk-cue-w" data-ask-open="${esc(key)}" aria-expanded="${open}">${esc(g.what)}</button>`
     + `${open ? `<div class="mg-full">${esc(full)}</div>` : ""}</div>`;
 }

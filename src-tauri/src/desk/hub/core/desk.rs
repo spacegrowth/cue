@@ -73,9 +73,10 @@ pub(crate) struct Effects {
     pub(crate) to_lead: Vec<(String, String, String, String)>,
     /// Holds taken or lifted (#540, desk/holds.rs), to save; those whose item ended are added as the Desk saves.
     pub(crate) holds: Vec<crate::desk::holds::HoldSave>,
-    /// Bands to other Desks' leads (#540, desk/tell.rs): (that Desk, the message, the sending lead's session), sent as
-    /// Cue's own words to it; and the bands sent or answered, to save.
-    pub(crate) tells: Vec<(String, String, String)>,
+    /// Bands to other Desks' leads (#540, desk/tell.rs): (that Desk, the message, the sending lead's session, its kind),
+    /// sent as Cue's own words to it; and the bands sent or answered, to save. Kind Peer for a band; Answer for Cue's
+    /// own reply to a lead's line that carries a whole Desk block (SHOW: desk, #909), which leaves its chat for Activity.
+    pub(crate) tells: Vec<(String, String, String, crate::sessions::Kind)>,
     pub(crate) bands: Vec<crate::desk::tell::Band>,
     /// Questions to the user when Desks' leads can't settle it (#540, desk/escalate.rs), each on all its Desks.
     pub(crate) to_user: Vec<crate::desk::escalate::ToUser>,
@@ -686,7 +687,7 @@ impl Hub {
 
     /// `desk_done`'s words between sessions and leads, each sent a moment later: `to_lead`, a session's TO LEAD lines,
     /// and `tells`, a lead's bands to another Desk's lead.
-    fn desk_send_bands(&self, to_lead: Vec<(String, String, String, String)>, tells: Vec<(String, String, String)>) {
+    fn desk_send_bands(&self, to_lead: Vec<(String, String, String, String)>, tells: Vec<(String, String, String, crate::sessions::Kind)>) {
         // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
         // Cue's, not yours (#831): never kept as words you sent, and never joined to yours (send.rs send_held).
         for (desk, sid, text, words) in to_lead {
@@ -698,9 +699,9 @@ impl Hub {
             });
         }
         // A band to another Desk's lead (#540), as Cue's own words to it; when it can't go, the sending lead is told.
-        for (desk, text, from) in tells {
+        for (desk, text, from, kind) in tells {
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text, crate::sessions::Kind::Peer) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text, kind) {
                     eprintln!("cue: desk: a band didn't reach {desk}'s lead: {e}");
                     let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)), crate::sessions::Kind::Answer);
                 }
