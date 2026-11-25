@@ -116,7 +116,7 @@ function patchKids(live, fresh, reveal) {
       f._html = h;
       const lines = [...f.querySelectorAll(".stx-line"), ...(f.matches(".stx-line") ? [f] : [])];
       landed += lines.length;
-      if (reveal) for (const el of [...lines, ...f.querySelectorAll(".stx-say, .cv-result"), ...(f.matches(".stx-say, .cv-result") ? [f] : [])]) el.classList.add("reveal");
+      if (reveal) for (const el of [...lines, ...f.querySelectorAll(".stx-say, .cv-result, .bul-row"), ...(f.matches(".stx-say, .cv-result, .bul-row") ? [f] : [])]) el.classList.add("reveal");
       continue;
     }
     seen.add(k);

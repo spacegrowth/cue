@@ -26,6 +26,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("agents.show_driven", json!(true)),
         ("quick.phrases", json!(["  ship   it ", "", "ok"]), json!(["ship it", "ok"])),
         same("steps.mode", json!("all")),
+        same("steps.bullets", json!(true)),
         same("setup.done", json!(true)),
         ("usage.file", json!("  "), json!(crate::config::USAGE_FILE_DEFAULT)),
         same("usage.claude", json!(false)),

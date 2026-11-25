@@ -112,7 +112,8 @@ fn from_config(c: &Value) -> Value {
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
-        "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
+        // `bullets`: the steps drawn as bullets with a clock (#931), off until you turn it on in Settings → Chat.
+        "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line"), "bullets": b("/steps/bullets", false) },
         "owner": { "names": c.pointer("/owner/names").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])) },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
         "project": { "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
@@ -326,7 +327,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.rest_min"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "steps.bullets", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.rest_min"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
