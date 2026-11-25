@@ -56,20 +56,20 @@ const tick = () => new Promise((r) => setImmediate(r));
     await tick();
     assert.deepStrictEqual(b.started.map((c) => `${c.cmd}:${c.args?.data ?? ""}`), ["term_write:a", "term_write:c", "term_resize:", "get_state:"]);
   }
-  // A terminal's opens go one at a time; its close never waits behind an open (one that hangs, its machine
-  // asleep, would hold it for good): it goes at once, naming the opening it means (term::close_if).
+  // A shell tab's opens go one at a time; its close never waits behind an open (one that hangs would hold it for
+  // good): it goes at once. Another shell's open has a lane of its own.
   {
     const b = bridge();
     const invoke = orderedInvoke(b.call);
-    invoke("term_open", { sessionId: "s1", cols: 80, rows: 24 });
-    invoke("term_open", { sessionId: "s1", cols: 90, rows: 24 });
-    invoke("term_close", { sessionId: "s1", gen: 7 });
     invoke("shell_open", { id: "shell-1", cwd: "~", cols: 80, rows: 24 });
+    invoke("shell_open", { id: "shell-1", cwd: "~", cols: 90, rows: 24 });
+    invoke("term_close", { sessionId: "shell-1" });
+    invoke("shell_open", { id: "shell-2", cwd: "~", cols: 80, rows: 24 });
     await tick();
-    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_open", "term_close", "shell_open"]);
+    assert.deepStrictEqual(b.started.map((c) => `${c.cmd}:${c.args.id ?? c.args.sessionId}`), ["shell_open:shell-1", "term_close:shell-1", "shell_open:shell-2"]);
     b.answer(0);
     await tick(); await tick();
-    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_open", "term_close", "shell_open", "term_open"]);
+    assert.deepStrictEqual(b.started.map((c) => `${c.cmd}:${c.args.id ?? c.args.sessionId}`), ["shell_open:shell-1", "term_close:shell-1", "shell_open:shell-2", "shell_open:shell-1"]);
   }
   // A setting switched twice: saved in that order (the last one wins); another setting has a lane of its own.
   {
