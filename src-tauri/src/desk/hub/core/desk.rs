@@ -247,6 +247,10 @@ impl Hub {
         // Bands between Desks (#540): the last day's.
         st.desk.bands = crate::db::desk_bands(now_ms().saturating_sub(crate::desk::tell::BAND_KEEP_MS));
         st.desk.members.clear();
+        st.desk.worked.clear();
+        for (p, sid) in crate::db::desk_worked() {
+            st.desk.worked.entry(p).or_default().insert(sid);
+        }
         for (p, sid) in crate::db::desk_members() {
             st.desk.join(&p, &sid);
         }

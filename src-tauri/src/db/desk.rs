@@ -20,7 +20,7 @@ pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String
 pub fn desk_delete(id: &str) -> Result<(), String> {
     with(|c| {
         let tx = c.unchecked_transaction()?;
-        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_lead_past", "desk_members", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks", "desk_holds", "desk_bands"] {
+        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_lead_past", "desk_members", "desk_worked", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks", "desk_holds", "desk_bands"] {
             tx.execute(&format!("DELETE FROM {table} WHERE project = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM desk_spaces WHERE id = ?1", params![id])?;
@@ -349,16 +349,37 @@ pub fn desk_put_lead(project: &str, session_id: &str, name: &str, set_ms: u64) {
 pub fn desk_put_member(project: &str, session_id: &str, added_ms: u64) {
     with(|c| {
         c.execute("INSERT OR IGNORE INTO desk_members (project, session_id, added_ms) VALUES (?1, ?2, ?3)", params![project, session_id, added_ms as i64])?;
+        c.execute("INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms) VALUES (?1, ?2, ?3)", params![project, session_id, added_ms as i64])?;
         Ok(())
     });
 }
 
-/// Session `session_id` off `project`'s Desk.
+/// Session `session_id` off `project`'s Desk, as you said: no longer one of the Desk's sessions at all (#921).
 pub fn desk_drop_member(project: &str, session_id: &str) {
+    with(|c| {
+        c.execute("DELETE FROM desk_members WHERE project = ?1 AND session_id = ?2", params![project, session_id])?;
+        c.execute("DELETE FROM desk_worked WHERE project = ?1 AND session_id = ?2", params![project, session_id])?;
+        Ok(())
+    });
+}
+
+/// Session `session_id` off `project`'s list of sessions to route to (idle a day, closed), still one that worked
+/// there (#921).
+pub fn desk_retire_member(project: &str, session_id: &str) {
     with(|c| {
         c.execute("DELETE FROM desk_members WHERE project = ?1 AND session_id = ?2", params![project, session_id])?;
         Ok(())
     });
+}
+
+/// Every session that has been on a Desk (project, session; #921).
+pub fn desk_worked() -> Vec<(String, String)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT project, session_id FROM desk_worked")?;
+        let rows = q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        Ok(rows.flatten().collect())
+    })
+    .unwrap_or_default()
 }
 
 /// Each project's sessions on its Desk (project, session), in the order they joined.

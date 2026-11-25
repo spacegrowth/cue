@@ -291,6 +291,16 @@ CREATE TABLE IF NOT EXISTS desk_members (
   added_ms    INTEGER NOT NULL,
   PRIMARY KEY (project, session_id)
 );
+
+-- Every session that has been on a Desk (#921): its lead, an earlier lead, one given an item, one you added. Kept when it
+-- leaves the Desk's own list (idle a day, closed) and when its items are deleted, so the Board never takes it for one
+-- of yours; dropped only when you take it off the Desk yourself.
+CREATE TABLE IF NOT EXISTS desk_worked (
+  project     TEXT NOT NULL,
+  session_id  TEXT NOT NULL,
+  added_ms    INTEGER NOT NULL,
+  PRIMARY KEY (project, session_id)
+);
 "#;
 
 /// The database, opened. One whose first read fails as not a database (or damaged there) is tried once more a
@@ -456,7 +466,28 @@ fn migrate_on(c: &Connection, version: i64) -> rusqlite::Result<()> {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN cue_kind TEXT NOT NULL DEFAULT ''", []);
         c.pragma_update(None, "user_version", 14)?;
     }
+    seed_desk_worked(c, version)?;
     Ok(())
+}
+
+/// Version 15 (#921): every session that was ever on a Desk, from what's still kept: its list, its leads now and
+/// before, and each item's holder (a crew member's lead too) and earlier holders.
+fn seed_desk_worked(c: &Connection, version: i64) -> rusqlite::Result<()> {
+    if version >= 15 {
+        return Ok(());
+    }
+    c.execute_batch(
+        "INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms) SELECT project, session_id, 0 FROM desk_members WHERE session_id != '';
+         INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms) SELECT project, session_id, 0 FROM desk_lead WHERE session_id != '';
+         INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms) SELECT project, session_id, 0 FROM desk_lead_past WHERE session_id != '';
+         INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms)
+         SELECT project, json_extract(data, '$.holder.sid'), 0 FROM desk_items WHERE COALESCE(json_extract(data, '$.holder.sid'), '') != '';
+         INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms)
+         SELECT project, json_extract(data, '$.holder.lead_sid'), 0 FROM desk_items WHERE COALESCE(json_extract(data, '$.holder.lead_sid'), '') != '';
+         INSERT OR IGNORE INTO desk_worked (project, session_id, added_ms)
+         SELECT d.project, f.value, 0 FROM desk_items d, json_each(d.data, '$.former_holders') f WHERE json_type(d.data, '$.former_holders') = 'array' AND COALESCE(f.value, '') != '';",
+    )?;
+    c.pragma_update(None, "user_version", 15)
 }
 
 /// Version 11 (a database older than that): each Desk keeps its own list of sessions. It starts with the sessions that hold its items now (not
@@ -549,6 +580,26 @@ fn import_old_files(c: &Connection) {
 #[cfg(test)]
 mod desk_members_seed {
     use super::*;
+
+    #[test]
+    fn every_session_that_was_on_a_desk_is_kept_as_its_own_however_old() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(SCHEMA).unwrap();
+        let item = |id: &str, state: &str, data: &str| {
+            c.execute("INSERT INTO desk_items (id, project, state, updated_ms, data) VALUES (?1, 'cue', ?2, 0, ?3)", rusqlite::params![id, state, data]).unwrap();
+        };
+        item("89", "done", r#"{"holder":{"kind":"session","sid":"old89","name":"cue-89"},"former_holders":["older"]}"#);
+        item("2", "working", r#"{"holder":{"kind":"crew","sid":"agent9","name":"tests","lead_sid":"teams"}}"#);
+        item("4", "new", r#"{"holder":null}"#);
+        c.execute("INSERT INTO desk_lead (project, session_id, name, set_ms) VALUES ('cue', 'lead2', 'cue-lead', 0)", []).unwrap();
+        c.execute("INSERT INTO desk_lead_past (project, session_id, name, until_ms, next_session) VALUES ('cue', 'lead1', 'cue-lead-1', 0, 'lead2')", []).unwrap();
+        c.execute("INSERT INTO desk_members (project, session_id, added_ms) VALUES ('cue', 'added', 0)", []).unwrap();
+        seed_desk_worked(&c, 14).unwrap();
+        let mut q = c.prepare("SELECT session_id FROM desk_worked WHERE project = 'cue' ORDER BY session_id").unwrap();
+        let got: Vec<String> = q.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(got, ["added", "agent9", "lead1", "lead2", "old89", "older", "teams"]);
+        assert_eq!(c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), 15);
+    }
 
     #[test]
     fn a_desk_starts_with_the_sessions_holding_its_open_items_and_its_lead() {

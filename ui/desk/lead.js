@@ -108,12 +108,13 @@ function deskMg({ kind, cls = "", attrs = "", cue = false, chip = "", who = "", 
 /** An item's chip in a message (messages.css .mg-id): its kind's icon and number ("Bug #12"), a button that opens it. */
 const deskMgId = (id, kind, num) => `<button class="mg-id" data-desk-chk-item="${esc(id)}">${deskKindIcon(kind)}${esc(num)}</button>`;
 
-/** Desks a session runs, has work on, or belongs to, in that order. */
+/** Desks a session runs, has work on, belongs to, or worked for however long ago (#921: off its list since, its
+ *  items done and gone), in that order. */
 function deskForSession(sid) {
   if (!sid) return null;
   const desks = state.desk?.projects || [];
   const held = (d) => (d.items || []).some((i) => i.state !== "done" && i.state !== "dropped" && (i.holder?.sid === sid || i.holder?.lead_sid === sid));
-  return desks.find((d) => d.lead?.sid === sid) || desks.find(held) || desks.find((d) => (d.members || []).includes(sid)) || null;
+  return desks.find((d) => d.lead?.sid === sid) || desks.find(held) || desks.find((d) => (d.members || []).includes(sid)) || desks.find((d) => (d.worked || []).includes(sid)) || null;
 }
 const deskWorksFor = (sid) => !!deskForSession(sid);
 /** The session's actual Desk role, using the same type icons as the Desk. */

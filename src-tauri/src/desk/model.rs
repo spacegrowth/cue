@@ -770,6 +770,9 @@ pub struct Desk {
     /// Each project's sessions on its Desk, in the order they joined: the ones its lead may route to (saved:
     /// db/desk.rs). You add and remove them; a session given an item joins, as does one you say yes to using.
     pub members: HashMap<String, Vec<String>>,
+    /// Every session that has been on each Desk (#921): kept when it leaves `members` (idle a day, closed), so the
+    /// Board knows it for the Desk's however old (saved: db/desk.rs). Only you taking it off the Desk drops it.
+    pub worked: HashMap<String, HashSet<String>>,
     /// What builds and installs this Cue with a finished item's commit: the app's own (self_install.rs) unless a test
     /// put another in. Not saved.
     pub installer: super::installer::InstallerSlot,
@@ -864,7 +867,11 @@ impl Desk {
 
     /// Session `sid` on `project`'s Desk from now: true when it wasn't before.
     pub fn join(&mut self, project: &str, sid: &str) -> bool {
-        if sid.is_empty() || self.on_desk(project, sid) {
+        if sid.is_empty() {
+            return false;
+        }
+        self.worked.entry(project.to_string()).or_default().insert(sid.to_string());
+        if self.on_desk(project, sid) {
             return false;
         }
         self.members.entry(project.to_string()).or_default().push(sid.to_string());

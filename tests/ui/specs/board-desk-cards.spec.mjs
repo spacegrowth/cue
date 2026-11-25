@@ -213,3 +213,21 @@ test("a starred Desk session keeps the Desk's mark before its name, once (#156)"
   await expect(title.locator("xpath=preceding-sibling::*[1]")).toHaveClass(/dk-name-ic/);
   expect(await page.evaluate(() => deskSessMark("nobody"))).toBe("");
 });
+
+test("a session that worked for a Desk long ago, off its list since and its items gone, stays off the Board; one you took off comes back (#921)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st, T) => {
+    const old = { ...st.sessions.find((s) => s.session_id === "host"), session_id: "old89", name: "cue-89", state: "waiting", since_ms: T - 86_400_000 };
+    st.sessions.push(old, { ...old, session_id: "mine", name: "my-own" });
+    for (const sid of ["old89", "mine"]) st.items.push({ id: `w-${sid}`, session_id: sid, project: "cue", kind: "waiting", status: "pending", tool_input: {}, created_ms: T - 60_000 });
+    const d = st.desk.projects.find((p) => p.project === "cue");
+    d.worked = ["host", "lead", "old89"];
+  }, T);
+  await board(page);
+  await expect(waiting(page).locator('.nrow[data-big="w-mine"]')).toHaveCount(1);
+  await expect(waiting(page).locator('.nrow[data-big="w-old89"]')).toHaveCount(0);
+  await expect(sessions(page).locator('[data-session="old89"]')).toHaveCount(0);
+  // Taken off the Desk by you: the Desk no longer counts it, and its card is back.
+  await cue.change((st) => { st.desk.projects.find((p) => p.project === "cue").worked = ["host", "lead"]; }, T);
+  await expect(waiting(page).locator('.nrow[data-big="w-old89"]')).toHaveCount(1);
+});
