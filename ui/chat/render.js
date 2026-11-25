@@ -250,13 +250,19 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   const chat = page?.chat || (page?.lines ? "lead" : page?.dkOut ? "session" : "board");
   const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, hidden, lastAgent, recent, project, sid, near,
     chose, reviews, reviewAt, fold, counts, chat };
-  const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+  const msgRows = ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`)));
+  const drawn = withSteps(stepsOf, s, ex, msgRows, chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
   // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them.
-  const rows = (page?.lines || page?.dkOut) && typeof dkFoldRows === "function" ? dkFoldRows(drawn) : drawn;
+  const dkChat = (page?.lines || page?.dkOut) && typeof dkFoldRows === "function";
+  const rows = dkChat ? dkFoldRows(drawn) : drawn;
+  // …so a page of Cue's log can be all the Desk's (a run of its updates and the lead's answers to them, as after an
+  // install, #869) and draw nothing: the chat loads the next page by itself until enough of the conversation shows,
+  // and says Loading earlier messages… meanwhile, never "No messages yet" over messages still in the log.
+  const filling = dkChat && paged && sid && fillOlder(sid, msgRows.filter((r) => r && !dkRow(r)).length);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`), page));
   for (const o of page?.pending || []) rows.push(outboxRow(o, s, K(o.key || `p:${o.at}`), page));
   if (s?.send_at) rows.push(sendAtRow(s, page));
-  return rows.length ? (paged && sid && !page?.noOlder ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
+  return rows.length || filling ? (paged && sid && !page?.noOlder ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** Message `e`, the `n`th of chatHtml's thread, as drawn there: an ask, a decision, a card of a page's or Cue's own, a
  *  bubble of yours or the agent's reply; "" for one not drawn. `c`: what chatHtml worked out for the whole thread. */

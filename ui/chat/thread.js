@@ -56,6 +56,18 @@ async function loadOlder(sid, fromTranscript = false, pressed = false) {
   // (The chat desk/view.js deskSettle keeps at its end: the right one while something is open, B2.)
   if (shown && view === "desk" && shown === document.querySelector(".dk-right .dk-chat")) deskChatEnd = false;
 }
+/** How many of a Desk chat's messages it wants drawn before it stops loading earlier pages by itself (fillOlder). */
+const FILL_SHOWN = 6;
+/** A Desk chat (chat/render.js chatHtml) that draws only `shown` of its messages, the rest being the Desk's own (they
+ *  go to Activity, #789): the next page of Cue's log, loaded by itself, while it has more (#869). Whether it's still
+ *  filling: its first page not in yet, or one more on the way. */
+function fillOlder(sid, shown) {
+  const o = older.get(sid);
+  if (!o) return true;
+  if (o.done || shown >= FILL_SHOWN) return false;
+  if (!o.busy) queueMicrotask(() => loadOlder(sid));
+  return true;
+}
 /** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
 const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();
 /** The thread keeps only the last few messages, so once earlier ones are loaded, new messages push
