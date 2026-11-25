@@ -119,7 +119,7 @@ pub(crate) fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
-    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, minor: false, delivery: None, act: String::new(), asked: String::new(), draft: None });
+    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), kept: false, call: false, minor: false, delivery: None, act: String::new(), asked: String::new(), draft: None });
     fx.decisions.push(id);
 }
 

@@ -654,3 +654,45 @@ button.dk-al-row:focus-visible { outline: 2px solid var(--accent); outline-offse
 /* Activity (the tab, #688): a line taken out of a chat, drawn as it was there; whose chat it was after it. */
 .dk-mv-ln .dk-mv-line { flex: 1; }
 .dk-mv-ln .dk-act-why { display: block; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+
+/* Calls while away (#863, the #835 mocks' B2): the "While you were away" card in the lead's chat, under its "Away
+   off" line, and the Away tab's search and filters (F1). desk/away_calls.js. */
+.dk-awc-wrap { display: flex; flex-direction: column; gap: 10px; margin: 6px 0; }
+.dk-awc-cl { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-awc-cl i { flex: 1; height: 1px; background: var(--line); }
+.dk-awc { border: 1px solid var(--line); border-radius: var(--radius-card); overflow: hidden; background: var(--panel); }
+.dk-awc-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 9px 12px; background: var(--panel-2); color: var(--ink); }
+.dk-awc-h .dk-aw-ic { align-self: center; color: var(--muted); }
+.dk-awc-h b { font-weight: 600; }
+.dk-awc-h span { color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-awc-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 12px 4px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-awc-facts b { color: var(--ink); font-weight: 600; }
+.dk-awc-sec { padding: 8px 12px 2px; font: 700 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: .06em; color: var(--muted); }
+.dk-awc-mark { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; font-size: var(--type-body); }
+.dk-away-log .dk-awc-mark { padding: 5px 16px 5px 34px; }
+.dk-awc-mark.leave { opacity: .55; }
+.dk-awc-mark.leave .dk-aw-mt b { font-weight: 500; }
+.dk-awc-acts { flex: none; display: flex; gap: 6px; align-self: center; }
+.dk-awc-u { flex: none; align-self: center; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.btn.small.dk-awc-q { border-color: transparent; background: transparent; }
+.btn.small.dk-awc-q:hover { background: var(--line); }
+.dk-awc-ubox { display: flex; flex-direction: column; gap: 8px; margin: 2px 12px 8px 56px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
+.dk-away-log .dk-awc-ubox { margin-left: 78px; margin-right: 16px; }
+.dk-awc-lb { font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--ink); }
+.dk-awc-ta { all: unset; box-sizing: border-box; width: 100%; min-height: 22px; font: var(--type-body) var(--sans); color: var(--ink); white-space: pre-wrap; resize: none; }
+.dk-awc-ta::placeholder { color: var(--muted); }
+.dk-awc-bt { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.dk-awc-bt .grow { flex: 1 1 160px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-awc-f { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-awc-f .grow { flex: 1; }
+.dk-awc-lnk { all: unset; cursor: pointer; font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--ink); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
+.dk-awc-lnk:focus-visible, .dk-awf-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.dk-awf { display: flex; flex-direction: column; gap: 8px; padding: 0 0 10px; }
+.dk-awf-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dk-awf-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dk-awf-chip { all: unset; cursor: pointer; padding: 2px 10px; border-radius: var(--radius-pill); border: 1px solid var(--line); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--muted); }
+.dk-awf-chip.on { background: var(--sel); color: var(--on-sel); border-color: var(--sel); }
+.dk-awf-chip span { font-weight: 500; margin-left: 4px; }
+.dk-awf-res { padding: 0 4px 8px; color: var(--muted); font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-awf-hl { background: color-mix(in srgb, var(--sel) 45%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.dk-away-log .dk-awf-hit .dk-al-h { cursor: default; }

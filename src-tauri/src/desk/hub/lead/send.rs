@@ -22,6 +22,7 @@ pub(crate) fn desk_send_now(h: &Arc<Hub>, project: &str, text: &str, images: &[c
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
     let sid = deliver(h, project, text, saved, now, &lost, crate::sessions::Said::You)?;
     h.desk_yours(&sid, text);
+    h.desk_calls_keep_left(project);
     Ok(serde_json::json!({ "sid": sid }))
 }
 
@@ -32,6 +33,7 @@ pub(crate) fn desk_send_with(h: &Arc<Hub>, project: &str, text: &str) -> Result<
     let lost = |e: String| format!("{}'s lead didn't come up ({e}), so this wasn't sent: {}", h.desk_name(project), text.trim());
     let sid = deliver(h, project, text, vec![], false, &lost, crate::sessions::Said::You)?;
     h.desk_yours(&sid, text);
+    h.desk_calls_keep_left(project);
     Ok(serde_json::json!({ "sid": sid }))
 }
 

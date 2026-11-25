@@ -768,15 +768,14 @@ function deskCList(project, taskApprovals) {
   const you = grp("you", "WAITING ON YOU", hf.rest, "", hf.rest.filter((i) => !heldIds.has(i.id)).length);
   const work = grp("working", "WORKING", working);
   const install = instHead ? grp("install", instHead, inst) : "";
-  // Kept copies and Calls while away are bands too: their headings stick and stack with the rest.
+  // Kept copies are a band too: its heading sticks and stacks with the rest. The calls made while you're away show in
+  // the lead's chat once Away goes off, and in its Away tab (#863), not here.
   const kept = (d?.kept || []).length ? grp("kept", "KEPT COPIES", [], d.kept.map(deskKeptRow).join(""), d.kept.length) : "";
-  const calls = d?.away?.on ? deskAwayCalls(d) : [];
-  const away = d?.away?.on && calls.length ? grp("away", "CALLS WHILE AWAY", [], deskAwayCallsHtml(d), calls.length) : "";
   let extra = [];
   try { extra = addOn.deskHolders?.(project) || []; } catch (e) { console.error(e); }
   const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskCRow).join("")).join("");
   // Working next: it's what's live, and it stays short (the Desk runs only so many at once); Waiting on you under it.
-  const body = blocked + work + you + install + kept + away + tail;
+  const body = blocked + work + you + install + kept + tail;
   const head = `<div class="dkn-th" aria-hidden="true"><span>Item</span><span>Progress</span><span>Now</span></div>`;
   // Where it stands, in words only (deskB2Status is html, escaped already).
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");

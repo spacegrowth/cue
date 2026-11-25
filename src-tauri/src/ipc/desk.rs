@@ -225,6 +225,12 @@ pub(crate) async fn desk_moves_clear(hub: State<'_, Arc<Hub>>, project: String) 
     with_hub(&hub, move |h| h.desk_moves_clear(&project)).await?
 }
 
+/// Keep (Got it, Keep all) on calls made while you were away (#863): closed, nothing sent.
+#[tauri::command]
+pub(crate) async fn desk_calls_keep(hub: State<'_, Arc<Hub>>, ids: Vec<String>) -> Result<(), String> {
+    with_hub(&hub, move |h| h.desk_calls_keep(&ids)).await?
+}
+
 /// Undo this: whoever made the decision is asked to undo it. What Cue did.
 #[tauri::command]
 pub(crate) async fn desk_undo(hub: State<'_, Arc<Hub>>, decision_id: String, answer: Option<String>) -> Result<String, String> {

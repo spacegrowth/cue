@@ -210,12 +210,15 @@ function deskAwayStretch(r, d) {
   }).join("");
   const answer = (h) => h.answer === "allow" ? "Allowed" : h.answer === "no" ? "Refused" : "Not answered yet: under Waiting on you";
   const heldRows = held.map((h) => `<div class="dk-aw-mark dk-al-held" data-held-log="${esc(h.id)}"><span class="dk-aw-tm">${esc(deskHm(deskMs(h.at)))}</span><span class="dk-aw-mt"><b>${esc(h.who || "A session")} wanted to ${esc(h.what)}</b><span class="dk-aw-why"> · ${esc(answer(h))}</span><code class="dk-al-cmd">${esc(h.command)}</code></span></div>`).join("");
-  const body = sec("Items", moved) + sec("Calls", calls.map((c) => deskAwayMark(c, d)).join("")) + sec("Held for you", heldRows);
+  const body = sec("Items", moved) + sec("Calls", calls.map((c) => deskAwcRow(c, d)).join("")) + sec("Held for you", heldRows);
   return `<div class="dk-al open" data-key="al:${esc(r.id)}">${head}<div class="dk-aw-list">${body || `<div class="dk-aw-none">Nothing moved, no calls, nothing held.</div>`}</div></div>`;
 }
 function deskAwayLog(d) {
   const log = d.away_log || [];
-  const body = log.length ? log.map((r) => deskAwayStretch(r, d)).join("") : `<div class="dk-empty">Nothing yet. Each time Away goes off, what happened while you were away is kept here: the items that moved, ${esc(deskLeadName(d) || "the lead")}'s calls and the steps held for you.</div>`;
+  // Search and filters (#863): while any is set, only the times away that match, opened (desk/away_calls.js).
+  const bar = log.length ? deskAwfBar(d, log) : "";
+  if (log.length && deskAwfNow(d).on) return `<div class="dk-pane dk-away-log" data-scroll-key="awaylog:${esc(d.project)}">${bar}${deskAwfList(d, log)}</div>`;
+  const body = log.length ? bar + log.map((r) => deskAwayStretch(r, d)).join("") : `<div class="dk-empty">Nothing yet. Each time Away goes off, what happened while you were away is kept here: the items that moved, ${esc(deskLeadName(d) || "the lead")}'s calls and the steps held for you.</div>`;
   return `<div class="dk-pane dk-away-log" data-scroll-key="awaylog:${esc(d.project)}">${body}</div>`;
 }
 /** Away on a Desk now: the head says so (#415); the window keeps its own light or dark (#459). */

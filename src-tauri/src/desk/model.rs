@@ -686,6 +686,10 @@ pub struct DeskDecision {
     pub at: u64,
     /// "none" | "can" | "asked" | "one_way"
     pub undo: String,
+    /// A call made while you were away that you've closed (#863): Keep, Got it, Keep all, or left open when you next
+    /// wrote to the lead. Undone ones (`undo` "asked") are closed without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub kept: bool,
     /// A judgment call (a DECIDED line, the lead's or a holder's): the only kind the Decisions list shows. The rest
     /// (routes, gives, sessions started, contexts kept, Cue's hand-off asks) are steps, shown on their item.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
