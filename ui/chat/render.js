@@ -388,8 +388,10 @@ function chatAgentHtml(c, e, n) {
  *  while the session lasts), and a click opens the one menu (sheets.js forwardPop) over the same list of sessions. */
 function fwdBtn(key, text, from, fromSid) {
   fwdMsgs.set(key, { text: addOn.plain(text), from, fromSid });
-  return `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`;
+  return `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">${FWD_ICON} Send to…</button>`;
 }
+/** Send to…'s icon, the Board's ↗: the one every chat's Send to shows (fwdBtn), never drawn anywhere else. */
+const FWD_ICON = "↗";
 /** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */
 const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentName(harness))}</span>${machTag(machine)} · ${ago(at)} ago`;
 /** Sent while it worked: kept in Cue till the turn ends (yours to take back, Edit or Esc; to drop, Cancel; or to send
