@@ -50,7 +50,7 @@ const dkwTag = (d) => `<span class="dkw-tag">${deskKindIcon("tray")}Desk · ${es
 /** "3 at work · 5 to check" (either left out at 0). */
 const dkwCounts = (w) => [w.atWork ? `<b>${w.atWork}</b> at work` : "", w.toCheck ? `<b>${w.toCheck}</b> to check` : ""].filter(Boolean).join(" · ");
 
-/** Desk `w.d`'s card in Waiting (`w` from deskWaitsOf). A click on it opens the Desk with its lead's chat (#850). */
+/** Desk `w.d`'s card in Waiting (`w` from deskWaitsOf). A click on it opens its lead's chat in the Board's chat pane (#850). */
 function deskLeadCard(w, isOpen) {
   const d = w.d, lead = deskLead(d), s = lead ? sessionOf(lead.sid) : null;
   const [first, ...more] = w.asks;
@@ -66,11 +66,11 @@ function deskLeadCard(w, isOpen) {
     + `</div></div>`;
 }
 
-/** Desk `project` open on its lead's chat, ready to type to the lead: the Desk opens as a hand-off's link opens it
- *  (desk/act.js openInDesk), with nothing else open over the lead's chat; its box takes the cursor (desk/view.js). */
+/** Desk `project`'s lead's chat opened in the Board's chat pane, as any session's card opens its chat, ready to type
+ *  to the lead (chat/terminal.js openSession). A Desk with no lead now opens on the Desk itself (desk/act.js openInDesk). */
 function dkwOpenLead(project) {
-  deskOpen = null; deskPick = null; deskTab = "lead"; readerView = null;
-  deskTurnAt = 0; deskTurnLead = false; deskChatEnd = true;
+  const lead = deskLead(deskOf(project));
+  if (lead?.sid && sessionOf(lead.sid)) return openSession(lead.sid);
   openInDesk(project);
 }
 if (typeof document !== "undefined") {

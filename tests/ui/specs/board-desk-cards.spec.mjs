@@ -66,7 +66,7 @@ test("the ask answers from inside the Desk's card; the card's other parts open t
   await expect(page.locator('.switch-view [data-view="desk"]')).toHaveClass(/on/);
 });
 
-test("a click on the Desk's card opens its lead's chat, ready to type; its answers and item links do their own (#850)", async ({ page, cue }) => {
+test("a click on the Desk's card opens its lead's chat on the Board, ready to type; its answers and item links do their own (#850)", async ({ page, cue }) => {
   await cue.open("desk");
   await hostAsks(cue);
   await board(page);
@@ -87,12 +87,14 @@ test("a click on the Desk's card opens its lead's chat, ready to type; its answe
   await card.locator('.dkw-ask [data-act="allow"]').click();
   await expect.poll(() => cue.calls("respond"), { timeout: 1500 }).toHaveLength(1);
   await expect(page.locator('.switch-view [data-view="board"]')).toHaveClass(/on/);
-  // The card itself (its head, its counts) opens the Desk on its lead's chat, over the item left open, its box ready.
+  // The card itself (its head, its counts) opens its lead's chat in the Board's chat pane, as a session's card does,
+  // its box ready; the Board stays.
   for (const part of [".nrow-who .proj", ".dkw-cnt"]) {
     await board(page);
+    await page.evaluate(() => { active = null; });
     await card.locator(part).click();
-    await expect(onDesk).toHaveClass(/on/);
-    expect(await page.evaluate(() => [deskSelection(), deskOpen, deskTab, deskShownSid()])).toEqual(["cue", null, "lead", "lead"]);
+    await expect(page.locator('.switch-view [data-view="board"]')).toHaveClass(/on/);
+    expect(await page.evaluate(() => active?.sid)).toBe("lead");
     await expect.poll(() => page.evaluate(() => document.activeElement?.matches("textarea[data-text]") || false)).toBe(true);
   }
 });
