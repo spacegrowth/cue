@@ -23,8 +23,8 @@ for (const scheme of ["light", "dark"]) {
     await expect(chat).toContainText("I'll hand these out now.");
     await expect(chat).toContainText("Both are moving. Anything else?");
     await expect(chat.locator('.dk-sg[data-sg="route"], .dk-sg[data-sg="done"], .decided')).toHaveCount(0);
-    // Nothing in their place: no count line, no "3 Desk updates". (What Cue told the lead with your own words folds
-    // under them as "+ Desk update", #822: that one is yours, not the lead's lines.)
+    // Nothing in their place: no count line, no "3 Desk updates", and nothing of what Cue told the
+    // lead with your own words either (#882).
     await expect(chat.locator(".dk-cnt")).toHaveCount(0);
     await expect(chat).not.toContainText(/\d+ Desk updates?/);
     await push(page, "lead", { role: "agent", text: "TITLE: #d2 | Header fix" });

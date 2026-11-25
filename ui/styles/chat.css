@@ -395,22 +395,6 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-voice-note { border-top: 1px solid var(--line); margin-top: 7px; padding-top: 6px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--voice); }
 .cv-voice-ask { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 .cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
-/* What Cue told a Desk lead with your words (#822): the same fold, muted grey (teal stays voice's), opening to a list
-   laid out by section: a heading with its count, then a row an item (#id, title and who has it, where it stands). */
-.cv-desk-note { color: var(--muted); }
-.cv-desk-up { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; color: var(--ink); }
-.cv-du-h { font: 700 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
-.cv-du-h:first-child { margin-top: 0; }
-.cv-du-h b { font-weight: 500; margin-left: 5px; }
-.cv-du-r { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
-.cv-du-id { flex: none; min-width: 38px; font: 600 var(--type-small)/var(--type-small-lh) var(--mono); }
-.cv-du-tt { flex: 1 1 160px; min-width: 0; }
-.cv-du-who, .cv-du-x { color: var(--muted); }
-.cv-du-pl { flex: none; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 500; border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 7px; color: var(--muted); }
-.cv-du-pl.go { color: var(--ink); border-color: var(--muted); }
-.cv-du-f .cv-voice-note { color: var(--muted); margin-top: 8px; }
-.cv-du-f .cv-voice-line { white-space: pre-wrap; max-height: 320px; overflow-y: auto; }
-.cv-du-sep { height: 1px; background: var(--line); margin: 8px 0 4px; }
 /* Queued, kept in Cue, sent later or not yet taken: the same bubble as a sent message; the line under it says it hasn't gone yet. */
 /* One a page draws as its own card once sent (the Desk lead's new-item note): that card now, the same line under it. */
 .cv-later { display: flex; flex-direction: column; }

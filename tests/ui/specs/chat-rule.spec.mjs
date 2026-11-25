@@ -16,7 +16,7 @@ const SUMMARY = '<desk project="cue">\nDesk lead: web-lead (you)\nNeeds routing:
 const BACK = "Desk item #d5 (Header) isn't done: the check failed on the narrow window.\nIts fixes stay in #d5; don't add new items for them.";
 const CUE = [ANSWER, NUDGE, NOTICE, BACK];
 /** Your words to the lead as its chat shows them: only yours, the Desk's block folded under them (#822). */
-const LEAD_BUBBLE = `${MINE}+ Desk update · whole Desk`;
+const LEAD_BUBBLE = MINE;
 /** Words that only Cue's messages have: none of them may be in a bubble of yours. */
 const CUE_WORDS = ["as you asked", "gone quiet", "Main moved on", "failed on the narrow window"];
 
@@ -60,15 +60,16 @@ async function cueInActivity(page, sid) {
   expect(rows.some((r) => r.text === MINE)).toBe(false);
 }
 
-test("the lead's chat: your words a bubble with its Desk update, the lead's reply, Cue's answer, nudge and notice only in Activity under Cue", async ({ page, cue }) => {
+test("the lead's chat: your words a bubble alone, the lead's reply, Cue's answer, nudge and notice only in Activity under Cue", async ({ page, cue }) => {
   await cue.open("desk");
   await thread(cue, "lead", SUMMARY + MINE);
   await openDesk(page);
   const chat = page.locator(".dk-chat");
   await oneRule(chat, LEAD_BUBBLE);
   await noneInChat(chat);
-  // Your words keep the "+ Desk update" fold under them, as before.
-  await expect(chat.locator(".cv-you-text", { hasText: MINE }).locator(".cv-desk-note .cv-voice-ask")).toHaveText("+ Desk update · whole Desk");
+  // Your words alone: the Desk block Cue sent with them shows nowhere (#882).
+  await expect(chat.locator(".cv-you-text", { hasText: MINE })).toHaveCount(1);
+  await expect(chat.locator(".cv-you-text", { hasText: MINE }).locator(".cv-voice-note")).toHaveCount(0);
   await cueInActivity(page, "lead");
   // Activity, opened: Cue's answer is there, under Cue, not as you.
   await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
