@@ -10,14 +10,17 @@ const deskPending = new Map();
 const deskPend = (id, text, why, pics = 0, more = {}) => { const p = { text, why, pics, at: now(), ...more }; deskPending.set(id, [...(deskPending.get(id) || []), p]); return p; };
 /** The session item `i`'s holder works in itself (a crew member's lead for a crew member), or "". */
 const deskHolderSid = (i) => (i?.holder ? (i.holder.kind === "crew" ? i.holder.lead_sid : i.holder.sid) : "");
-/** Item `i` not started yet (#476, #626): a status card saying so, what it waits for by title (the item before it, or
- *  the items using the working folders), what happens next, and Start now. In place of its holder's own line, which
- *  says "Waiting on you for your reply" of an idle holder when nothing waits on you. Shown for one given to a session,
- *  or queued after another; "" once it has started. */
+/** Item `i` not started yet (#476, #626, #889): a status card saying so, what it waits for (the item before it, the
+ *  items using the working folders, a free slot, room on a machine, or its session to be free), what happens next, and
+ *  Start now. In place of its holder's own line, which says "Waiting on you for your reply" of an idle holder when
+ *  nothing waits on you. Shown for every queued item that hasn't started, and for a new one already given to a
+ *  session; "" once it has started. */
 function deskNotStarted(i) {
-  if (!["queued", "new"].includes(i.state) || !(i.holder || (i.state === "queued" && i.after))) return "";
-  const who = esc(i.holder?.name || "its session"), link = (id, it) => `<a href="#" data-desk-item="${esc(id)}">${it ? esc(it.title) : `#${esc(id)}`}</a>`;
+  if (!(i.state === "queued" || (i.state === "new" && i.holder))) return "";
+  const to = i.holder || i.next_for, who = esc(to ? i.holder?.name || deskHolderOf({ holder: to }) : "its session");
+  const link = (id, it) => `<a href="#" data-desk-item="${esc(id)}">${it ? esc(it.title) : `#${esc(id)}`}</a>`;
   const first = i.after && deskItemAny(i.project, i.after);
+  const busy = !!to && sessionOf(to.kind === "crew" ? to.lead_sid : to.sid)?.state === "working";
   let t, sub = "", next;
   if (i.state === "queued" && i.tree_wait) {
     // One short line (#671): how many hold the working folders; their titles only once you open the fold.
@@ -26,17 +29,25 @@ function deskNotStarted(i) {
     t = `${i.back_waiting ? "Sent back. " : ""}${wait}`;
     sub = n ? `<details class="dk-ns-by"><summary>${n > 1 ? "Show which" : "Show which one"}</summary><ul>${by.join("")}</ul></details>` : "";
     next = "It starts by itself when one is free.";
+  } else if (i.state === "queued" && i.slot_wait) {
+    t = "It waits for a free slot.";
+    next = `It starts by itself as one finishes${to ? `, then goes to ${who}` : ""}.`;
   } else if (i.after) {
     const on = first ? `${first.project !== i.project ? `${esc(deskAfterName(i))} · ` : ""}${link(first.id, first)}` : esc(deskAfterName(i));
     t = `It waits for ${on}.`;
-    const busy = first?.state === "working" && first.holder ? `${esc(first.holder.name)} is on it now` : "";
+    const held = first?.state === "working" && first.holder ? `${esc(first.holder.name)} is on it now` : "";
     const files = first?.state === "working" ? deskFilesShort(first.files) : "";
-    sub = [busy, first?.state === "working" && first.latest ? esc(firstLine(first.latest)) : "", files ? `has ${esc(files)} open` : ""].filter(Boolean).join(" · ");
+    sub = [held, first?.state === "working" && first.latest ? esc(firstLine(first.latest)) : "", files ? `has ${esc(files)} open` : ""].filter(Boolean).join(" · ");
     next = `It starts by itself when that's done${i.after_why ? `: ${esc(i.after_why)}` : ""}.`;
-  } else {
-    const busy = sessionOf(deskHolderSid(i))?.state === "working";
+  } else if (!i.holder && i.machine_wait) {
+    t = `It waits for room on ${esc(i.machine_wait)}.`;
+    next = "It starts by itself as an item there finishes.";
+  } else if (to) {
     t = busy ? `It's next for ${who}, after what it's on now.` : `It's next for ${who}.`;
-    next = busy ? `${who} starts on it when that's done.` : `${who} starts on it when it's free.`;
+    next = `${busy ? `${who} starts on it when that's done` : `${who} starts on it when it's free`}${!i.holder && i.fresh_at ? `; a fresh session takes it at ${deskQHm(i.fresh_at)} if not` : ""}.`;
+  } else {
+    t = "It waits for a free session.";
+    next = "It starts by itself when one is free.";
   }
   const go = `<button class="btn small" data-desk-act="start_now" data-id="${esc(i.id)}">Start now</button>`;
   return `<div class="dk-ns" role="status"><div class="dk-ns-h">${deskStateIcon(i)}<span>Not started yet</span></div><div class="dk-ns-t">${t}</div>${sub ? `<div class="dk-ns-s">${sub}</div>` : ""}<div class="dk-ns-n">${next}</div><div class="dk-ns-a">${go}</div></div>`;
