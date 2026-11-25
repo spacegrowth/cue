@@ -79,16 +79,6 @@
         if (/type=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.value = "half-written reply, kept across restarts"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
         if (/send=1/.test(q)) setTimeout(() => { const ta = document.querySelector(".active-pane textarea"); ta.value = "carry it over to the successor"; ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".active-pane .btn.send").click(); }, 100);
         if (/allow=1/.test(q)) setTimeout(() => document.querySelector(".active-pane [data-act=allow]")?.click(), 100);
-        // ?term=1: agent-relay is in tmux (&open=term: its terminal open; &wait=1: waiting in it).
-        if (/term=1/.test(q)) {
-          const r = state.sessions.find((x) => x.session_id === "relay");
-          if (r) r.tmux_pane = "%1";
-          if (/wait=1/.test(q)) state.items.unshift({ id: "tw", kind: "terminal", harness: "claude", session_id: "relay", cwd: r.cwd, project: "agent-relay", message: "Waiting in its terminal: approve Bash", context: [], created_ms: Date.now() - 60000, status: "pending", outcome: "" });
-          termLast.set("relay", /wait=1/.test(q) ? "❯ 1. Yes   2. Yes, and don't ask again   3. No (esc)" : "✻ Baking… (12s) · Bash(make release)");
-          setActive(null, "relay");
-          if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
-          if (/stalled=1/.test(q)) setTimeout(() => ["l", "s"].forEach((k) => termObj?.input(k)), 700);
-        }
         // &inspick=1 (with ?ins=1&open=relay): its hand-off insight's skill drop-up open.
         if (/inspick=1/.test(q)) setTimeout(() => insAct("ins-choose", { sid: "relay" }), 600);
         // ?open=<session id>: that session's chat in Active (e.g. names: at its prompt while background agents work).
@@ -105,16 +95,13 @@
         const mcpQ = new URLSearchParams(q).get("mcp");
         if (openQ && mcpQ) setTimeout(() => { document.querySelector(".active-pane [data-more]")?.click(); if (mcpQ !== "menu") setTimeout(() => { document.querySelector("[data-mcp-ask]")?.click(); if (mcpQ === "tools") setTimeout(() => document.querySelector(".mcp-tfold")?.click(), 300); }, 300); }, 500);
         // &bg=<agent id>: that background agent of the open session in full (chat/helpers.js helperPane), e.g. open=names&bg=h1 (running) or h2 (finished).
-        // &tmux=<session id>: that session runs in tmux (its terminal dock shows, closed), e.g. with open=names&bg=h3.
-        const tmuxQ = new URLSearchParams(q).get("tmux");
-        if (tmuxQ) { const x = state.sessions.find((y) => y.session_id === tmuxQ); if (x) x.tmux_pane = "%9"; }
         // &fold=1: the open session's tray of background work starts folded to its head row.
         if (openQ && /fold=1/.test(q)) trayFolded.add(openQ);
         const bgQ = new URLSearchParams(q).get("bg");
         if (openQ && bgQ) setTimeout(() => { helperView = { sid: openQ, id: bgQ }; renderMain(); }, 400);
-        // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
+        // ?new=1: + New session (⌘N); &agent=pi|codex picks the agent, &perm=skip a permission.
         if (/new=1/.test(q)) setTimeout(() => {
-          state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };
+          state.settings.sessions = { terminal: "iTerm" };
           agentsAvail = ["claude", "codex", "pi"];
           const p = new URLSearchParams(q);
           if (p.get("agent")) newAgent = p.get("agent");

@@ -32,13 +32,13 @@ const tick = () => new Promise((r) => setImmediate(r));
     const outcomes = await Promise.allSettled(done);
     assert.deepStrictEqual(outcomes.map((o) => o.status), ["fulfilled", "fulfilled", "rejected", "fulfilled", "fulfilled", "fulfilled"], "each caller hears its own answer");
   }
-  // Resume goes after the keystrokes sent before it, never ahead of one still waiting.
+  // A shell's Resume (chat/terminal.js termTyping) goes after the keystrokes sent before it, never ahead of one still waiting.
   {
     const b = bridge();
     const invoke = orderedInvoke(b.call);
-    invoke("term_write", { sessionId: "s1", data: "a" });
-    invoke("term_write", { sessionId: "s1", data: "b" });
-    invoke("term_resume", { sessionId: "s1" });
+    invoke("term_write", { sessionId: "shell:1", data: "a" });
+    invoke("term_write", { sessionId: "shell:1", data: "b" });
+    invoke("term_resume", { sessionId: "shell:1" });
     await tick();
     b.answer(0, "isn't responding"); await tick(); await tick();
     b.answer(0, "isn't responding"); await tick(); await tick();
