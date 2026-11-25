@@ -54,6 +54,12 @@ async function noneInChat(chat) {
 /** Cue's rows in session `sid`'s Activity, as the Desk files them: each Cue's, never yours. */
 const activityOf = (page, sid) => page.evaluate((sid) => dkActivityOf(sid).map((r) => ({ who: r.e.role === "you" && r.e.cue ? "Cue" : r.e.role, text: r.e.text })), sid);
 
+/** The Board's chat's Activity tab, opened (#872): Cue's rows there, newest first, as on the Desk. */
+async function boardActivity(chat) {
+  await chat.locator('[data-bg-tab="activity"]').click();
+  return chat.locator(".bg-acts");
+}
+
 async function cueInActivity(page, sid) {
   const rows = await activityOf(page, sid);
   for (const text of CUE) expect(rows.filter((r) => r.text === text)).toEqual([{ who: "Cue", text }]);
@@ -102,21 +108,25 @@ test("an item's page: your bubble, its holder's reply; Cue's three are Activity'
   await cueInActivity(page, "host");
 });
 
-test("the Board's chat: your bubble, its reply, Cue's three a quiet line of Cue's and its send-back Cue's NOT DONE card", async ({ page, cue }) => {
+test("the Board's chat: your bubble, its reply; in its Activity Cue's three a quiet line of Cue's and its send-back Cue's NOT DONE card", async ({ page, cue }) => {
   await cue.open("desk");
   await thread(cue, "site");
   await page.evaluate(() => { view = "board"; setActive(null, "site"); renderMain(); });
   const chat = page.locator(".active-pane");
   await oneRule(chat);
-  const lines = chat.locator(".cue-quiet");
+  await noneInChat(chat.locator("[data-chat]"));
+  const act = await boardActivity(chat);
+  const lines = act.locator(".cue-quiet");
   await expect(lines).toHaveCount(3);
   await expect(lines.locator(".dk-cue-t .mg-who")).toHaveText(["Cue", "Cue", "Cue"]);
   // Its words alone would read as your Send back; its mark says it's Cue's: Cue's card (#478's), from Cue.
-  const back = chat.locator(".cue-msg", { hasText: "#d5" });
+  const back = act.locator(".cue-msg", { hasText: "#d5" });
   await expect(back).toHaveCount(1);
   await expect(back.locator(".mg-who").first()).toHaveText("Cue");
-  await lines.first().locator(".dk-cue-w").click();
-  await expect(chat.locator(".cue-quiet").first().locator(".mg-full")).toContainText("as you asked");
+  // Newest first: Cue's answer (the oldest) is the last line.
+  await lines.last().locator(".dk-cue-w").click();
+  await expect(act.locator(".cue-quiet").last().locator(".mg-full")).toContainText("as you asked");
+  for (const w of CUE_WORDS) await expect(act.locator(".cv-you", { hasText: w })).toHaveCount(0);
 });
 
 /** The lead's crew member "search-centre": its words, then yours, Cue's three, and its answer. */
@@ -174,14 +184,17 @@ for (const scheme of ["light", "dark"]) {
       await page.evaluate(() => { view = "board"; setActive(null, "site"); renderMain(); });
       const board = page.locator(".active-pane");
       await oneRule(board);
-      await expect(board.locator(".cue-quiet")).toHaveCount(3);
-      // Cue's lines: no left stripe, no hover text, inside the chat.
-      const look = await page.evaluate(() => [...document.querySelectorAll(".active-pane .cue-quiet")].map((el) => ({
+      await noneInChat(board.locator("[data-chat]"));
+      if (process.env.SHOT_DIR) await board.screenshot({ path: `${process.env.SHOT_DIR}/chat-rule-board-${scheme}-${size}.png` });
+      const act = await boardActivity(board);
+      await expect(act.locator(".cue-quiet")).toHaveCount(3);
+      // Cue's lines in its Activity: no left stripe, no hover text, inside the pane.
+      const look = await page.evaluate(() => [...document.querySelectorAll(".active-pane .bg-acts .cue-quiet")].map((el) => ({
         border: getComputedStyle(el).borderLeftWidth, titled: !!el.querySelector("[title]") || el.hasAttribute("title"),
         fits: el.getBoundingClientRect().right <= el.closest(".active-pane").getBoundingClientRect().right + 0.5,
       })));
       for (const l of look) expect(l).toEqual({ border: "0px", titled: false, fits: true });
-      if (process.env.SHOT_DIR) await board.screenshot({ path: `${process.env.SHOT_DIR}/chat-rule-board-${scheme}-${size}.png` });
+      if (process.env.SHOT_DIR) await board.screenshot({ path: `${process.env.SHOT_DIR}/chat-rule-board-activity-${scheme}-${size}.png` });
       await openDesk(page);
       await thread(cue, "lead", SUMMARY + MINE);
       const lead = page.locator(".dk-chat");
@@ -241,7 +254,7 @@ const noEarlier = async (cue) => {
 const HAND = "Desk item #d5 (feature): Header stays put\nYou'll see: the header stays put as you scroll\nWhy you: you built the header";
 const CREW = "Stop your teammate docs now (TaskStop, task id a1), and say so.";
 
-test("a hand-off (brief) is its hand-off card and a crew message (crew) Cue's CREW card on the Board, never your bubble", async ({ page, cue }) => {
+test("a hand-off (brief) is its hand-off card and a crew message (crew) Cue's CREW card in the Board's Activity, never your bubble", async ({ page, cue }) => {
   await cue.open("desk");
   await noEarlier(cue);
   await cue.change((st, [HAND, CREW, MINE]) => {
@@ -252,9 +265,12 @@ test("a hand-off (brief) is its hand-off card and a crew message (crew) Cue's CR
   await page.evaluate(() => { view = "board"; setActive(null, "site"); renderMain(); });
   const chat = page.locator(".active-pane");
   await expect(chat.locator(".cv-you-text")).toHaveText([MINE]);
-  await expect(chat.locator(".mg-hand")).toHaveCount(1);
-  await expect(chat.locator(".mg-hand")).toContainText("Header stays put");
-  const crewCard = chat.locator(".mg.cue-you", { hasText: "docs" });
+  await expect(chat.locator("[data-chat]")).not.toContainText("Header stays put");
+  await expect(chat.locator("[data-chat]")).not.toContainText("docs");
+  const act = await boardActivity(chat);
+  await expect(act.locator(".mg-hand")).toHaveCount(1);
+  await expect(act.locator(".mg-hand")).toContainText("Header stays put");
+  const crewCard = act.locator(".mg.cue-you", { hasText: "docs" });
   await expect(crewCard).toHaveCount(1);
   await expect(crewCard.locator(".mg-who").first()).toHaveText("Cue");
   await expect(crewCard.locator(".mg-tag")).toHaveText("Crew");
