@@ -28,6 +28,10 @@ impl Installer for AppInstaller {
         crate::install::self_install::is_ancestor(repo, commit, of)
     }
 
+    fn log(&self) -> String {
+        crate::install::self_install::log_end()
+    }
+
     fn has_addon(&self, repo: &str, commit: &str) -> bool {
         crate::install::self_install::has_addon(repo, commit)
     }
@@ -361,7 +365,7 @@ impl Hub {
 
     /// Install now's start: everything waiting goes into an install under way that has its commit, or into one
     /// started now; when one without it runs, each says it starts the moment that one ends.
-    fn install_now_start(&self, now: u64) {
+    pub(crate) fn install_now_start(&self, now: u64) {
         let inst = self.installer();
         let status = inst.status();
         let ours = self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| installing(&f.step))));

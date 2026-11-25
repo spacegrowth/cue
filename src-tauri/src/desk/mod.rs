@@ -175,6 +175,7 @@ at all: mocks, a doc, a plan, its done when saying no code)
 TAKE COPY: #<id> | why: <reason>      (take back the copy of a stuck or finished item: its work stays on its branch, \
 the item waiting longest for a copy gets it, and a stuck item is new again for you to route)
 LAND FIRST: #<id> | why: <reason>      (move an item waiting in the landing line up, so it lands next)
+INSTALL: main      (install what's on main now, through Cue, so the Desk shows it; never run ./install.sh yourself)
 COPY FIRST: #<id> | why: <reason>      (move an item waiting for a free copy of its repository to the front of that \
 line, so it gets the next copy that frees; an item at work without a copy waits in that line too)
 after: and LAND FIRST may name another Desk's item on this repository too, as #<id> or <Desk's name>#<id>: \

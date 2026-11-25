@@ -62,6 +62,8 @@ pub(crate) struct Effects {
     pub(crate) land: bool,
     /// The lead's PAUSE (true) or RESUME (false) of its Desk (#366): (Desk, on, its name, its session, why).
     pub(crate) pause: Vec<(String, bool, String, String, String)>,
+    /// The lead's INSTALL: main (#867): (Desk, the lead's session), installed through Cue a moment later and answered.
+    pub(crate) install: Vec<(String, String)>,
     /// Steps whose message is in `sends` (your notes and send-backs, the lead's NOTE: #437): (step, session, item), so
     /// how each send went is kept on its step (`desk_went`), and the item's page can say so (and offer Retry).
     pub(crate) went: Vec<(String, String, String)>,
@@ -616,6 +618,9 @@ impl Hub {
         if fx.land {
             self.later(0, |h| h.desk_land_line());
         }
+        for (desk, _lead) in fx.install {
+            self.later(0, move |h| crate::desk::hub::landing::install_shown::lead_install(h, &desk));
+        }
         self.desk_pause_and_cleanup(fx.pause, fx.cleanup);
     }
 
@@ -756,7 +761,7 @@ impl Hub {
 
 /// Whether a change left nothing for `desk_done` to do.
 fn left_nothing(fx: &Effects) -> bool {
-    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty() && fx.holds.is_empty() && fx.tells.is_empty() && fx.bands.is_empty() && fx.to_user.is_empty()
+    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.install.is_empty() && fx.to_lead.is_empty() && fx.holds.is_empty() && fx.tells.is_empty() && fx.bands.is_empty() && fx.to_user.is_empty()
 }
 
 /// Steps whose message goes now, by the send that carries it; the rest Cue keeps (a paused Desk, an item waiting

@@ -52,6 +52,7 @@ impl Hub {
         self.catch_cut_but_writing(now);
         self.note_holder_logs(now);
         self.watch_helpers();
+        self.watch_scripts();
         self.note_task_failures();
         self.watch_compacting(now);
         self.read_setup_screens(now);
@@ -192,7 +193,8 @@ impl Hub {
             let left = crate::steps::running_helpers(&o.transcript_path).len() as u64;
             let background = crate::steps::running_background(&o.transcript_path) as u64;
             let sid = o.session_id.clone();
-            let changed = self.write(|st| st.sessions.set_helpers(&sid, left) | st.sessions.set_background(&sid, background));
+            let scripts = crate::steps::running_scripts(&o.transcript_path);
+            let changed = self.write(|st| st.sessions.set_helpers(&sid, left) | st.sessions.set_background(&sid, background) | st.sessions.set_running(&sid, &scripts));
             if changed || left == 0 {
                 self.changed();
             }
@@ -209,6 +211,20 @@ impl Hub {
                 }
                 me.desk_helpers_done(&sid);
             });
+        }
+    }
+
+    /// At its prompt with background tasks it left running (tests, a build): how many still run, followed till they
+    /// end, so its card and its Desk item say so and its feed reads a failure as it comes.
+    fn watch_scripts(&self) {
+        let with = self.read(|st| st.sessions.with_scripts());
+        for o in with {
+            let p = &o.transcript_path;
+            let (background, scripts) = (crate::steps::running_background(p) as u64, crate::steps::running_scripts(p));
+            let sid = o.session_id.clone();
+            if self.write(|st| st.sessions.set_background(&sid, background) | st.sessions.set_running(&sid, &scripts)) {
+                self.changed();
+            }
         }
     }
 

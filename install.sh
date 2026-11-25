@@ -19,7 +19,55 @@ CODEX_HOOKS="$HOME/.codex/hooks.json"
 PI_EXT_DIR="$HOME/.pi/agent/extensions"
 APP_SRC="$ROOT/src-tauri/target/release/bundle/macos/Cue.app"
 
-say() { printf '  %s\n' "$*"; }
+say() {
+  printf '  %s\n' "$*"
+  if [ -n "$ISTEP" ]; then printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >> "$ILOG"; fi
+}
+
+# What Cue's Desk shows of an app install (src-tauri/src/install/self_install.rs reads it), as scripts/self-install.sh
+# says its own: $CUE_HOME/install/status.json at every step ({tag: "install.sh", commit, step, log, at}), the build's
+# output in install/log, and its PID in install/lock while it runs, so Cue never starts an install of its own meanwhile.
+IDIR="$CUE_HOME/install"
+ILOG="$IDIR/log"
+ISTEP=""
+
+# A string as a JSON string: control characters dropped, tabs as spaces, lines joined with \n.
+json() {
+  local s
+  s=$(printf '%s' "$1" | tr -d '\000-\010\013-\037' | tr '\t' ' ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk 'NR > 1 { printf "%s", "\\n" } { printf "%s", $0 }')
+  printf '"%s"' "$s"
+}
+
+# status.json at step $1 ("building", "installing", "starting", "installed" or "failed"), with the log's last 40 lines
+# when $2 is "log". Written whole, then moved into place.
+install_status() {
+  ISTEP="$1"
+  local log="" commit
+  [ "${2:-}" = log ] && log="$(tail -n 40 "$ILOG" 2>/dev/null || true)"
+  commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  printf '{"tag":"install.sh","commit":%s,"step":%s,"log":%s,"at":%s}\n' "$(json "$commit")" "$(json "$1")" "$(json "$log")" "$(( $(date +%s) * 1000 ))" > "$IDIR/status.json.tmp.$$"
+  mv -f "$IDIR/status.json.tmp.$$" "$IDIR/status.json"
+  printf '%s step: %s\n' "$(date '+%H:%M:%S')" "$1" >> "$ILOG"
+}
+
+# One install at a time, Cue's own or this: the lock holds the PID of the one running. Ended part-way (an error, Ctrl-C),
+# it says it failed, so the Desk doesn't show it building for good.
+install_begin() {
+  mkdir -p "$IDIR"
+  local held; held="$(cat "$IDIR/lock" 2>/dev/null || true)"
+  if [ -n "$held" ] && [ "$held" != "$$" ] && kill -0 "$held" 2>/dev/null; then
+    echo "  Cue is installing a new version already (PID $held): wait for it to finish, then run this again" >&2
+    exit 1
+  fi
+  echo "$$" > "$IDIR/lock.$$"
+  mv -f "$IDIR/lock.$$" "$IDIR/lock"
+  trap install_end EXIT
+  : > "$ILOG"
+}
+install_end() {
+  case "$ISTEP" in building|installing|starting) install_status failed log ;; esac
+  if [ "$(cat "$IDIR/lock" 2>/dev/null)" = "$$" ]; then rm -f "$IDIR/lock"; fi
+}
 
 agent_hooks() {  # $1 = file, $2 = claude|codex, $3 = remove (connecting is the app's: cue connect)
   python3 - "$1" "$CUE_HOME/bin/cue-hook" "$2" "$3" <<'EOF'
@@ -144,7 +192,9 @@ app_stale() {
 
 install_app() {
   local what; what="$(git -C "$ROOT" log -1 --format='%h %s' 2>/dev/null || echo 'this folder')"
+  install_begin
   if app_stale; then
+    install_status building
     say "building Cue.app from $what (a few minutes)…"
     rm -rf "$APP_SRC"
     # An optional add-on in src-tauri/ext/ (not part of this repo) is built in when it's there.
@@ -154,15 +204,20 @@ install_app() {
     # Judged by the app it makes, not its exit: without the release signing key the build ends with an error about
     # update signatures after the app is made.
     # cue-host for other machines first: Cue.app carries it.
-    "$ROOT/scripts/build-host.sh" >/dev/null || { echo "  couldn't build cue-host for other machines (run scripts/build-host.sh to see why)" >&2; exit 1; }
-    (cd "$ROOT" && npm install --silent && npx tauri build --bundles app $ext >/dev/null) || true
+    # Their output goes to install/log (what the Desk shows of the build), their errors here too.
+    { "$ROOT/scripts/build-host.sh" 2>&1 1>>"$ILOG" | tee -a "$ILOG" >&2; } || {
+      echo "  couldn't build cue-host for other machines (run scripts/build-host.sh to see why)" >&2
+      say "couldn't build cue-host for other machines"; install_status failed log; exit 1
+    }
+    (cd "$ROOT" && { npm install --silent && npx tauri build --bundles app $ext; } 2>&1 1>>"$ILOG" | tee -a "$ILOG" >&2) || true
     if [ ! -x "$APP_SRC/Contents/MacOS/cue" ]; then
       echo "  the build didn't make Cue.app (run: npx tauri build --bundles app $ext, to see why)" >&2
-      exit 1
+      say "the build didn't make Cue.app"; install_status failed log; exit 1
     fi
   else
     say "Cue.app is already built from $what: installing it"
   fi
+  install_status installing
   wait_for_hosted_turns
   quit_cue
   mkdir -p "$HOME/Applications"
@@ -251,10 +306,16 @@ uninstall() {
   rm -rf "$HOME/Applications/Cue.app" "$CUE_HOME/bin" "$OLD_HOME/bin"; say "app removed (your data is kept in $CUE_HOME)"
 }
 
+# Start the installed Cue, saying so in status.json: "installed" once it runs, "failed" when it didn't start.
+start_app() {
+  install_status starting
+  if launch_cue; then install_status installed; else say "Cue did not start"; install_status failed log; return 1; fi
+}
+
 case "${1:-}" in
   --uninstall) uninstall ;;
-  --app) install_app; launch_cue ;;
+  --app) install_app; start_app ;;
   "") install_app; install_hooks
-      launch_cue; say "done — new and running sessions pick up the hooks on their next event" ;;
+      start_app; say "done — new and running sessions pick up the hooks on their next event" ;;
   *) sed -n '2,9p' "$0"; exit 2 ;;
 esac

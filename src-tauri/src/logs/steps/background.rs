@@ -142,7 +142,7 @@ impl Feed {
                 crate::machines::log_mirror::stop_task(&copy, &id);
             });
             if h.failed && h.finished_ms.saturating_sub(h.started_ms) > FAILURE_WORTH_MS {
-                self.failures.push(TaskFailure { path: self.path.clone(), at_ms: h.finished_ms, desc: h.desc.clone(), line: h.last_line() });
+                self.failures.push(TaskFailure { path: self.path.clone(), at_ms: h.finished_ms, desc: if h.desc.trim().is_empty() { h.command.clone() } else { h.desc.clone() }, line: h.last_line() });
             }
         }
     }

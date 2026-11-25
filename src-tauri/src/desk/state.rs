@@ -86,4 +86,14 @@ pub struct DeskRun {
     /// The lead routing it to new in its first minutes (it read as waiting in a Desk block made before the session
     /// was up) is told it's in one already, and it isn't moved off the session that just began on it. Not saved.
     pub started_for: HashMap<String, (String, u64)>,
+    /// The install the Desk shows (`state.desk.install`, desk/hub/landing/install_shown.rs); None when there's been none.
+    /// Not saved.
+    pub install_shown: Option<serde_json::Value>,
+    /// When the install the Desk shows began: (its tag, ms). Not saved.
+    pub install_began: Option<(String, u64)>,
+    /// The last step under way seen of the install the Desk shows ("building", "installing", "starting"): (its tag,
+    /// that step), what a failure says it failed at. Not saved.
+    pub install_last_step: Option<(String, String)>,
+    /// The Desk whose lead asked for an install (INSTALL: main): (its tag, that Desk). Not saved.
+    pub install_lead_desk: Option<(String, String)>,
 }

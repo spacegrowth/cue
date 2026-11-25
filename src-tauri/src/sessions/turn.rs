@@ -171,10 +171,19 @@ impl Sessions {
     }
 
     /// What its background shell commands still running do (see `running`), as its turn ends at its prompt.
-    pub fn set_running(&mut self, session_id: &str, scripts: &[String]) {
-        if let Some(s) = self.0.get_mut(session_id) {
-            s.running = running_words(scripts);
-        }
+    /// How many run (`scripts`) too. True when either changed.
+    pub fn set_running(&mut self, session_id: &str, scripts: &[String]) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        let (words, n) = (running_words(scripts), scripts.len() as u64);
+        let changed = s.running != words || s.scripts != n;
+        (s.running, s.scripts) = (words, n);
+        changed
+    }
+
+    /// Sessions at their prompt (not at work, not waiting on their background agents) with background tasks still
+    /// running as their turn ended: their counts are followed till those end.
+    pub fn with_scripts(&self) -> Vec<Origin> {
+        self.0.values().filter(|s| s.state != "working" && !(s.state == "agent" && s.helpers > 0) && (s.scripts > 0 || s.background > 0) && !s.origin.transcript_path.is_empty()).map(|s| s.origin.clone()).collect()
     }
 
     /// A background task of its failed after a while (`at_ms`: when): noted on the session. True when new.
