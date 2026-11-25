@@ -101,13 +101,55 @@ fn a_fork_closed_before_its_conversation_is_written_comes_back_as_the_fork_again
     let w = World::new();
     let agent = AgentProcess::start();
     finished(&w, "a", &agent, "Done.");
+    w.hub().name_new("a", "billing");
     let sid = fork(w.hub(), "a", "").unwrap()["session_id"].as_str().unwrap().to_string();
     let o = w.hub().session_origin(&sid).unwrap();
     assert!(!std::path::Path::new(&o.transcript_path).exists(), "Claude hasn't written the fork yet");
     w.hub().resume_hosted_as(&o).unwrap();
     let again = w.hosted.launched().last().cloned().unwrap();
     assert_eq!(again.start, Start::New(sid.clone()), "not resumed: there's nothing under its id yet");
-    assert!(again.args.windows(3).any(|a| a == ["--resume", "a", "--fork-session"]), "forked from its session again: {:?}", again.args);
+    assert!(again.args.windows(5).any(|a| a == ["--resume", "a", "--fork-session", "-n", "billing-fork"]), "forked from its session again, named: {:?}", again.args);
+}
+
+#[test]
+fn a_fork_once_written_resumes_as_itself_and_is_no_longer_kept_as_a_fork() {
+    let w = World::new();
+    let agent = AgentProcess::start();
+    finished(&w, "a", &agent, "Done.");
+    let sid = fork(w.hub(), "a", "").unwrap()["session_id"].as_str().unwrap().to_string();
+    assert!(crate::hub::hosted::fork_entry(&sid).is_some(), "kept until it's written");
+    let o = w.hub().session_origin(&sid).unwrap();
+    let log = std::path::Path::new(&o.transcript_path);
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    std::fs::write(log, "{}\n").unwrap();
+    w.hub().resume_hosted_as(&o).unwrap();
+    let again = w.hosted.launched().last().cloned().unwrap();
+    assert_eq!(again.start, Start::Resume(sid.clone()));
+    assert!(!again.args.iter().any(|a| a == "--fork-session"), "{:?}", again.args);
+    assert!(crate::hub::hosted::fork_entry(&sid).is_none(), "its entry went");
+}
+
+#[test]
+fn a_fork_of_a_fork_not_yet_written_copies_the_first_written_conversation() {
+    let w = World::new();
+    let agent = AgentProcess::start();
+    finished(&w, "a", &agent, "Done.");
+    let first = fork(w.hub(), "a", "").unwrap()["session_id"].as_str().unwrap().to_string();
+    let second = fork(w.hub(), &first, "").unwrap()["session_id"].as_str().unwrap().to_string();
+    let l = w.hosted.launched().last().cloned().unwrap();
+    assert_eq!(l.start, Start::New(second.clone()));
+    assert!(l.args.windows(3).any(|a| a == ["--resume", "a", "--fork-session"]), "from a, the written one: {:?}", l.args);
+}
+
+#[test]
+fn a_fork_that_wont_start_leaves_nothing_kept() {
+    let w = World::new();
+    let agent = AgentProcess::start();
+    finished(&w, "a", &agent, "Done.");
+    w.hosted.refuse("claude couldn't start");
+    assert_eq!(fork(w.hub(), "a", "").unwrap_err(), "claude couldn't start");
+    let kept = crate::config::load().pointer("/hosted/forked_from").cloned().unwrap_or_default();
+    assert!(kept.as_object().is_none_or(|m| m.is_empty()), "{kept}");
 }
 
 #[test]

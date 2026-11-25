@@ -87,9 +87,9 @@ impl Hub {
         let start = if written { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
         args.extend(crate::logs::mcp::selection_flags(sid));
-        // A fork whose own conversation isn't written yet starts as that fork again, so it isn't empty.
-        match forked_from(sid) {
-            Some(from) if !written => args.extend(["--resume".to_string(), from, "--fork-session".to_string()]),
+        // A fork whose own conversation isn't written yet starts as that fork again, named again, so it isn't empty.
+        match fork_entry(sid) {
+            Some(f) if !written => args.extend(["--resume".to_string(), fork_source(origin, f.from), "--fork-session".to_string(), "-n".to_string(), f.name]),
             Some(_) => forget_fork(sid),
             None => {}
         }
@@ -419,6 +419,10 @@ impl Hub {
     /// (as it's sent, which may be just after this): nothing to note here, only the message to settle.
     fn hosted_taken(&self, origin: Origin, text: String) {
         let sid = origin.session_id.clone();
+        // A fork's first message taken: its own conversation is written now, so it resumes as itself from here on.
+        if origin.machine.is_empty() && fork_entry(&sid).is_some() && written_as(&origin, &sid) {
+            forget_fork(&sid);
+        }
         self.write(|st| st.hosted_waking.remove(&sid));
         if self.read(|st| st.sessions.state(&sid).as_deref() == Some("working")) {
             // Nothing settled: the message that started this turn, already taken when the turn started.
@@ -582,32 +586,74 @@ fn given(input: bool, reply: Result<Reply, oneshot::error::RecvError>) -> Given 
 /// Whether a session on a machine has a conversation there to resume. Its log here is a copy: anything in the copy
 /// says so; an empty or missing one is asked of the machine (the copy can lag behind). One the machine can't be asked
 /// about is taken to be there (it ran: a terminal session moved in, say), so a resume, not a second conversation.
-/// Kept in Settings (`hosted.forked_from`, the fork's id → the session it forks): a fork is a copy of that session
-/// only once Claude has written the fork's own conversation, which it does with the first message it takes. Until
-/// then a fork started again has to be forked again (`resume_hosted_as`).
-pub(crate) fn note_fork(sid: &str, from: &str) {
-    let _ = crate::config::update_with("hosted.forked_from", |c| {
-        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
-        all.insert(sid.to_string(), json!(from));
-        Ok((Some(Value::Object(all)), ()))
-    });
-}
-
-fn forked_from(sid: &str) -> Option<String> {
-    crate::config::load().pointer("/hosted/forked_from").and_then(|m| m.get(sid)).and_then(Value::as_str).map(str::to_string)
-}
-
-fn forget_fork(sid: &str) {
-    let _ = crate::config::update_with("hosted.forked_from", |c| {
-        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
-        Ok((all.remove(sid).map(|_| Value::Object(all)), ()))
-    });
-}
-
 fn written_on_machine(origin: &Origin) -> bool {
     if std::fs::metadata(&origin.transcript_path).is_ok_and(|m| m.len() > 0) {
         return true;
     }
     let Some(m) = crate::machines::get(&origin.machine) else { return true };
     origin.transcript_path.is_empty() || crate::machines::log_mirror::written_there(&m, &origin.transcript_path).unwrap_or(true)
+}
+
+/// A fork not yet written (`hosted.forked_from` in Settings): the session it forks, and its name. A fork is a copy of
+/// that session only once Claude has written the fork's own conversation, which it does with the first message it
+/// takes; until then a fork started again is forked again (`resume_hosted_as`).
+pub(crate) struct Fork {
+    pub from: String,
+    pub name: String,
+}
+
+/// Fork `sid` of `from`, named `name`, kept until its conversation is written. Forks noted more than `CLOSED_DAYS`
+/// ago go: Closed no longer offers them.
+pub(crate) fn note_fork(sid: &str, from: &str, name: &str) {
+    let now = now_ms();
+    let _ = crate::config::update_with("hosted.forked_from", |c| {
+        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
+        all.retain(|_, v| v["at"].as_u64().is_some_and(|at| now.saturating_sub(at) < super::CLOSED_DAYS * 86_400_000));
+        all.insert(sid.to_string(), json!({ "from": from, "name": name, "at": now }));
+        Ok((Some(Value::Object(all)), ()))
+    });
+}
+
+pub(crate) fn fork_entry(sid: &str) -> Option<Fork> {
+    let v = crate::config::load().pointer("/hosted/forked_from").and_then(|m| m.get(sid)).cloned()?;
+    Some(Fork { from: v["from"].as_str()?.to_string(), name: v["name"].as_str().unwrap_or_default().to_string() })
+}
+
+/// Fork `sid`'s entry gone: its conversation is written, or it was deleted.
+pub(crate) fn forget_fork(sid: &str) {
+    if fork_entry(sid).is_none() {
+        return;
+    }
+    let _ = crate::config::update_with("hosted.forked_from", |c| {
+        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
+        Ok((all.remove(sid).map(|_| Value::Object(all)), ()))
+    });
+}
+
+/// The conversation a fork of `origin`'s session is copied from: `from`, or, when `from` is itself a fork not yet
+/// written, the one it forks, and so on to the first written one.
+pub(crate) fn fork_source(origin: &Origin, from: String) -> String {
+    let mut from = from;
+    for _ in 0..20 {
+        match fork_entry(&from) {
+            Some(f) if !written_as(origin, &from) => from = f.from,
+            Some(_) => {
+                forget_fork(&from);
+                break;
+            }
+            None => break,
+        }
+    }
+    from
+}
+
+/// Whether Claude has written conversation `id` beside `origin`'s (a fork's is in the same folder, here or on its
+/// machine).
+fn written_as(origin: &Origin, id: &str) -> bool {
+    let mine = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, &origin.session_id) } else { origin.transcript_path.clone().into() };
+    let path = mine.with_file_name(format!("{id}.jsonl"));
+    if origin.machine.is_empty() {
+        return path.is_file();
+    }
+    written_on_machine(&Origin { transcript_path: path.to_string_lossy().into_owned(), ..origin.clone() })
 }

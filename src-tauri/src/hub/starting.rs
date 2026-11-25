@@ -70,8 +70,6 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
         if agent != Agent::Claude {
             return Err("Fork works with Claude Code sessions".into());
         }
-        // Its name for Claude Code's own list too (/resume), as a fork in a terminal had it.
-        args.extend(["--resume".to_string(), opts.fork_of.clone(), "--fork-session".to_string(), "-n".to_string(), name.to_string()]);
         // The fork keeps a copy of its MCP selection (unless one was picked for it).
         let (was, now) = (crate::logs::mcp::selection_path(&opts.fork_of), crate::logs::mcp::selection_path(&sid));
         if opts.machine.is_empty() && opts.mcp.is_none() && was.exists() && std::fs::copy(&was, &now).is_ok() {
@@ -98,11 +96,14 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
         trust(&opts.machine, &dir)?;
     }
     let origin = Origin { session_id: sid.clone(), harness: agent.program().into(), cwd: dir, transcript_path, hosted: true, machine: opts.machine.clone(), ..Default::default() };
+    // A fork copies the first written conversation it comes from (a fork not yet written is followed back), and has
+    // its name for Claude Code's own list too (/resume), as a fork in a terminal had it.
+    let fork_from = (!opts.fork_of.is_empty()).then(|| super::hosted::fork_source(&origin, opts.fork_of.clone()));
+    if let Some(from) = &fork_from {
+        args.extend(["--resume".to_string(), from.clone(), "--fork-session".to_string(), "-n".to_string(), name.to_string()]);
+    }
     if !opts.desk_lead.is_empty() {
         h.desk_lead_starting(&opts.desk_lead, &sid, name);
-    }
-    if !opts.fork_of.is_empty() {
-        super::hosted::note_fork(&sid, &opts.fork_of);
     }
     let started = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args, model });
     let origin = match started {
@@ -112,6 +113,10 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
             return Err(e);
         }
     };
+    // A fork is kept as one only once it has started: a start that failed leaves nothing behind.
+    if let Some(from) = &fork_from {
+        super::hosted::note_fork(&sid, from, name);
+    }
     if !opts.desk_lead.is_empty() && origin.session_id != sid {
         // Codex assigns its own ID when the thread opens. Replace the provisional lead and membership before
         // recording or messaging the session, so the Desk points to the session that actually exists.

@@ -460,6 +460,7 @@ impl Hub {
     /// and everything cue.db kept of it.
     pub fn purge(&self, session_id: &str) {
         self.forget(session_id);
+        super::hosted::forget_fork(session_id);
         self.write(|st| {
             st.history.retain(|i| i.origin.session_id != session_id);
             st.answers.retain(|a| a.session_id != session_id);
