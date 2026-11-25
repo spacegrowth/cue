@@ -503,3 +503,5 @@
 .dkn-hco2 { all: unset; cursor: pointer; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--on-bg); }
 .dkn-hco2:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-btn); }
 .dkn-hco2:hover b { text-decoration: underline; text-underline-offset: 2px; }
+/* The whole heading row (open) or line (folded) folds or opens the bar (#888). */
+.dkn-hct[data-desk-c-how], .dkn-hc.fold[data-desk-c-how] { cursor: pointer; }

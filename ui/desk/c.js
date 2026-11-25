@@ -578,12 +578,13 @@ function deskCHowTo(i) {
   if (!i || deskBackFor === i.id || deskLooksSoon.has(i.id)) return "";
   const id = esc(i.id), opts = deskPickOptions(i), folded = deskCHowFolded(i.id);
   const fold = (open) => `<button class="dkn-hcf" data-desk-c-how="${id}" aria-expanded="${open}">${open ? "Fold ▾" : "Open ▴"}</button>`;
-  const line = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}"><span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>${btn ? fold(false) : ""}</div>`;
+  // The whole bar's line (folded) or heading row (open) folds or opens it (#888); a button in it is its own click.
+  const line = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}"${btn ? ` data-desk-c-how="${id}"` : ""}><span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>${btn ? fold(false) : ""}</div>`;
   if (opts.length) {
     if (folded) return line("Pick one", esc(opts.join(", ")));
     const words = deskOptionWords(i), named = (o) => (i.next || []).find((n) => String(n.option) === o)?.title || "";
     const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || named(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${id}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
-    return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct"><span class="dkn-hcc">Pick one · ${opts.length} options</span>${fold(true)}</div><ul class="dk-opts dkn-hco">${opts.map(row).join("")}</ul></div>`;
+    return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct" data-desk-c-how="${id}"><span class="dkn-hcc">Pick one · ${opts.length} options</span>${fold(true)}</div><ul class="dk-opts dkn-hco">${opts.map(row).join("")}</ul></div>`;
   }
   if (["done", "dropped"].includes(i.state)) deskCHowKeep.delete(i.id);
   const kept = deskCHowKeep.has(i.id) && ["working", "finishing", "needs_you"].includes(i.state);
@@ -591,7 +592,7 @@ function deskCHowTo(i) {
   // Ready to check (#883): the bar says so and carries Looks right and Send back, out of the header.
   const btns = `<span class="dkn-hcb"><button class="btn small dkn-hok" data-desk-act="looks_right" data-id="${id}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button><button class="btn small dkn-hsb" data-desk-act="send_back" data-id="${id}">Send back</button></span>`;
   // Folded: one slim line, "How to check ▸" opening it, what to try, then Looks right and Send back.
-  const chk = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}">${btn ? `<button class="dkn-hcw dkn-hco2" data-desk-c-how="${id}" aria-expanded="false"><b>${cap} ▸</b><span>${rest}</span></button>` : `<span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>`}${btns}</div>`;
+  const chk = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}"${btn ? ` data-desk-c-how="${id}"` : ""}>${btn ? `<button class="dkn-hcw dkn-hco2" data-desk-c-how="${id}" aria-expanded="false"><b>${cap} ▸</b><span>${rest}</span></button>` : `<span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>`}${btns}</div>`;
   const cl = deskToCheckLine(i);
   if (cl.kind === "nothing" || cl.kind === "unsaid") return chk(`Ready to check · ${esc(DESK_CHECK_LABEL[cl.kind].replace(/:$/, ""))}`, esc(cl.text), false);
   // Its Do as the steps it wrote ("1. … 2. …"), else as one.
@@ -600,7 +601,7 @@ function deskCHowTo(i) {
   const row = (k, v) => `<div class="dkn-hcl"><span class="dkn-hck">${k}</span>${v}</div>`;
   const body = cl.steps ? row("Where", `<span>${esc(cl.steps[0])}</span>`) + row("Do", dos.length > 1 ? `<ol>${dos.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : `<span>${esc(cl.steps[1])}</span>`) + row("Expect", `<span>${esc(cl.steps[2])}</span>`)
     : row("Try", `<span>${esc(cl.text)}</span>`);
-  return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct"><span class="dkn-hcc">Ready to check · How to check</span>${btns}${fold(true)}</div>${body}</div>`;
+  return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct" data-desk-c-how="${id}"><span class="dkn-hcc">Ready to check · How to check</span>${btns}${fold(true)}</div>${body}</div>`;
 }
 /** An item opened: its session's chat (the same as clicking the session on the left), not a page of its own (#560's
  *  plan A, finished in #744: one item per session until it's done, so that chat is its story), its bar over the chat.
