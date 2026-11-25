@@ -394,8 +394,9 @@ function stepFull(sid, x) {
   const k = `${sid}|${x.id}`, d = stepDetail.get(k);
   return (d && d !== "loading" && d.full) || runFull.get(k) || "";
 }
+/** How a step went ("exit 1", "+3 −1"); running, a live dot and how long it has run (38s). */
 function stepResult(x) {
-  if (!x.done) return `<span class="dot-live"></span>`;
+  if (!x.done) return `<span class="dot-live"></span>${x.at_ms ? `<span data-ago="${x.at_ms}">${ago(x.at_ms)}</span>` : ""}`;
   const m = /^\+(\d+) −(\d+)$/.exec(x.result);
   if (m) return `<span class="add">+${m[1]}</span> <span class="del">−${m[2]}</span>`;
   return esc(x.result);
@@ -426,7 +427,7 @@ const keyer = () => { const seen = new Map(); return (k) => { const n = (seen.ge
 function stepLine(sid, x, plain = false) {
   const k = `${sid}|${x.id}`;
   const open = !plain && x.done && stepFlip.has(k), full = stepFull(sid, x);
-  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
+  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""} ${x.done ? "" : "run"}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
     <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject || full ? ` <span class="${x.mono ? "mono" : ""}">${esc(full || x.subject)}</span>` : ""}</span>
     <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;
 }

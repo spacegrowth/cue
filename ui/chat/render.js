@@ -1,8 +1,8 @@
 // Cue UI chat — the chat's HTML: turns, status, the meta line and the ⋯ menu.
 /** One turn's steps, between your message and its reply, folded by default into one chip ("Working · 13 steps ·
  *  9 commands, 2 tools, 1 edit"), with what it said between them left in view, each ending in a count of the steps
- *  that led to it; while it works, the line under the chat says what it's doing and how many steps since its last
- *  words. The chip opens the whole turn, every step back in place between its messages; a message's count opens only
+ *  that led to it; while it works, the step it's running shows once, under the chip (open, as the list's last row), and
+ *  the line under the chat says only how long the turn has run (#866). The chip opens the whole turn, every step back in place between its messages; a message's count opens only
  *  the steps that led to it (runOpen). Each step is one line; it opens in full only when you click it (turnFold
  *  remembers your choice; Settings → Steps "Open" opens every turn by default). `live`: the turn it's working on now. `latest`: the newest turn.
  *  `part`: when you wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
@@ -39,8 +39,12 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   // their count. Cut off (the turn ended under a step), that step stays at the bottom, on one line.
   const shown = (x) => open || runOpen.has(`${sid}|${runOf.get(x.id)}`);
   const last = open ? null : footStep(sid, turn, live, latest, replied);
-  const foot = last && !shown(last) && last.at_ms >= part.from && last.at_ms < part.to ? lastStepRow(sid, turn, last, runOf.get(last.id)) : "";
-  if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
+  const inPart = (x) => x.at_ms >= part.from && x.at_ms < part.to;
+  // Folded while it works: the step it's running now, once, right under the chip (open, it's the list's last row) (#866).
+  const now = open ? null : runningStep(sid, turn, live);
+  const foot = last && !shown(last) && inPart(last) ? lastStepRow(sid, turn, last, runOf.get(last.id))
+    : now && !shown(now) && inPart(now) ? `<div class="stx-steps stx-now" data-key="now:${esc(now.id)}">${stepLine(sid, now)}</div>` : "";
+  if (!items.length) return first || fold || foot ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}${foot}</div>` : "";
   let body = "", run = [], runKey = "";
   // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
   const flush = () => { if (run.length) body += `<div class="stx-steps" data-key="run:${esc(runKey)}">${run.join("")}</div>`; run = []; };
@@ -76,24 +80,10 @@ function runCount(sid, first, n, words = "") {
   const k = `${sid}|${first}`;
   return `<button class="stx-cnt" data-run-fold="${esc(k)}" aria-expanded="${runOpen.has(k)}">· ${n} step${n === 1 ? "" : "s"}${words}</button>`;
 }
-/** The line under the chat while it works: how many steps since its last words, opening just those (a Stop hook's
- *  part: its fold). "" when there are none or steps are hidden. */
-function workingCount(s) {
-  const sid = s?.session_id, t = sid && stepsMode() !== "hidden" ? stepFeeds.get(sid)?.turns?.at(-1) : null;
-  const x = t?.items?.at(-1);
-  if (x?.t !== "step") return "";
-  if (hookedPart(t, x)) {
-    let n = 0;
-    for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "step" && hookedPart(t, t.items[k]); k--) n++;
-    return `<button class="stx-cnt" data-hook-fold="${esc(`${sid}|${t.at_ms}`)}">· ${n} step${n === 1 ? "" : "s"}</button>`;
-  }
-  const r = turnRuns(t).tail;
-  return r ? runCount(sid, r.first, r.n) : "";
-}
 /** Words' html with a count at their end: in their last paragraph, as their last words. */
 const withCount = (html, c) => (!c ? html : /<\/p>\s*$/.test(html) ? html.replace(/<\/p>\s*$/, `${c}</p>`) : html + c);
 /** A folded turn's newest step (a Stop hook's part too), shown at its foot when the turn was cut off under it (while
- *  it works, the line under the chat says it); null when the turn is open or ends in words. */
+ *  it works, runningStep); null when the turn is open or ends in words. */
 function footStep(sid, turn, live, latest, replied) {
   if (live || !latest || replied || turnOpen(`${sid}|${turn.at_ms}`)) return null;
   if (!turn.items.some((x) => x.t === "step" && !hookedPart(turn, x))) return null;
@@ -101,6 +91,13 @@ function footStep(sid, turn, live, latest, replied) {
   // A Stop hook's step with its fold open is in that list already: not twice.
   if (x?.t === "step" && hookedPart(turn, x) && hookOpen.has(`${sid}|${turn.at_ms}`)) return null;
   return x?.t === "step" ? x : null;
+}
+/** The step a turn it's working on now is running (its newest item, not done yet); null otherwise, or when it's in a
+ *  Stop hook's fold that's open (it's in that list already). */
+function runningStep(sid, turn, live) {
+  const x = live ? turn.items.at(-1) : null;
+  if (x?.t !== "step" || x.done) return null;
+  return hookedPart(turn, x) && hookOpen.has(`${sid}|${turn.at_ms}`) ? null : x;
 }
 /** Replies the chat draws as its own rows (a turn's reply, words shown mid-turn): each one's "· N steps", the steps
  *  that led to it, by index into `ex` (the counts in the turn and these add up to its chip's). */
@@ -567,12 +564,15 @@ function whereNow(it, s, steps = true) {
   if (s?.compacting_ms) return `<div class="mg-status cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // It finished compacting (until the next turn starts).
   if (s?.compacted_ms && s.state !== "working") return `<div class="mg-status cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
+  // Working, with its steps in the chat: the step it's running is a row there (stepsBlock), so this says only how long
+  // the turn has run (#866, option B2): no command, no count (the chip has it).
+  if (s?.state === "working" && steps && stepsMode() !== "hidden") return `<div class="mg-status cv-status"><span class="dot-live"></span><b>Working</b><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // What it's doing right now (its latest step), else the prompt it's on.
-  if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span>${steps ? workingCount(s) : ""}<span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
   // count since the turn started, so a long think doesn't look stuck.
   const prompt = (typeof cueMsgPlain === "function" && cueMsgPlain(s?.prompt, msgTo(s))) || deskSaid(s?.prompt);
-  if (s?.state === "working") return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span>${steps ? workingCount(s) : ""}<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "working") return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="mg-status cv-status"><i class="sw z live"></i><span class="cv-what">Waiting on you for ${esc(waitingFor(it, s))}</span><span class="dim"> · ${ago(s.since_ms)}</span>${tipFor(it, s, "waiting")}</div>`;
   // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
   const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";

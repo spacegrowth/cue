@@ -110,8 +110,9 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-fold")).toContainText("Working · 2 steps");
   await expect(live.locator(".stx-fold .dot-live")).toHaveCount(1);
   await expect(live.locator(".stx-say")).toContainText("Found it: the header centres on the wrong box.");
-  // Folded: no step drawn while it works (the line under the chat is its running line); the chip opens every step in place.
-  await expect(live.locator(".stx-line")).toHaveCount(0);
+  // Folded: of its steps, only the one running now, once, under its words (#866); the chip opens every step in place.
+  await expect(live.locator(".stx-line")).toHaveCount(1);
+  await expect(live.locator(".stx-now .stx-line")).toHaveAttribute("data-key", "s2");
   await live.locator(".stx-fold").click();
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
   for (const theme of ["light", "dark"]) {

@@ -126,6 +126,8 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-line.open .stx-what { white-space: normal; overflow-wrap: anywhere; }
 .stx-line.open .stx-what .mono { white-space: pre-wrap; }
 .stx-res { flex: none; max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 1px; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+/* A step running now: a live dot and how long it has run, in ink (#866). */
+.stx-line.run .stx-res { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 500; }
 /* A folded turn's newest step at its foot: a step line that isn't a button (its count is). */
 .stx-last { cursor: default; }
 .stx-last .stx-what { display: flex; align-items: baseline; }
