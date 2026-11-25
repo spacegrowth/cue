@@ -98,37 +98,33 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 /* The agent: full-width prose, no bubble, the family's body size (#501: .mg-agent/.mg-text in messages.css). Kept for a
    parked session's chat (chat/parked.js), which still draws .cv-agent alone. */
 .cv-agent { font: var(--mg-body); }
-/* Steps: what the agent did between your message and its reply (a turn), one line per step. */
+/* Steps: what the agent did between your message and its reply (a turn), one line per step: 0.1.86's own styles (#897).
+   The agent's words between them keep the chat's message look. */
 .stx { display: flex; flex-direction: column; gap: 6px; }
-/* The turn's chip (option F): "Working · 13 steps · 9 commands, 2 tools, 1 edit ▸", a capsule that wraps rather than
-   cuts its words. It and every message's "· N steps" open and close the turn. */
 .stx-head { display: flex; align-items: center; gap: 8px; }
-.stx-fold { display: inline-flex; flex-wrap: wrap; align-items: center; column-gap: 6px; min-width: 0; max-width: 100%; text-align: left; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); padding: 3px 10px; border-radius: var(--radius-pill); background: var(--panel-2); }
-.stx-fold b { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.stx-fold { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted); padding: 4px 9px 4px 7px; border-radius: 8px; background: var(--panel-2); }
+.stx-fold b { color: var(--ink); font-weight: 650; }
 .stx-fold:hover { color: var(--ink); }
-.stx-tri { width: 10px; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); }
-.stx-sum { white-space: normal; }
-.stx-all { margin-left: auto; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); padding: 3px 8px; border-radius: var(--radius-qp); }
+.stx-tri { width: 11px; font-size: 12px; color: var(--ink); }
+.stx-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stx-all { margin-left: auto; font-size: 11.5px; font-weight: 650; color: var(--muted); padding: 3px 8px; border-radius: 6px; }
 .stx-all:hover { color: var(--ink); background: var(--panel-2); }
-.stx-more { font-size: var(--type-small); line-height: var(--type-small-lh); padding-left: 4px; }
+.stx-more { font-size: 11.5px; padding-left: 4px; }
 .stx-say { font: var(--mg-body); }   /* the agent's words between its steps: a chat's size (#703) */
 .stx-steps { display: flex; flex-direction: column; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 8px; }
-.stx-line { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font-size: var(--type-body); color: var(--ink); padding: 3px 4px; border-radius: var(--radius-qp); min-width: 0; }
+.stx-line { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-size: 12.5px; color: var(--ink); padding: 3px 4px; border-radius: 6px; min-width: 0; }
 .stx-line[data-step]:hover { background: var(--panel-2); }
 .stx-line:disabled { cursor: default; }
-.stx-ic { margin-top: 1px; width: 17px; height: 17px; border-radius: var(--radius-tag); flex: none; display: grid; place-items: center; font: 700 var(--type-label)/var(--type-label-lh) var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
+.stx-ic { width: 17px; height: 17px; border-radius: 4px; flex: none; display: grid; place-items: center; font: 800 9.5px var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
 .stx-ic.k-edit { background: var(--sel); color: var(--on-sel); }
 .stx-ic.k-run { background: var(--slab); color: var(--on-slab); }
 .stx-line.bad .stx-ic { background: color-mix(in srgb, var(--deny) 16%, var(--panel)); color: var(--deny); }
-/* A step is one line, cut with "…", until you open it (#604); open, it wraps whole. */
 .stx-what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stx-what .mono { font-size: var(--type-small); line-height: var(--type-small-lh); }
-.stx-line.open .stx-what { white-space: normal; overflow-wrap: anywhere; }
-.stx-line.open .stx-what .mono { white-space: pre-wrap; }
-.stx-res { flex: none; max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 1px; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.stx-line.bad .stx-res { color: var(--deny); font-weight: 600; }
-.stx-res .add { color: var(--add-fg); font-weight: 600; } .stx-res .del { color: var(--del-fg); font-weight: 600; }
-.stx-chev { width: 10px; flex: none; color: var(--muted); font-size: var(--type-label); line-height: var(--type-label-lh); text-align: center; }
+.stx-what .mono { font-size: 11.5px; }
+.stx-res { flex: none; max-width: 42%; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
+.stx-res .add { color: var(--accent); font-weight: 650; } .stx-res .del { color: var(--deny); font-weight: 650; }
+.stx-chev { width: 10px; flex: none; color: var(--muted); font-size: 11px; text-align: center; }
 /* Background work (chat/helpers.js bgRow): one row like a step line. Its mark says the kind: an agent A on moss, a
    teammate a person in a ring (a script is $ on dark, as "Ran"). In the list above the box while it runs
    (teammates always), under the step that started it once it's over. */

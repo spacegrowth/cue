@@ -87,7 +87,7 @@ test("the chip folds the turn to a summary, its words left in view; Show all ope
   const chip = turn.locator(".stx-fold");
   await chip.click();
   await expect(chip).toHaveAttribute("aria-expanded", "false");
-  await expect(chip).toContainText("3 commands, 1 read, 1 edit, 1 failed");
+  await expect(chip).toContainText("read 1 file · 1 edit · 3 commands · 1 failed");
   await expect(turn.locator(".stx-line")).toHaveCount(0);
   await expect(turn.locator(".stx-say")).toContainText("Found it");
   await expect(turn.locator(".stx-all")).toHaveCount(0);
@@ -101,16 +101,15 @@ test("the chip folds the turn to a summary, its words left in view; Show all ope
   const ran = turn.locator(".stx-line").filter({ hasText: "Ran npm test" });
   await ran.click();
   await expect(turn.locator(".stx-line.open")).toHaveCount(3);
-  // Show less shuts them all, the one you closed by hand too.
+  // Show less: as in 0.1.86, a step you flipped by hand flips back the other way.
   await turn.locator(".stx-all").click();
-  await expect(turn.locator(".stx-detail")).toHaveCount(0);
-  // A click opens just that one, whole.
-  await ran.click();
   await expect(turn.locator(".stx-line.open")).toHaveCount(1);
   await expect(turn.locator(".stx-out")).toHaveText("ok");
+  await ran.click();
+  await expect(turn.locator(".stx-detail")).toHaveCount(0);
 });
 
-test("a diff you open is plain green and red, whole, in light and dark; its +N −N too", async ({ page, cue }) => {
+test("a diff you open is plain green and red, whole, in light and dark; the row's +N −N in the accent and red", async ({ page, cue }) => {
   const turn = await openWorking(page, cue);
   await turn.locator(".stx-line").filter({ hasText: "Edited header.js" }).click();
   const diff = turn.locator(".stx-diff");
@@ -126,7 +125,9 @@ test("a diff you open is plain green and red, whole, in light and dark; its +N �
         res: [getComputedStyle(el.closest(".stx").querySelector(".stx-res .add")).color, getComputedStyle(el.closest(".stx").querySelector(".stx-res .del")).color],
         maxH: getComputedStyle(el).maxHeight, ws: getComputedStyle(el.querySelector(".a")).whiteSpace };
     });
-    expect(got).toEqual({ ...want[theme], res: [want[theme].addFg, want[theme].delFg], maxH: "none", ws: "pre-wrap" });
+    // The row's own +N −N as 0.1.86 had them: the theme's accent and its red.
+    const [accent, deny] = await page.evaluate(() => ["--accent", "--deny"].map((v) => { const d = document.createElement("i"); d.style.color = `var(${v})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }));
+    expect(got).toEqual({ ...want[theme], res: [accent, deny], maxH: "none", ws: "pre-wrap" });
   }
 });
 
@@ -186,7 +187,7 @@ test("a turn you wrote into mid-turn: one chip, your message where you sent it, 
   expect(order).toEqual(["go on", "chip", 2, "you", 1, "say", 1]);
 });
 
-test("your fold stays across polls and redraws; a running step's command is asked for once, not every poll", async ({ page, cue }) => {
+test("your fold stays across polls and redraws; a running step's output isn't asked for", async ({ page, cue }) => {
   const turn = await openWorking(page, cue);
   const chip = turn.locator(".stx-fold");
   await chip.click();
@@ -202,7 +203,7 @@ test("your fold stays across polls and redraws; a running step's command is aske
   await expect.poll(polls, { timeout: 15000 }).toBeGreaterThan(p1 + 1);
   await expect(turn.locator(".stx-line")).toHaveCount(5);
   const asked = (await cue.calls("step_detail")).flatMap((c) => c.args.ids).filter((id) => id === "s5");
-  expect(asked).toEqual(["s5"]);
+  expect(asked).toEqual([]);
 });
 
 test("an open turn of 75 steps lists them one line each and reads nothing until you click one; then just that one", async ({ page, cue }) => {
@@ -227,47 +228,4 @@ test("a Stop hook's steps stay in its own fold, which shows a live dot while one
   await expect(chat.locator(".stx-hook .dot-live")).toHaveCount(1);
   await chat.locator(".stx-hook [data-hook-fold]").click();
   await expect(chat.locator(".stx-hook .stx-line")).toHaveCount(2);
-});
-
-test("a command that finishes keeps its full words on its line: never the cut subject while its output loads", async ({ page, cue }) => {
-  const turn = await openWorking(page, cue);
-  const foot = turn.locator(".stx-line").last();
-  await expect(foot).toContainText(`Running ${LONG}`);
-  // Watch every redraw for the cut subject from here on.
-  await page.evaluate(() => {
-    window.__cut = false;
-    const look = () => { if ([...document.querySelectorAll(".dk-right .dkn-sp .stx-line")].some((l) => l.textContent.includes("…"))) window.__cut = true; };
-    new MutationObserver(look).observe(document.body, { subtree: true, childList: true, characterData: true });
-  });
-  // Its output takes a moment; meanwhile the step comes in finished.
-  await cue.override("step_detail", ({ ids }, long) => new Promise((r) => setTimeout(() => r(Object.fromEntries(ids.map((id) => [id, { full: id === "s5" ? long : `full ${id}`, output: ["ok"], skipped: 0 }]))), 1500)), LONG);
-  await cue.override("session_steps", ({ sessionId }, long) => {
-    const at = window.__t0;
-    const step = (id, kind, verb, subject, result, ago, o = {}) => ({ t: "step", id, kind, verb, subject, mono: true, result, bad: false, done: true, at_ms: at - ago * 1000, ...o });
-    return sessionId !== "host" ? { version: 2, turns: [] } : { version: 2, turns: [{ at_ms: at - 120000, prompt: "About #d5 (x): go on", more: 0, items: [
-      step("s1", "read", "Read", "header.js", "40 lines", 110), step("s2", "run", "Ran", "npm test", "41 passed", 100),
-      { t: "say", text: "Found it: the header centres on the wrong box.", at_ms: at - 90000 },
-      step("s3", "edit", "Edited", "header.js", "+1 −1", 80), step("s4", "run", "Ran", "git diff --stat", "1 file", 70),
-      step("s5", "run", "Ran", long.slice(0, 79) + "…", "3 passed", 60),
-    ] }] };
-  }, LONG);
-  await expect(foot).toContainText(`Ran ${LONG}`, { timeout: 10000 });
-  await expect(foot.locator(".stx-res")).toContainText("3 passed");
-  // Its output in: opened, the same line, whole.
-  // Asked twice in all: running (its command), then finished (its output), which lands 1.5 s later.
-  await expect.poll(async () => (await cue.calls("step_detail")).filter((c) => c.args.ids.includes("s5")).length, { timeout: 10000 }).toBe(2);
-  await page.waitForTimeout(2000);
-  await expect(foot).toContainText(`Ran ${LONG}`);
-  expect(await page.evaluate(() => window.__cut)).toBe(false);
-});
-
-test("a turn cut off mid-step shows that step stopped: no live dot, no running time", async ({ page, cue }) => {
-  const chat = await openTurn(page, cue, (at, step) => [
-    step("c1", "read", "Read", "header.js", 300), step("c2", "run", "Running", "npm test", 290, { done: false }),
-  ], [], false);
-  const last = chat.locator(".stx-line").last();
-  await expect(last).toContainText("Running full c2");
-  await expect(last.locator(".dot-live")).toHaveCount(0);
-  await expect(last.locator("[data-ago]")).toHaveCount(0);
-  await expect(chat.locator(".stx-fold")).not.toContainText("Working");
 });

@@ -34,7 +34,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const finished = new Map(helpersOf(sid).filter((h) => !helperRunning(h) && !h.teammate).map((h) => [h.step, h]));
   items.forEach(([x, i]) => {
     // Folded: only its steps go; what it said to you stays (a fold never hides its words).
-    if (x.t !== "say") { if (!open) return; if (!run.length) runKey = x.id; run.push(stepLine(sid, live || x.done ? x : { ...x, stopped: true }, false, all)); const h = finished.get(x.id); if (h) run.push(bgRow(sid, h)); return; }
+    if (x.t !== "say") { if (!open) return; if (!run.length) runKey = x.id; run.push(stepLine(sid, x, all)); const h = finished.get(x.id); if (h) run.push(bgRow(sid, h)); return; }
     flush();
     // New words unroll top to bottom, quicker for short ones.
     const ms = Math.min(REVEAL_MS, 250 + x.text.length * 2);
@@ -55,7 +55,7 @@ function hookFold(sid, turn, hooked) {
   if (!hooked.length) return "";
   const key = `${sid}|${turn.at_ms}`, open = hookOpen.has(key);
   const busy = hooked.some((x) => x.t === "step" && !x.done);
-  const body = open ? hooked.map((x, i) => x.t === "step" ? `<div class="stx-steps">${stepLine(sid, x)}</div>` : `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("") : "";
+  const body = open ? hooked.map((x, i) => x.t === "step" ? `<div class="stx-steps">${stepLine(sid, x, false)}</div>` : `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("") : "";
   return `<div class="follow stx-hook" data-key="hook"><button class="thread-toggle" data-hook-fold="${esc(key)}">${busy ? `<span class="dot-live"></span>` : ""}After a stop hook ${open ? "▴" : "▾"}</button>${open ? `<div class="follow-body">${body}</div>` : ""}</div>`;
 }
 /** A turn since your last message (`since`) has its "After a stop hook" in the chat, so the reply's own copy
