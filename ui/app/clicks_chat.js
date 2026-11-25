@@ -178,8 +178,14 @@ const MESSAGE_CLICKS = [
 ];
 
 const CHAT_FOOT_CLICKS = [
-  rule("[data-run-fold]", (rf) => { flipIn(runOpen, rf.dataset.runFold); renderMain(); }),
-  rule("[data-agent-run]", (ar) => { flipIn(agentRunOpen, ar.dataset.agentRun); renderMain(); }),
+  // Show all / Show less: every step of the turn open or shut, steps you'd opened or closed one by one included.
+  rule("[data-turn-all]", (ta) => {
+    const k = ta.dataset.turnAll, [sid, at] = k.split("|");
+    flipIn(turnAll, k);
+    for (const x of stepFeeds.get(sid)?.turns?.find((t) => String(t.at_ms) === at)?.items || []) stepFlip.delete(`${sid}|${x.id}`);
+    renderMain(); wantDetails(sid);
+  }),
+  rule("[data-agent-run]", (ar) => { flipIn(agentRunShut, ar.dataset.agentRun); renderMain(); }),
   rule("[data-agent-brief]", (ab) => { flipIn(agentBriefOpen, ab.dataset.agentBrief); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),
   rule("[data-follow]", (fo) => { flipIn(openFollow, fo.dataset.follow); renderMain(); }),

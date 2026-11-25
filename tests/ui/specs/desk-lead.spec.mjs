@@ -333,7 +333,7 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   await expect(pane.locator("h1 .dk-tname")).toHaveText("web-lead");
 });
 
-test("a crew member's page shows its whole chat, the same as the board's view of it: the ask, its words, its steps folded a run at a time, its answer (#689)", async ({ page, cue }) => {
+test("a crew member's page shows its whole chat, the same as the board's view of it: the ask, its words, its steps a run at a time, each step its own row (#689, #897)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   // The lead's feed has search-centre's log: words, two runs of steps, and its answer once it finished.
@@ -355,15 +355,15 @@ test("a crew member's page shows its whole chat, the same as the board's view of
   expect(await parts()).toEqual(["ask", "says", "steps", "says", "steps", "answer"]);
   await expect(chat.locator(".ag-ask")).toContainText("Keep the search field centred");
   await expect(chat.locator(".stx-fold b")).toHaveText(["3 steps", "2 steps"]);
-  await expect(chat.locator(".stx-line")).toHaveCount(0);
+  await expect(chat.locator(".stx-line")).toHaveCount(5);
   await expect(chat.locator(".bg-view-reply").last()).toContainText("Its answer");
   await expect(chat.locator(".bg-view-reply").last()).toContainText("the search field stays centred");
-  // A fold line opens its run, and closes it again.
-  await chat.locator(".stx-fold").first().click();
-  await expect(chat.locator(".stx-line")).toHaveCount(3);
   await expect(chat.locator(".stx-line").first()).toContainText("ui/header.js");
+  // A fold line folds its run, and opens it again.
   await chat.locator(".stx-fold").first().click();
-  await expect(chat.locator(".stx-line")).toHaveCount(0);
+  await expect(chat.locator(".stx-line")).toHaveCount(2);
+  await chat.locator(".stx-fold").first().click();
+  await expect(chat.locator(".stx-line")).toHaveCount(5);
   // The board's view of it (its crew row's Its steps) draws the very same chat.
   const desk = await chat.evaluate((el) => el.outerHTML);
   const board = await page.evaluate(() => { const b = document.createElement("div"); b.innerHTML = helperPane("lead", helpersOf("lead").find((h) => h.id === "id-search")).body; return b.querySelector(".ag-chat").outerHTML; });

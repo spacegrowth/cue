@@ -205,14 +205,14 @@ function peerBubble(from, how, at, body, quote) {
 // Read from the session's transcript by Cue on demand (only for the session open here), never saved.
 // Settings → Steps: each turn folded or open (every step one line; click one for its output or diff), or hidden.
 const stepFeeds = new Map();   // sid -> { version, turns, at }
-const stepFlip = new Set();    // "sid|id": steps you opened (every step is one line until you click it)
+const stepFlip = new Set();    // "sid|id": steps you opened (or, where Show all opened every step, closed)
 const turnFold = new Map();    // "sid|turn" -> open? (your choice over the default)
-const runOpen = new Set();     // "sid|first step id": a run of steps opened from its count (the rest of its turn stays folded)
+const turnAll = new Set();     // "sid|turn": turns where "Show all" opened every step
 const hookOpen = new Set();    // "sid|turn": its "After a stop hook" part, opened
 /** A turn a Stop hook sent back to work (steps/model.rs `hooked_ms`): what it did and wrote from then on is the
  *  hook's follow-up, not its answer. */
 const hookedPart = (turn, x) => !!turn.hooked_ms && x.at_ms >= turn.hooked_ms;
-const runFull = new Map();     // "sid|id" -> a running command in full (step_detail's `full`), for its row at a folded turn's foot
+const runFull = new Map();     // "sid|id" -> a running command in full (step_detail's `full`), for its row while it runs
 const stepDetail = new Map();  // "sid|id" -> { full, output | diff } | "loading"
 // Words and steps that come in while you watch appear smoothly, once: patchChat gives a new line the
 // `reveal` class as it goes in (a full draw gives nothing that class). This is the longest a new
@@ -256,10 +256,11 @@ async function wantDetails(sid) {
   const ids = [];
   const lastTurn = f.turns.at(-1);
   for (const t of f.turns) {
-    // Only the steps you opened (an open turn lists every step on one line; each opens on its own).
+    // The steps you opened; with Show all (or Settings → Steps "Everything"), every step but those you closed.
+    const all = turnAllOpen(`${sid}|${t.at_ms}`);
     for (const x of t.items) {
       const k = `${sid}|${x.id}`;
-      if (x.t === "step" && x.done && stepFlip.has(k) && !stepDetail.has(k)) ids.push(x.id);
+      if (x.t === "step" && x.done && all !== stepFlip.has(k) && !stepDetail.has(k)) ids.push(x.id);
     }
   }
   // The newest step (a Stop hook's part too, as the turn's foot shows it): running, its command in full for its row
@@ -309,9 +310,9 @@ function stepFull(sid, x) {
   const k = `${sid}|${x.id}`, d = stepDetail.get(k);
   return (d && d !== "loading" && d.full) || runFull.get(k) || "";
 }
-/** How a step went ("exit 1", "+3 −1"); running, a live dot and how long it has run (38s). */
+/** How a step went ("exit 1", "+3 −1"); running, a live dot; cut off under it (`stopped`), nothing. */
 function stepResult(x) {
-  if (!x.done) return `<span class="dot-live"></span>${x.at_ms ? `<span data-ago="${x.at_ms}">${ago(x.at_ms)}</span>` : ""}`;
+  if (!x.done) return x.stopped ? "" : `<span class="dot-live"></span>`;
   const m = /^\+(\d+) −(\d+)$/.exec(x.result);
   if (m) return `<span class="add">+${m[1]}</span> <span class="del">−${m[2]}</span>`;
   return esc(x.result);
@@ -338,10 +339,11 @@ function stepDetailHtml(k, x) {
 const keyed = (html, k) => html.replace(/^<([a-z]+)/i, `<$1 data-key="${esc(String(k))}"`);
 /** Keys for one chat: a second row with the same key gets a suffix, so no two rows share one. */
 const keyer = () => { const seen = new Map(); return (k) => { const n = (seen.get(k) || 0) + 1; seen.set(k, n); return n > 1 ? `${k}#${n}` : k; }; };
-/** One step: one line cut with "…" until you click it; then whole, with its output or diff. `plain`: never opens. */
-function stepLine(sid, x, plain = false) {
+/** One step: one line cut with "…" until you click it; then whole, with its output or diff. `plain`: never opens.
+ *  `all`: its turn's Show all is on, so it's open unless you closed it. */
+function stepLine(sid, x, plain = false, all = false) {
   const k = `${sid}|${x.id}`;
-  const open = !plain && x.done && stepFlip.has(k), full = stepFull(sid, x);
+  const open = !plain && x.done && all !== stepFlip.has(k), full = stepFull(sid, x);
   return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""} ${x.done ? "" : "run"}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
     <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject || full ? ` <span class="${x.mono ? "mono" : ""}">${esc(full || x.subject)}</span>` : ""}</span>
     <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;

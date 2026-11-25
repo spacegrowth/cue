@@ -258,8 +258,8 @@ document.addEventListener("keydown", (e) => {
   cueInstallWhy = false;
   renderMain();
 }, true);
-/** The runs of an agent's steps opened from their fold line (agentChatHtml), each "sid|agent|its first step". */
-const agentRunOpen = new Set();
+/** The runs of an agent's steps you folded from their line (agentChatHtml; every run is open, each step its own row, #897), each "sid|agent|its first step". */
+const agentRunShut = new Set();
 /** The leads' briefs opened in full (agentChatHtml), each "sid|agent". */
 const agentBriefOpen = new Set();
 /** A brief's first sentence, as one plain line: where it starts, what it's asked to do (a first sentence of a word or
@@ -375,12 +375,12 @@ function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key
     const theirs = r.say && notOwn(r.say);
     if (theirs) { out.push(theirs); return; }
     if (r.say) { const id = r.say.id || `s:${r.say.at_ms}`; out.push(`<div class="stx-say msg" data-key="${esc(id)}">${md(r.say.text)}${fwd(id, r.say.text)}</div>`); return; }
-    const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = agentRunOpen.has(k);
+    const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = !agentRunShut.has(k);
     const live = running && n === runs.length - 1;
     const count = `${list.length}${!n && h?.more ? "+" : ""} step${list.length === 1 ? "" : "s"}`, sum = r.steps ? turnSummary(r.steps) : "";
     const head = `<div class="stx-head"><button class="stx-fold" data-agent-run="${esc(k)}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : ""}<b>${live ? `Working · ${count}` : count}</b>${sum ? `<span class="stx-sum"> · ${esc(sum)}</span>` : ""}<span class="stx-tri">${open ? "▾" : "▸"}</span></button></div>`;
     const line = (x) => (r.steps ? stepLine(sid, x, true) : `<div class="stx-line ${x.ask ? "bad" : ""}"><span class="stx-what">${x.html}</span></div>`);
-    // Folded, the run it's on now still says what it's doing: its newest step under the fold.
+    // Folded by you, the run it's on now still says what it's doing: its newest step under the fold.
     const body = open ? list.map(line).join("") : live ? line(list.at(-1)) : "";
     out.push(`<div class="stx" data-key="run:${esc(first)}">${head}${body ? `<div class="stx-steps">${body}</div>` : ""}</div>`);
   });

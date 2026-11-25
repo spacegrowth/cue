@@ -108,8 +108,8 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-fold:hover { color: var(--ink); }
 .stx-tri { width: 10px; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); }
 .stx-sum { white-space: normal; }
-.stx-cnt { display: inline; margin-left: 4px; padding: 0; user-select: none; -webkit-user-select: none; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); white-space: nowrap; }
-.stx-cnt:hover { color: var(--ink); }   /* darker under the pointer, never underlined (#604) */
+.stx-all { margin-left: auto; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); padding: 3px 8px; border-radius: var(--radius-qp); }
+.stx-all:hover { color: var(--ink); background: var(--panel-2); }
 .stx-more { font-size: var(--type-small); line-height: var(--type-small-lh); padding-left: 4px; }
 .stx-say { font: var(--mg-body); }   /* the agent's words between its steps: a chat's size (#703) */
 .stx-steps { display: flex; flex-direction: column; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 8px; }
@@ -126,13 +126,6 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-line.open .stx-what { white-space: normal; overflow-wrap: anywhere; }
 .stx-line.open .stx-what .mono { white-space: pre-wrap; }
 .stx-res { flex: none; max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 1px; font-size: var(--type-label); line-height: var(--type-label-lh); color: var(--muted); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-/* A step running now: a live dot and how long it has run, in ink (#866). */
-.stx-line.run .stx-res { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 500; }
-/* A folded turn's newest step at its foot: a step line that isn't a button (its count is). */
-.stx-last { cursor: default; }
-.stx-last .stx-what { display: flex; align-items: baseline; }
-.stx-last .stx-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.stx-last .stx-what > .stx-cnt { flex: none; }
 .stx-line.bad .stx-res { color: var(--deny); font-weight: 600; }
 .stx-res .add { color: var(--add-fg); font-weight: 600; } .stx-res .del { color: var(--del-fg); font-weight: 600; }
 .stx-chev { width: 10px; flex: none; color: var(--muted); font-size: var(--type-label); line-height: var(--type-label-lh); text-align: center; }
