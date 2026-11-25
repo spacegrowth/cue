@@ -25,6 +25,10 @@ pub enum Line {
     /// What comes after option `option` ("any": whichever) of item `id` is picked (#543), as its holder says:
     /// `IF PICKED: #<id> | <option> | <kind> | <title> | you'll see: … | done when: … | by: <me | new | name>`.
     IfPicked { id: String, next: crate::desk::model::FollowUp },
+    /// The user picked option `option` of item `id` in words, in its holder's chat (#864), as its holder reports it:
+    /// `PICKED: #<id> | <option> | add: <anything more they asked for>` (`add` may be left out). Cue does what the
+    /// option's Pick does; `extras` go with what follows.
+    Picked { id: String, option: String, extras: String },
     /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
     Designs { id: String, url: String },
     /// Item `id`'s two lines, from the lead (#382): what you'll see when it's done, in plain words, and (when said)
@@ -217,6 +221,7 @@ fn one(t: &str) -> Option<Line> {
         "CONTEXT" => context(body),
         "DESIGNS" => designs(body),
         "IF PICKED" => if_picked(body),
+        "PICKED" => picked(body),
         "TITLE" => title(body),
         "SEE" => see(body),
         "SPLIT" => split(body),
@@ -478,6 +483,21 @@ fn if_picked(body: &str) -> Option<Line> {
     let Some(Line::Item { kind, title, see, done_when, .. }) = item(&rest.join(" | ")) else { return None };
     let by = if by.is_empty() { "me".to_string() } else { by };
     Some(Line::IfPicked { id: id_of(head)?, next: crate::desk::model::FollowUp { option, kind, title, see, done_when, by } })
+}
+
+/// "#12 | B | add: a search box" (#864): option B of item 12, picked in words, with what more was asked for. The
+/// option as a Pick reads it (letter_of); anything after it, its "add:" (or "with:", "extras:") label left off, the
+/// extras. None without an option.
+fn picked(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let (head, option) = (p.first()?, p.get(1)?);
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let option = crate::desk::hub::turn::act::letter_of(option.trim().trim_start_matches("option ").trim_start_matches("Option "))?;
+    let extras = p[2..].join(" | ");
+    let extras = ["add", "with", "extras"].iter().find_map(|l| labelled(&extras, l).filter(|_| extras[l.len()..].trim_start().starts_with(':'))).unwrap_or(&extras);
+    Some(Line::Picked { id: id_of(head)?, option, extras: extras.trim().to_string() })
 }
 
 /// `part` without its "you'll see:" label (or "you will see:", "see:"; a curly quote too), with its colon, so a
