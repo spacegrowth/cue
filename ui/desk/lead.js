@@ -778,6 +778,14 @@ function deskNewCard([, id, said = "", rest], known) {
 }
 
 // ---------- the Desk's hand-off, as a card in the chat of the session it went to (#174) ----------
+/** The hand-off of an item built from your pick (desk/mod.rs handed_words: "You picked option A on #904.", #917): the
+ *  one line its chat opens with, "From your pick of A on #904", the number opening that item; its hand-off card goes
+ *  to Activity as any other. "" for any other message. */
+function deskFromPickChat(e, sid) {
+  const m = /(?:^|\n)You picked option (\S+) on #([\w.-]+?)[.:]?(?:\s|$)/.exec(String(e?.text || ""));
+  if (!m || !deskHandHtml(e)) return "";
+  return `<div class="dk-quiet dk-picked">${cueMark()}<b class="mg-who">Cue</b><span class="dk-quiet-w">From your pick of ${esc(m[1])} on ${cueItemLink(m[2], sid)}</span></div>`;
+}
 /** The Desk's hand-off (desk/mod.rs handed_words: "Desk item #171 (task): title", then "You'll see:", "Done when:", "Pictures with
  *  it", "Why you:", then Cue's standing words to the session, not shown) as a card on the right: "From <the Desk's
  *  lead> · Task #171" (its number opening the item), its title, You'll see as short lines (not its Done when: the

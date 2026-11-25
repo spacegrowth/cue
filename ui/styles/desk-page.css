@@ -22,6 +22,8 @@
 .dk-quiet { display: flex; align-items: center; gap: 5px; margin: 0 0 4px; min-width: 0; color: var(--muted); font: var(--mg-meta); }
 .dk-quiet .mg-who { color: var(--muted); font-weight: 500; }
 .dk-quiet-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-pk-a { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.dk-pk-a:hover { text-decoration: underline; }
 .dk-ans { margin: 6px 0 0 14px; font: var(--mg-body); color: var(--ink); }
 .dk-ans > .mg-who { display: block; font: var(--mg-meta); color: var(--muted); }
 .dk-cue .mg-line { align-items: center; color: var(--muted); font: var(--mg-meta); }

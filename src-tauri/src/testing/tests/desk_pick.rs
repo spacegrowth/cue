@@ -365,6 +365,11 @@ fn a_build_item_the_lead_files_for_your_pick_links_both_ways() {
     assert_eq!(b["done_when"], "it's in the app", "the from: and picked: parts aren't its title or check: {b}");
     let mk = item(&desk(&w, &project), "Mocks: working items").clone();
     assert_eq!((mk["picked"].as_str(), mk["built_as"].as_str()), (Some("B"), Some(n.as_str())), "{mk}");
+    // #917: its brief says where it came from, though the lead gave no why, so its chat opens with that line.
+    w.advance(1000);
+    ends(&w, &l, &format!("ROUTE: #{n} -> {h}"));
+    let brief = sent_to(&w, &h).into_iter().find(|t| t.starts_with(&format!("Desk item #{n} "))).expect("its brief");
+    assert!(brief.contains(&format!("\nYou picked option B on #{m}.\n")), "{brief}");
 
     // A follow-on that isn't a pick: linked, no option. One naming an item that isn't there is refused, in words.
     w.advance(1000);

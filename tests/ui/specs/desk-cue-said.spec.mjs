@@ -97,7 +97,9 @@ const IN_LEAD = TO_LEAD.filter(([t]) => !/^(Cue couldn't start|Your ASK)/.test(t
 // Your own send-back (no log: you sent it, not Cue's landing check) is your bubble with the item's head, as the board
 // draws it (#688), not one of Cue's lines.
 const YOURS = TO_SESSION[0][0];
-const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) ") && t !== YOURS);
+/** Your pick, told to the item's holder, stays in its chat as one line (#917): not one of Activity's cards. */
+const PICK_LINE = (t) => / was picked, so it's done\./.test(t);
+const IN_CHAT = TO_SESSION.filter(([t]) => !t.startsWith("(Cue) ") && t !== YOURS && !PICK_LINE(t));
 
 /** Cue's messages to the host session and to the lead, as each test starts. */
 async function cueSaidSetup(page, cue, scheme) {
@@ -127,6 +129,8 @@ for (const scheme of ["light", "dark"]) {
     // Cue's messages to a session aren't in its chat (#789): they're cards in Activity, newest first, each saying who
     // it went to.
     await expect(chat.locator(".dk-cnt, .mg.cue-msg")).toHaveCount(0);
+    // Your pick is: one line, the item that builds it a link (#917).
+    await expect(chat.locator(".dk-picked")).toHaveText("CueYou picked B — #d9 builds it");
     if (process.env.SHOT_DIR) await chat.screenshot({ path: `${process.env.SHOT_DIR}/desk-cue-said-session-${scheme}.png` });
     // All of them at once (the tab shows 30 till you scroll).
     await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
@@ -143,7 +147,7 @@ for (const scheme of ["light", "dark"]) {
     // Each has the one line every message has (#422): delivered, to whom.
     await expect(lines.locator(".msg-line.ml-delivered")).toHaveCount(IN_CHAT.length);
     await expect(first.locator(".cue-more")).toHaveText("· its log");
-    await expect(lines.nth(IN_CHAT.length - 1 - 13).locator(".cue-more")).toHaveText("· 1 more item");
+    await expect(lines.nth(IN_CHAT.length - 1 - IN_CHAT.findIndex(([t]) => t.startsWith("Done? Write"))).locator(".cue-more")).toHaveText("· 1 more item");
     // Folded: the standing words aren't in the line; a click opens Cue's full text under it, again closes it.
     await expect(first).not.toContainText("Its fixes stay");
     await expect(first.locator(".mg-full")).toHaveCount(0);

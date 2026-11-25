@@ -425,6 +425,12 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
     if !it.images.is_empty() {
         out.push_str(&format!("\nPictures with it (open each to see it): {}", pictures(it)));
     }
+    // Built from your pick (#917): where it came from, always, so its chat opens with it (ui/desk/lead.js
+    // deskFromPickChat), even when the lead filed it with its own why.
+    let picked_line = !it.builds.is_empty() && !it.from_pick.is_empty() && !it.why.trim().starts_with("You picked option ");
+    if picked_line {
+        out.push_str(&format!("\nYou picked option {} on #{}.", it.from_pick, it.builds));
+    }
     if !it.builds.is_empty() && !it.why.trim().is_empty() {
         out.push_str(&format!("\n{}", it.why.trim()));
     }

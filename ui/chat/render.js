@@ -250,7 +250,14 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   if (own) return dk(own);
   // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk/lead.js).
   const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
+  // Built from your pick (#917): its chat opens with where it came from, and the card itself goes to Activity
+  // (desk/runs.js dkLinesOf takes it out of the row's template).
+  const from = hand && (page?.lines || page?.dkOut) && typeof deskFromPickChat === "function" && deskFromPickChat(e, sid);
+  if (from) return `${dkMark(from, "picked")}<template class="dk-taken">${dk(hand, "route")}</template>`;
   if (hand) return dk(hand, "route");
+  // Your pick, as Cue told the item's holder (#917): one line that stays in its chat, the item that builds it a link.
+  const pick = e.role === "you" && typeof cuePickedChat === "function" && cuePickedChat(e, sid);
+  if (pick) return dk(pick, "picked");
   const cue = e.role === "you" && cueSaid(e.text);
   if (cue) return dk(cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n)));
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text

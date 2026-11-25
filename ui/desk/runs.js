@@ -160,7 +160,9 @@ function dkLinesOf(s, e, n, page, answer = null) {
   if (e.role === "you") {
     // Marked Cue's (#837, chat/who.js): Cue's whatever its words say; unmarked, a send-back of yours stays yours.
     const h = !(typeof deskToldBand === "function" && deskToldBand(sid, e)) && (chatFrom(e) === "cue" || !youBack(e)) && chatCueRow(page, s, sid, e, n, new Map());
-    if (!h || !dkRow(h)) return [];
+    // A row that stays in the chat with the Desk's part of it riding along (#917, a pick's hand-off): that part.
+    if (h && !dkRow(h)) return [...h.matchAll(DK_TAKEN)].map((m) => withAnswer(m[1]));
+    if (!h) return [];
     // The lead's answer to it, when that answer left the chat (#816): under it, in the same row.
     return [withAnswer(h)];
   }

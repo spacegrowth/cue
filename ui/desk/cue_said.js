@@ -28,7 +28,7 @@ const CUE_MSGS = [
   [cueRe(String.raw`^Desk item #ID: the Desk lead took back its copy`), (m) => ({ verb: "Told", id: m[1], what: "copy taken back: stop work on it", next: "{who} stops until it's routed to it again" }), "Taken back"],
   [cueRe(String.raw`^Desk item #ID is closed: its work is already on (\S+)`), (m) => ({ verb: "Told", id: m[1], what: `closed: already on ${m[2]}`, next: `Nothing more: its work is already on ${m[2]}` }), "Closed"],
   [cueRe(String.raw`^Desk item #ID was dropped: stop work on it`), (m) => ({ verb: "Told", id: m[1], what: "dropped: stop work on it", next: "{who} stops work on it" }), "Dropped"],
-  [cueRe(String.raw`^Desk item #ID \((.*)\): option (\S+) was picked, so it's done\. (?:#([\w.-]+) builds it|(Nothing follows it)|((?:#[\w.-]+, )+#[\w.-]+) follow it)`), (m) => ({ verb: "Told", id: m[1], what: `You picked ${m[3]}; ${m[4] ? `#${m[4]} builds it` : m[5] ? "nothing follows it" : `${m[6]} follow it`}`, next: m[4] ? `#${m[4]} builds option ${m[3]}` : m[5] ? "Nothing more: it's done" : `${m[6]} follow option ${m[3]}` }), "Picked"],
+  [cueRe(String.raw`^Desk item #ID \((.*)\): option (\S+) was picked, so it's done\. (?:#([\w.-]+) builds it|(Nothing follows it)|((?:#[\w.-]+, )+#[\w.-]+) follow it)`), (m) => ({ verb: "Told", id: m[1], opt: m[3], builds: m[4] ? [m[4]] : m[6] ? m[6].split(", ").map((x) => x.slice(1)) : [], what: `You picked ${m[3]}; ${m[4] ? `#${m[4]} builds it` : m[5] ? "nothing follows it" : `${m[6]} follow it`}`, next: m[4] ? `#${m[4]} builds option ${m[3]}` : m[5] ? "Nothing more: it's done" : `${m[6]} follow option ${m[3]}` }), "Picked"],
   [cueRe(String.raw`^Desk item #ID was folded into #([\w.-]+), which you have\. It said: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `folded into #${m[2]}: ${cueQ(m[3])}`, said: m[3], label: "It asked", next: `{who} does it as part of #${m[2]}` }), "Folded"],
   [cueRe(String.raw`^Done\? Write DONE: #ID, or say what's left`), (m, t) => cueLines(t).every((l) => /^Done\? Write DONE: #/.test(l)) && { verb: "Asked", id: m[1], what: "done? or what's left", more: cueMore(cueLines(t).length - 1, "more item"), next: "{who} says it's done, or what's left" }, "Done?"],
   [/^The Desk is paused\. Stop at the next safe point/, () => ({ verb: "Asked", what: "the Desk is paused: stop at a safe point", next: "{who} stops at a safe point until the Desk is resumed" }), "Paused"],
@@ -211,6 +211,23 @@ function cueMsgOf(text) {
     if (r) return { mate, tag, ...r };
   }
   return null;
+}
+
+/** Item `id`'s number as a button that opens it on its Desk, from any chat (desk/lead.js data-desk-hand). `sid`: the
+ *  session whose chat it's in, whose Desk it is when the item isn't among the Desks' open ones. */
+function cueItemLink(id, sid = "") {
+  const d = (state.desk?.projects || []).find((x) => (x.items || []).some((i) => deskIdIs(i, id))) || (typeof deskForSession === "function" ? deskForSession(sid) : null);
+  return d ? `<button class="dk-pk-a" data-desk-hand="${esc(d.project)}" data-id="${esc(id)}">#${esc(id)}</button>` : `#${esc(id)}`;
+}
+/** Your pick on an item of options, as Cue told its holder (desk/hub/turn/pick.rs tell_holder), drawn as the one line
+ *  its chat keeps before the item closes (#917): "You picked A — #913 builds it", each number opening its item. null
+ *  for any other message. */
+function cuePickedChat(e, sid) {
+  const c = cueMsgOf(e?.text);
+  if (c?.tag !== "Picked") return null;
+  const a = (c.builds || []).map((x) => cueItemLink(x, sid));
+  const next = !a.length ? "nothing follows it" : a.length === 1 ? `${a[0]} builds it` : `${a.join(", ")} follow it`;
+  return `<div class="dk-quiet dk-picked">${cueMark()}<b class="mg-who">Cue</b><span class="dk-quiet-w">You picked ${esc(c.opt)} — ${next}</span></div>`;
 }
 
 /** That line in plain words, for a one-line place (a session's card, "Working on: …"): "Asked cue-383 · #461
