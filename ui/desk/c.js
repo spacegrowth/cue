@@ -563,7 +563,16 @@ function deskCItemBar(i, bare = false) {
 const deskCHowFold = new Map();
 /** Items you wrote to while they were to check (#883): their How to check stays (folded) though their session works
  *  on your words, till Looks right or Send back. */
-const deskCHowKeep = new Set();
+const deskCHowKeep = (() => {
+  // Kept across reloads and restarts (an install restarts Cue), so the bar never goes while the item is still to check.
+  let ids = [];
+  try { ids = JSON.parse(localStorage.getItem("cue.deskHowKeep") || "[]"); } catch { /* none kept */ }
+  const set = new Set(ids), save = () => { try { localStorage.setItem("cue.deskHowKeep", JSON.stringify([...set])); } catch { /* this window only */ } };
+  const add = set.add.bind(set), del = set.delete.bind(set);
+  set.add = (id) => { const had = set.has(id); add(id); if (!had) save(); return set; };
+  set.delete = (id) => { const had = del(id); if (had) save(); return had; };
+  return set;
+})();
 const deskCHowFolded = (id) => deskCHowFold.get(id) ?? (typeof matchMedia !== "undefined" && matchMedia("(max-height: 680px)").matches);
 /** What to try on an item ready to check, or its options to pick, in a bar at the foot of its chat over the box (#865,
  *  #851's D3): it stays there as the chat goes on until you answer. How to check: Where, Do (its steps) and Expect as
