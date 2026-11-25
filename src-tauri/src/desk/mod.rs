@@ -267,6 +267,9 @@ DESIGNS: #<id> <canvas link>      (where an item's designs are; say it again whe
 IF PICKED: #<id> | <option or any> | <bug|feature|task> | <title> | you'll see: … | done when: … | by: <me, new or a \
 session's name>      (what follows an option of an item that asks the user to pick; their pick closes it, and Cue files \
 and routes these itself, me being its holder. Its holder usually says them)
+PICKED: #<id> | <option> | add: <anything more they asked for>      (the user picked an option of an item in words, \
+in your chat: Cue does what that option's Pick does, filing and routing what its IF PICKED: lines name, add going with \
+it. Its holder says it when they answer there. Not sure which they mean: ask them)
 CONTEXT: <session or me> -> keep | why: <reason>      (Cue leaves that session's context as it is while it waits now, or, if it's at work, while it waits after this turn)
 LANDS: <part> -> <choice> | why: <reason>      (only when the user asks to change how work lands here; part is where, how, \
 check, after, push or at once; your <desk> block shows it now. A check or after landing of their own: LANDS: check -> command | \
@@ -395,6 +398,20 @@ Run the full suite once, just before your DONE: your work lands from there.",
     }
 }
 
+/// How a holder asks you to pick, and reports a pick you type in its chat (#864), in item `id`'s brief.
+fn pick_words(id: &str) -> String {
+    format!(
+        "\nWhen you ask the owner to pick between options, say what follows each, a line apiece: IF PICKED: #{} | <option, \
+         or any> | <bug|feature|task> | <title> | you'll see: <…> | done when: <…> | by: <me, new, or a session's name>. \
+         A pick closes #{0}, and Cue files and routes what follows it. \
+         When the owner answers in their own words instead (\"B might be best\", \"go with C\", \"C, but add search\"), that's \
+         their pick: say PICKED: #{0} | <option> | add: <anything more they asked for, or leave this part out> on a line of \
+         its own, and Cue does what that option's Pick button does. If you can't tell which option they mean (\"B or C?\"), \
+         ask them; never guess.",
+        id
+    )
+}
+
 /// What the session holding `it` is told when it's handed the item. `rule`: its Desk's Ask me before line
 /// (one_way::ask_first; "" when nothing's set), so every session that works on the Desk has it.
 pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
@@ -426,12 +443,7 @@ pub fn handed_words(it: &DeskItem, why: &str, rule: &str) -> String {
          one once, not again in later replies.",
     );
     out.push_str(&format!("\nIf you put its designs on a canvas, or move them, say DESIGNS: #{} <canvas link> on a line of its own.", it.id));
-    out.push_str(&format!(
-        "\nWhen you ask the owner to pick between options, say what follows each, a line apiece: IF PICKED: #{} | <option, \
-         or any> | <bug|feature|task> | <title> | you'll see: <…> | done when: <…> | by: <me, new, or a session's name>. \
-         A pick closes #{0}, and Cue files and routes what follows it.",
-        it.id
-    ));
+    out.push_str(&pick_words(&it.id));
     // Its Desk's Tests setting (#780): config is held in memory, so this never reads a file under the store's lock.
     let tests = it.tree.as_ref().map_or_else(|| crate::desk::lands::tests_of(&it.project, "", false), |t| crate::desk::lands::tests_of(&it.project, &t.repo, t.card_tests));
     out.push_str(&format!("\n{}", tests_rule(tests)));

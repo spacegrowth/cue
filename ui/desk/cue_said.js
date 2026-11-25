@@ -159,7 +159,7 @@ function cueSentBack(t) {
 }
 /** Cue's standing words to the session (how to say DONE and CHECK, don't add items, don't change files…): never shown
  *  to you when a message is opened (#625); the session still gets them. A sentence that matches one is dropped. */
-const CUE_RULES = /\b(?:DONE: #|CHECK: #|NOT DONE: #|ITEM: |IF PICKED: |DECIDED|ANSWER: #|PASS: #|TO LEAD: <)|on a line of its own|don't add new items|Its fixes stay in|Fixes and next steps|Don't change any files|Nothing to do unless|No reply needed|This replaces any earlier|Answer or close any ASK|^Then stop\.?$/;
+const CUE_RULES = /\b(?:DONE: #|CHECK: #|NOT DONE: #|ITEM: |IF PICKED: |PICKED: #|DECIDED|ANSWER: #|PASS: #|TO LEAD: <)|on a line of its own|don't add new items|Its fixes stay in|Fixes and next steps|Don't change any files|Nothing to do unless|No reply needed|This replaces any earlier|Answer or close any ASK|^Then stop\.?$/;
 /** Text `t` without CUE_RULES' sentences, empty lines folded. */
 const cueNoRules = (t) => String(t).split("\n").map((l) => l.split(/(?<=[.!?]) (?=[A-Z(])/).filter((x) => !CUE_RULES.test(x.trim())).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 /** What Cue's message `c` (cueMsgOf) shows once opened (#625): only what matters to you, in up to three rows: whose

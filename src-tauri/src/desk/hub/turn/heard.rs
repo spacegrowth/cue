@@ -70,6 +70,33 @@ pub(crate) fn next_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects)
     }
 }
 
+/// Session `sid` reported your pick, made in words in its chat (PICKED: lines, #864): each item it holds (or leads the
+/// Desk of) is picked as that option's Pick would, what you asked for besides going with what follows. Read after
+/// this turn's IF PICKED: lines, so those count. One it can't pick (picked already, dropped) comes back to it saying why.
+pub(crate) fn picked_said(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
+    let lead = st.desk.lead_of(sid);
+    let mut back = Vec::new();
+    for line in parse::lines(text) {
+        let Line::Picked { id, option, extras } = line else { continue };
+        let id = st.desk.canon(&id);
+        let Some(it) = st.desk.item(&id) else {
+            back.push(format!("PICKED: not done: #{id} isn't an item on any Desk."));
+            continue;
+        };
+        let mine = it.holder.as_ref().is_some_and(|h| h.is(sid)) || lead.as_ref() == Some(&it.project);
+        if !mine {
+            back.push(format!("PICKED: not done: #{id} isn't yours. Only its holder or its Desk lead reports a pick on it."));
+            continue;
+        }
+        if let Err(why) = crate::desk::hub::turn::pick::pick_into(st, &id, &option, &extras, now, fx) {
+            back.push(format!("PICKED: not done on #{id}: {why}."));
+        }
+    }
+    if !back.is_empty() {
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), back.join("\n")), crate::sessions::Kind::Answer));
+    }
+}
+
 /// Session `sid` said where items' designs are (DESIGNS: #id <link>): each item of its project gets that link, a newer
 /// one replacing the last (designs moved).
 pub(crate) fn designs_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
@@ -322,5 +349,5 @@ pub(crate) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "NOT DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "COPY FIRST" | "START" | "PARK" | "HOLD" | "UNHOLD" | "TELL DESK" | "TELL DESKS" | "DISAGREE" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY" | "LOOP" | "MOVE" | "SHOW" | "INSTALL") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "NOT DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "COPY FIRST" | "START" | "PARK" | "HOLD" | "UNHOLD" | "TELL DESK" | "TELL DESKS" | "DISAGREE" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY" | "LOOP" | "MOVE" | "SHOW" | "INSTALL") || word.eq_ignore_ascii_case("DECIDED")
 }

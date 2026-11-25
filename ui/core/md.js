@@ -222,8 +222,8 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
 /** A line a session writes for Cue to act on, as desk/parse.rs reads it (a list mark or bold around its word): DONE,
  *  CHECK, IF PICKED, DESIGNS, TO LEAD… Cue reads these, so no chat shows them as written (#833). Its { word, body },
  *  null for any other line, or one Cue wouldn't act on (an empty or "<…>" body, no item number where one goes). */
-const CUE_LINE = /^[-*+ ]*(?:\d+[.)]\s+)?\**(DONE|NOT DONE|CHECK|IF PICKED|DESIGNS|SEE|ANSWER|PASS|ITEM|TO LEAD|USER VERIFY|DECIDED \(minor\))\**\s*:(.*)$/;
-const CUE_NUMBERED = new Set(["DONE", "NOT DONE", "CHECK", "IF PICKED", "DESIGNS", "SEE", "ANSWER", "PASS"]);
+const CUE_LINE = /^[-*+ ]*(?:\d+[.)]\s+)?\**(DONE|NOT DONE|CHECK|IF PICKED|PICKED|DESIGNS|SEE|ANSWER|PASS|ITEM|TO LEAD|USER VERIFY|DECIDED \(minor\))\**\s*:(.*)$/;
+const CUE_NUMBERED = new Set(["DONE", "NOT DONE", "CHECK", "IF PICKED", "PICKED", "DESIGNS", "SEE", "ANSWER", "PASS"]);
 function cueLineOf(line) {
   const m = CUE_LINE.exec(String(line || "").trim());
   if (!m) return null;
@@ -243,7 +243,7 @@ const cueMocksBtn = (url) => `<a class="mg-btn cue-mocks" href="#" data-href="${
  *  left out: Cue shows it where it acts (CHECK on its item's check card). null when `text` has none. */
 function cueLineHook(text) {
   const t = String(text ?? "");
-  if (!/\b(?:DONE|CHECK|IF PICKED|DESIGNS|SEE|ANSWER|PASS|ITEM|TO LEAD|USER VERIFY|DECIDED \(minor\))\**\s*:/.test(t)) return null;
+  if (!/\b(?:DONE|CHECK|IF PICKED|PICKED|DESIGNS|SEE|ANSWER|PASS|ITEM|TO LEAD|USER VERIFY|DECIDED \(minor\))\**\s*:/.test(t)) return null;
   const all = t.split(/```/).filter((_, i) => i % 2 === 0).join("\n").split("\n").map(cueLineOf).filter(Boolean);
   if (!all.length) return null;
   const picks = all.filter((c) => c.word === "IF PICKED");

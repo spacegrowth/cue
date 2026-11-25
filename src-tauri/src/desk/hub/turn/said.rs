@@ -244,7 +244,7 @@ fn turn_said(st: &mut Store, sid: &str, text: &str, turn: &[crate::model::TurnPa
         crate::desk::hub::stall::stall::stalls_asked(st, sid, text, &on, now, &mut fx);
         return fx;
     }
-    any_session_said(st, sid, text, &mut fx);
+    any_session_said(st, sid, text, now, &mut fx);
     let lead = st.desk.lead_of(sid);
     match &lead {
         Some(project) => lead_said(st, project, sid, text, (&repos, &loops, model_names.as_deref(), &routed), &changes, now, &mut fx),
@@ -733,10 +733,11 @@ fn keep(st: &mut Store, project: &str, by: &By, who: &str, why: &str, now: u64, 
     st.desk.run.keep.insert(sid, (now, id, working));
 }
 
-/// The lines any session's turn may say, lead or not: DESIGNS:, IF PICKED: (#543) and TO LEAD:.
-fn any_session_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects) {
+/// The lines any session's turn may say, lead or not: DESIGNS:, IF PICKED: (#543), PICKED: (#864) and TO LEAD:.
+fn any_session_said(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
     designs_said(st, sid, text, fx);
     crate::desk::hub::turn::heard::next_said(st, sid, text, fx);
+    crate::desk::hub::turn::heard::picked_said(st, sid, text, now, fx);
     crate::desk::hub::turn::heard::to_lead_said(st, sid, text, fx);
 }
 
