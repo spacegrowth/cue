@@ -364,12 +364,10 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-fill { display: block; height: 100%; background: var(--accent); border-radius: var(--radius-pill); }
 .ls-then { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
 
-/* Send to… (.mg-btn): shown on hover, always on the latest; last in the row, at its right end. */
-.cv-fwd { opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
-.cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
-/* A crew member's chat (#854): Send to… under each of its messages on hover, always under its answer. */
+/* Send to… (render.js fwdBtn): a pill like Listen and Read (messages.css .fwd-pill), always shown, at the right end of
+   their row, as on the Board's chat. A crew member's chat (#854): under each of its messages and its answer. */
+.cv-acts .cv-fwd { flex: none; margin-left: auto; }
 .ag-acts { font: var(--mg-meta); font-weight: 600; }
-.stx-say:hover .cv-fwd, .bg-view-reply .cv-fwd { opacity: 1; }
 /* A message from another session (.mg with its chip, thread.js peerBubble): a forward's original under it, as text. */
 /* Its first six lines, cut at whole lines (#609). The bottom padding is a border in the card's colour: a clamped box
    clips at its padding's edge, so padding there would show the top of the next line. */
