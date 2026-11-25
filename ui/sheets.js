@@ -632,8 +632,8 @@ function settingsSheet() {
     ${extRows()}
     <div class="set-group">Sessions</div>
     ${newSessionRows(st)}
-    <div class="set-group">Pi</div>
-    ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
+    ${c.pi?.present === false ? "" : `<div class="set-group">Pi</div>
+    ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}`}
     <div class="set-group">Agents driving agents</div>
     ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no item or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}`,
     chat: setChatPane(st, keep),

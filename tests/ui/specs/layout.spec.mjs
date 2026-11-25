@@ -148,3 +148,16 @@ test("a card leaving Sessions above where you'd scrolled leaves no card cut off 
   });
   expect(after).toEqual({ top: before.top, cut: false });
 });
+
+test("Settings → Agents: Pi's Ask me before shows only when Pi is on this Mac", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await page.keyboard.press(",");
+  await page.locator('[data-act="set-tab"][data-tab="agents"]').click();
+  const piGroup = page.locator(".sheet .set-group", { hasText: /^Pi$/ });
+  await page.evaluate(() => { state.connections.pi = { ok: true, present: true }; renderMain(); });
+  await expect(piGroup).toHaveCount(1);
+  await expect(page.locator('.sheet [data-set="pi.gate"]')).toHaveCount(3);
+  await page.evaluate(() => { state.connections.pi = { ok: false, present: false }; renderMain(); });
+  await expect(piGroup).toHaveCount(0);
+  await expect(page.locator('.sheet [data-set="pi.gate"]')).toHaveCount(0);
+});
