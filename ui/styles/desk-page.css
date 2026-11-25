@@ -387,6 +387,17 @@ button.dk-kept-f:hover, button.dk-kept-f:focus-visible { background: color-mix(i
 .dk-knob::after, .dk-tg::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--white); transition: left .15s; }
 .dk-aw-sw.on .dk-knob, .dk-tg.on { background: var(--accent); }
 .dk-aw-sw.on .dk-knob::after, .dk-tg.on::after { left: 12px; }
+/* Dark (#933): the selected fill is the accent there, so a lit pill hid its own track and left a white knob floating
+   on a bright capsule. In dark the pill stays the quiet panel fill with ink words when on; the track and knob carry
+   the state, as Settings' switches do: off a line track with a muted knob, on an accent track with a dark knob. */
+:root[data-theme="dark"] .dk-aw-sw.on { background: var(--panel-2); color: var(--ink); }
+:root[data-theme="dark"] :is(.dk-knob, .dk-tg)::after { background: var(--muted); }
+:root[data-theme="dark"] :is(.dk-aw-sw.on .dk-knob, .dk-tg.on)::after { background: var(--on-accent); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dk-aw-sw.on { background: var(--panel-2); color: var(--ink); }
+  :root:not([data-theme="light"]) :is(.dk-knob, .dk-tg)::after { background: var(--muted); }
+  :root:not([data-theme="light"]) :is(.dk-aw-sw.on .dk-knob, .dk-tg.on)::after { background: var(--on-accent); }
+}
 .dk-aw-st { display: inline-flex; min-width: 0; max-width: 260px; font-weight: 500; white-space: pre; }
 .dk-aw-spent { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dk-aw-st::before { content: "· "; }

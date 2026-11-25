@@ -838,3 +838,43 @@ test("the Desks field names every Desk in full, wrapping, never cut (#618)", asy
   await expect(b).toContainText(",");
   expect(await b.evaluate((el) => getComputedStyle(el).textOverflow !== "ellipsis" && el.scrollWidth <= el.clientWidth)).toBe(true);
 });
+
+// #933: in dark the Away switch sits quietly (the panel fill, not a bright capsule, when on), its knob seen on its
+// track in both states, on and off told apart by the track; light keeps its lit pill. Moss and a picked Color alike.
+for (const mode of ["light", "dark"]) {
+  for (const color of ["moss", "tan"]) {
+    test(`the Away switch reads in ${mode} (${color}): knob seen on its track, on and off apart (#933)`, async ({ page, cue }) => {
+      await cue.open("desk");
+      // Tan: a picked Color (Settings → General → Color, swatch 4), as in the screenshot.
+      await cue.change((st, [mode, tan]) => { st.settings = { ...(st.settings || {}), appearance: { ...(st.settings?.appearance || {}), mode }, project: { ...(st.settings?.project || {}), ...(tan ? { all: 4 } : {}) } }; }, [mode, color === "tan"]);
+      await openDesk(page);
+      await expect(page.locator("html")).toHaveClass(color === "tan" ? /proj-theme/ : /^(?!.*proj-theme)/);
+      const sw = page.locator(".dk-items .dk-aw-sw");
+      await expect(page.locator("html")).toHaveAttribute("data-theme", mode);
+      const look = () => sw.evaluate((el) => {
+        const cx = document.createElement("canvas").getContext("2d", { willReadFrequently: true }), rgb = (v) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = v; cx.fillRect(0, 0, 1, 1); return [...cx.getImageData(0, 0, 1, 1).data].slice(0, 3); }, lum = (v) => { const [r, g, b] = rgb(v); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; };
+        const k = el.querySelector(".dk-knob"), s = getComputedStyle(el), ks = getComputedStyle(k), dot = getComputedStyle(k, "::after");
+        const card = getComputedStyle(el.closest(".dk-card")).backgroundColor;
+        return { pill: s.backgroundColor, pillL: lum(s.backgroundColor), cardL: lum(card), text: lum(s.color), track: lum(ks.backgroundColor), trackC: ks.backgroundColor, knob: lum(dot.backgroundColor) };
+      });
+      const off = await look();
+      await cue.change((st, since) => { st.desk.projects.find((x) => x.project === "cue").away = { on: true, active: true, ended: "", since, budget: null, spent: 0, rules: {} }; }, SINCE);
+      await expect(sw).toHaveAttribute("aria-pressed", "true");
+      const on = await look();
+      // The words stand out from the pill; when on, the track from the pill.
+      for (const v of [off, on]) expect(Math.abs(v.text - v.pillL)).toBeGreaterThan(0.4);
+      expect(Math.abs(on.track - on.pillL)).toBeGreaterThan(0.25);
+      // Dark (the ask of #933; light stays as it was): the knob clearly seen on its track, on and off.
+      if (mode === "dark") for (const v of [off, on]) expect(Math.abs(v.knob - v.track)).toBeGreaterThan(0.3);
+      // On and off told apart by the track.
+      expect(on.trackC).not.toBe(off.trackC);
+      if (mode === "dark") {
+        // Quiet: the pill keeps the panel fill when on, a dark control on a dark card.
+        expect(on.pill).toBe(off.pill);
+        expect(Math.abs(on.pillL - on.cardL)).toBeLessThan(0.15);
+      } else expect(on.pill).not.toBe(off.pill);
+      await expect(page.locator(".dk-items .dk-ch [title], .dk-items .dk-aw-sw[title]")).toHaveCount(0);
+      if (process.env.SHOT_DIR) { await sw.screenshot({ path: `${process.env.SHOT_DIR}/cue-away-switch-${mode}-${color}-on.png` }); }
+    });
+  }
+}
