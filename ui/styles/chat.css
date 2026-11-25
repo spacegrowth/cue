@@ -268,6 +268,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .bg-row.cu-row:hover { background: none; }
 /* Its name, what it carries and its log line on one baseline (their sizes differ). */
 .bg-row.cu-row .bg-name, .bg-row.cu-row .bg-meta, .bg-row.cu-row .bg-tail { align-self: baseline; }
+/* Its live dot before its name, as a running row has it, centred on the line. */
+.bg-row.cu-row .dot-live { align-self: center; margin-right: -2px; }
 .bg-row .bg-go { all: unset; flex: none; cursor: pointer; font-weight: 600; font-size: var(--type-small); line-height: 22px; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .cu-meta { margin-bottom: 10px; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }

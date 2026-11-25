@@ -178,7 +178,7 @@ function bgWaitLine(it, s) {
 
 /** Cue updating itself (`state.desk.install`: built from main, swapped in, restarted), while it builds, installs or
  *  restarts (`run`). Null otherwise: how it ended is in the Desk's Activity. */
-const CUE_INSTALL_STEPS = { building: "build", installing: "install", starting: "restart" };
+const CUE_INSTALL_STEPS = { building: "Building", installing: "Installing", starting: "Restarting" };
 function cueInstallNow() {
   const x = state.desk?.install;
   if (!x?.step) return null;
@@ -192,7 +192,7 @@ function cueInstallFor(sid) {
   return (state.desk?.projects || []).some((d) => d.lead?.sid === sid && (!x.project || x.project === d.project)) ? x : null;
 }
 /** The step it failed at, in a word ("build"); a rolled-back one failed at its restart. */
-const cueInstallFailStep = (x) => CUE_INSTALL_STEPS[x.failed_step] || (x.step === "rolled_back" ? "restart" : "");
+const cueInstallFailStep = (x) => ({ building: "build", installing: "install", starting: "restart" })[x.failed_step] || (x.step === "rolled_back" ? "restart" : "");
 /** Its row in the lead's tray: the C mark, "Updating Cue", what it carries and where it is ("· #805, #807 · build ·
  *  3m"), the live dot, its newest log line; installed: "· installed · 6m", "Cue restarted on #807"; failed: red,
  *  "· failed at build · 7m", its last log line, Show why. "" when it's not this session's to show. */
@@ -216,7 +216,7 @@ function cueInstallRow(sid) {
     tail = String(x.log || x.line || "").trimEnd().split("\n").at(-1) || "";
     why = `<button class="bg-go" data-cue-install-why>Show why</button>`;
   }
-  return `<div class="stx-line bg-row cu-row ${x.bad ? "bad" : ""}" data-key="cue-install"><i class="stx-ic k-cue">C</i><span class="bg-name">Updating Cue</span><span class="bg-meta">${meta}</span>${live}<span class="bg-tail">${esc(tail)}</span>${why}</div>`;
+  return `<div class="stx-line bg-row cu-row ${x.bad ? "bad" : ""}" data-key="cue-install"><i class="stx-ic k-cue">C</i>${live}<span class="bg-name">Updating Cue</span><span class="bg-meta">${meta}</span><span class="bg-tail">${esc(tail)}</span>${why}</div>`;
 }
 /** The lead's tray where no other tray is drawn (the Desk's own chat of its lead): just the update's row. */
 const cueInstallTray = (sid) => { const r = cueInstallRow(sid); return r ? `<div class="bg-rows" data-key="bg-rows">${r}</div>` : ""; };
