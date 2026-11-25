@@ -623,10 +623,16 @@ fn finished_files(m: &mut Teammate, c: Option<&Changes>) {
     }
 }
 
-/// What `git status` says changed in `dir` (under `only`, when given): every path, and the untracked ones.
+/// An untracked folder with more files than this is a build's or a download's (a teammate's own `target-837/`, say),
+/// not work: none of its files count (#876: one such folder put 15,785 files on a teammate, and every one of them
+/// rode along in each state the window was sent, until Cue grew past its memory limit and quit).
+const UNTRACKED_FOLDER_MOST: usize = 200;
+
+/// What `git status` says changed in `dir` (under `only`, when given): every path, and the untracked ones. An
+/// untracked folder counts file by file, unless it holds more than UNTRACKED_FOLDER_MOST files.
 fn status(machine: &str, dir: &str, only: &[&str]) -> Result<(Vec<String>, Vec<String>), String> {
     let filters = crate::safe_git::no_repo_filters(machine, dir);
-    let mut args: Vec<&str> = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+    let mut args: Vec<&str> = vec!["status", "--porcelain=v1", "-z", "--untracked-files=normal"];
     if !only.is_empty() {
         args.push("--");
         args.extend(only.iter().copied());
@@ -643,12 +649,29 @@ fn status(machine: &str, dir: &str, only: &[&str]) -> Result<(Vec<String>, Vec<S
         if xy.starts_with('R') || xy.starts_with('C') {
             parts.next(); // a rename's old path follows it
         }
+        if xy.starts_with("??") && path.ends_with('/') {
+            for f in untracked_in(machine, dir, &filters, path) {
+                untracked.push(f.clone());
+                files.push(f);
+            }
+            continue;
+        }
         if xy.starts_with("??") {
             untracked.push(path.to_string());
         }
         files.push(path.to_string());
     }
     Ok((files, untracked))
+}
+
+/// The files in untracked folder `folder` (from the repository's top, as `git status` names it), from the top too;
+/// none when it holds more than UNTRACKED_FOLDER_MOST, or git can't say.
+fn untracked_in(machine: &str, dir: &str, filters: &[String], folder: &str) -> Vec<String> {
+    let spec = format!(":(top,literal){folder}");
+    let args = ["ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--", spec.as_str()];
+    let Ok((out, 0)) = crate::safe_git::run(machine, dir, filters, &args) else { return Vec::new() };
+    let found: Vec<String> = out.split('\0').filter(|p| !p.is_empty()).take(UNTRACKED_FOLDER_MOST + 1).map(str::to_string).collect();
+    if found.len() > UNTRACKED_FOLDER_MOST { Vec::new() } else { found }
 }
 
 /// The top folder of the git repository folder `dir` is in, None when it's in none. Here, the nearest folder of it
