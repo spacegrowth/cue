@@ -428,8 +428,9 @@ const suggestionFor = (sid) => {
   return (last?.role === "agent" && replyAsked(last.text)) || s.suggestion || "";
 };
 /** Which quick phrases each kind of chat shows (#840), the one place that says so: null is all of yours (Settings →
- *  Quick phrases), a list only those, [] none. Every chat has all of them but a crew member's. */
-const QUICK_BY_CHAT = { session: null, lead: null, item: null, crew: [] };
+ *  Quick phrases), a list only those, [] none. Every chat has all of them but a crew member's and an item's page. */
+// An item's page has none (#883: its box is for words about the item; Looks right and Send back are in its Try bar).
+const QUICK_BY_CHAT = { session: null, lead: null, item: [], crew: [] };
 /** Chat kind `kind` (session, lead, item, crew) for session `sid`: a session that runs a Desk is its lead's chat,
  *  wherever its box is. */
 const quickKind = (kind, sid) => (kind === "session" && sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid) ? "lead" : kind);
