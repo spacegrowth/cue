@@ -33,6 +33,8 @@ function termAppName(s) {
 function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
+  // A Desk's lead (#842), handing off or not: its chat is the lead's, with nothing about where it runs.
+  if (isDeskLead(sid)) return "";
   // Hosted: no terminal, so nothing here (⋯ has Move to terminal, for moving away from Cue).
   if (s.hosted) return "";
   // In Cue: its terminal opens from the strip above the box; the corner has only Move to hosted (hosting on).
@@ -180,6 +182,42 @@ function retheme() {
   for (const t of terms) t.options.theme = theme;
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
+/** The terminals' text: the chat's (--type-body), so a terminal reads at the size the chat does. Worked out on an
+ *  element: the variable itself reads back as its formula (round(calc(…))), not as pixels. */
+function termFontSize() {
+  const el = document.createElement("i");
+  el.style.fontSize = "var(--type-body)";
+  document.body.append(el);
+  const px = parseFloat(getComputedStyle(el).fontSize);
+  el.remove();
+  return px || 14;
+}
+/** Each open terminal's fit (sized to its pane), for a change of text size. */
+const termFits = new Map();
+let fontKey = "";
+/** The open terminals at the window's text size now (Settings → Text size, ⌘+ / ⌘−). The window's zoom draws each
+ *  point with more (or fewer) pixels, and a terminal hears of that only from the browser's own pixel-ratio event,
+ *  which the app's zoom doesn't send: each is told here (measured and drawn again, vendor/xterm's render service; keep
+ *  that on an update), given the chat's size if that changed, refitted to its pane and left where it was scrolled
+ *  (at the bottom: still there). */
+function refont() {
+  const key = `${state.settings?.appearance?.zoom ?? 1}|${termFontSize()}`;
+  if (key === fontKey) return;
+  const first = !fontKey;
+  fontKey = key;
+  if (first || !terms.size) return;
+  // After the window's zoom is on (the app sets it as it saves the setting): a frame on, then measured.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const size = termFontSize();
+    for (const t of terms) {
+      const buf = t.buffer.active, atEnd = buf.viewportY >= buf.baseY, top = buf.viewportY;
+      if (t.options.fontSize !== size) t.options.fontSize = size;
+      try { t._core._renderService.handleDevicePixelRatioChange(); } catch {}
+      try { termFits.get(t)?.fit(); } catch {}
+      if (atEnd) t.scrollToBottom(); else t.scrollToLine(Math.min(top, t.buffer.active.baseY));
+    }
+  }));
+}
 
 /** What arrived since the last frame, decoded and written as one. */
 function flushTerm() {
@@ -215,16 +253,17 @@ function termTyping(host, sid, shown = () => true) {
  *  Its cursor blinks at Cue's pace, a 1.4s beat like the live dots: vendor/xterm/addon-webgl.js is patched
  *  from xterm's fixed 600ms to 700ms (keep that on an update), and the default renderer's in styles/shells.css. */
 function xterm(host) {
+  const fit = new FitAddon.FitAddon();
   const term = new Terminal({
-    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: parseFloat(cssVar("--type-label")), lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: termFontSize(), lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
     // ⌥-drag: a selection of the terminal's own, even with tmux taking the mouse.
     macOptionClickForcesSelection: true,
     theme: termTheme(),
   });
   terms.add(term);
+  termFits.set(term, fit);
   const dispose = term.dispose.bind(term);
-  term.dispose = () => { terms.delete(term); dispose(); };
-  const fit = new FitAddon.FitAddon();
+  term.dispose = () => { terms.delete(term); termFits.delete(term); dispose(); };
   term.loadAddon(fit);
   term.open(host);
   try {

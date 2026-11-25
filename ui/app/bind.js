@@ -92,6 +92,7 @@ function bindMain() {
   document.addEventListener("scroll", placeForward, true);   // the send-to menu follows its button
   const app = document.getElementById("app");
   bindChat(app);
+  chatsOpenStart();
   document.addEventListener("mousedown", (e) => { downInLive = !!e.target.closest?.(".lv-wrap"); }, true);
   delegate(app, "click", CLICKS);
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.

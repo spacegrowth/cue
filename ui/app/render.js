@@ -12,6 +12,7 @@ function applyTheme() {
   else if (root.dataset.theme !== mode) root.dataset.theme = mode;
   root.classList.toggle("away-on", away);
   retheme();
+  refont();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
@@ -290,7 +291,7 @@ function replayMotion(was, kept) {
   // A Desk chat kept in place (chat/patch.js drawAround): a dot it had already is left as it runs; a new one is set once.
   const inPlace = (el) => el._phased && keptInPlace.some((c) => c.contains(el));
   // Each looping animation a redraw would restart, and its length (as its CSS has it).
-  for (const [sel, ms] of [[".dot-live, .pdot.live, .lv-chip .hdot", PULSE_MS]]) {
+  for (const [sel, ms] of [[".dot-live, .lv-chip .hdot", PULSE_MS]]) {
     const phase = `-${Date.now() % ms}ms`;
     document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el) && !inPlace(el)) { el.style.animationDelay = phase; el._phased = true; } });
   }
@@ -393,7 +394,6 @@ function fitAfterDraw(focused) {
   placeTerm(!!termHost && termHost.contains(focused));
   showCopied();
   fitTop();
-  placeColors();
 }
 // A draw that throws must not leave the window empty: what went wrong is shown where the board would be, so a bad
 // build is seen as an error and not as "Cue didn't start".

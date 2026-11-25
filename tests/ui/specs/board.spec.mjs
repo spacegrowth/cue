@@ -82,9 +82,9 @@ test.describe("Settings", () => {
   test.beforeEach(async ({ cue, page }) => { await cue.open("board-waiting"); await page.keyboard.press(","); });
 
   test("a switch saves its setting", async ({ cue, page }) => {
-    await page.locator('.sheet [data-set="appearance.project"]').click();
-    await cue.called("set_setting", { key: "appearance.project", value: true });
-    await expect(page.locator('.sheet [data-set="appearance.project"]')).toHaveAttribute("aria-checked", "true");
+    await page.locator('.sheet [data-set="notify.cold"]').click();
+    await cue.called("set_setting", { key: "notify.cold", value: false });
+    await expect(page.locator('.sheet [data-set="notify.cold"]')).toHaveAttribute("aria-checked", "false");
   });
 
   test("Dark saves the appearance and the window turns dark", async ({ cue, page }) => {
@@ -280,12 +280,15 @@ test.describe("a hosted lead's crew on its own page", () => {
       lead.queued = { role: "you", text: "and keep spike out of it", at_ms: lead.thread.at(-1).at_ms + 500, images: [] };
     });
     await expect(chat.locator(".cv-you.queued").last(), "what you queued, newest last").toContainText("and keep spike out of it");
-    // #422 (A): not with it yet, a dashed outline on the panel; the filled bubble once delivered; the line under it says which.
-    const look = (l) => l.locator(".cv-you-text").first().evaluate((el) => { const c = getComputedStyle(el); return { bg: c.backgroundColor, border: c.borderTopStyle }; });
+    // Not with it yet: no fill, a thin accent outline with an arc moving round it (692dc421c7, after #422's dashed one);
+    // the filled bubble once delivered; the line under it says which.
+    const look = (l) => l.locator(".cv-you-text").first().evaluate((el) => { const c = getComputedStyle(el); return { bg: c.backgroundColor, ring: c.boxShadow, arc: getComputedStyle(el, "::after").backgroundImage }; });
     const queued = await look(chat.locator(".cv-you.queued").last()), sent = await look(chat.locator(".cv-you:not(.queued):not(.cue-you)").last());
-    expect(queued.border, "queued is dashed").toBe("dashed");
-    expect(sent.border, "delivered is filled, no outline").toBe("none");
-    expect(queued.bg, "queued is on the panel, not filled").not.toBe(sent.bg);
+    expect(queued.ring, "queued has its outline").toMatch(/inset/);
+    expect(queued.arc, "and the arc moving round it").toMatch(/conic-gradient/);
+    expect(queued.bg, "queued isn't filled").toBe("rgba(0, 0, 0, 0)");
+    expect(sent.ring, "delivered is filled, no outline").toBe("none");
+    expect(queued.bg, "queued is not filled as delivered is").not.toBe(sent.bg);
     await expect(chat.locator(".cv-you.queued .mg-f").last()).toContainText("Queued for");
     await expect(page.locator(".cp-lead .cp-lr")).toHaveText(/^working · /);
   });
@@ -1114,21 +1117,24 @@ test("a restart opens where you were: Desk and Read come back, not the Board", a
   }
 });
 
-// #259: a card's leading marks each in a color of their own, in both themes: the project's dot, then the Desk's
-// session or crew mark (accent on a card, on-bg on a Working card on the ground), never the name's color.
+// #259: a card's leading marks each in a color of their own, in both themes: the Desk's
+// session or crew mark (accent on a card, on-bg on a Working card on the ground), never the name's color. A Desk's
+// sessions have no cards on the Board (#825) unless one is out of usage: that one's card is on the ground.
 for (const scheme of ["light", "dark"]) {
-  test(`a card's dot and its Desk mark have colors of their own (${scheme})`, async ({ cue, page }) => {
+  test(`a card's Desk mark has a color of its own (${scheme})`, async ({ cue, page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await cue.open("desk");
+    await cue.change((st) => { st.sessions.find((s) => s.session_id === "host").state = "limited"; });
+    await expect(page.locator('.working[data-session="host"] .dk-name-ic')).toHaveCount(1);
     const marks = await page.evaluate(() => [...document.querySelectorAll(".working .card-head")].map((h) => {
-      const c = (e) => getComputedStyle(e)[e.matches(".pdot") ? "backgroundColor" : "color"];
-      return { dot: c(h.querySelector(".pdot")), mark: c(h.querySelector(".dk-name-ic")), name: c(h.querySelector(".proj")) };
+      const c = (e) => getComputedStyle(e).color;
+      return { mark: c(h.querySelector(".dk-name-ic")), name: c(h.querySelector(".proj")), dots: h.querySelectorAll(".pdot").length };
     }));
     expect(marks.length).toBeGreaterThan(0);
     const onBg = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--on-bg)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
     for (const m of marks) {
       expect(m.mark).toBe(onBg);
-      expect(m.mark).not.toBe(m.dot);
+      expect(m.dots).toBe(0);   // no project dot before the name (#848)
     }
   });
 }

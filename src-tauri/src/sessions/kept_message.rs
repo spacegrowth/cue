@@ -7,13 +7,18 @@ use crate::model::{now_ms, Exchange};
 impl Sessions {
     /// Keep a message for when its turn ends; one already kept gets this one added after it.
     pub fn hold(&mut self, session_id: &str, text: &str, images: Vec<String>) {
+        self.hold_unmarked(session_id, text, images);
+        self.held_part(session_id, text);
+    }
+
+    fn hold_unmarked(&mut self, session_id: &str, text: &str, images: Vec<String>) {
         let Some(s) = self.0.get_mut(session_id) else { return };
         match &mut s.held {
             Some(h) => {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] }),
         }
     }
 
@@ -24,6 +29,7 @@ impl Sessions {
             Some(h) => {
                 h.text = [text, h.text.as_str()].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images = images.into_iter().chain(std::mem::take(&mut h.images)).collect();
+                self.held_part(session_id, text);
             }
             None => self.hold(session_id, text, images),
         }
@@ -73,6 +79,8 @@ impl Sessions {
             return;
         }
         h.text = rest;
+        let rest = h.text.clone();
+        h.cue_parts.retain(|p| rest.contains(p.as_str()));
         h.images.drain(..sent.images.len().min(h.images.len()));
         h.at_ms = now_ms();
         h.unsent = false;

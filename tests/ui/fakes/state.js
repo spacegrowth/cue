@@ -106,6 +106,8 @@ CueBridge.area("state", (w) => {
     set_later: flag("later_ms"),
     set_watch: flag("watch_ms"),
     set_starred: flag("starred_ms"),
+    // The chats open in the window and whether it's in front (box/end.js chatsOpenTell): for notifications only.
+    chats_open: () => null,
     // Send at… (hub/send_at.rs): the message kept on its session as `send_at`, dropped (its text back), or sent now.
     send_at: ({ sessionId, text, atMs }) => {
       const s = w.session(sessionId);

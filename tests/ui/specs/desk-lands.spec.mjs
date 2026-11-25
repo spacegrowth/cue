@@ -16,14 +16,16 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
-  await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Send finished work to GitHub", "Tests"]);
+  await expect(dlg.locator(".ld-label")).toHaveText(["Where an item works", "Items at once", "How it lands", "Check before landing", "After landing", "Send finished work to GitHub", "Tests", "Items waiting on another start"]);
   const seg = (label) => dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: label }) }).locator(".ld-seg");
   await expect(seg("Where an item works").locator("button.on")).toHaveText("Own copy");
   await expect(dlg.locator(".ld-n")).toHaveText("3");
   await expect(seg("How it lands").locator("button.on")).toHaveText("One commit per item");
   await expect(seg("Check before landing").locator("button.on")).toHaveText("Cue's own check");
   await expect(dlg.locator(".ld-steps li b")).toHaveText(["Build", "Rust tests", "Window loads"]);
-  await expect(seg("After landing").locator("button.on")).toHaveText("Install or serve Cue");
+  // Its build, install and restart are named steps after landing, as any project's own (#796).
+  await expect(seg("After landing").locator("button.on")).toHaveText("Your own steps");
+  await expect(dlg.locator('[data-ld-steps="after"]')).toHaveValue("[Build] app:build\n[Install] app:install\n[Restart] app:restart");
   await expect(seg("Send finished work to GitHub").locator("button.on")).toHaveText("Ask me first");
   // Not built yet: shown, can't be picked.
   for (const [label, name] of [["Where an item works", "A branch"]]) {
@@ -56,7 +58,9 @@ test("a change saved shows on the screen next time; you commit means the shared 
   await expect(dlg.locator(".ld-row", { hasText: "Items at once" }).locator(".ld-hint")).toHaveText("More than two wait for a free copy.");
   await dlg.locator('[data-ld-pick="owner"]').click();
   await expect(dlg.locator('[data-ld-part="where"].on')).toHaveText("Shared folder");
-  await expect(dlg.locator(".ld-n")).toHaveCount(0);
+  // Items at once limits the shared folder too (#798): the number stays, and says what happens past it.
+  await expect(dlg.locator(".ld-n")).toHaveText("2");
+  await expect(dlg.locator(".ld-row", { hasText: "Items at once" }).locator(".ld-hint")).toHaveText("More than two wait in Up next and start by themselves as one finishes.");
   // Saved together by Save (#600), and the screen closes.
   expect(await cue.calls("desk_lands_set")).toHaveLength(0);
   await dlg.locator('[data-ld="save"]').click();
@@ -135,7 +139,6 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   await expect(seg("Check before landing")).toHaveText(["None", "Your own steps"]);
   await expect(seg("After landing")).toHaveText(["Nothing", "Your own steps"]);
   await expect(dlg.getByText("Cue's own check")).toHaveCount(0);
-  await expect(dlg.getByText("Install or serve Cue")).toHaveCount(0);
   await expect(dlg.locator("[title]")).toHaveCount(0);
   // Its own steps saved for it alone.
   await seg("After landing").filter({ hasText: "Your own steps" }).click();
@@ -151,14 +154,14 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   await page.keyboard.press("Tab");
   await dlg.locator('[data-ld="save"]').click();
   await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args).toMatchObject({ desk: "desk-web", lands: { after: "command", after_steps: ["npm run deploy"] } });
-  // Cue's own Desk keeps its own check and install.
+  // Cue's own Desk keeps its own check, and its build, install and restart as named steps.
   await page.evaluate(() => { deskSelect("cue"); renderMain(); });
   await deskAllSessions(page);
   await line(page).locator("[data-lands-change]").click();
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
   await expect(seg("Check before landing").and(page.locator(".on"))).toHaveText("Cue's own check");
-  await expect(seg("After landing").and(page.locator(".on"))).toHaveText("Install or serve Cue");
-  await expect(seg("After landing")).toHaveText(["Nothing", "Install or serve Cue", "Your own steps"]);
+  await expect(seg("After landing").and(page.locator(".on"))).toHaveText("Your own steps");
+  await expect(seg("After landing")).toHaveText(["Nothing", "Your own steps"]);
 });
 
 test("a Desk's model for new sessions is picked in its settings (#620)", async ({ page, cue }) => {

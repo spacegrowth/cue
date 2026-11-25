@@ -270,6 +270,82 @@ document.addEventListener("keydown", (e) => {
 }, true);
 /** The runs of an agent's steps opened from their fold line (agentChatHtml), each "sid|agent|its first step". */
 const agentRunOpen = new Set();
+/** The leads' briefs opened in full (agentChatHtml), each "sid|agent". */
+const agentBriefOpen = new Set();
+/** A brief's first sentence, as one plain line: where it starts, what it's asked to do (a first sentence of a word or
+ *  two, "Read-only task.", takes the next one with it). A dot inside a path or "e.g." doesn't end it. */
+function briefLine(text) {
+  const p = plain(text), END = /[.!?](?=\s+["'(`A-Z0-9]|\s*$)/g;
+  let m, cut = p.length;
+  while ((m = END.exec(p))) {
+    if (/\b(?:e\.g|i\.e|etc|vs|cf)\.$/i.test(p.slice(0, m.index + 1))) continue;
+    if (m.index + 1 < 24) continue;
+    cut = m.index + 1;
+    break;
+  }
+  return p.slice(0, cut).trim();
+}
+/** A lead's brief as markdown that reads like a short document, its words unchanged: a run of "(1) … (2) …" steps in
+ *  a line becomes a numbered list; a paragraph that starts with a label ("Steps:", "Rules:", "Your files (only
+ *  these):") gets the label as its head, and under Steps / Rules / Report its "; "-parted or sentence-parted body
+ *  becomes a list. Fenced code stays as it is. */
+const BRIEF_LIST = /^(steps?|rules?|report|reporting|don'?t|do not|done when|constraints?|requirements?|checks?|notes?)$/i;
+function briefMd(text) {
+  // Split outside `code` only: a "; " or ". " inside a command isn't a break between items.
+  const parts = (s, re) => {
+    const out = [];
+    let at = 0, code = false;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "`") code = !code;
+      if (code) continue;
+      re.lastIndex = i;
+      const m = re.exec(s);
+      if (m && m.index === i && !/\b(?:e\.g|i\.e|etc|vs|cf)$/i.test(s.slice(at, i))) { out.push(s.slice(at, i + (m[1] || "").length).trim()); at = i + m[0].length; i = at - 1; }
+    }
+    out.push(s.slice(at).trim());
+    return out.filter(Boolean);
+  };
+  const steps = (l) => {
+    // "(1) a (2) b (3) c": numbered in order from 1, at least two, else it's a plain line.
+    const at = [...l.matchAll(/(^|\s)\((\d{1,2})\)\s+/g)];
+    if (at.length < 2 || at.some((m, n) => +m[2] !== n + 1)) return null;
+    const lead = l.slice(0, at[0].index).trim();
+    const items = at.map((m, n) => l.slice(m.index + m[0].length, n + 1 < at.length ? at[n + 1].index : l.length).trim());
+    return [...(lead ? [lead] : []), ...items.map((x, n) => `${n + 1}. ${x}`)];
+  };
+  const para = (p) => {
+    const lines = p.split("\n"), first = lines[0];
+    const lab = /^\s*([A-Za-z][A-Za-z' ]{0,28}?)(\s*\([^)]{1,40}\))?:(?:\s+(.*))?$/.exec(first);
+    const words = lab ? lab[1].trim().split(/\s+/).length : 0;
+    const out = [];
+    let body = lines;
+    if (lab && words <= 4 && !/^(https?|file)$/i.test(lab[1])) {
+      out.push(`**${lab[1].trim()}${lab[2] || ""}:**`);
+      body = [lab[3] || "", ...lines.slice(1)].filter((l) => l.trim());
+      // Under a list label, one line of items parted by "; " or by sentences becomes a list.
+      if (BRIEF_LIST.test(lab[1].trim()) && body.length === 1 && !steps(body[0]) && !/^\s*([-*•]|\d+[.)])\s/.test(body[0])) {
+        const semi = parts(body[0], /;\s+/g), sent = parts(body[0], /([.!?])\s+(?=["'(`A-Z])/g);
+        const items = semi.length > 1 ? semi : sent.length > 1 ? sent : null;
+        if (items) return [...out, ...items.map((x) => `- ${x}`)].join("\n");
+      }
+    }
+    for (const l of body) out.push(...(steps(l) || [l]));
+    return out.join("\n");
+  };
+  return String(text ?? "").replace(/\r/g, "").split(/```/).map((chunk, i) => (i % 2 ? chunk : chunk.split(/(\n\s*\n)/).map((p, n) => (n % 2 ? p : para(p))).join(""))).join("```");
+}
+/** A brief drawn whole (md over briefMd): a long run of code (a command, a path) set apart in a box of its own
+ *  instead of running on in the sentence. */
+const briefHtml = (text, runIn = null) => md(briefMd(text), { pathsOf: runIn }).replace(/<code>([\s\S]*?)<\/code>/g, (all, c) => (c.replace(/<[^>]+>/g, "").length > 48 ? `<code class="brief-long">${c}</code>` : all));
+/** What a lead asked its crew member, at the head of its chat: folded to its first sentence with Show the full brief
+ *  under it; opened, the whole brief (briefHtml). A brief of one sentence shows whole, with no button. */
+function agentBriefHtml(sid, key, ask, by) {
+  const k = `${sid}|${key}`, open = agentBriefOpen.has(k), line = briefLine(ask);
+  const whole = line.length >= plain(ask).length;
+  const body = whole || open ? `<div class="msg ag-brief-md">${briefHtml(ask, sid)}</div>` : `<p class="ag-brief-line">${esc(line)}</p>`;
+  const btn = whole ? "" : `<button class="mt-lk ag-brief-tg" data-agent-brief="${esc(k)}" aria-expanded="${open}">${open ? "Show less" : "Show the full brief"}</button>`;
+  return `<div class="bg-view-reply ag-ask ag-brief${open ? " open" : ""}" data-key="ask:${open ? 1 : 0}"><span class="bg-view-k">${esc(by || "Its lead")} asked it</span>${body}${btn}</div>`;
+}
 /** A crew member of lead `sid` by its agent id, if the agent is one. */
 const crewMateById = (sid, id) => (sessionOf(sid)?.team || []).find((t) => t.agent_id === id) || null;
 /** An agent's chat: the one chat both the board's view of it (helperPane) and the Desk's crew page (desk/thread.js
@@ -281,15 +357,34 @@ const crewMateById = (sid, id) => (sessionOf(sid)?.team || []).find((t) => t.age
 function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key = h?.id || "" } = {}) {
   const running = h ? helperRunning(h) : false, items = h?.items || [];
   const end = h && !running ? helperTail(h) : items.length;
-  const reply = h ? items.slice(end).map((x) => x.text).join("\n\n").trim() || answer : answer;
+  // Its answer is only its own words (chat/who.js): anything else in its last run is drawn among its runs below.
+  const own = (x) => chatPlace({ role: "agent", ...x }, "crew") === "reply";
+  const tail = h ? items.slice(end) : [], words = tail.filter(own);
+  const reply = h ? words.map((x) => x.text).join("\n\n").trim() || answer : answer;
+  // Anything else in that last run, by its time: what came before its answer among its runs, what came after it under
+  // it (`later`), as every chat places a row.
+  const replyAt = words.length ? words[0].at_ms : Infinity;
+  const others = tail.filter((x) => !own(x)), sooner = others.filter((x) => !(x.at_ms >= replyAt)), later = others.filter((x) => x.at_ms >= replyAt);
   const out = [];
-  if (ask) out.push(`<div class="bg-view-reply ag-ask" data-key="ask"><span class="bg-view-k">${esc(by || "Its lead")} asked it</span><div class="msg">${md(ask)}</div></div>`);
+  // Send to… under its words and its answer (render.js fwdBtn), keyed under its lead's id so it lasts as the lead does.
+  const from = sessionOf(sid)?.project || by || "crew member";
+  const fwd = (id, text) => `<div class="mg-f cv-acts ag-acts">${fwdBtn(`${sid}:${`ag-${key}-${id}`.replace(/:/g, "-")}`, text, from, sid)}</div>`;
+  if (ask) out.push(agentBriefHtml(sid, key, ask, by));
   // Its steps and words, a run of steps at a time between its words.
   const runs = [];
-  if (h) items.slice(0, end).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
+  if (h) items.slice(0, end).concat(sooner).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
   else if (steps.length) runs.push({ lines: steps });
+  // Who said it, from its tags (chat/who.js, #837): its own words (no role: the agent's), yours as your bubble, Cue's
+  // as Cue's quiet line, never your bubble. "" for its own words.
+  const notOwn = (x) => {
+    const place = chatPlace({ role: "agent", ...x }, "crew");
+    if (place === "bubble") return `<div class="cv-you mg-you" data-key="${esc(x.id || `y:${x.at_ms}`)}">${yourBubble(x, `${sid}:ag:${key}:${x.at_ms}`)}</div>`;
+    return place !== "reply" && typeof cueQuietHtml === "function" ? keyed(cueQuietHtml(x, sessionOf(sid), `${sid}:ag:${key}:${x.at_ms}:cueq`), x.id || `c:${x.at_ms}`) : "";
+  };
   runs.forEach((r, n) => {
-    if (r.say) { out.push(`<div class="stx-say msg" data-key="${esc(r.say.id || `s:${r.say.at_ms}`)}">${md(r.say.text)}</div>`); return; }
+    const theirs = r.say && notOwn(r.say);
+    if (theirs) { out.push(theirs); return; }
+    if (r.say) { const id = r.say.id || `s:${r.say.at_ms}`; out.push(`<div class="stx-say msg" data-key="${esc(id)}">${md(r.say.text)}${fwd(id, r.say.text)}</div>`); return; }
     const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = agentRunOpen.has(k);
     const live = running && n === runs.length - 1;
     const count = `${list.length}${!n && h?.more ? "+" : ""} step${list.length === 1 ? "" : "s"}`, sum = r.steps ? turnSummary(r.steps) : "";
@@ -300,7 +395,8 @@ function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key
     out.push(`<div class="stx" data-key="run:${esc(first)}">${head}${body ? `<div class="stx-steps">${body}</div>` : ""}</div>`);
   });
   if (!runs.length && !reply) out.push(`<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`);
-  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div></div>`);
+  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div>${fwd("reply", reply)}</div>`);
+  for (const x of later) if (x.t !== "step") out.push(notOwn(x));
   return `<div class="ag-chat">${out.join("")}</div>`;
 }
 /** One agent in full, in place of the chat: who it is, and its chat (agentChatHtml: what it was asked, what it did,

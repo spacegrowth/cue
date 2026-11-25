@@ -15,6 +15,8 @@ CASE=""
 OUT=""
 STATUS=0
 export CALLS="$WORK/calls"
+# A waiting call asks for the turn again this often (seconds), so the cases don't wait long.
+export CUE_FULL_RUN_POLL=0.2
 
 # ---- the stand-in steps ----------------------------------------------------------------------------------------
 # A commit says what is broken in it by the files it holds: broken-build, broken-check, broken-rust (the names of the
@@ -277,6 +279,51 @@ full_run --at "$SLOW"
 exits 0; says "another full run is using"; says "already made for these commits"; is passed true; is at "\"$SLOW\""
 wait "$FIRST" || fail "the first call failed: $(cat "$WORK/first.out")"
 [ "$(grep -c "^build slow" "$CALLS" | tr -d ' ')" = 1 ] || fail "the run was made $(grep -c "^build slow" "$CALLS") times"
+done_case
+
+start "the same commit asked for twice while another runs: made once, and the waiting calls use no processor"
+SLOW="$(commit "slow" 'echo 4 >slow')"
+NEXT="$(commit "next")"
+(cd "$REPO" && CUE_FULL_RUN_STEPS="$WORK/steps.sh" "$ROOT/scripts/full-run.sh" --dir "$RUN" --at "$SLOW" --out "$WORK/first.json" >"$WORK/first.out" 2>&1) &
+FIRST=$!
+for _ in $(seq 1 100); do grep -q "^build-start slow" "$CALLS" && break; sleep 0.1; done
+# Each waiting call timed: the one that only waited and answered with the other's result took next to no processor
+# (lockf waiting on the turn's descriptor used to spin a whole core the whole time).
+TIMEFORMAT='%U %S %R'
+( cd "$REPO" && { time CUE_FULL_RUN_POLL=1 CUE_FULL_RUN_STEPS="$WORK/steps.sh" "$ROOT/scripts/full-run.sh" --dir "$RUN" --at "$NEXT" --since "$BASE" >"$WORK/twin.out" 2>&1; } 2>"$WORK/twin.cpu" ) &
+TWIN=$!
+{ time CUE_FULL_RUN_POLL=1 full_run --at "$NEXT" --since "$BASE"; } 2>"$WORK/main.cpu"
+exits 0; is passed true; is at "\"$NEXT\""
+wait "$TWIN" || fail "the twin call failed: $(cat "$WORK/twin.out")"
+wait "$FIRST" || fail "the first call failed: $(cat "$WORK/first.out")"
+[ "$( { echo "$OUT"; cat "$WORK/twin.out"; } | grep -c "already made for these commits" | tr -d ' ')" = 1 ] || fail "not one call answered with the other's result: $(cat "$WORK/twin.out")"
+[ "$(grep -c "^build next" "$CALLS" | tr -d ' ')" = 1 ] || fail "the run of next was made $(grep -c "^build next" "$CALLS") times"
+# The call that only waited is the one that answered with the other's result; both ask every second. Waiting, it
+# uses under a tenth of the time it waits (spinning, it used all of it).
+if grep -q "already made for these commits" <<<"$OUT"; then WAITED="$WORK/main.cpu"; else WAITED="$WORK/twin.cpu"; fi
+awk '{ exit !($3 >= 3 && $1 + $2 < 0.1 * $3) }' "$WAITED" \
+  || fail "the call that only waited used the processor: $(cat "$WAITED") (user system real)"
+done_case
+
+start "a call waiting for an older commit gives up when one for a later commit waits too"
+SLOW="$(commit "slow" 'echo 3 >slow')"
+OLD="$(commit "old")"
+NEW="$(commit "new")"
+(cd "$REPO" && CUE_FULL_RUN_STEPS="$WORK/steps.sh" "$ROOT/scripts/full-run.sh" --dir "$RUN" --at "$SLOW" --out "$WORK/first.json" >"$WORK/first.out" 2>&1) &
+FIRST=$!
+for _ in $(seq 1 100); do grep -q "^build-start slow" "$CALLS" && break; sleep 0.1; done
+(cd "$REPO" && CUE_FULL_RUN_STEPS="$WORK/steps.sh" "$ROOT/scripts/full-run.sh" --dir "$RUN" --at "$OLD" --out "$WORK/old.json" >"$WORK/old.out" 2>&1) &
+OLDER=$!
+for _ in $(seq 1 100); do grep -q "waiting for its end" "$WORK/old.out" && break; sleep 0.1; done
+full_run --at "$NEW" --out "$WORK/new.json"
+exits 0
+wait "$OLDER"; OLD_STATUS=$?
+[ "$OLD_STATUS" = 2 ] || fail "the older call exited $OLD_STATUS, not 2: $(cat "$WORK/old.out")"
+grep -qF "a run of a later commit" "$WORK/old.out" || fail "the older call didn't say why: $(cat "$WORK/old.out")"
+[ ! -e "$WORK/old.json" ] || fail "the older call wrote a result"
+wait "$FIRST" || fail "the first call failed: $(cat "$WORK/first.out")"
+not_called "build old"; called "build new"
+[ -z "$(ls -A "$RUN/queue")" ] || fail "calls were left in the queue: $(ls "$RUN/queue")"
 done_case
 
 start "with no lockf, flock keeps the one run at a time"

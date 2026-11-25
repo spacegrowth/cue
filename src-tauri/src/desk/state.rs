@@ -10,6 +10,9 @@ use super::model::Waiting;
 pub struct DeskRun {
     /// When the queue's next wait runs out and a sweep is set for it (ms; 0: none set): desk/hub/turn/queue.rs.
     pub queue_timer: u64,
+    /// What each Desk's lead was last sent of its Desk block (#818, desk/hub/lead/block.rs): the next carries only
+    /// what changed. Not saved: after a restart the next is whole.
+    pub blocks: HashMap<String, crate::desk::hub::lead::block::Sent>,
     /// Sessions being selected as leads, reserved across concurrent Desk changes.
     pub lead_claims: HashMap<String, String>,
     /// Projects whose lead is being started or resumed, with the messages that arrived while it was starting, sent
@@ -22,6 +25,10 @@ pub struct DeskRun {
     /// Sessions whose compacting failed (an error, or no end in 15 minutes), and when: a session on a Desk with a live
     /// lead is asked for a hand-off note instead, and goes on fresh from it (hub/cache_tick.rs full_due). Not saved.
     pub compact_failed: HashMap<String, u64>,
+    /// Desks whose lead is handing off (#841, desk/hub/lead/handoff.rs): project → (the old lead, the new one once it
+    /// started, "" till then; since when, ms). From the old lead's note turn's end until the new lead's first turn
+    /// ends: the lead chat says so and holds its box. Not saved.
+    pub handing: HashMap<String, (String, String, u64)>,
     /// Items a lead said DONE on that its DONE couldn't close, and how each was ("state@updated") when Cue told it
     /// why (desk/hub/turn/said.rs lead_done): a lead saying it again of an unchanged item isn't answered again. Not saved.
     pub done_told: HashMap<String, String>,
@@ -29,6 +36,10 @@ pub struct DeskRun {
     /// acted on once they've finished (desk/hub/turn/heard.rs `held_done`), at its next turn's end or as its background
     /// agents are seen done (hub/activity.rs `watch_helpers`). Not saved.
     pub done_held: HashMap<String, String>,
+    /// A session's words for its lead already relayed (TO LEAD, #868; desk/hub/turn/heard.rs `to_lead_said`), by
+    /// "session|item": the words, so the same words again (a turn told twice) aren't relayed again until the lead
+    /// answers that item with a NOTE. Not saved.
+    pub relayed: HashMap<String, String>,
     /// What a project's lead is to be told of its routes Cue couldn't make (desk/hub/turn/said.rs `route_answers`, #248) when it
     /// couldn't be sent then, as the lead was asking the user something: told in its next Desk block instead, and
     /// cleared once that reaches it (`desk_told`). Not saved.

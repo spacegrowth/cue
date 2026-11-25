@@ -485,7 +485,12 @@ pub(crate) async fn mini_key(window: tauri::WebviewWindow, on: bool) -> Result<(
 pub(crate) async fn mini_reading(app: AppHandle, window: tauri::WebviewWindow, session_id: Option<String>) -> Result<(), String> {
     use tauri::Emitter;
     let opened = session_id.as_deref().is_some_and(|s| !s.is_empty());
-    crate::notify::reading(window.label(), session_id);
+    let seen = crate::notify::reading(window.label(), session_id);
+    if !seen.is_empty() {
+        use tauri::Manager;
+        let hub = app.state::<std::sync::Arc<crate::hub::Hub>>().inner().clone();
+        hub.chats_seen(&seen);
+    }
     if opened {
         let others: Vec<String> = slots(|s| s.keys().filter(|l| *l != window.label()).cloned().collect());
         for other in others {

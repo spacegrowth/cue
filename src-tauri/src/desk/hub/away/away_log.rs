@@ -1,6 +1,6 @@
 //! What happened during each past Away stretch (#416), for the dispatcher's Away tab. Kept in config.json:
-//! - `desk.away_log`: one record a stretch, written as Away turns off: { id, desk, since, end, until, budget, spent,
-//!   ended ("" when you turned it off, "until" | "budget" when it ran out first), items: [{ id, kind, title, from, to }]
+//! - `desk.away_log`: one record a stretch, written as Away turns off: { id, desk, since, end, budget, spent,
+//!   ended ("" when you turned it off, "budget" when it ran out first; "until" in stretches from before #790), items: [{ id, kind, title, from, to }]
 //!   (each item that moved: its state as Away went on, "" for one added while away, and as it went off), calls: the
 //!   lead's DECIDED lines made while away, as they read then }.
 //! - `desk.held_log`: every step held while away, from the moment it's held, with your answer once given ("allow" |

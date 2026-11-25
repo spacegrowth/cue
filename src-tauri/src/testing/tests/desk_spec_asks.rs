@@ -32,6 +32,9 @@ fn the_leads_ask_is_answered_once_and_the_answer_reaches_it_once() {
     assert_eq!(sent.iter().filter(|t| t.as_str() == words).count(), 1, "{sent:?}");
     assert!(!sent.iter().any(|t| t.contains("The answer: Header")), "a second answer isn't sent: {sent:?}");
     assert!(w.snapshot().cards_of(&l).is_empty());
+    // In the lead's chat: Cue's sentence around your Yes or No, Cue's answer, never your bubble (#837).
+    let copy = w.hub().read(|st| st.sessions.thread(&l)).into_iter().rev().find(|e| e.role == "you" && e.text.contains(words)).expect("its copy in the chat");
+    assert!(copy.cue && copy.kind == "answer", "{copy:?}");
 }
 
 /// The answer reaches who asked: the lead's ASK answered while the lead is busy on a turn goes in once that turn

@@ -130,7 +130,6 @@
 /* "N waiting": its sessions, oldest first, one line each. */
 .wt-pop { width: 420px; }
 .wt-pop .lv-list { padding: 6px 10px; }
-.wt-row .pdot { flex: none; }
 .wt-row .lv-name { flex: none; max-width: 45%; }
 .wt-row.on { background: var(--panel-2); }
 .wt-line { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

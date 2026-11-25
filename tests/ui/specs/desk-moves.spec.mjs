@@ -1,6 +1,6 @@
 // What the lead moved (#374): the Dispatcher's "Activity" tab (named so in #688; "Dispatcher Actions" since #390) lists every move the lead made on its own, newest first, each
 // with its item, why and time; older ones load from Cue as you scroll; Clear asks once, then empties it.
-import { test, expect, openDesk, deskShowPanel } from "./cue.mjs";
+import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
 const s = (ms) => Math.floor(ms / 1000);
@@ -11,7 +11,8 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
   await page.setViewportSize({ width: 1728, height: 900 });
   await cue.open("desk");
   await openDesk(page);
-  await deskShowPanel(page);   // the panel (its Activity's "N more in Activity ›"), behind Show panel
+  // The lead's chat has no panel (692dc421): no Hide/Show panel, so Activity is reached by its tab.
+  await expect(page.locator('.dk2b-chat [data-desk-panel="dispatcher-hidden"]')).toHaveCount(0);
   // Today's in the Desk's state; 70 older ones only in Cue's database.
   const today = [
     act("t1", "d3", "send_back", "Sent #d3 to web again", "the header still jumps", NOW - 60 * 1000),
@@ -23,10 +24,9 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
     d.decisions.push(...today);
     d.moves = older;
   }, { today, older });
-  // Its tab and the list's title say "Activity" (#688), the link under the panel's Activity "N more in Activity ›", never "Moves".
-  await expect(page.locator('.dk-right .dk-tab[data-desk-tab="moves"]')).toHaveText("Activity");
-  const all = page.locator('.dk-right .dk-pact .dk-pall[data-act="desk-activity"]');
-  await expect(all).toHaveText(/^(\d+ more in )?Activity ›$/);
+  // Its tab and the list's title say "Activity" (#688), never "Moves".
+  const all = page.locator('.dk-right .dk-tab[data-desk-tab="moves"]');
+  await expect(all).toHaveText("Activity");
   await all.click();
   const list = page.locator(".dk-moves");
   await expect(list.locator(".dk-mv-t")).toHaveText("Activity");
@@ -36,15 +36,17 @@ test("the lead's own moves stay in a list, newest first, older ones load as you 
   await expect(rows.nth(1)).toContainText("Started #d4 now");
   await expect(rows.nth(2)).toContainText("Closed #d8: its work is on main (old 0) · it landed by hand");
   await expect(rows.nth(2).locator(".dk-mv-at")).toContainText(",");   // an older day says its date
-  await expect(rows).toHaveCount(30);
+  // A page is 30 of Activity's rows (DESK_MOVES_STEP), the ready-to-check line among them since #789.
+  const shown = list.locator(".dk-mv");
+  await expect(shown).toHaveCount(30);
   // Scrolled to its end: more load. The window is drawn anew whenever older ones come in from Cue, which can take the
   // list's end away mid-scroll (#719): it's looked up again, and the count waited for, until it's there.
-  const toEnd = (count) => expect(async () => {
+  const toEnd = (count, of = shown) => expect(async () => {
     await list.locator("[data-desk-moves-more]").scrollIntoViewIfNeeded({ timeout: 1000 });
-    await expect(rows).toHaveCount(count, { timeout: 1000 });
+    await expect(of).toHaveCount(count, { timeout: 1000 });
   }).toPass({ timeout: 10000 });
   await toEnd(60);
-  await toEnd(72);
+  await toEnd(72, rows);
   await expect(rows.last()).toContainText("(old 69)");
   // Its item's number opens the item: its holder's chat with its bar, its row lit.
   await rows.first().locator('[data-desk-chk-item="d3"]').click();

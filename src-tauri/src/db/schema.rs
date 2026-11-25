@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS exchanges (
   status_ask  TEXT NOT NULL DEFAULT '',    -- yours: what a prompt hook added to ask for a status list
   from_name   TEXT NOT NULL DEFAULT '',    -- another session's message: who sent it
   from_sid    TEXT NOT NULL DEFAULT '',    -- and that session's id, when Cue knew it
+  by_cue      INTEGER NOT NULL DEFAULT 0, -- 'you' in the thread, but Cue's own message to it (#836)
+  cue_kind    TEXT NOT NULL DEFAULT '',    -- and what kind of message of Cue's it is (#837)
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -246,6 +248,17 @@ CREATE TABLE IF NOT EXISTS desk_lead (
   set_ms      INTEGER NOT NULL
 );
 
+-- Each Desk's earlier leads (#792): the session that ran it before `next_session` did, the name it went by, and
+-- when it stopped. The lead chat shows them back, one at a time, on "Show earlier".
+CREATE TABLE IF NOT EXISTS desk_lead_past (
+  project      TEXT NOT NULL,
+  session_id   TEXT NOT NULL,
+  name         TEXT NOT NULL DEFAULT '',
+  until_ms     INTEGER NOT NULL,
+  next_session TEXT NOT NULL,
+  PRIMARY KEY (project, session_id)
+);
+
 -- Dropped Desk items' own copies that had work in them, kept and listed on their Desk (desk/model.rs KeptTree).
 CREATE TABLE IF NOT EXISTS desk_kept (
   id          TEXT PRIMARY KEY,
@@ -432,6 +445,16 @@ fn migrate_on(c: &Connection, version: i64) -> rusqlite::Result<()> {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN from_name TEXT NOT NULL DEFAULT ''", []);
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN from_sid TEXT NOT NULL DEFAULT ''", []);
         c.pragma_update(None, "user_version", 12)?;
+    }
+    // Cue's own messages to a session (#836): marked, so an older page of a chat never shows them as yours.
+    if version < 13 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN by_cue INTEGER NOT NULL DEFAULT 0", []);
+        c.pragma_update(None, "user_version", 13)?;
+    }
+    // What kind of message of Cue's each is (#837), as it was sent.
+    if version < 14 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN cue_kind TEXT NOT NULL DEFAULT ''", []);
+        c.pragma_update(None, "user_version", 14)?;
     }
     Ok(())
 }

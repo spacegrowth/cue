@@ -22,19 +22,54 @@ pub fn is_quiet(session_id: &str) -> bool {
     q.iter().any(|s| s == session_id)
 }
 
-/// The session each mini window has its chat open on (by window): you're reading it, so nothing about it
-/// bounces the Dock or is posted.
-static READING: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
-pub fn reading(window: &str, session_id: Option<String>) {
-    let mut r = crate::locking::lock(&READING, "mini reading");
-    r.retain(|(w, _)| w != window);
-    if let Some(s) = session_id.filter(|s| !s.is_empty()) {
-        r.push((window.to_string(), s));
-    }
+/// The chats open in each window (by window label): the session each is about, and whether it's scrolled to its
+/// newest. A mini window's chat is read once open; the main window's only while Cue is in front and the chat is
+/// at its newest (#799).
+static READING: std::sync::Mutex<Vec<(String, String, bool)>> = std::sync::Mutex::new(Vec::new());
+/// Cue's main window is in front of you (focused and shown), as the window last said.
+static MAIN_FRONT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+const MAIN: &str = "main";
+
+fn seen_in(r: &[(String, String, bool)], front: bool, session_id: &str) -> bool {
+    r.iter().any(|(w, s, end)| s == session_id && (w != MAIN || (front && *end)))
 }
+
+fn seen_all(r: &[(String, String, bool)], front: bool) -> Vec<String> {
+    let mut v: Vec<String> = r.iter().filter(|(_, s, _)| seen_in(r, front, s)).map(|(_, s, _)| s.clone()).collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// Window `window`'s open chats now (`chats`: session, at its newest), and for the main window whether it's in
+/// front (`front`; None: as it was). Returns the sessions you're reading now that you weren't: their
+/// notifications, waiting or up, are taken back (Hub::chats_seen).
+pub fn open_chats(window: &str, chats: Vec<(String, bool)>, front: Option<bool>) -> Vec<String> {
+    let mut r = crate::locking::lock(&READING, "chats open");
+    let before = seen_all(&r, MAIN_FRONT.load(std::sync::atomic::Ordering::SeqCst));
+    if let Some(f) = front {
+        MAIN_FRONT.store(f, std::sync::atomic::Ordering::SeqCst);
+    }
+    r.retain(|(w, _, _)| w != window);
+    r.extend(chats.into_iter().filter(|(s, _)| !s.is_empty()).map(|(s, end)| (window.to_string(), s, end)));
+    let after = seen_all(&r, MAIN_FRONT.load(std::sync::atomic::Ordering::SeqCst));
+    after.into_iter().filter(|s| !before.contains(s)).collect()
+}
+
+/// The session a mini window has its chat open on (None: folded). Returns the sessions newly read, as `open_chats`.
+pub fn reading(window: &str, session_id: Option<String>) -> Vec<String> {
+    open_chats(window, session_id.into_iter().map(|s| (s, true)).collect(), None)
+}
+
+/// You're reading session `session_id`'s newest already: its chat open in a mini window, or in Cue's window
+/// in front of you, scrolled to its end. Nothing about it is notified.
 pub fn is_read(session_id: &str) -> bool {
-    let r = crate::locking::lock(&READING, "mini reading");
-    r.iter().any(|(_, s)| s == session_id)
+    !session_id.is_empty() && seen_in(&crate::locking::lock(&READING, "chats open"), MAIN_FRONT.load(std::sync::atomic::Ordering::SeqCst), session_id)
+}
+
+/// The notifications about session `sid` (the newest few hundred), by id: taken back when you open its chat.
+pub fn about(sid: &str) -> Vec<String> {
+    crate::locking::lock(&ABOUT, "notification sessions").iter().filter(|(_, s)| s == sid).map(|(i, _)| i.clone()).collect()
 }
 
 /// A job for Notification Center (posting, taking back): each is an XPC round trip to macOS's notification
@@ -76,7 +111,7 @@ pub struct Note {
 static ABOUT: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
 const ABOUT_KEEP: usize = 500;
 
-fn note_about(id: &str, sid: &str) {
+pub(crate) fn note_about(id: &str, sid: &str) {
     let mut a = crate::locking::lock(&ABOUT, "notification sessions");
     a.retain(|(i, _)| i != id);
     if !sid.is_empty() {
@@ -118,7 +153,11 @@ fn in_front(app: &tauri::AppHandle) -> bool {
 pub fn show(app: tauri::AppHandle, note: Note) {
     note_about(&note.id, &note.session_id);
     if note.watched {
-        return later(move || post_now(&app, note));
+        return later(move || {
+            if !is_read(&note.session_id) {
+                post_now(&app, note);
+            }
+        });
     }
     // Noted here, not on the thread: one taken back before that thread gets to it is never posted.
     {
@@ -143,7 +182,8 @@ pub fn show(app: tauri::AppHandle, note: Note) {
                     b.retain(|i| *i != note.id);
                     still
                 };
-                if still && !in_front(&app) {
+                // Read in the minute meanwhile (its chat open at its newest): never posted.
+                if still && !in_front(&app) && !is_read(&note.session_id) {
                     post_now(&app, note);
                 }
             });

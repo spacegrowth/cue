@@ -32,7 +32,6 @@ digraph locks {
   "the hub's store" -> "config in memory";
   "the hub's store" -> "folder facts";
   "the hub's store" -> "landing full run";
-  "the hub's store" -> "landing last";
   "the hub's store" -> "landing now";
   "the hub's store" -> "leads sweeping for Away";
   "typing gate" -> "CLAUDE";
@@ -41,6 +40,7 @@ digraph locks {
   "typing gate" -> "WINDOWS";
   "typing gate" -> "a session's feed";
   "typing gate" -> "caches";
+  "typing gate" -> "chats open";
   "typing gate" -> "config file";
   "typing gate" -> "config in memory";
   "typing gate" -> "copies";
@@ -49,17 +49,17 @@ digraph locks {
   "typing gate" -> "folder facts";
   "typing gate" -> "hosted pickup";
   "typing gate" -> "landing full run";
-  "typing gate" -> "landing last";
   "typing gate" -> "landing now";
   "typing gate" -> "leads sweeping for Away";
   "typing gate" -> "machine tails";
   "typing gate" -> "machine tails: links";
-  "typing gate" -> "mini reading";
+  "typing gate" -> "notification sessions";
   "typing gate" -> "parked saves";
   "typing gate" -> "quiet sessions";
   "typing gate" -> "redraw wanted";
   "typing gate" -> "shown snapshot";
   "typing gate" -> "state drawn";
+  "typing gate" -> "state sent";
   "typing gate" -> "the hub's store";
   "working out found words" -> "found words";
 }

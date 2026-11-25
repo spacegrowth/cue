@@ -113,3 +113,177 @@ fn to_lead_goes_to_the_lead_of_the_items_desk() {
     assert!(to_a.len() == 1 && to_a[0].contains("about A") && to_a[0].contains("Only A"), "{to_a:?}");
     assert!(to_b.len() == 1 && to_b[0].contains("about B") && to_b[0].contains("Only B"), "{to_b:?}");
 }
+
+/// Your words to a lead at work and a session's TO LEAD line kept for it meanwhile never go as one message (#831): yours
+/// go alone when its turn ends, and the lead's answer is under them in its chat; the session's words go after, as a
+/// message of their own, never your words. Both stay in Cue's log once newer messages push them out of the few the
+/// chat keeps live.
+#[test]
+fn your_words_and_a_sessions_question_go_to_the_lead_apart() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let lead = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "bug", "Header wraps", "", None).unwrap();
+    w.hub().desk_give(&it.id, &sid).unwrap();
+    w.settle();
+    let words = |t: &str| t.rsplit("</desk>").next().unwrap_or(t).trim().to_string();
+    // The lead at work on your first message.
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "Status?", &[], false).unwrap();
+    w.settle();
+    let first = sent_to(&w, &lead).last().cloned().unwrap();
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: first });
+    w.settle();
+    // Meanwhile the holder asks the lead something, and you write again: both kept for it.
+    ends(&w, &sid, "Looked at it.\nTO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "are we moving ?", &[], false).unwrap();
+    ends(&w, &lead, "Two items are at work.");
+    let yours = sent_to(&w, &lead).last().cloned().unwrap();
+    let asked = format!("From cue-teams on #{} (Header wraps):\nShould it wrap on narrow windows?\nAnswer it with NOTE: #{} | <your words>.", it.id, it.id);
+    assert_eq!(words(&yours), "are we moving ?", "your words alone");
+    // The session's words stay kept for the next turn, not yours.
+    let held = w.snapshot().session(&lead)["held"]["text"].as_str().map(|t| words(t));
+    assert_eq!(held.as_deref(), Some(asked.as_str()));
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: yours });
+    w.settle();
+    ends(&w, &lead, "Yes, we're moving: two items landed.");
+    let next = sent_to(&w, &lead).last().cloned().unwrap();
+    assert_eq!(words(&next), asked, "the session's words, a message of their own");
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: next });
+    w.settle();
+    ends(&w, &lead, &format!("Answered it.\nNOTE: #{} | Yes, wrap it.", it.id));
+    let chat: Vec<(String, String)> = w.snapshot().session(&lead)["thread"].as_array().unwrap().iter().map(|e| (e["role"].as_str().unwrap().to_string(), words(e["text"].as_str().unwrap()))).collect();
+    let at = chat.iter().position(|(r, t)| r == "you" && t == "are we moving ?").unwrap_or_else(|| panic!("your words alone in its chat: {chat:?}"));
+    assert_eq!(chat.get(at + 1).map(|(r, t)| (r.as_str(), t.starts_with("Yes, we're moving"))), Some(("agent", true)), "the answer right under them: {chat:?}");
+    assert_eq!(chat.get(at + 2).map(|(r, t)| (r.as_str(), t.as_str())), Some(("you", asked.as_str())), "{chat:?}");
+    assert!(!chat.iter().any(|(r, t)| r == "you" && t.contains("are we moving") && t.contains("From cue-teams")), "{chat:?}");
+    // Five newer messages: the chat keeps only the last few live; Cue's log still has both, once each.
+    for k in 0..3 {
+        crate::desk::hub::lead::desk_send_now(w.hub(), &project, &format!("next {k}"), &[], false).unwrap();
+        w.settle();
+        let t = sent_to(&w, &lead).last().cloned().unwrap();
+        w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: t });
+        ends(&w, &lead, &format!("Answer {k}."));
+    }
+    let live = w.snapshot().session(&lead)["thread"].as_array().unwrap().len();
+    let log: Vec<(String, String)> = crate::db::session_log(&lead).iter().map(|e| (e["role"].as_str().unwrap().to_string(), words(e["text"].as_str().unwrap()))).collect();
+    assert!(!w.snapshot().session(&lead)["thread"].as_array().unwrap().iter().any(|e| words(e["text"].as_str().unwrap()).starts_with("are we moving")), "pushed out of the {live} kept live");
+    let at = log.iter().position(|(r, t)| r == "you" && t == "are we moving ?").unwrap_or_else(|| panic!("your words are in Cue's log: {log:?}"));
+    assert!(log[at + 1].0 == "agent" && log[at + 1].1.starts_with("Yes, we're moving"), "{log:?}");
+    assert_eq!(log.iter().filter(|(_, t)| t.starts_with("Yes, we're moving")).count(), 1, "{log:?}");
+}
+
+/// A session's words kept for a lead at work go to it once (#868): its next turn ends with them sent and nothing kept,
+/// and the turns after (the Desk's summary made fresh each time) never bring them back.
+#[test]
+fn a_sessions_words_kept_for_a_busy_lead_go_once() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let lead = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "bug", "Header wraps", "", None).unwrap();
+    w.hub().desk_give(&it.id, &sid).unwrap();
+    w.settle();
+    // The lead at work on your message.
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "Status?", &[], false).unwrap();
+    w.settle();
+    let first = sent_to(&w, &lead).last().cloned().unwrap();
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: first });
+    w.settle();
+    // Meanwhile the holder asks the lead something: kept for it.
+    ends(&w, &sid, "Looked at it.\nTO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    let asked = |w: &World| sent_to(w, &lead).iter().filter(|t| t.contains("Should it wrap on narrow windows?")).count();
+    assert_eq!(asked(&w), 0, "kept while the lead works");
+    // The Desk changes meanwhile, so the summary that goes with them is made fresh, not the one kept.
+    w.hub().desk_add(&project, "task", "Footer", "", None).unwrap();
+    w.settle();
+    // Its turn ends: the session's words go, once, and nothing stays kept.
+    ends(&w, &lead, "Two items are at work.");
+    w.settle();
+    assert_eq!(asked(&w), 1, "{:?}", sent_to(&w, &lead));
+    assert!(w.snapshot().session(&lead)["held"].is_null(), "nothing left kept: {}", w.snapshot().session(&lead)["held"]);
+    // The same words again from it (a turn told twice), not answered yet: not brought to the lead again.
+    ends(&w, &sid, "Looked at it.\nTO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    // The turns after: never again.
+    for k in 0..3 {
+        let last = sent_to(&w, &lead).last().cloned().unwrap();
+        w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: last });
+        w.settle();
+        ends(&w, &lead, &format!("Answered {k}."));
+        w.settle();
+    }
+    assert_eq!(asked(&w), 1, "{:?}", sent_to(&w, &lead));
+    // Answered with a NOTE, it may ask the same again: that goes.
+    ends(&w, &lead, &format!("NOTE: #{} | Yes, wrap it.", it.id));
+    w.settle();
+    ends(&w, &sid, "TO LEAD: Should it wrap on narrow windows?");
+    w.settle();
+    assert_eq!(asked(&w), 2, "{:?}", sent_to(&w, &lead));
+}
+
+/// Esc on what's kept for a lead gives back only your words (#831): a session's words kept with them stay kept, and
+/// with none of yours, nothing comes back.
+#[test]
+fn taking_back_a_kept_message_leaves_a_sessions_words_kept() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let lead = new_lead(&w, &project);
+    let it = w.hub().desk_add(&project, "bug", "Header wraps", "", None).unwrap();
+    w.hub().desk_give(&it.id, &sid).unwrap();
+    w.settle();
+    let words = |t: &str| t.rsplit("</desk>").next().unwrap_or(t).trim().to_string();
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "Status?", &[], false).unwrap();
+    w.settle();
+    let first = sent_to(&w, &lead).last().cloned().unwrap();
+    w.hosted_says(&lead, crate::hosted::HostedEvent::Taken { text: first });
+    w.settle();
+    ends(&w, &sid, "TO LEAD: Should it wrap?");
+    w.settle();
+    assert!(w.hub().unhold(&lead).is_none(), "only the session's words kept: nothing of yours to take back");
+    crate::desk::hub::lead::desk_send_now(w.hub(), &project, "are we moving ?", &[], false).unwrap();
+    let back = w.hub().unhold(&lead).expect("your words back");
+    assert_eq!(words(&back.text), "are we moving ?");
+    let held = w.snapshot().session(&lead)["held"]["text"].as_str().map(|t| words(t)).unwrap_or_default();
+    assert!(held.starts_with("From cue-teams on #") && held.contains("Should it wrap?"), "{held}");
+}
+
+#[test]
+fn relays_come_apart_from_your_words() {
+    let r = crate::desk::relay_words("cue-1", Some(("5", "A (b)")), "why?");
+    let none = crate::desk::relay_words("cue-2", None, "free");
+    let text = format!("<desk x>\nsum\n</desk>\n\n{r}\n\nhello\n\nthere\n\n{none}");
+    let (mine, relays) = crate::desk::relays_apart(&text).unwrap();
+    assert_eq!(mine, "<desk x>\nsum\n</desk>\n\nhello\n\nthere");
+    assert_eq!(relays, format!("{r}\n\n{none}"));
+    assert!(crate::desk::relays_apart(&r).is_none() && crate::desk::relays_apart("hello").is_none());
+    assert!(crate::desk::only_relays(&r) && !crate::desk::only_relays("hello") && !crate::desk::only_relays(""));
+}
+
+#[test]
+fn a_desk_handing_off_says_so_until_the_new_leads_first_turn_ends() {
+    // #841: from the old lead's note till the new lead is ready, the window is told the Desk is handing off.
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let old = new_lead(&w, &project);
+    w.settle();
+    assert!(desk(&w, &project)["lead"]["handoff"].is_null());
+    let since = crate::clock::now_ms();
+    w.hub().write(|st| st.desk.run.handing.insert(project.clone(), (old.clone(), String::new(), since)));
+    w.hub().changed();
+    w.settle();
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["from"], old.as_str());
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["to"], "");
+    // The new lead starts: it's named, and the Desk is still handing off until it's ready.
+    let next = second(&w, "successor");
+    w.hub().desk_carry(&old, &next, "successor");
+    w.settle();
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["to"], next.as_str());
+    // The old lead's turn ending changes nothing; the new one's first turn ending ends it.
+    ends(&w, &old, "Note written.");
+    w.settle();
+    assert_eq!(desk(&w, &project)["lead"]["handoff"]["to"], next.as_str());
+    ends(&w, &next, "successor now runs the Desk.");
+    w.settle();
+    assert!(desk(&w, &project)["lead"]["handoff"].is_null(), "{}", desk(&w, &project)["lead"]);
+}

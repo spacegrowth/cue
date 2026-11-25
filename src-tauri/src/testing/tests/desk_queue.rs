@@ -18,7 +18,7 @@ fn the_dispatcher_sees_idle_routes_first_and_can_queue_overlapping_work_for_a_ne
     let (_, routes) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
     // idle-worker has no item: on the one Older line, after the routes with work, with its state (#363).
     assert!(routes.find("cue-teams (sid:").unwrap() < routes.find("idle-worker (sid:").unwrap(), "{routes}");
-    assert!(routes.contains(&format!("Older, idle with no recent item: idle-worker (sid:{}, idle)", &idle[..8])), "{routes}");
+    assert!(routes.contains(&format!("Older, idle with no recent item:\n- idle-worker (sid:{}, idle)", &idle[..8])), "{routes}");
     assert!(block.contains(crate::desk::ROUTING_GUIDANCE), "{block}");
 
     let launches = w.hosted.launched().len();
@@ -256,7 +256,7 @@ fn an_item_after_another_waits_for_its_looks_right_not_its_done() {
     let it = item(&desk(&w, &project), "Footer").clone();
     assert_eq!((it["state"].as_str(), it["after"].as_str(), it["next_for"]["sid"].as_str()), (Some("queued"), Some(a.as_str()), Some(two.as_str())), "{it}");
     assert!(it["holder"].is_null() && it["fresh_at"].is_null(), "no clock while #{a} is ahead: {it}");
-    assert!(sent_to(&w, &d).iter().any(|t| t.contains(&format!("Queued: #{b} is next for cue-two, after #{a} gets Looks right"))), "{:?}", sent_to(&w, &d));
+    assert!(sent_to(&w, &d).iter().any(|t| t.contains(&format!("Queued: #{b} is next for cue-two, after #{a} lands"))), "{:?}", sent_to(&w, &d));
     ends(&w, &h, &format!("DONE: #{a}"));
     let it = item(&desk(&w, &project), "Footer").clone();
     assert_eq!(it["state"], "queued", "DONE isn't enough: {it}");

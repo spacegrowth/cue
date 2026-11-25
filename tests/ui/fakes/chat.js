@@ -72,13 +72,16 @@ CueBridge.area("chat", (w) => {
   const before = (all, { beforeMs, limit }) => all.filter((e) => e.at_ms < beforeMs).slice(-(limit || 50));
 
   return {
-    send_to_session: async ({ sessionId, text, images, now }) => {
+    send_to_session: async ({ sessionId, text, images, now, kind }) => {
       if (w.q.has("slow")) await w.wait(4000);   // ?slow=1: typing into a terminal takes a moment
       const s = w.session(sessionId);
       if (!s) throw "Cue has no record of that session";
+      // Sent by the window for Cue (`kind`, a background agent's Resume or Stop): its copy is marked Cue's (#837).
+      const cue = kind ? { cue: true, kind } : {};
       // Mid-turn, and not "now": Cue keeps it and sends it when the turn ends (hub/send.rs).
-      if (s.state === "working" && !now) { s.held = { role: "you", text, at_ms: w.now(), images: images || [] }; w.changed(); return "kept in Cue: it goes when this turn ends"; }
+      if (s.state === "working" && !now) { s.held = { role: "you", text, at_ms: w.now(), images: images || [], ...cue }; w.changed(); return "kept in Cue: it goes when this turn ends"; }
       w.working(s, text, images);
+      if (kind) Object.assign(s.thread.at(-1), cue);
       w.changed();
       return now ? "stopped via tmux pane %1" : "via tmux pane %1";
     },

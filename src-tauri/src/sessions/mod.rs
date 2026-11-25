@@ -7,6 +7,8 @@
 
 mod bar;
 pub mod crew_log;
+mod cue_said;
+pub use cue_said::{Kind, Said};
 mod delivery;
 mod kept_message;
 pub mod send_at;
@@ -381,8 +383,9 @@ impl Session {
     }
 }
 
+/// Every session by id, and Cue's own words sent to them lately (`cue_said`, #836).
 #[derive(Default)]
-pub struct Sessions(HashMap<String, Session>);
+pub struct Sessions(HashMap<String, Session>, cue_said::CueSaid);
 
 /// How long before a turn starts a background task's failure counts as what woke that turn (ms).
 const FAILED_WOKE_MS: u64 = 30_000;

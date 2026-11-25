@@ -1,0 +1,151 @@
+// Every chat shows a reply the same way (#832, docs/chat-compare.md round 1): on an item's page and a session's page on
+// the Desk, a reply has Read (which opens it) and Send to…, and item numbers and session names in it are links, as on
+// the Board's chat, where they open the item on its Desk. btw opens its panel on a session's page. A crew member's
+// Activity is its item's moves. Esc twice on a hosted session that hasn't answered yet gives back what you sent.
+import { test, expect, openDesk } from "./cue.mjs";
+
+const LONG = "Fixed the rail dot so it only blinks for a session you wrote to, and #d4 is ready to check now; the narrow window was fine as it was, nothing else changed there.";
+
+const reply = (cue, sid, text) => cue.change((st, [sid, text]) => {
+  const s = st.sessions.find((x) => x.session_id === sid), at = Date.now();
+  s.thread = [{ role: "you", text: "How is the rail dot?", at_ms: at - 60000 }, { role: "agent", text, at_ms: at - 30000 }];
+}, [sid, text]);
+
+test("an item's page: a reply has Send to… and Read, Read opens it, and #d4 in it is a link", async ({ page, cue }) => {
+  await cue.open("desk");
+  await reply(cue, "host", LONG);
+  await openDesk(page);
+  await page.locator('.dkn-items [data-desk-item="d5"]').first().click();
+  const msg = page.locator('.dk-right [data-desk-chat="host"] .cv-agent').last();
+  await expect(msg.locator(".cv-fwd")).toHaveCount(1);
+  await expect(msg.locator('a[data-desk-chk-item="d4"]')).toHaveCount(1);
+  await msg.locator(".rd-pill").click();
+  await expect(page.locator(".dk-right .rd-head")).toHaveCount(1);
+});
+
+test("a session's page on the Desk: Send to… and links on a reply, and btw opens its panel", async ({ page, cue }) => {
+  await cue.open("desk");
+  await reply(cue, "site", LONG);
+  await openDesk(page);
+  await page.evaluate(() => { deskShow({ kind: "chat", sid: "site" }); });
+  const msg = page.locator('.dk-right [data-desk-chat="site"] .cv-agent').last();
+  await expect(msg.locator(".cv-fwd")).toHaveCount(1);
+  await expect(msg.locator('a[data-desk-chk-item="d4"]')).toHaveCount(1);
+  await page.locator('.dk-right [data-act="btw"][data-sid="site"]').click();
+  await expect(page.locator(".dk-right .btw-pop")).toHaveCount(1);
+});
+
+test("the lead's chat: Send to… on a reply opens the same menu and sends it on (#854)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await reply(cue, "lead", LONG);
+  await openDesk(page);
+  const msg = page.locator(".dk-chat .cv-agent").last();
+  await expect(msg.locator('a[data-desk-chk-item="d4"]')).toHaveCount(1);
+  await expect(msg.locator(".cv-fwd")).toHaveText("↗ Send to…");
+  await msg.locator(".cv-fwd").click();
+  await expect(page.locator(".fwd-pop")).toBeVisible();
+  await expect(page.locator('.fwd-pop [data-fwd-to="lead"]')).toHaveCount(0);
+  await page.locator('.fwd-pop [data-fwd-to="site"]').click();
+  await page.locator('.fwd-pop [data-act="send-forward"]').click();
+  const call = await cue.called("send_to_session", { sessionId: "site" });
+  expect(call.args.text).toContain("the rail dot");
+});
+
+test("the Board's chat: #d4 in a reply is a link that opens the item on its Desk", async ({ page, cue }) => {
+  await cue.open("desk");
+  await reply(cue, "site", LONG);
+  await page.evaluate(() => { view = "board"; setActive(null, "site"); renderMain(); });
+  const link = page.locator('.active-pane .cv-agent a[data-desk-chk-item="d4"]');
+  await expect(link).toHaveCount(1);
+  await link.click();
+  await expect.poll(() => page.evaluate(() => view)).toBe("desk");
+  await expect.poll(() => page.evaluate(() => deskOpen?.kind === "item" && deskOpen.id)).toBe("d4");
+});
+
+test("Esc twice on a hosted session before it answered: stopped, and what you sent is back in the box", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "site"), at = Date.now();
+    Object.assign(s, { state: "working", since_ms: at - 5000, hosted: true });
+    s.thread = [{ role: "agent", text: "Done.", at_ms: at - 60000 }, { role: "you", text: "make the footer sticky", at_ms: at - 5000 }];
+  });
+  await page.evaluate(() => { view = "board"; setActive(null, "site"); renderMain(); });
+  const box = page.locator('.active-pane textarea[data-text="s:site"]');
+  await box.waitFor();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await cue.called("interrupt_session", { sessionId: "site" });
+  await expect(box).toHaveValue("make the footer sticky");
+});
+
+test("Esc twice once it has answered: stopped, and nothing comes back into the box", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "site"), at = Date.now();
+    Object.assign(s, { state: "working", since_ms: at - 5000, hosted: true });
+    s.thread = [{ role: "you", text: "make the footer sticky", at_ms: at - 5000 }, { role: "agent", text: "On it.", at_ms: at - 2000 }];
+  });
+  await page.evaluate(() => { view = "board"; setActive(null, "site"); renderMain(); });
+  const box = page.locator('.active-pane textarea[data-text="s:site"]');
+  await box.waitFor();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await cue.called("interrupt_session", { sessionId: "site" });
+  await expect(box).toHaveValue("");
+});
+
+// Send to… is one button in every chat that talks to a session (#854): a crew member's and a parked session's too,
+// opening the same menu over the same sessions and sending the same way.
+test("a crew member's chat: Send to… on its words and its answer, and it sends its answer on", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.override("session_steps", ({ sessionId }, now) => {
+    if (sessionId !== "lead") return { version: 0, turns: [] };
+    const say = (text, m) => ({ t: "say", text, at_ms: now - m * 60000 });
+    const step = { t: "step", id: "s1", kind: "read", verb: "Read", subject: "ui/header.js", mono: true, result: "", bad: false, done: true, at_ms: now - 4 * 60000 };
+    return { version: 7, turns: [], helpers: [{ id: "id-search", desc: "search-centre", kind: "general-purpose", model: "", teammate: true, name: "search-centre", step: "", started_ms: now - 9 * 60000, finished_ms: now - 60000, last_ms: now - 60000, tokens: 0, running: false, more: 0,
+      items: [say("Looking at the header.", 5), step, say("Done: the search field stays centred.", 1)] }] };
+  }, Date.now());
+  await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
+  await page.locator('.dk-right .dk-pg [data-desk-crew="id-search"]').click();
+  const chat = page.locator('.dk-right .dkn-crew[data-desk-page="crew"] .dk-crewpg .ag-chat');
+  await expect(chat.locator(".stx-say .cv-fwd")).toHaveCount(1);
+  const fwd = chat.locator(".bg-view-reply:not(.ag-ask) .cv-fwd");
+  await expect(fwd).toBeVisible();
+  await fwd.click();
+  // The same menu as on the Board: every other open session, a note, Send.
+  await expect(page.locator(".fwd-pop")).toBeVisible();
+  await expect(page.locator('.fwd-pop [data-fwd-to="lead"]')).toHaveCount(0);
+  await page.locator('.fwd-pop [data-fwd-to="site"]').click();
+  await page.locator('.fwd-pop [data-act="send-forward"]').click();
+  const call = await cue.called("send_to_session", { sessionId: "site" });
+  expect(call.args.text).toContain("Done: the search field stays centred.");
+  await expect(page.locator(".fwd-pop")).toHaveCount(0);
+});
+
+test("a parked session's chat: Send to… on its reply opens the same menu", async ({ page, cue }) => {
+  await cue.open("parked-ended");
+  await page.evaluate(() => { setActive(null, "guide"); renderMain(); });
+  const msg = page.locator(".active-pane.parked .cv-agent").last();
+  await expect(msg.locator(".cv-fwd")).toHaveCount(1);
+  await msg.locator(".cv-fwd").click();
+  await expect(page.locator(".fwd-pop")).toBeVisible();
+});
+
+// A background script or agent clicked under a Desk chat opens in full in the chat's place, as on the Board; Go to
+// chat comes back (#854).
+test("an item's page: a background script under its chat opens in full, and Go to chat comes back", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.override("session_steps", ({ sessionId }, now) => sessionId !== "host" ? { version: 0, turns: [] } : { version: 3, turns: [], helpers: [{
+    id: "b1", desc: "npx playwright test", command: "npx playwright test -c tests/ui/playwright.config.mjs", kind: "", model: "", script: true,
+    step: "", started_ms: now - 180000, last_ms: now - 1000, tokens: 0, running: true, more: 0, items: [], output: ["Running 1127 tests", "  ✓ 1 board"], lines: 2 }] }, Date.now());
+  await openDesk(page);
+  await page.locator('.dkn-items [data-desk-item="d5"]').first().click();
+  const row = page.locator('.dk-right [data-helper="host|b1"]').first();
+  await row.click();
+  await expect(page.locator(".dk-right .bg-view-title.script")).toContainText("npx playwright test");
+  await expect(page.locator(".dk-right .bg-view-out")).toContainText("Running 1127 tests");
+  await page.locator('.dk-right .bg-view-foot [data-helper-back]').click();
+  await expect(page.locator(".dk-right .bg-view-title")).toHaveCount(0);
+  await expect(page.locator('.dk-right [data-helper="host|b1"]').first()).toBeVisible();
+});

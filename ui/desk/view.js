@@ -8,10 +8,11 @@ function deskBoxKey(to) {
   deskBoxes.set(key, to);
   return key;
 }
-/** An item page's box: a tag that stays above the input as you type, who gets it and which item ("To cue-131 · Task #131"), and
- *  the item's short title in the empty box ("Remove Actions…"). */
-const deskToLine = (who, i) => ({ pre: `To ${who || "the lead"}${i ? ` · ${deskNum(i)}` : ""}`, ph: i ? `${deskShort(i.title)}…` : "" });
-const deskPreHtml = (pre) => (pre ? `<span class="dk-pre" data-desk-pre="">${esc(pre)}</span>` : "");
+/** An item page's box: a tag at the left of the input, two lines as a crew member's (#803): who gets it, small, over
+ *  the item, bold ("To cue-131" / "#131"; "Lead" for the lead's own), and the item's short title in the empty box. */
+const deskToLine = (who, i) => ({ pre: [`To ${who || "the lead"}`, i ? `#${i.id}` : "Lead"], ph: i ? `${deskShort(i.title)}…` : "" });
+// The old one-line tag (away.js): the two lines side by side.
+const deskPreHtml = (pre) => (pre ? `<span class="dk-pre" data-desk-pre="">${esc([].concat(pre).join(" · "))}</span>` : "");
 /** deskBox for an open item: who gets what you type (its holder, its lead or a kept copy's old session), the tag over
  *  the box, its placeholder, and whose suggested reply it shows. `ph`: the lead's placeholder, kept when nothing else fits. */
 function deskBoxItem(d, o, lead, ph) {
@@ -22,7 +23,7 @@ function deskBoxItem(d, o, lead, ph) {
   // A dropped item's kept copy (#608): to the session that held it, as its own chat's box (the item is off the Desk).
   if (it?.kept && hs && sessionOf(hs)) {
     to = { sid: hs };
-    pre = `To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}, who held it`;
+    pre = [`To ${deskHolderName(hs, it.holder.kind === "crew" ? "" : it.holder.name)}`, `Held #${o.id}`];
     ph = "Write to it here…";
   }
   // No live holder: to the lead, in a box of its own (B2 shows the lead's box beside this page: never one draft for two).
@@ -31,7 +32,8 @@ function deskBoxItem(d, o, lead, ph) {
     to = it.holder.kind === "crew" ? { project: d.project, sid: hs, mate: it.holder.name, item: it.id } : { project: d.project, sid: hs, item: it.id };
     // Its chat is its holder's (#744), and this goes to it: the suggested reply is that session's.
     sugItem = hs;
-    pre = it.holder.kind === "crew" ? `To ${it.holder.name}, through ${deskHolderName(hs)} · sent as #${it.id}` : `To ${it.holder.name}, who has this item · sent as #${it.id}`;
+    // Two lines as a crew member's chip (#803): who gets it, over the item it's sent as.
+    pre = [`To ${it.holder.name}`, `#${it.id}`];
     ph = "Write to it here…";
   }
   else {
@@ -71,27 +73,61 @@ function deskBox(d, o = deskOpen) {
   if (deskLeadBoxTo(to)) {
     const s = deskLeadSession(d), busy = s?.state === "working";
     const after = s?.harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-    return `${listenLine(s?.session_id)}<div class="foot">${box(key, busy ? `Message ${lead}… ${after}` : ph, busy ? "Queue" : "Send", `data-desk-send="${esc(key)}"`, true)}</div>`;
+    // Handing off to a new lead (#841, desk/earlier.js): the box held, saying so, till the new lead is ready.
+    const h = deskHanding(d), held = !!h && !h.over;
+    const say = held ? "Handing off to a new lead…" : busy ? `Message ${lead}… ${after}` : ph;
+    return `${listenLine(s?.session_id)}<div class="foot">${box(key, say, busy ? "Queue" : "Send", `data-desk-send="${esc(key)}"`, true, "", "", true, held)}</div>`;
   }
   // Pictures pasted, dropped or added, and the mic, as in a session's chat box (app/inputs.js, chat/compose.js); its
   // quick phrases over the text, and Claude's suggested reply in the empty box (Tab types it in) from the session it
   // talks to: the lead, the open holder, or the holder of the open item (not a crew member: those words are Cue's).
   const sugSid = to.mate ? "" : to.item ? sugItem : to.sid || deskLead(d)?.sid || "";
   // The new layout: the same box as the lead's (a session's chat box), who it goes to at its left (deskCBox).
-  return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, !to.mate);
+  return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, to.mate ? "crew" : to.item ? "item" : "session");
 }
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
-// No quick phrases on a crew member's box (`quick` false): there's nothing quick to say about one.
-const deskCBox = (key, pre, ph, sug = "", sugSid = "", quick = true) => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quick ? quickRow(`data-quick="${esc(key)}"`) : "", send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
+// Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member.
+const deskCBox = (key, pre, ph, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
 /** Box `to` is the lead's own: about no item, crew member, kept copy or other session. */
 const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kept;
 // The lead's box writes to its session (chat/compose.js sidOfKey): its "/" menu, Send at and suggestion are the lead's.
 // It claims no box (act.js's entry sends it).
 BOX_OWNERS.push({ owns: () => false, sid: (key) => { const to = deskBoxes.get(key); return deskLeadBoxTo(to) ? deskLead(deskOf(to.project))?.sid || null : null; } });
+/** Permission cards you just answered on the Desk (#793), by ask id: { at, h: { place: its height then }, it, item,
+ *  held, desk }. Each folds shut where it was (an item page's foot, a held step, an ask under Blocked on you) with the
+ *  rows' fold (commit.js deskLeaveMs, desk-c.css dkn-leave), while your answer has already gone; at once with reduced
+ *  motion. Places: "foot" (.dk-ask), "list" (.dk-request), "held" (its .dk-prows). */
+const deskAskFolds = new Map();
+/** Card `id` answered: its places' heights now, then it folds; `extra` says what it is (it, item, held, desk). */
+function deskAskFold(id, extra) {
+  if (typeof deskLeaveMs !== "function" || !deskLeaveMs() || deskAskFolds.has(id)) return;
+  const h = {}, sel = { foot: `.dk-ask [data-id="${CSS.escape(id)}"]`, list: `[data-desk-request="${CSS.escape(id)}"]`, held: `[data-held-row="${CSS.escape(id)}"]` };
+  const box = { foot: ".dk-ask", list: ".dk-request", held: ".dk-prows" };
+  for (const [place, q] of Object.entries(sel)) { const el = document.querySelector(q)?.closest(box[place]); if (el) h[place] = el.offsetHeight; }
+  if (!Object.keys(h).length) return;
+  deskAskFolds.set(id, { at: Date.now(), h, ...extra });
+  setTimeout(() => { deskAskFolds.delete(id); renderMain(); }, deskLeaveMs() + 20);
+}
+/** A permission card answered from its item's page or Blocked on you: it folds (board.js respond calls this). */
+function deskPermAnswered(it) {
+  if (it?.kind !== "permission") return;
+  const item = (state.desk?.projects || []).flatMap((p) => p.items || []).find((x) => x.ask?.item_id === it.id);
+  deskAskFold(it.id, { it, item: item?.id });
+}
+/** Folds of `place` still under way, oldest first. */
+const deskAskFolding = (place) => !deskAskFolds.size ? [] : [...deskAskFolds.entries()].filter(([, f]) => f.h[place] != null && Date.now() - f.at < deskLeaveMs()).map(([id, f]) => ({ id, ...f }));
+/** The class and style a folding card draws with in `place`, as commit.js deskLeaveStyle: its fold `now - at` in. */
+const deskAskLeave = (f, place) => ` dk-leave" style="--h:${f.h[place]}px;animation-delay:-${Math.min(Date.now() - f.at, deskLeaveMs())}ms`;
 /** An item page's foot: while its holder asks you, the answer goes there, so you stay on its page. Its ask's card
  *  (choices, Decline, Type answer…) as under a chat; a turn that ended on it, a box to its holder. Else the box. */
 function deskItemFoot(i, d) {
+  // The permission you just answered on it folds shut over what comes next (#793).
+  const f = i && deskAskFolding("foot").find((x) => x.item === i.id);
+  const was = f ? `<div class="dk-ask${deskAskLeave(f, "foot")}" aria-hidden="true">${askFoot(f.it, f.it.session_id, f.it.harness || "claude", `fold:${f.id}`)}</div>` : "";
+  return was + deskItemFootNow(i, d);
+}
+function deskItemFootNow(i, d) {
   if (i?.state !== "needs_you") return deskBox(d);
   const it = deskItemRequest(i);
   if (it) return `<div class="dk-ask">${askFoot(it, it.session_id, it.harness || "claude", deskBoxKey({ project: d.project, item: i.id }))}</div>`;
@@ -100,8 +136,8 @@ function deskItemFoot(i, d) {
   if (!sessionOf(sid)) return `<div class="dk-ended">Its session has ended.</div>`;
   const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
   const key = deskBoxKey(to), line = deskToLine(i.holder.name, i);
-  // No quick phrases to a crew member, as on its own box.
-  return deskCBox(key, line.pre, line.ph, "", "", !to.mate);
+  // An item's chat, or a crew member's when one holds it (no quick phrases to a crew member).
+  return deskCBox(key, line.pre, line.ph, "", "", to.mate ? "crew" : "item");
 }
 function deskRight(project, taskApprovals) {
   return deskOpenCard(project, taskApprovals) || deskRightChat(deskOf(project), taskApprovals);
@@ -122,7 +158,8 @@ function deskOpenCard(project, taskApprovals) {
   if (o?.kind === "item") {
     const i = item;
     // An item is its session's chat, its bar on top (#744); one no session has yet, its bar over what it's about (#748).
-    if (i) { delete o.fresh; body = deskCItemChat(i, d, foot()) || deskCItemBare(i, d, foot()); }
+    // A reply of its holder's open in Read: read-only in the chat's place, as on a session's page (Reply brings it back).
+    if (i) { delete o.fresh; const hs = deskHolderSid(i); body = (hs && deskReader(sessionOf(hs))) || deskCItemChat(i, d, foot()) || deskCItemBare(i, d, foot()); }
     // Just added: it opens once Cue's state has it (the chat shows till then); not there in a few seconds, it won't.
     else if (o.fresh && now() - o.fresh < 5000) return null;
   }
@@ -166,7 +203,7 @@ function deskRightChat(d, taskApprovals) {
   const strip = deskPanelHidden("dispatcher");
   // Activity at the panel's foot (#688): its last 3 rows, the rest a click away.
   const activity = deskPanelActivity(deskActivity(d), d);
-  return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", activity, back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
+  return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", activity, back: "", mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
     now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel: "", main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Activity", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. Not one whose turn
@@ -209,7 +246,7 @@ function deskView() {
   if (deskPick && deskPick !== deskSelection()) deskPick = null;
   const given = deskGiveFor && deskItem(deskSelection(), deskGiveFor.id);
   // Give to… goes once it has a holder; its ⋯ menu (#669) stays open with one.
-  if (deskGiveFor && (!given || (given.holder && deskGiveFor.at !== "more"))) deskGiveFor = null;
+  if (deskGiveFor && (!given || (given.holder && !deskMoreAt(deskGiveFor.at)))) deskGiveFor = null;
   if (deskDropArm && !deskItem(deskSelection(), deskDropArm) && !(deskProjOf({ project: deskSelection() })?.kept || []).some((k) => k.id === deskDropArm)) deskDropArm = null;
   deskBoxes.clear();   // the boxes drawn now note theirs again
   if (!deskSelection()) return deskAll();

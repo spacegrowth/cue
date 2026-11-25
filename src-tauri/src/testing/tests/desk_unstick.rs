@@ -347,6 +347,58 @@ fn the_lead_cant_unpark_an_item_you_didnt_ask_for() {
     assert!(told.iter().any(|t| t.contains(&format!("#{id} not unparked: the user didn't ask for it"))), "{told:?}");
 }
 
+/// Item `id` as said aloud, digit by digit ("810" → "eight one zero").
+fn spoken(id: &str) -> String {
+    const D: [&str; 10] = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+    id.chars().map(|c| D[c.to_digit(10).unwrap() as usize]).collect::<Vec<_>>().join(" ")
+}
+
+/// #853: you ask in your own words, by number, by voice, or "it" right after the lead talked about the item: unparked.
+#[test]
+fn the_lead_unparks_an_item_you_ask_for_in_your_own_words() {
+    for ask in ["plain", "voice", "it"] {
+        let w = World::new();
+        let (project, l, id) = parked(&w, "Dark sidebar");
+        match ask {
+            "plain" => you_write(&w, &project, &l, &format!("un-park {id} please")),
+            "voice" => you_write(&w, &project, &l, &format!("Unpark {}.", spoken(&id))),
+            _ => {
+                you_write(&w, &project, &l, "What's parked?");
+                ends(&w, &l, &format!("#{id} Dark sidebar is parked."));
+                w.advance(1000);
+                you_write(&w, &project, &l, "OK, bring it back");
+            }
+        }
+        ends(&w, &l, &format!("UNPARK: #{id} | why: the user asked for it back"));
+        w.advance(1000);
+        w.settle();
+        let it = item(&w, &project, "Dark sidebar");
+        assert_eq!(it["state"], "new", "{ask}: {it} {:?}", sent_to(&w, &l));
+    }
+}
+
+/// #853: naming the item without asking for it back, or "unpark it" when the reply before wasn't about it: refused.
+#[test]
+fn the_lead_cant_unpark_an_item_you_only_named() {
+    for ask in ["named", "it"] {
+        let w = World::new();
+        let (project, l, id) = parked(&w, "Dark sidebar");
+        if ask == "named" {
+            you_write(&w, &project, &l, &format!("How is #{id} doing?"));
+        } else {
+            you_write(&w, &project, &l, "How is the Desk?");
+            ends(&w, &l, "All quiet.");
+            w.advance(1000);
+            you_write(&w, &project, &l, "unpark it");
+        }
+        ends(&w, &l, &format!("UNPARK: #{id} | why: there's room now"));
+        w.advance(1000);
+        w.settle();
+        assert_eq!(item(&w, &project, "Dark sidebar")["state"], "held", "{ask}");
+        assert!(sent_to(&w, &l).iter().any(|t| t.contains(&format!("#{id} not unparked: the user didn't ask for it"))), "{ask}");
+    }
+}
+
 #[test]
 fn unpark_is_read_with_a_dash_or_a_bar() {
     for l in ["UNPARK: #12 — why: you asked", "UNPARK: #12 | why: you asked", "- **UNPARK:** #12 - you asked"] {

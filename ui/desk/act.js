@@ -11,7 +11,7 @@ function deskShow(what) {
     deskTab = "lead";
     // "This turn in …" on the lead: its chat goes to that turn (desk/view.js deskSettle), not to its end.
     deskTurnLead = !!deskTurnAt;
-    if (!deskTurnAt) deskChatEnd = true;
+    if (!deskTurnAt) { deskChatEnd = true; deskChatSent = true; }
     return renderMain();
   }
   if (what?.kind === "item") deskSeeItem(what.id);
@@ -21,6 +21,9 @@ function deskShow(what) {
   deskDropArm = null;
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
+  // A chat opened (a session's, a crew member's, the lead's): at its end, and again a frame and a moment later, so what
+  // draws late (its steps, a picture) doesn't leave it short of the end.
+  if (!what || ["chat", "crew", "holder"].includes(what.kind)) { deskChatEnd = true; deskChatSent = true; }
   renderMain();
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
@@ -35,7 +38,8 @@ async function deskSendBox(key, sendNow = false) {
   deskAwayNoteSent(to);
   // From the lead's own box, however it goes (words, a "/" command, a "!" line): its chat goes to its end, to show
   // what you sent and follow the answer (#704).
-  if (deskLeadBoxTo(to)) { deskChatEnd = true; deskChatSent = true; }
+  // From the open chat's own box (a session's, a crew member's, an item's page) too.
+  if (deskLeadBoxTo(to) || document.querySelector(`.dk-right textarea[data-text="${CSS.escape(key)}"]`)) { deskChatEnd = true; deskChatSent = true; }
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
   if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
@@ -285,7 +289,11 @@ async function deskAct(id, act, el = null) {
   if (act === "back_go") {
     const key = `back:${id}`;
     if (!draft(key).text.trim() && !draft(key).images.length) { toast("Say why it goes back first", 4000); focusComposer(key, { end: false }); return; }
+    // Its row stays where it was till you open something else (#791), from before it goes: its new state can come in
+    // before the answer does.
+    deskCStay.set(id, deskLooksPlace());
     if (await deskSendBack(id, key)) deskBackFor = null;
+    else deskCStay.delete(id);
     return renderMain();
   }
   // Start now at the limit on items at once (#712): asked first, never past it unless you raise it.
@@ -392,10 +400,14 @@ deskClicks({
   deskCrew: (el) => deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew, ...(deskOpen?.kind === "sessions" ? { from: { kind: "sessions", crew: [el.dataset.lead, el.dataset.deskCrew] } } : {}) }),
   deskBack: (el) => deskShow(el.dataset.deskBack ? { kind: "holder", sid: el.dataset.deskBack } : null),
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
+  // The lead chat's Show earlier and Hand-off note (#792, desk/earlier.js).
+  deskEarlier: (el) => deskEarlierShow(el.closest("[data-desk-chat]")?.dataset.deskChat || deskSelection(), el.dataset.deskEarlier),
+  deskEarlierNote: (el) => deskEarlierNote(el.closest("[data-desk-chat]")?.dataset.deskChat || deskSelection(), el.dataset.deskEarlierNote),
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
-  deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
+  // A choice shuts its ⋯ menu, but Drop's first press (it arms) keeps it open, for its second (#847).
+  deskAct: (el) => { if (!(el.dataset.deskAct === "drop" && deskDropArm !== el.dataset.id && el.closest(".dk-moremenu"))) deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskTick: (el) => { const id = el.dataset.deskTick; if (!deskTicked.delete(id)) deskTicked.add(id); if (!deskTicked.size) deskGoBackOpen = null; renderMain(); },
   deskShowAll: (el) => { const k = el.dataset.deskShowAll; if (!deskShowAll.delete(k)) deskShowAll.add(k); renderMain(); },
@@ -523,7 +535,7 @@ function deskClick(e) {
   // A crew member's ⋯ menu closes on a click outside it.
   if (deskCrewMenu && !e.target.closest?.(".dk-cmore")) { deskCrewMenu = ""; queueMicrotask(renderMain); }
   // An item's ⋯ menu (#669) closes on a click outside it too.
-  if (deskGiveFor?.at === "more" && !e.target.closest?.(".dk-morewrap")) { deskGiveFor = null; queueMicrotask(renderMain); }
+  if (deskMoreAt(deskGiveFor?.at) && !e.target.closest?.(".dk-morewrap")) { deskGiveFor = null; queueMicrotask(renderMain); }
   // The header's Desks menu (app/head_view.js) too: a Desk click stops here, before the window's own clicks see it.
   if (hvMenu && !e.target.closest?.(".hv-wrap")) { hvMenu = ""; delete drafts["hv-desk-find"]; queueMicrotask(renderMain); }
   // In a session's name box (✎ on its row): the click stays in the box, it doesn't open the row.
@@ -603,7 +615,7 @@ function deskKey(e) {
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
   // list, a menu, a rename, a dialog: How work lands, Ask me before, quitting, trusting a folder).
-  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || deskFullAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
+  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || deskFullAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
   if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !over) {
     if (deskAddingSession && deskAddingSession === deskSelection()) {
       deskAddingSession = null;
@@ -648,7 +660,7 @@ if (typeof document !== "undefined") {
   document.addEventListener("scroll", (e) => {
     const c = e.target;
     if (!c?.matches?.(".dk-chat")) return;
-    const at = Date.now(), end = boxAtEnd(c);
+    const at = Date.now(), end = boxEndAfterScroll(c);
     if (!end && at - (c._pinAt || 0) < 400 && at - (c._youAt || 0) > 800) return;
     deskChatEnd = end;
   }, true);

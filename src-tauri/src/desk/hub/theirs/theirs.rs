@@ -217,7 +217,7 @@ impl Hub {
                     }
                     Own::Nothing => {}
                     // Theirs can't be taken out by its text: told apart hunk by hunk when it can be (#658).
-                    Own::Mixed(by) => match crate::desk::hub::theirs::by_hunk::own_by_hunk(&theirs, &folder, &p, last_commit(&theirs, &folder, &p)) {
+                    Own::Mixed(by) => match crate::desk::hub::theirs::by_hunk::own_by_hunk(&theirs, &folder, &p, hunk_since(&theirs, &folder, &p)) {
                         Some(Own::Whole) => left.push(p),
                         Some(Own::Part(content)) => {
                             parts.push(Part { folder: folder.clone(), path: p.clone(), content });
@@ -293,6 +293,14 @@ pub(crate) fn own_part(theirs: &Theirs, folder: &str, path: &str) -> Own {
             None => Own::Whole,
         };
     };
+    // A change of theirs whose text isn't known, made before that commit, isn't in it for that: a commit in a shared
+    // folder takes only some hunks (#791's 0f58036 left other items' out). Still in effect while the commands that
+    // made it hold a line the file has changed since HEAD: told hunk by hunk then (#807).
+    if let Some(e) = edits.iter().filter(|e| e.blind && e.at < committed).min_by_key(|e| e.at) {
+        if their_lines_left(theirs, folder, path, e.at) {
+            return Own::Mixed(e.who());
+        }
+    }
     match take_out(&now, &head, &edits, committed) {
         Err(by) => Own::Mixed(by),
         Ok(None) => Own::Whole,
@@ -309,6 +317,33 @@ pub(crate) fn last_commit(theirs: &Theirs, folder: &str, path: &str) -> u64 {
     crate::desk::hub::landing::git::git("", folder, &[], &["log", "-50", "--format=%ct %s", "--", path])
         .and_then(|t| t.lines().find(|l| theirs.id.is_empty() || !l.contains(&own)).and_then(|l| l.split(' ').next()?.parse::<u64>().ok()))
         .map_or(0, |s| s * 1000)
+}
+
+/// From when `path`'s change is told hunk by hunk: its last commit (`last_commit`), or the first change of theirs
+/// whose text isn't known, when that came before it (#807).
+pub(crate) fn hunk_since(theirs: &Theirs, folder: &str, path: &str) -> u64 {
+    let abs = format!("{}/{path}", folder.trim_end_matches('/'));
+    let blind = theirs.edits.iter().filter(|(f, e)| *f == abs && e.blind).map(|(_, e)| e.at).min();
+    let committed = last_commit(theirs, folder, path);
+    blind.map_or(committed, |b| b.min(committed))
+}
+
+/// Whether what the other sessions that changed `path` sent from `since` on holds a line (one worth telling by) of
+/// its change since HEAD.
+fn their_lines_left(theirs: &Theirs, folder: &str, path: &str, since: u64) -> bool {
+    let abs = format!("{}/{path}", folder.trim_end_matches('/'));
+    let Some(diff) = crate::desk::hub::landing::git::git("", folder, &[], &["diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "HEAD", "--", path]) else { return false };
+    let lines: Vec<&str> = diff.lines()
+        .filter(|l| !l.starts_with("+++") && !l.starts_with("---"))
+        .filter_map(|l| l.strip_prefix('+').or_else(|| l.strip_prefix('-')))
+        .map(str::trim)
+        .filter(|l| crate::desk::hub::theirs::by_hunk::telling(l))
+        .collect();
+    if lines.is_empty() {
+        return false;
+    }
+    let sent = crate::desk::hub::theirs::by_hunk::sent_text(&theirs.logs_of(&abs), since);
+    lines.iter().any(|l| sent.contains(l))
 }
 
 /// `now` with `edits` (newest first) taken out: None when none of them is in it, Err(who) when one can't be.

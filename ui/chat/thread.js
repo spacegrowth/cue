@@ -56,6 +56,18 @@ async function loadOlder(sid, fromTranscript = false, pressed = false) {
   // (The chat desk/view.js deskSettle keeps at its end: the right one while something is open, B2.)
   if (shown && view === "desk" && shown === document.querySelector(".dk-right .dk-chat")) deskChatEnd = false;
 }
+/** How many of a Desk chat's messages it wants drawn before it stops loading earlier pages by itself (fillOlder). */
+const FILL_SHOWN = 6;
+/** A Desk chat (chat/render.js chatHtml) that draws only `shown` of its messages, the rest being the Desk's own (they
+ *  go to Activity, #789): the next page of Cue's log, loaded by itself, while it has more (#869). Whether it's still
+ *  filling: its first page not in yet, or one more on the way. */
+function fillOlder(sid, shown) {
+  const o = older.get(sid);
+  if (!o) return true;
+  if (o.done || shown >= FILL_SHOWN) return false;
+  if (!o.busy) queueMicrotask(() => loadOlder(sid));
+  return true;
+}
 /** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
 const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();
 /** The thread keeps only the last few messages, so once earlier ones are loaded, new messages push
@@ -114,10 +126,19 @@ function conversation(it, s) {
 }
 /** What you forwarded from another session, as Cue typed it: an optional note, then the header and the message. */
 const FORWARDED = /^(?:([\s\S]*?)\n\n)?\[Forwarded from the (.+?) session\]\n([\s\S]*)$/;
-/** Cue's routing context uses either a project header or a named Desk header. Every such block goes, not only a
- *  leading one: messages sent while the lead was busy reach it as one, joined by a newline, each with its block. */
-const deskSaid = (text) => String(text ?? "").replace(/(^|\n)<desk (?:id="[^"\n]*" name="[^"\n]*" )?project="[^"\n]*">\n[\s\S]*?\n<\/desk>(?:\n\n|\s*$)/g, "$1").replace(/\n+$/, "");
-const deskSaidE = (e) => e.role === "you" ? { ...e, text: deskSaid(e.text) } : e;
+/** Cue's Desk block on a message to a lead (desk/hub/lead/run.rs `wrapped`): `<desk ` and any settings (id, name,
+ *  project, changes="only", more later), then its lines and `</desk>` on a line of its own. Every such block goes, not only
+ *  a leading one: messages sent while the lead was busy reach it as one, joined by a newline, each with its block (#627).
+ *  As desk/mod.rs `blocks` takes them, but for a bare `<desk>`, which Cue never writes: words of yours that start so stay. */
+const DESK_BLOCK = /(^|\n)<desk ((?:[^\n">]|"[^"\n]*")*)>\n([\s\S]*?)\n<\/desk>(?:[ \t]*\n\s*|\s*$)/g;
+const deskSaid = (text) => String(text ?? "").replace(DESK_BLOCK, "$1").replace(/\n+$/, "");
+/** The Desk blocks in `text`, in order: { attrs: { id, name, project, changes… }, body: its lines as Cue wrote them }. */
+function deskBlocks(text) {
+  return [...String(text ?? "").matchAll(DESK_BLOCK)].map((m) => ({ attrs: Object.fromEntries([...m[2].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])), body: m[3] }));
+}
+/** Message `e` as the chat shows it: your words without Cue's Desk blocks, which go along as `deskUpd` (the "+ Desk update"
+ *  fold under your words, #822). */
+const deskSaidE = (e) => (e.role === "you" ? { ...e, text: deskSaid(e.text), deskUpd: e.deskUpd || deskBlocks(e.text) } : e);
 /** The line Cue adds after what you said by voice for a session whose hook can't add it (talk.rs ASK). */
 const VOICE_ASK = /\n\n\(Voice: I'm listening, not reading\.[^\n]*\)$/;
 /** That line, word for word, as the agent got it (talk.rs ASK): shown when you open it under a voice message. */
@@ -128,18 +149,99 @@ function yourWords(e) {
   return { voice: !!e.voice || asked, text: asked ? text.replace(VOICE_ASK, "") : text };
 }
 /** A small note under your message: "+ <label>", which opens to `line`, what Cue (or a prompt hook) added for the
- *  agent, word for word. `key` says which note is open (openAsks). */
-function addedNote(key, label, line) {
+ *  agent, word for word. `key` says which note is open (openAsks). `o.html`: what it opens to, drawn already (the Desk
+ *  update's list); `o.cls`: the note's own class (its colour). */
+function addedNote(key, label, line, o = {}) {
   const open = openAsks.has(key);
-  return `<div class="cv-voice-note"><button class="cv-voice-ask" data-ask-open="${esc(key)}" aria-expanded="${open}">${open ? "−" : "+"} ${label}</button>${open ? `<div class="cv-voice-line">${esc(line)}</div>` : ""}</div>`;
+  const body = o.html ? `<div class="cv-desk-up">${line}</div>` : `<div class="cv-voice-line">${esc(line)}</div>`;
+  return `<div class="cv-voice-note${o.cls ? ` ${o.cls}` : ""}"><button class="cv-voice-ask" data-ask-open="${esc(key)}" aria-expanded="${open}">${open ? "−" : "+"} ${label}</button>${open ? body : ""}</div>`;
+}
+// ---------- the Desk update under your message to a lead (#822) ----------
+/** Where a heading of a Desk block puts the lines under it (desk/hub/lead/run.rs block_items, block_routes). */
+const DESK_HEADS = [[/^Needs routing:/, "route"], [/^Other open items:/, "open"], [/^Parked\b/, "parked"], [/^(Desk routes|No Desk sessions|Older, idle)/, "sessions"], [/^In full, as this message is about them:/, "about"]];
+/** The first line of the rules a block carries after a hand-off (desk/mod.rs ROUTING_GUIDANCE): they run to its end. */
+const DESK_RULES = "For independent work, prefer";
+/** One item's line in a block (run.rs item_lines): "- #id kind: title | state | held by X (kind) | after #Y | …". */
+function deskItemLine(l) {
+  const m = /^- #(\S+) (?:(?:bug|feature|task|no kind yet): )?(.*)$/.exec(l);
+  if (!m) return null;
+  const [title, state = "", ...rest] = m[2].split(" | ");
+  const who = rest.flatMap((x) => {
+    const h = /^(?:held by|next for) (.+?)(?: \([^)]*\))?(?: → .*)?$/.exec(x);
+    return h ? [h[1]] : /^after #\S+$/.test(x) ? [x] : [];
+  });
+  const word = state.split(/[:,]/)[0].trim();
+  return { id: m[1], title, who: who.join(", "), state: word ? word[0].toUpperCase() + word.slice(1) : "" };
+}
+/** One session's line in a block (run.rs route_of): "- name (sid:…, on M, idle, 40k)". */
+function deskSessionLine(l) {
+  const m = /^- (.+?) \(sid:[^,)]*(.*)\)$/.exec(l);
+  if (!m) return null;
+  const bits = m[2].split(", ").map((x) => x.trim()).filter((x) => x && !/^\d+k\b|context|^on /.test(x));
+  const st = bits[0] || "";
+  return { name: m[1], idle: /, idle\b/.test(m[2]), state: st && st[0].toUpperCase() + st.slice(1) };
+}
+/** Block `b` read into its parts: items by section, sessions, what's gone, other lines, the rules, nothing changed. */
+function deskUpdateParts(b) {
+  const lines = b.body.split("\n"), at = lines.findIndex((l) => l.startsWith(DESK_RULES));
+  const out = { whole: b.attrs.changes !== "only", items: [], sessions: [], gone: [], other: [], rules: at < 0 ? "" : lines.slice(at).join("\n").trim(), nothing: false };
+  let sec = "";
+  for (const l of at < 0 ? lines : lines.slice(0, at)) {
+    const head = DESK_HEADS.find(([re]) => re.test(l));
+    if (head) { sec = head[1]; continue; }
+    if (!l.trim()) { sec = ""; continue; }
+    // Cue's own heads: changes only, none to route, the lead's own line (its chat says who it is).
+    if (l.startsWith("Only what changed since") || l === "None." || l.startsWith("Desk lead: ")) continue;
+    if (l === "Nothing changed.") { out.nothing = true; continue; }
+    const gone = /^No longer listed: (.*)$/.exec(l);
+    if (gone) { out.gone.push(...gone[1].split("; ")); continue; }
+    const it = deskItemLine(l), se = !it && deskSessionLine(l);
+    if (it) out.items.push({ ...it, sec: sec === "sessions" ? "" : sec });
+    else if (se) out.sessions.push(se);
+    else out.other.push(l.replace(/^- /, ""));
+  }
+  return out;
+}
+/** A row of the update: its #id, title and who has it, and where it stands in a pill. */
+const deskUpRow = (it, go) => `<div class="cv-du-r">${it.id ? `<span class="cv-du-id">#${esc(it.id)}</span>` : ""}<span class="cv-du-tt">${esc(it.title)}${it.who ? ` <span class="cv-du-who">· ${esc(it.who)}</span>` : ""}</span>${it.state ? `<span class="cv-du-pl${go ? " go" : ""}">${esc(it.state)}</span>` : ""}</div>`;
+/** A section of the update: its heading with a count, then its rows. */
+const deskUpSec = (head, rows) => (rows.length ? `<div class="cv-du-h">${head}<b>${rows.length}</b></div>${rows.join("")}` : "");
+/** Block `b` as the opened "+ Desk update" shows it, laid out by section, never its raw lines. `key`: its rules' fold. */
+function deskUpdateList(b, key) {
+  const p = deskUpdateParts(b), sec = (s) => p.items.filter((i) => i.sec === s).map((i) => deskUpRow(i, s === "route"));
+  const gone = p.gone.map((g) => {
+    const id = /^#(\S+)/.exec(g)?.[1], ses = /^session (.+)$/.exec(g)?.[1];
+    if (id) return deskUpRow({ id, title: (typeof deskItem === "function" && deskItem(b.attrs.project, id)?.title) || "", state: "Done or moved" });
+    return deskUpRow({ title: ses ? `${ses} (session)` : g.replace(/^"|"$/g, ""), state: "Gone" });
+  });
+  const free = p.sessions.filter((x) => x.idle).map((x) => x.name), busy = p.sessions.filter((x) => !x.idle);
+  const html = deskUpSec("To route", sec("route"))
+    + (p.whole ? deskUpSec("Open", sec("open")) + deskUpSec("Parked", sec("parked")) : deskUpSec("Moved", [...sec("open"), ...sec("parked")]))
+    + deskUpSec("Done or gone", gone)
+    + deskUpSec("About this message", sec("about"))
+    + (free.length ? `<div class="cv-du-h">Free sessions<b>${free.length}</b></div><div class="cv-du-r"><span class="cv-du-tt">${free.map((n) => `${esc(n)} · idle`).join(", ")}</span></div>` : "")
+    + deskUpSec("Busy sessions", busy.map((x) => deskUpRow({ title: x.name, state: x.state })))
+    + (p.other.length ? `<div class="cv-du-h">Also</div>${p.other.map((l) => `<div class="cv-du-r cv-du-x">${esc(l)}</div>`).join("")}` : "");
+  const rules = p.rules ? `<div class="cv-du-f">${addedNote(`${key}:rules`, "The Desk’s rules for the lead", p.rules)}</div>` : "";
+  return (html || `<div class="cv-du-r cv-du-x">${p.nothing ? "Nothing changed on the Desk." : "No Desk changes."}</div>`) + rules;
+}
+/** The "+ Desk update" fold under your words: what Cue told the lead with them (#822), muted grey (teal is voice's). A
+ *  whole Desk says so; several blocks (messages joined while it was busy) open one after another. "" for none. */
+function deskUpdateNote(blocks, key) {
+  if (!blocks?.length) return "";
+  const whole = blocks.some((b) => b.attrs.changes !== "only");
+  const label = `Desk update${blocks.length > 1 ? `s · ${blocks.length}` : ""}${whole ? " · whole Desk" : ""}`;
+  const html = blocks.map((b, n) => deskUpdateList(b, `${key}:${n}`)).join('<div class="cv-du-sep"></div>');
+  return addedNote(`${key}:desk`, label, html, { html: true, cls: "cv-desk-note" });
 }
 /** Your message's bubble. Said by voice: a mic beside it, and inside it the line Cue added for the agent (or will
  *  add, `later`: kept in Cue or queued, it hasn't gone yet). A status list asked for by a prompt hook (`status_ask`)
- *  gets its own note. Each + opens its text word for word (`key`). */
+ *  gets its own note, and Cue's Desk update to a lead its own (#822). Each + opens its text (`key`). */
 function yourBubble(e, key, style = "", later = false, head = "") {
   const said = yourWords(e);
   const notes = (said.voice ? addedNote(key, `Cue ${later ? "will ask" : "asked"} for a short spoken answer`, VOICE_ASK_LINE) : "")
-    + (e.status_ask ? addedNote(`${key}:status`, "Status list asked for", e.status_ask) : "");
+    + (e.status_ask ? addedNote(`${key}:status`, "Status list asked for", e.status_ask) : "")
+    + deskUpdateNote(e.deskUpd || deskBlocks(e.text), key);
   const bubble = `<div class="cv-you-text mg-text"${style ? ` style="${style}"` : ""}>${head}${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
   return said.voice ? `<div class="cv-you-row"><span class="cv-mic" role="img" aria-label="Said by voice">${MIC_ICON}</span>${bubble}</div>` : bubble;
 }
@@ -160,7 +262,7 @@ function msgLine(m) {
     held: "<b>Not sent yet</b> · Cue sends it when its turn ends",
     queued: `<b>Queued for ${to}</b> · it reads this after its current step`,
     delivered: [m.from ? "" : m.by ?? "You", m.at ? `<span data-ago="${m.at}">${ago(m.at)}</span> ago` : ""].filter(Boolean).join(" · "),
-    failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
+    failed: `<b>${m.head || "Couldn't send"}</b>${m.why ? ` · ${m.why}` : ""}`,
   }[m.st];
   if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
   // The foot of the message (#501, messages.css): how it went at the left (.mg-st), its actions at the right (.mg-acts).
@@ -173,7 +275,10 @@ const typedQueued = (s) => (s?.state === "working" || s?.compacting_ms ? { st: "
 /** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`
  *  msgLine's, `after` anything under its line. Dashed on the panel till it's with them, filled once delivered, outlined
  *  red when it couldn't go. */
-const msgRow = (m, inner, cls = "", attrs = "", after = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}${after}</div>`;
+const msgRow = (m, inner, cls = "", attrs = "", after = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}${MSG_TRACED.has(m.st) ? ` style="--qd:-${Date.now() % 4000}ms"` : ""}>${inner}${msgLine(m)}${after}</div>`;
+/** The states whose bubble has the drifting arc (messages.css): each draw starts it where the clock has it, so a redraw
+ *  doesn't send it back to the start. */
+const MSG_TRACED = new Set(["sending", "held", "queued"]);
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
 /** A message from another session (#501, messages.css): the family's card, who it's from as its chip in the head, then
  *  the message (a forward quotes the original under it, as the full text). */
@@ -289,8 +394,9 @@ function stepFull(sid, x) {
   const k = `${sid}|${x.id}`, d = stepDetail.get(k);
   return (d && d !== "loading" && d.full) || runFull.get(k) || "";
 }
+/** How a step went ("exit 1", "+3 −1"); running, a live dot and how long it has run (38s). */
 function stepResult(x) {
-  if (!x.done) return `<span class="dot-live"></span>`;
+  if (!x.done) return `<span class="dot-live"></span>${x.at_ms ? `<span data-ago="${x.at_ms}">${ago(x.at_ms)}</span>` : ""}`;
   const m = /^\+(\d+) −(\d+)$/.exec(x.result);
   if (m) return `<span class="add">+${m[1]}</span> <span class="del">−${m[2]}</span>`;
   return esc(x.result);
@@ -321,7 +427,7 @@ const keyer = () => { const seen = new Map(); return (k) => { const n = (seen.ge
 function stepLine(sid, x, plain = false) {
   const k = `${sid}|${x.id}`;
   const open = !plain && x.done && stepFlip.has(k), full = stepFull(sid, x);
-  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
+  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""} ${x.done ? "" : "run"}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
     <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject || full ? ` <span class="${x.mono ? "mono" : ""}">${esc(full || x.subject)}</span>` : ""}</span>
     <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;
 }

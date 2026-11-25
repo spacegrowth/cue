@@ -376,6 +376,7 @@ const deskQHm = (ms) => { const d = new Date(ms); return `${d.getHours()}:${Stri
  *  14:20" (the session it's marked for, and when it goes to a fresh one instead), "after #271 · then cue-268", "any
  *  free session". Plain text; "" for one that isn't queued or has a holder (an older one, said as before). */
 function deskQueueLine(i) {
+  if (i.state === "queued" && i.slot_wait) return deskSlotWhy(i, false);
   if (i.state !== "queued" || i.holder) return "";
   const nf = i.next_for ? deskHolderOf({ holder: i.next_for }) : "";
   if (i.after) {

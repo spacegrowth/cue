@@ -14,6 +14,14 @@ pub(crate) use crate::hub::{codex_sessions_dir, pi_sessions_dir, steps_path};
 use std::sync::Arc;
 use tauri::State;
 
+/// The chats open in Cue's window (`chats`: session, scrolled to its newest) and whether it's in front of you
+/// (`front`): what you're reading isn't notified, and a chat you open takes back what was (#799).
+#[tauri::command]
+pub(crate) async fn chats_open(hub: State<'_, Arc<Hub>>, chats: Vec<(String, bool)>, front: bool) -> Result<(), String> {
+    let seen = crate::notify::open_chats("main", chats, Some(front));
+    with_hub(&hub, move |h| h.chats_seen(&seen)).await
+}
+
 /// The chat's ⋯ menu: Compact (typed into the session; opens no window).
 #[tauri::command]
 pub(crate) async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
@@ -131,9 +139,15 @@ pub(crate) async fn focus_session(hub: State<'_, Arc<Hub>>, id: String) -> Resul
 }
 
 #[tauri::command]
-pub(crate) async fn send_to_session(hub: State<'_, Arc<Hub>>, session_id: String, text: String, images: Option<Vec<model::Upload>>, now: Option<bool>) -> Result<String, String> {
+pub(crate) async fn send_to_session(hub: State<'_, Arc<Hub>>, session_id: String, text: String, images: Option<Vec<model::Upload>>, now: Option<bool>, kind: Option<String>) -> Result<String, String> {
     let images = images.unwrap_or_default();
     let now = now.unwrap_or(false);
+    // Words Cue wrote for a click of yours (a background agent's Resume or Stop: "nudge"): Cue's, of the kind the
+    // window says (one Cue doesn't know is a notice), not yours (#836, #837).
+    if let Some(kind) = kind.filter(|_| images.is_empty()) {
+        let kind = crate::sessions::Kind::named(&kind);
+        return with_hub(&hub, move |h| h.tell_now(&session_id, &text, now, kind)).await?;
+    }
     // Yours from a box: a hosted lead's Team switch says its piece (hub/team/out.rs).
     with_hub(&hub, move |h| h.send_yours(&session_id, &text, &images, now)).await?
 }

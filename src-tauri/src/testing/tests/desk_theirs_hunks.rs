@@ -88,3 +88,58 @@ fn landing_one_item_commits_only_its_hunks_of_a_file_another_item_is_still_chang
     assert_eq!(git(&dir, &["status", "--porcelain", "--", "src"]).trim(), "M src/trees.rs", "item B's hunk stays uncommitted");
     assert_eq!(item(&w, &project, "Footer jumps")["state"], "working", "item B is still at work");
 }
+
+/// #807: item B's half-done hunk was made by a script before the file's last commit, a commit that left it out on
+/// purpose (#791's 0f58036 took other items' hunks back out). The time of that commit says nothing of B's hunk: the
+/// landing item commits only its own hunk, and B's stays in the folder, uncommitted (d6884f0 swept it back in).
+#[test]
+fn a_commit_that_left_another_items_hunk_out_doesnt_make_it_the_landing_items() {
+    let w = World::new();
+    let (dir, project, _) = done_saying(&w, |_, _, dir| {
+        std::fs::write(dir.join(".gitignore"), "*\n!README\n!.gitignore\n!src/\n!src/*.rs\n").unwrap();
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/trees.rs"), TREES).unwrap();
+        std::fs::write(dir.join("src/main.rs"), MAIN).unwrap();
+        git(dir, &["add", ".gitignore", "src"]);
+        commit_at_now(dir, "trees");
+    }, |w, h, dir| {
+        w.advance(1000);
+        // Item A (this holder's): land_more in trees.rs and its call in main.rs.
+        std::fs::write(dir.join("src/trees.rs"), TREES_A).unwrap();
+        log(w, h).tool_use("toolu_a1", "Bash", json!({ "command": script(dir, "src/trees.rs", "pub fn tidy", "pub fn land_more() -> u32 {\n    3\n}\n\npub fn tidy") }));
+        std::fs::write(dir.join("src/main.rs"), MAIN_A).unwrap();
+        log(w, h).tool_use("toolu_a2", "Bash", json!({ "command": script(dir, "src/main.rs", "trees::land() +", "trees::land() + trees::land_more() +") }));
+        w.advance(1000);
+        // Item B, another session at work in the same folder: its half-done change to tidy.
+        let project = w.snapshot().session(h)["project"].as_str().unwrap().to_string();
+        let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+        let r = start_session_with(w.hub(), "claude", &dir.to_string_lossy(), "hello", "tidier", &opts).unwrap();
+        let b = r["session_id"].as_str().unwrap().to_string();
+        w.hosted_says(&b, HostedEvent::Taken { text: "hello".into() });
+        ends(w, &b, "Hi.");
+        w.hub().desk_set_member(&project, &b, true).unwrap();
+        let d = desk(w, &project)["lead"]["sid"].as_str().unwrap().to_string();
+        ends(w, &d, "ITEM: bug | Footer jumps | done when: it stays put\nROUTE: #new -> tidier | why: it knows tidy");
+        w.advance(1000);
+        std::fs::write(dir.join("src/trees.rs"), TREES_BOTH).unwrap();
+        log(w, &b).tool_use("toolu_b1", "Bash", json!({ "command": script(dir, "src/trees.rs", "    2\n", "    tidy_half_done()\n") }));
+        ends(w, &b, "Halfway through tidy.");
+        w.advance(2000);
+        // A's part committed by itself, B's hunk left out of it (as #791's cleanup did), after B's change.
+        std::fs::write(dir.join("src/trees.rs"), TREES_A).unwrap();
+        git(dir, &["add", "src"]);
+        commit_at_now(dir, "Take another item's half-done change back out");
+        std::fs::write(dir.join("src/trees.rs"), TREES_BOTH).unwrap();
+        w.advance(2000);
+        // Then A changes trees.rs once more, by a script too.
+        let more = TREES_BOTH.replace("    3\n", "    3 * 1000\n");
+        std::fs::write(dir.join("src/trees.rs"), &more).unwrap();
+        log(w, h).tool_use("toolu_a3", "Bash", json!({ "command": script(dir, "src/trees.rs", "    3\n", "    3 * 1000\n") }));
+        w.advance(1000);
+    }, "Made land_more bigger.");
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    assert_eq!(git(&dir, &["show", "HEAD:src/trees.rs"]), TREES_A.replace("    3\n", "    3 * 1000\n"), "only item A's new hunk is committed");
+    head_builds(&dir).expect("main builds");
+    assert_eq!(std::fs::read_to_string(dir.join("src/trees.rs")).unwrap(), TREES_BOTH.replace("    3\n", "    3 * 1000\n"), "the folder's file stays as it is");
+    assert_eq!(git(&dir, &["status", "--porcelain", "--", "src"]).trim(), "M src/trees.rs", "item B's hunk stays uncommitted");
+}

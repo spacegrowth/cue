@@ -76,12 +76,16 @@ impl Hub {
         let found = self.read(|st| {
             st.desk.item(id).map(|i| {
                 let (machine, sources) = crate::desk::hub::core::desk::item_sources(st, i);
-                (i.clone(), machine, sources, own_log(st, i))
+                (i.clone(), machine, sources, own_log(st, i), former_logs(st, i))
             })
         });
-        let (it, machine, mut sources, own) = found.ok_or("no such item")?;
-        // Its log is read here, with the store let go.
-        if let Some(o) = own {
+        let (it, machine, mut sources, own, former) = found.ok_or("no such item")?;
+        // Its logs are read here, with the store let go: its holder's, then each former holder's for its stint on it
+        // (#830: #810's change was its first holder's, and its next holder's DONE saw no files of it).
+        let ended = former.iter().filter(|(_, o)| o.is_none()).filter_map(|(sid, _)| crate::db::ended_session(sid).map(|(_, s)| (sid.clone(), s)));
+        let ended: Vec<(String, crate::sessions::Session)> = ended.collect();
+        let former = former.into_iter().filter_map(|(sid, o)| o.or_else(|| ended.iter().find(|(e, _)| *e == sid).and_then(|(_, s)| former_of(s, &it, &sid))));
+        for o in own.into_iter().chain(former.flatten()) {
             let files = in_folder(crate::logs::steps::edited_between(&o.log, o.from, o.until), &o.folder);
             add_sources(&mut sources, &o.folder, files);
         }
@@ -399,6 +403,29 @@ pub(crate) fn own_log(st: &Store, it: &DeskItem) -> Option<OwnLog> {
     let s = st.sessions.get(&h.sid).filter(|s| s.origin.machine.is_empty() && !s.origin.transcript_path.is_empty())?;
     let (from, until) = crate::desk::hub::core::desk::held_window(st, &h.sid, it)?;
     Some(OwnLog { log: s.origin.transcript_path.clone(), folder: s.origin.cwd.clone(), from, until })
+}
+
+/// Each of `it`'s former holders (`held_before`) by session id, with its log for its stint on the item when Cue
+/// still has that session (None: looked up among the ended ones, off the store). Crews' and other machines' are left out.
+fn former_logs(st: &Store, it: &DeskItem) -> Vec<(String, Option<Vec<OwnLog>>)> {
+    let mut out: Vec<(String, Option<Vec<OwnLog>>)> = Vec::new();
+    for (sid, _, _) in &it.held_before {
+        if it.holder.as_ref().is_some_and(|h| h.sid == *sid) || out.iter().any(|(s, _)| s == sid) {
+            continue;
+        }
+        let here = st.sessions.get(sid).or_else(|| st.parked.iter().map(|p| &p.session).find(|s| s.origin.session_id == *sid)).or_else(|| st.ended.iter().map(|(_, s)| s).find(|s| s.origin.session_id == *sid));
+        out.push((sid.clone(), here.and_then(|s| former_of(s, it, sid))));
+    }
+    out
+}
+
+/// Former holder `sid`'s (session `s`) log, once for each of its stints on `it`.
+fn former_of(s: &crate::sessions::Session, it: &DeskItem, sid: &str) -> Option<Vec<OwnLog>> {
+    if !s.origin.machine.is_empty() || s.origin.transcript_path.is_empty() {
+        return None;
+    }
+    let o = &s.origin;
+    Some(it.held_before.iter().filter(|(b, _, _)| b == sid).map(|(_, from, until)| OwnLog { log: o.transcript_path.clone(), folder: o.cwd.clone(), from: *from, until: *until }).collect())
 }
 
 /// Of `files` (absolute, or relative to `folder`), those inside `folder` and not git's own, relative to it.

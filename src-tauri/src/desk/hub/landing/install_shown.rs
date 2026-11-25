@@ -184,7 +184,7 @@ pub(crate) fn lead_install(h: &Arc<Hub>, desk: &str) {
     let words = match said {
         Ok(w) | Err(w) => format!("INSTALL: {w}"),
     };
-    if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, desk, &words) {
+    if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, desk, &words, crate::sessions::Kind::Answer) {
         eprintln!("cue: desk: the answer to {desk}'s INSTALL didn't reach its lead: {e}");
     }
 }

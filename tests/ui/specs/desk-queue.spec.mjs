@@ -84,10 +84,10 @@ test("each queued row says what it waits for, in words; the item's page says the
   await expect(who(page, "d4")).toHaveText("Next for host-lead once it finishes what it's on");
   // After another item, then for a session.
   await queue(cue, "d4", { after: "d3", next_for: HOST });
-  await expect(who(page, "d4")).toHaveText("Waits for #d3 to finish first, then goes to host-lead");
+  await expect(who(page, "d4")).toHaveText("Waits for #d3 to land first, then goes to host-lead");
   // After another item only.
   await queue(cue, "d4", { after: "d3" });
-  await expect(who(page, "d4")).toHaveText("Waits for #d3 to finish first");
+  await expect(who(page, "d4")).toHaveText("Waits for #d3 to land first");
   // Neither: any free session, no Give to….
   await queue(cue, "d4", {});
   await expect(who(page, "d4")).toHaveText("Waits for a free session");
@@ -112,7 +112,7 @@ test("the Queue's look, light and dark", async ({ page, cue }) => {
   await openDesk(page);
   await queue(cue, "d4", { next_for: HOST, fresh_at: NOW + 20 * 60000 });
   await queue(cue, "d6", { after: "d4", next_for: HOST });
-  await expect(who(page, "d6")).toHaveText("Waits for #d4 to finish first, then goes to host-lead");
+  await expect(who(page, "d6")).toHaveText("Waits for #d4 to land first, then goes to host-lead");
   for (const colorScheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme });
     await page.waitForTimeout(150);

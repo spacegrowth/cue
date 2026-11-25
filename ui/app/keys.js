@@ -82,7 +82,7 @@ function keyCloseOpen(e) {
   else if (pjRenaming) pjRenaming = null;
   else if (newProjFor) { newProjFor = null; newProjNote = ""; }
   else if (pjNewOpen) { pjNewOpen = false; pjNewNote = ""; }
-  else if (pjOpen || colorFor) { pjOpen = false; colorFor = null; }
+  else if (pjOpen) pjOpen = false;
   else if (liveOpen) liveOpen = newOpen = false;
   else if (waitOpen) waitOpen = false;
   else return false;
@@ -128,7 +128,12 @@ function escSession(sid = active?.sid, key = undefined, pull = pullHeld) {
   if (s?.held) { escArmed = 0; s.held = null; pull(s.session_id, key); return true; }
   if (s?.state !== "working") return false;
   const armed = !(Date.now() - escArmed < 1500);
-  if (!armed) { escArmed = 0; interrupt(s.session_id); }
+  // Stopped before it answered: a hosted session gives nothing back, so what you sent comes back into the box (#832).
+  if (!armed) {
+    escArmed = 0;
+    const words = stoppedWords(s), to = key || `s:${s.session_id}`;
+    interrupt(s.session_id).then((ok) => { if (ok && words) boxPutBack(to, words, [], { focus: true }); });
+  }
   else toast(`Esc again to stop ${s.project}`);
   renderMain();
   focusComposer(key);

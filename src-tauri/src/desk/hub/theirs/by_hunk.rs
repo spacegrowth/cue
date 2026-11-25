@@ -24,7 +24,7 @@ enum Who {
 }
 
 /// A line that says something: three letters or digits at least (not a brace, a blank, `Ok(())`).
-fn telling(l: &str) -> bool {
+pub(crate) fn telling(l: &str) -> bool {
     l.chars().filter(|c| c.is_alphanumeric()).count() >= 3
 }
 

@@ -1,7 +1,8 @@
 import { test, expect, deskAllSessions } from "./cue.mjs";
 
-// The Desk's name on its page: over the lead's chat card (B2, #666); its sessions list (All N sessions) heads with it too.
-const deskTitle = (page) => page.locator(".dk2b-chat .dk-here");
+// The Desk's name: since 692dc421 the lead's chat has no Desk name over it, so the open Desk is named in the top bar's
+// Desks chip (the one lit as open, pinned or not); its sessions list (All N sessions) heads with it too.
+const deskTitle = (page) => page.locator(".top .hv-chip.hot .hv-cn");
 
 test("two named Desks share a folder, keep separate items, and rename independently", async ({ cue, page }) => {
   await cue.open("desk");
@@ -15,6 +16,7 @@ test("two named Desks share a folder, keep separate items, and rename independen
     await page.locator('.nd [type="submit"]').click();
     await expect(page.locator(".nd")).toHaveCount(0);
     await expect(deskTitle(page)).toHaveText(name);
+    await expect(page.locator(".dk2b-chat .dk-here")).toHaveCount(0);
     return page.evaluate(() => deskSelection());
   }
   const a = await create("Feature A");
@@ -37,7 +39,7 @@ test("two named Desks share a folder, keep separate items, and rename independen
   await page.locator(".pj-name-in").press("Enter");
   await cue.called("desk_rename", { id: b, name: "Bob's feature" });
   await expect(page.locator(".dk-sh b")).toHaveText("Bob's feature");
-  // Back to the lead's chat, which the sessions list stood in for: its head has the new name too.
+  // Back to the lead's chat, which the sessions list stood in for: the top bar names it by its new name too.
   await page.locator(".dk-sessions .dk-back").first().click();
   await expect(deskTitle(page)).toHaveText("Bob's feature");
   await page.locator('.top [data-hv-menu="desks"]').click(); await page.locator(".top .hv-menu [data-hv-desk-home]").click();

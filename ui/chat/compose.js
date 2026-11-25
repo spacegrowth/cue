@@ -110,8 +110,20 @@ async function pullHeld(sid, key = `s:${sid}`) {
 const cancelHeld = (sid) => forgetSent(sid) || invoke("unhold_message", { sessionId: sid }).then((h) => toast(h ? "It won't be sent" : "Too late: it had already gone")).catch((e) => toast(`Couldn't cancel it: ${e}`));
 /** Stop a working session mid-turn (Esc in its terminal; Pi aborts directly). */
 async function interrupt(sid) {
-  try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }
-  catch (e) { toast(`Couldn't stop it: ${e}`); }
+  try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); return true; }
+  catch (e) { toast(`Couldn't stop it: ${e}`); return false; }
+}
+/** What you sent session `s` that it was still on when you stopped it, as you wrote it: your last message, when no
+ *  reply came after it (and it isn't Cue's own). Only a hosted session's: one in a terminal has Claude Code give it back
+ *  in its own input there, so it's never lost (#832). null for none. */
+function stoppedWords(s) {
+  if (!s?.hosted) return null;
+  const ex = s.thread || [], n = ex.findLastIndex((e) => e.role === "you");
+  if (n < 0 || ex.slice(n + 1).some((e) => e.role === "agent")) return null;
+  const t = ex[n].text || "";
+  if (cueSaid(t) || (typeof cueMsgOf === "function" && cueMsgOf(t)) || (typeof cueBackOf === "function" && cueBackOf(t))) return null;
+  const words = ((typeof deskYourWords === "function" && deskYourWords(t)?.words) ?? deskSaid(t)).trim();
+  return words || null;
 }
 const box_ = (key, placeholder, label, attrs, alt = "", extra = "", quick = true) => box(key, placeholder, label, attrs, true, alt, extra, quick);
 
@@ -415,10 +427,19 @@ const suggestionFor = (sid) => {
   const last = [...(s.thread || [])].reverse().find((e) => e.role === "agent" || e.role === "you");
   return (last?.role === "agent" && replyAsked(last.text)) || s.suggestion || "";
 };
-/** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
-const quickRow = (attrs, sid = "") => {
-  const place = placeTab(sid);
-  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
+/** Which quick phrases each kind of chat shows (#840), the one place that says so: null is all of yours (Settings →
+ *  Quick phrases), a list only those, [] none. Every chat has all of them but a crew member's. */
+const QUICK_BY_CHAT = { session: null, lead: null, item: null, crew: [] };
+/** Chat kind `kind` (session, lead, item, crew) for session `sid`: a session that runs a Desk is its lead's chat,
+ *  wherever its box is. */
+const quickKind = (kind, sid) => (kind === "session" && sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid) ? "lead" : kind);
+/** The quick phrases chat kind `kind` shows. */
+const phrasesFor = (kind) => QUICK_BY_CHAT[kind] ?? phrases();
+/** The quick phrases of chat kind `kind`, with (at the right) where the session runs when it's a terminal app's; nothing
+ *  at all (no row, no space) when there's neither. */
+const quickRow = (attrs, sid = "", kind = "session") => {
+  const place = placeTab(sid), list = phrasesFor(quickKind(kind, sid));
+  return list.length || place ? `<div class="quick">${list.map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
 /** Claude's suggestion laid over an empty box's first line: "Suggested", the text, a Tab keycap and `tail`; `attrs` on
  *  the line. Empty when there's none. */
@@ -484,9 +505,9 @@ function draftChips(key) {
 }
 /** A text box that grows as you type (Shift+Enter = new line, Enter = send), optionally with images.
  *  The boxes that message a session (the ones with images) also get the quick phrases, unless `quick` is false (the
- *  crew page with a teammate on its left: they belong to the chat). `alt` shows beside Send once something's typed;
+ *  crew page with a teammate on its left: they belong to the chat); a chat kind there (quickRow) picks which. `alt` shows beside Send once something's typed;
  *  `extra` always does. */
-function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true) {
+function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", quick = true, held = false) {
   const d = draft(key), sid = sidOfKey(key);
   const ready = d.text.trim() || (images && d.images.length);
   const bang = bangTyped(d.text) && !d.images.length;
@@ -495,11 +516,11 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   // always drawn, so a redraw never swaps out the box you're typing in. Send sits inside the box, at the end of its
   // row, so the box spans the full width (as the terminal dock does).
   return boxHtml({
-    key, look: "composer", rows: 2, placeholder, drop: !!images,
+    key, look: "composer", rows: 2, placeholder, drop: !!images, held,
     sug: images ? suggestionFor(sid) : "", sugSid: key.startsWith("s:") ? "" : sid,
     bang: bangTyped(d.text),
     cmd: sid ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : "",
-    top: images && quick ? quickRow(`data-quick="${esc(key)}"`, sid) : "",
+    top: images && quick ? quickRow(`data-quick="${esc(key)}"`, sid, quick === true ? "session" : quick) : "",
     clock: images && sid ? `<button class="icon-btn ${sendAtFor === key ? "on" : ""}" data-send-at-open="${esc(key)}" aria-label="Send at a time">${CLOCK_ICON}</button>` : "",
     extra: `${extra}${ready ? alt : ""}`,
     send: { attrs: sendAttrs, label: bang ? "Run" : label, disabled: !ready },

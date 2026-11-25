@@ -96,6 +96,8 @@ tests/release/**                     run tests/release/debug_only.test.sh
 scripts/release.sh                   run tests/release/gates.test.sh
 scripts/full-run.sh                  run tests/release/full_run.test.sh
 tests/release/full_run.test.sh       run tests/release/full_run.test.sh
+scripts/test-runner.sh               run tests/release/test_runner_lock.test.sh
+tests/release/test_runner_lock.test.sh run tests/release/test_runner_lock.test.sh
 
 # ---- the window, by area
 set desk-window = desk-* screens

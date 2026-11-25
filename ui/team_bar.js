@@ -15,10 +15,9 @@ let crewBarDrawn = null, crewBarSince = 0;
 /** The chip in the box: ↪ on an ask, its words go as that answer. { sid, id (the ask's item), label }. */
 let crewChip = null;
 
-/** The first line of what was said before an ask: its reason, as the ask's card says it. */
+/** The first line of the ask's own reason, as the ask's card says it ("" when it gave none). */
 function crewAskWhy(it) {
-  const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
-  return c ? firstLine(c.text) : "";
+  return firstLine(askWhy(it));
 }
 /** An ask's buttons in the bar, from what it is: a permission ↪ Deny Allow; a question ↪ for your own words, Send its
  *  suggestions (when it has one for each question) and Choose ›; anything else (a form, one answered in its terminal) Open ›, the
@@ -120,7 +119,7 @@ function crewBarHtml(sid) {
 function crewNeedsPage(sid) {
   const list = crewAsks(sid);
   const row = (x) => {
-    if (x.it && !x.mate) return `<div class="cpn-row act-card" tabindex="-1"><div class="act-head"><b>${esc(x.who)}</b> ${esc(x.what)}${x.one_way ? ` <span class="cpb-tag">one-way</span>` : ""}</div>${requestBody(x.it)}${x.it.kind !== "question" ? whyLine(x.it) : ""}${decisionButtons(x.it)}</div>`;
+    if (x.it && !x.mate) return `<div class="cpn-row act-card" tabindex="-1">${askHead(x.it, "act-head", `<b>${esc(x.who)}</b> ${esc(x.what)}${x.one_way ? ` <span class="cpb-tag">one-way</span>` : ""}`)}${requestBody(x.it)}${x.it.kind !== "question" ? whyLine(x.it) : ""}${decisionButtons(x.it)}</div>`;
     if (x.mate) return `<div class="cpn-row" tabindex="-1">${mateNeeds(sid, x.mate) ? mateNeedRow(sid, x.mate) : mateReadyRow(sid, x.mate)}</div>`;
     return `<div class="cpn-row" tabindex="-1">${x.html || `<div class="mt-row"><div class="mt-n"><b>${esc(x.who)}</b> <i>${esc(x.what)}</i></div><div class="mt-btns">${x.buttons}</div></div>`}</div>`;
   };

@@ -17,6 +17,19 @@ impl Sessions {
         self.note_with(session_id, role, text, &[], keep)
     }
 
+    /// An ask the agent made, as the hub words it ("Bash: …", asks.rs asked_line): noted once. The same ask asked
+    /// again before you answered it (the hook lost Cue mid-wait and asked anew, #801) is the one already there.
+    pub fn note_ask(&mut self, session_id: &str, text: &str, keep: usize) {
+        let text = text.trim();
+        let capped = |t: &str| t.chars().take(EXCHANGE_CHARS).collect::<String>();
+        let again = self.0.get(session_id).is_some_and(|s| {
+            s.thread.iter().rev().take_while(|e| e.role != "you").any(|e| e.role == "agent" && capped(e.text.trim_end_matches('…')) == capped(text))
+        });
+        if !again {
+            self.note(session_id, "agent", text, keep);
+        }
+    }
+
     /// How you answered a permission or a question, as yours in the thread, marked as a decision: it's no
     /// message you wrote (talking by voice goes on through it).
     pub fn note_decision(&mut self, session_id: &str, outcome: &str, keep: usize) {
@@ -30,6 +43,14 @@ impl Sessions {
     /// Same, with images. A reply sent from Cue comes back moments later as the agent's prompt
     /// (with the image paths typed after it): that echo is folded into the entry already noted.
     pub fn note_with(&mut self, session_id: &str, role: &str, text: &str, images: &[String], keep: usize) {
+        self.note_with_unmarked(session_id, role, text, images, keep);
+        // Cue's own words to it (#836): its message, not yours.
+        if role == "you" {
+            self.mark_cue(session_id);
+        }
+    }
+
+    fn note_with_unmarked(&mut self, session_id: &str, role: &str, text: &str, images: &[String], keep: usize) {
         let text = text.trim();
         let Some(s) = self.0.get_mut(session_id) else { return };
         if text.is_empty() && images.is_empty() {
@@ -63,6 +84,8 @@ impl Sessions {
                         last.joined = true;
                     } else {
                         last.text = text.to_string();
+                        // Cue's message with something else glued on: Cue's only if all of it is.
+                        last.cue = false;
                     }
                     return;
                 }
@@ -78,7 +101,7 @@ impl Sessions {
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
         // reply to them) are saved by moment and speaker, and the second would overwrite the first.
         let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
-        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0 });
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -106,6 +129,7 @@ impl Sessions {
         let text = text.trim();
         if let Some(s) = self.0.get_mut(session_id).filter(|_| !text.is_empty() || !images.is_empty()) {
             Self::push(s, "you", text, images, keep);
+            self.mark_cue(session_id);
         }
     }
 

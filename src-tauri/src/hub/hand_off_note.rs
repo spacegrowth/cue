@@ -125,7 +125,7 @@ const AHEAD_BY: [&str; 6] = ["", "you", "session", "all", "desk", "full"];
 
 /// handoff_cue, with who asked ahead of its cache running out (0: not ahead).
 pub(crate) fn handoff_cue_ahead(h: &Hub, session_id: &str, ahead: u8) -> Result<String, String> {
-    let r = h.tell(session_id, &handoff_ask(session_id))?;
+    let r = h.tell(session_id, &handoff_ask(session_id), crate::sessions::Kind::HandOff)?;
     // Asked unasked (its tick, or Settings) and it began working in the meantime: Cue kept the ask to send when
     // that turn ends, when you're there. Taken back: held, not sent.
     if ahead > AHEAD_YOU && r.starts_with("kept in Cue") {
@@ -162,6 +162,7 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), hosted: o.hosted, ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
     let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd), &h.desk_item_names(session_id), &h.names_taken());
+    h.cue_says(&first, crate::sessions::Kind::HandOff);
     let started = super::start_session_with(h, &o.harness, &o.cwd, &first, &name, &opts)?;
     let new_id = started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     crate::config::carry_move(session_id, &new_id);
@@ -253,6 +254,27 @@ pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_
     let new_id = start_after(h, session_id, |last| resume_ask(last, false, "", ""))?;
     let (closed, detail) = close_replaced(h, session_id, "Started fresh from its last reply");
     Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
+}
+
+/// A session that didn't wake for your message (#857): a fresh one in its place, started from its last reply with that
+/// message, which it never got. As `handoff_fresh_now`: its Desk items go with it, and the old one closes (Closed
+/// keeps it).
+pub(crate) fn handoff_fresh_with(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<serde_json::Value, String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return handoff_fresh_now(h, session_id);
+    }
+    let new_id = start_after(h, session_id, |last| fresh_with_ask(last, message))?;
+    let (closed, detail) = close_replaced(h, session_id, "Sent to a fresh session");
+    Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
+}
+
+/// What starts a fresh session in place of one that didn't wake for `message`: carry on from its last reply (`last`),
+/// then answer the message.
+fn fresh_with_ask(last: &str, message: &str) -> String {
+    let last: String = last.chars().take(1500).collect();
+    let said = if last.is_empty() { String::new() } else { format!("\n\nIts last reply:\n\n{}", last.lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n")) };
+    format!("Carry on from an earlier session in this folder: it couldn't be started again to take my message.{said}\n\nIt left no hand-off note. Check git status, the branch and the files that reply names, then answer my message to it:\n\n{message}")
 }
 
 /// Record one insight event: known rules and actions only, the detail kept short.

@@ -161,7 +161,7 @@ impl Hub {
             what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
             files = if t.files.is_empty() { "(none)".to_string() } else { t.files.join(", ") },
         );
-        let kept = kept(&self.tell(lead, &text)?);
+        let kept = kept(&self.tell(lead, &text, crate::sessions::Kind::Crew)?);
         self.set_teammate(lead, &t.call, |m| {
             m.fix_rounds += 1;
             m.step = if kept { FIXES_KEPT } else { FIXES_RESTART }.into();
@@ -182,7 +182,7 @@ impl Hub {
             if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
             name = t.name
         );
-        let kept = kept(&self.tell(lead, &text)?);
+        let kept = kept(&self.tell(lead, &text, crate::sessions::Kind::Crew)?);
         self.set_teammate(lead, &t.call, |m| {
             let now = now_ms();
             if kept {
@@ -246,12 +246,12 @@ impl Hub {
             // Gone quiet with nothing running: its lead asks it where it is, and to carry on.
             "resume" => {
                 // At once: its lead's turn waits on this very teammate, so a message kept for the turn's end never goes.
-                self.send_to_session(lead, &resume_words(&t.name), &[], true)?;
+                self.tell_now(lead, &resume_words(&t.name), true, crate::sessions::Kind::Nudge)?;
                 Ok(format!("Asked its lead to wake {}", t.name))
             }
             "stop" => {
                 // At once, as Resume: a stuck teammate holds its lead's turn open, so a kept message would never go.
-                self.send_to_session(lead, &format!("Stop your teammate {} now (TaskStop, task id {}), and say so.", t.name, t.agent_id), &[], true)?;
+                self.tell_now(lead, &format!("Stop your teammate {} now (TaskStop, task id {}), and say so.", t.name, t.agent_id), true, crate::sessions::Kind::Nudge)?;
                 Ok(format!("Asked its lead to stop {}", t.name))
             }
             "aside" => {
@@ -353,7 +353,7 @@ impl Hub {
         let mins = now.saturating_sub(t.step_ms) / 60_000;
         let text = format!("(Cue) Your teammate {name} has been quiet for {mins} min with nothing running. Ask it where it is with SendMessage (to: \"{name}\"); if it doesn't answer, stop it.", name = t.name);
         // At once: its lead's turn waits on this teammate, so a message kept for that turn's end would never go.
-        if let Err(e) = self.send_to_session(&origin.session_id, &text, &[], true) {
+        if let Err(e) = self.tell_now(&origin.session_id, &text, true, crate::sessions::Kind::Nudge) {
             eprintln!("cue: couldn't tell {} about its quiet teammate {}: {e}", origin.session_id, t.name);
         }
     }

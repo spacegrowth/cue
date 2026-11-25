@@ -1,6 +1,6 @@
 /* Cue — Moss. One hue: the window is drenched in it, cards sit on top, actions use it.
-   Light by default; dark follows macOS (or Settings → Appearance). One project picked in the header,
-   the window takes that project's hue instead (`.proj-theme`, after these). */
+   Light by default; dark follows macOS (or Settings → Appearance). Another Color picked in Settings → General,
+   the window takes its hue instead (`.proj-theme`, after these). */
 /* The text sizes are registered lengths, so each reads back worked out ("15px", not its formula) wherever it's asked
    for: getComputedStyle, the terminal's size, what extension pages are sent. The sizes themselves are set in :root below. */
 @property --type-scale { syntax: "<number>"; inherits: true; initial-value: 1; }
@@ -23,6 +23,8 @@
   --panel: #FFFFFF;
   --panel-2: #F1F3EA;
   --line: #DCE0CB;
+  /* The message box while you type in it (#845): the line, a little stronger. Follows --line and --ink in every theme. */
+  --line-focus: color-mix(in srgb, var(--ink) 30%, var(--line));
   --ink: #1E2410;
   --muted: #5A6340;
   --accent: #3F4A22;
@@ -38,8 +40,8 @@
   /* A diff's added and removed lines (#647): plain green and red rows, the same in light and dark (never redefined
      below), with their own dark text so they read on either theme; -fg is the + / − mark and the +N −N counts. */
   --add-bg: #DAFBE1; --add-ink: #0C3A1B; --add-fg: #1A7F37; --del-bg: #FFEBE9; --del-ink: #5C120E; --del-fg: #CF222E;
-  /* A project's dot, ten swatches (core/colors.js SWATCHES): Moss (0, Cue's own), then soft, greyed colors, each
-     also the hue and strength its window takes when it's the one picked. On white, the color as picked; on the
+  /* The window's Color, ten swatches (core/colors.js SWATCHES): Moss (0, Cue's own), then soft, greyed colors, each
+     also the hue and strength the window takes when it's the one picked. On white, the color as picked; on the
      window's color (--pcb), a lighter one of the same hue. Saved as 0–9. */
   --pcp0: #3F4A22; --pcp1: #7a7a66; --pcp2: #9b8eb4; --pcp3: #a8925e; --pcp4: #b7a38f; --pcp5: #6d8375; --pcp6: #5f8b8a; --pcp7: #6b739c; --pcp8: #a3828f; --pcp9: #6e7076;
   --pcb0: #D2DE96; --pcb1: oklch(0.82 0.033 107); --pcb2: oklch(0.82 0.063 301); --pcb3: oklch(0.82 0.083 87); --pcb4: oklch(0.82 0.041 67); --pcb5: oklch(0.82 0.036 157); --pcb6: oklch(0.82 0.053 194); --pcb7: oklch(0.82 0.07 276); --pcb8: oklch(0.82 0.048 353); --pcb9: oklch(0.82 0.011 271);
@@ -136,10 +138,10 @@
   --on-deny: #151A08;
 }
 
-/* One project picked: every color of the window from its hue (--ph) and strength (--pk: 0 for Graphite),
+/* A Color picked (Settings → General): every color of the window from its hue (--ph) and strength (--pk: 0 for Graphite),
    at Moss's own lightness and depth, so each is as calm as Moss. Dark gets a deeper, more colored ground
-   than Moss's near-black, or the projects would look alike. Red, amber, the star and the white cards (light)
-   stay as they are: they mean the same in every project. The slab (terminals, the usage chip) takes the hue
+   than Moss's near-black, or the colors would look alike. Red, amber, the star and the white cards (light)
+   stay as they are: they mean the same in every color. The slab (terminals, the usage chip) takes the hue
    at Moss's own near-black. */
 :root.proj-theme {
   --bg: oklch(0.385 calc(0.072 * var(--pk)) var(--ph));

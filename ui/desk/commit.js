@@ -3,36 +3,54 @@
 // session at work is editing some of them, the item is done at once and the commit waits ("Commit waiting: <file>
 // (<session> is editing it)"), made on its own once they're free. "Committed <hash> · N files" shows with Undo, which
 // only puts it back to check: the commit stays, no code changes (a waiting commit isn't made).
-// Each time a session says DONE for an item, the lead's chat shows one Ready to check line for it (deskCheckRows): its
-// item and Check it ›, which opens the item's page, where what to test, Looks right and Send back are. Kept by the hub
-// (desk/hub/lead/checks.rs), so they're there after a restart.
-// Looks right waits a moment first: "Done · Undo" for DESK_LOOKS_WAIT on the item and in a toast, and Undo in that
-// time leaves it to check with nothing committed (Cue hasn't told the hub yet). Then it goes as above.
+// Each time a session says DONE for an item, the Desk's Activity shows one Ready to check line for it (deskCheckLine;
+// not the lead's chat since #789): its item and Check it ›, which opens the item's page, where what to test, Looks
+// right and Send back are. Kept by the hub (desk/hub/lead/checks.rs), so they're there after a restart.
+// Looks right waits a moment first: "Done · Undo" for DESK_LOOKS_WAIT on the item and in a toast, then its row folds
+// shut, and Undo till the fold ends leaves it to check with nothing committed (Cue hasn't told the hub yet). Then it
+// goes as above.
 // Commands: desk_looks_right, desk_item_act (reopen).
 
 /** What Looks right did, by item, since the window opened: { commit, files, waiting: [{ path, by }] }. */
 const deskCommitted = new Map();
 
-/** Items you said Looks right to in the last moment, not yet sent: id -> timer. */
+/** Items you said Looks right to, by id: a timer while "Done · Undo" shows (DESK_LOOKS_WAIT), then another while its
+ *  row folds shut (deskLeaving), then DESK_LOOKS_GOING once it's sent, till the hub has it done. Undo works till the
+ *  fold ends; only then does it go. Its row looks as the rows round it do, no fill or greying, and keeps its place
+ *  and height till it folds; then the rows under it slide up as it shuts (#791). */
 const deskLooksSoon = new Map();
-const DESK_LOOKS_WAIT = 3000;
-/** Looks right on item `id`: "Done · Undo" for a moment (on the item and in a toast), then it goes (deskLooksGo). */
+/** 1.2s of "Done · Undo", then the 0.3s fold (deskLeaveMs): about 1.5s from the click to gone (#856). */
+const DESK_LOOKS_WAIT = 1200, DESK_LOOKS_GOING = "going";
+/** What's open on the Desk, as where a sent-back row was kept (desk/c.js deskCStay): the Desk, and the item, session
+ *  or chat open on it. */
+const deskLooksPlace = () => JSON.stringify([deskSelection(), deskOpen?.kind || "", deskOpen?.id || deskOpen?.sid || deskOpen?.key || ""]);
+/** Looks right on item `id`: "Done · Undo" for a moment (on the item and in a toast), then its row folds shut
+ *  (deskLooksFold) and it goes (deskLooksGo). */
 function deskLooksRight(id) {
   if (deskLooksSoon.has(id)) return;
-  deskLooksSoon.set(id, setTimeout(() => { deskLooksSoon.delete(id); deskLooksGo(id); }, deskLooksWaitMs()));
-  toast("Done", deskLooksWaitMs());
+  const undoMs = deskLooksWaitMs() + deskLeaveMs();
+  deskLooksSoon.set(id, setTimeout(() => deskLooksFold(id), deskLooksWaitMs()));
+  toast("Done", undoMs);
   const t = document.querySelector(".toast"), u = document.createElement("button");
   u.className = "toast-undo"; u.textContent = DESK_UNDO_WORDS; u.onclick = () => deskLooksUndo(id);
   t?.append(" · ", u);
   t?.classList.add("acts");
-  setTimeout(() => t?.classList.remove("acts"), deskLooksWaitMs());
+  setTimeout(() => t?.classList.remove("acts"), undoMs);
   renderMain();
 }
-/** Undo in that moment: it stays to check, nothing sent, nothing committed. */
+/** Its moment up: its row folds shut, at its height now; Undo still takes it back till the fold ends, then it goes. */
+function deskLooksFold(id) {
+  const row = document.querySelector(`.dk-items .dk-it[data-desk-item="${CSS.escape(id)}"]`);
+  deskLeaving.set(id, { at: Date.now(), h: row?.offsetHeight || 0 });
+  deskLooksSoon.set(id, setTimeout(() => { deskLooksSoon.set(id, DESK_LOOKS_GOING); deskLooksGo(id); }, deskLeaveMs()));
+  renderMain();
+}
+/** Undo before the fold ends: it stays to check, its row open again where it was, nothing sent, nothing committed. */
 function deskLooksUndo(id) {
-  if (!deskLooksSoon.has(id)) return;
-  clearTimeout(deskLooksSoon.get(id));
-  deskLooksSoon.delete(id);
+  const v = deskLooksSoon.get(id);
+  if (v === undefined || v === DESK_LOOKS_GOING) return;
+  clearTimeout(v);
+  deskLooksForget(id);
   toast("Still to check");
   renderMain();
 }
@@ -40,33 +58,34 @@ function deskLooksUndo(id) {
 const DESK_UNDO_WORDS = "Undo · back to check";
 /** In place of Looks right while it waits: "Done · Undo · back to check". */
 const deskLooksSoonHtml = (id) => `<span class="dk-soon">Done · <button class="dk-undo-c" data-desk-act="looks_undo" data-id="${esc(id)}">${DESK_UNDO_WORDS}</button></span>`;
-/** Items folding away after their moment: id -> { at, h } (when it began, the row's height then). The row draws
- *  with its fold already `now - at` in (a negative animation delay), so a redraw meanwhile doesn't start it again. */
+/** Rows folding shut, and shut while their item goes: id -> { at, h } (when the fold began, the row's height then).
+ *  The row draws with its fold already `now - at` in (a negative animation delay), so a redraw doesn't start it again. */
 const deskLeaving = new Map();
-/** How long a row takes to fold away, so you see it go. */
-const deskLeaveMs = () => 300;
+/** How long a row takes to fold shut; at once with reduced motion. */
+const deskLeaveMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 300);
 const deskLooksWaitMs = () => DESK_LOOKS_WAIT;
-/** The style a leaving row draws with, "" for any other. */
+/** The class and style a folding row draws with, "" for any other. */
 function deskLeaveStyle(id) {
   const l = deskLeaving.get(id);
   return l ? ` dk-leave" style="--h:${l.h}px;animation-delay:-${Math.min(Date.now() - l.at, deskLeaveMs())}ms` : "";
 }
-/** Looks right sent: its row in the list folds away first, then it goes; committed (or just done), said in a toast
- *  and on its card and item. */
+const deskLooksForget = (id) => { deskLooksSoon.delete(id); deskLeaving.delete(id); };
+/** Looks right sent: committed (or just done), said in a toast and on its card and item. Its row stays shut till the
+ *  hub has it done (deskLooksLetGo). Couldn't: its row opens again, to check as it was. */
 async function deskLooksGo(id) {
-  const row = document.querySelector(`.dk-items .dk-it[data-desk-item="${CSS.escape(id)}"]`);
-  if (row && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    deskLeaving.set(id, { at: Date.now(), h: row.offsetHeight });
-    renderMain();
-    await new Promise((r) => setTimeout(r, deskLeaveMs()));
-  }
   try {
     const r = await invoke("desk_looks_right", { id });
     deskCommitted.set(id, r);
     toast(deskCommitWords(r) || "Done");
-  } catch (e) { toast(String(e), 5000); }
-  deskLeaving.delete(id);
+    // Should the hub never say it's done, its row comes back rather than stay shut.
+    setTimeout(() => { if (deskLooksSoon.get(id) === DESK_LOOKS_GOING) { deskLooksForget(id); renderMain(); } }, 10_000);
+  } catch (e) { toast(String(e), 5000); deskLooksForget(id); }
   renderMain();
+}
+/** Sent ones go once the hub has them as no longer to check (done: out of Waiting on you). Called as Items is drawn. */
+function deskLooksLetGo(items) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  for (const [id, v] of deskLooksSoon) if (v === DESK_LOOKS_GOING && byId.get(id)?.state !== "to_check") deskLooksForget(id);
 }
 /** Undo on a done item (its row, its page, its card): back to waiting on you, and nothing else. A commit made stays
  *  as it is and no code changes; a commit still waiting isn't made. */
@@ -109,10 +128,6 @@ function deskBackNote(c) {
   const note = plain(c.back || ""), pics = c.back_pics ? ` · ${c.back_pics === 1 ? "1 picture" : `${c.back_pics} pictures`}` : "";
   if (!note) return c.back_by === "You" ? ` · <span class="dk-chk-note">no note</span>${pics}` : pics;
   return `: <span class="dk-chk-note">“${esc(note.length > 140 ? note.slice(0, 140).replace(/\s+\S*$/, "") + "…" : note)}”</span>${pics}`;
-}
-/** Project `d`'s Ready to check lines for the lead's chat (chat/render.js chatHtml `extra`): one per DONE, at its time. */
-function deskCheckRows(d) {
-  return (d?.checks || []).map((c) => ({ at: c.at, html: keyed(dkMark(deskCheckLine(c, d), "ready", c.id), `chk:${c.id}:${c.at}`) }));
 }
 /** A DONE as the family's card (#501) while it's the one to check: "Cue READY TO CHECK Task #125 12m", its title,
  *  Check it ›; the item and Check it › opening its page (what to test, Looks right and Send back are there). Once

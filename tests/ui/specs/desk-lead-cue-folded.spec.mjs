@@ -29,9 +29,9 @@ for (const scheme of ["light", "dark"]) {
       { role: "agent", text: REPLY, at_ms: NOW - 10000 },
     ] });
     const chat = page.locator(".dk-chat");
-    // The Desk's own (#688): out of the chat, one count line; Activity has each, newest first.
+    // The Desk's own (#688, #789): out of the chat, no count line in their place; Activity has each, newest first.
     await expect(chat.locator(".dk-cue")).toHaveCount(0);
-    await expect(chat.locator(".dk-cnt")).toHaveText([/^3 Desk updates · 3 from Cue · Activity ›$/]);
+    await expect(chat.locator(".dk-cnt")).toHaveCount(0);
     await expect(chat).not.toContainText("Go through every open item");
     await expect(chat).not.toContainText("Nothing to do unless it gets stuck");
     await expect(chat).not.toContainText("(Desk changes");
@@ -90,8 +90,8 @@ for (const scheme of ["light", "dark"]) {
     await cue.open("desk");
     await openDesk(page);
     await cue.change((st, { msg }) => { st.sessions.find((x) => x.session_id === "lead").thread.push(msg); }, { msg: { role: "you", text: BLOCK + BACK, at_ms: NOW - 5000 } });
-    // The Desk's own (#688): a count line in the chat, the line in Activity.
-    await expect(page.locator(".dk-chat .dk-cnt")).toHaveText([/^1 Desk update · .*Activity ›$/]);
+    // The Desk's own (#688, #789): not in the chat, no count line either; the line in Activity.
+    await expect(page.locator(".dk-chat .dk-cnt")).toHaveCount(0);
     await expect(page.locator(".dk-chat")).not.toContainText("recap");
     await page.evaluate(() => deskOpenActivity());
     const line = page.locator(".dk-moves .dk-cue");

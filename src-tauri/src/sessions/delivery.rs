@@ -37,6 +37,22 @@ impl Sessions {
         }
     }
 
+    /// Every message of yours it hadn't taken yet, marked not sent because it didn't wake for them (`why`): Cue
+    /// started its agent to take them and it ended, or never took them in time (#857). Each bubble says so.
+    pub fn no_wake_pending(&mut self, session_id: &str, why: &str) {
+        for e in self.0.get_mut(session_id).into_iter().flat_map(|s| s.thread.iter_mut()).filter(|e| e.role == "you" && e.pending) {
+            e.unsent = true;
+            e.pending = false;
+            e.no_wake = true;
+            record(e, format!("not taken: {why}"));
+        }
+    }
+
+    /// Whether the last message you (or Cue) sent it is one it didn't wake for (#857): its Desk item's lead hears so.
+    pub fn last_no_wake(&self, session_id: &str) -> bool {
+        self.0.get(session_id).and_then(|s| s.thread.iter().rev().find(|e| e.role == "you")).is_some_and(|e| e.no_wake)
+    }
+
     /// Your message `text` to it was said by voice: the bubble says Cue added a line for the agent (or will, when
     /// it's still kept in Cue or queued in the agent's box).
     pub fn mark_voice(&mut self, session_id: &str, text: &str) {

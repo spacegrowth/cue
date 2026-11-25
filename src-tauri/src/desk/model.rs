@@ -331,6 +331,12 @@ pub struct DeskItem {
     /// Waiting for room (#711), no machine of its own: it starts wherever has room first (queue.rs `machine_sweep`, #776).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub room_wait: bool,
+    /// Waiting for a free slot (#798): as many of its Desk's items are at work where it would work as that machine's at
+    /// once in Desk settings (this Mac's too, in the shared folder as in copies). With a holder,
+    /// routed to that session and not sent yet; without one, a new session waits too (`room_wait`). It starts by itself
+    /// as one finishes (desk/hub/turn/slots.rs).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slot_wait: bool,
     /// Those places in words ("box or This Mac"): only as shown (view.rs `shown`); an older save's is read as `room_wait`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub machine_wait: String,
@@ -802,6 +808,8 @@ pub struct Waiting {
     /// Your words: sent after the Desk's summary as built for the lead it reaches (which may not be the one there was
     /// when you sent them).
     pub text: String,
+    /// Whose they are, as said where they were sent (#837): yours, or Cue's of a kind.
+    pub said: crate::sessions::Said,
     pub reply: std::sync::mpsc::Sender<Result<String, String>>,
 }
 

@@ -60,7 +60,8 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [] }); st.sessions.find((x) => x.session_id === "host").state = "working"; });
   await openItem(page, cue, "d5");
-  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who has this item · sent as #d5");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to1")).toHaveText("To host-lead");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to2")).toHaveText("#d5");
   await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Write to it here…");
   await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
@@ -109,8 +110,9 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-fold")).toContainText("Working · 2 steps");
   await expect(live.locator(".stx-fold .dot-live")).toHaveCount(1);
   await expect(live.locator(".stx-say")).toContainText("Found it: the header centres on the wrong box.");
-  // Folded: no step drawn while it works (the line under the chat is its running line); the chip opens every step in place.
-  await expect(live.locator(".stx-line")).toHaveCount(0);
+  // Folded: of its steps, only the one running now, once, under its words (#866); the chip opens every step in place.
+  await expect(live.locator(".stx-line")).toHaveCount(1);
+  await expect(live.locator(".stx-now .stx-line")).toHaveAttribute("data-key", "s2");
   await live.locator(".stx-fold").click();
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
   for (const theme of ["light", "dark"]) {

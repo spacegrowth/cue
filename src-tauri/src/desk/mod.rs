@@ -21,6 +21,7 @@ pub mod tell;
 pub(crate) mod move_desk;
 pub mod parse;
 pub mod state;
+pub(crate) mod unpark_said;
 
 pub use installer::{InstallStatus, Installer};
 pub use model::{Act, BusyFile, CommitWait, Desk, DeskDecision, DeskItem, Finish, Holder, ItemTree, CopyOn, InRepo, KeptTree, OnMachine, RemoteWork, Lead, StartFull, Stint, Waiting};
@@ -75,7 +76,49 @@ pub fn with_fresh_block(text: &str, block: &str) -> String {
         last = to;
     }
     rest.push_str(&text[last..]);
+    // Nothing changed since the lead's last block (#820): no block.
+    if block.is_empty() {
+        return rest.trim().to_string();
+    }
     format!("{block}\n\n{}", rest.trim())
+}
+
+/// How Cue ends a session's words for its lead (TO LEAD, #474; desk/hub/turn/heard.rs to_lead_said), on an item or on none.
+pub(crate) fn relay_words(name: &str, on: Option<(&str, &str)>, words: &str) -> String {
+    match on {
+        Some((id, title)) => format!("From {name} on #{id} ({title}):\n{words}\nAnswer it with NOTE: #{id} | <your words>."),
+        None => format!("From {name}:\n{words}\n{RELAY_NO_ITEM}"),
+    }
+}
+const RELAY_NO_ITEM: &str = "It holds no item here, so a NOTE can't reach it.";
+
+/// Paragraph `p` is a session's words for its lead as `relay_words` made them.
+fn is_relay(p: &str) -> bool {
+    let lines: Vec<&str> = p.lines().collect();
+    let (Some(first), Some(last)) = (lines.first(), lines.last()) else { return false };
+    lines.len() >= 3
+        && first.starts_with("From ")
+        && first.ends_with(':')
+        && (*last == RELAY_NO_ITEM || (last.starts_with("Answer it with NOTE: #") && last.ends_with(" | <your words>.")))
+}
+
+/// A message kept for a Desk lead (`text`, its Desk block first if any) taken apart (#831): (its block and your words,
+/// the sessions' words for the lead that were kept with them). None when it holds no session's words, or nothing else.
+pub fn relays_apart(text: &str) -> Option<(String, String)> {
+    let words = without_block(text);
+    let block = text[..text.len() - words.len()].trim_end();
+    let (relays, mine): (Vec<&str>, Vec<&str>) = words.split("\n\n").map(str::trim).filter(|p| !p.is_empty()).partition(|p| is_relay(p));
+    if relays.is_empty() || mine.is_empty() {
+        return None;
+    }
+    let mine = mine.join("\n\n");
+    Some((if block.is_empty() { mine } else { format!("{block}\n\n{mine}") }, relays.join("\n\n")))
+}
+
+/// `text` (its Desk block first if any) is only sessions' words for the lead, none of yours.
+pub fn only_relays(text: &str) -> bool {
+    let mut ps = without_block(text).split("\n\n").map(str::trim).filter(|p| !p.is_empty()).peekable();
+    ps.peek().is_some() && ps.all(is_relay)
 }
 
 /// Routing policy in every Desk summary, including for already-running leads.
@@ -125,7 +168,9 @@ for the session doing it only (tests, files, commands). Give an item missing eit
 says \"nothing in the repo changes\". It takes no copy and goes to the user to check with no commit.
 
 Each message from Cue starts with a <desk> block. It shows who runs the Desk, what needs routing, other open items, \
-and the sessions that can take work. A pending hand-off shows the session's context size and cache time. \
+and the sessions that can take work. A pending hand-off shows the session's context size. Items being routed, at work, finishing or paused are in full; \
+the rest one line each, and the item a message is about in full. A block marked changes=\"only\" carries only what changed since the \
+last; what it doesn't name stands. \
 An item marked needs resume is still assigned and its holder is idle. A queued item with an after reference waits for that dependency. \
 The user's own words come after the block.
 
@@ -150,11 +195,11 @@ stops, and the new session is sent the item with that hand-off note)
 ROUTE: #<id> -> new | model: <name> | why: <reason>   (the new session starts on that model, as Claude Code names it: fable, opus, sonnet, haiku, or a full id; without model: it starts on the Desk's default, which the user sets in the Desk's settings. Pick a model only when the work calls for it)
 ROUTE: #<id> -> new | on: <machine> | in: <folder there> | why: <reason>   (the new session starts on another of the user's machines, in this repository's clone there, from the latest main; on: this Mac starts it here. Without on:, it starts where the user chose for the item, else where the Desk's sessions start (its settings). Cue remembers the folder, so in: is needed only the first time. Before a Desk's first item on a machine, ask the user (ASK: #<id> | Start it on <machine>, in <folder>? | Yes | No, this Mac), and route it there only once they say yes. An item given to a session on another machine, this way or by name, is worked on a branch of its own there and lands here at its DONE like any other)
 ROUTE: #<id> -> new | repo: <repository folder, or a project Cue knows> | why: <reason>   (the item's code lives in another repository on this Mac: the new session starts in that repository, the item works in a copy of it and lands on that repository's main line at its DONE, by that repository's own landing settings. With a session's name instead of new, that session gets a copy of that repository to work in. Use COPY for a branch that stays off the main line)
-ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> is done; use it whenever \
+ROUTE: #<id> -> <name> | after: #<other id> | why: <reason>   (it starts once #<other id> has landed, or once the user checked it, by the Desk's setting (\"waiting items start\" in How work lands); use it whenever \
 an item really waits on another, as when both would change the same files: the Desk shows the user what each waiting item unblocks)
 One item per session, at work or waiting for the user's check: a session keeps its item until the user's Looks right. \
 A route to a busy session queues the item for it, with no holder yet: it starts there once that session is free, or in \
-a fresh session with a hand-off after 20 minutes. An item after another starts once that one gets Looks right.
+a fresh session with a hand-off after 20 minutes. An item after another starts once that one lands, or gets Looks right, as the Desk is set.
 ASK: <question> | choices: <A> / <B> / <C>      (only when you can't decide without the user; give each choice a \
 short line on what it does after a dash, and mark the one you suggest: choices: Merge now (Recommended) — it lands \
 today / Wait for #12 — it lands after the fix; no / or ; inside a choice)
@@ -196,6 +241,8 @@ HOLD: #<id> | area: <files or globs, comma-separated> | till: <it lands, or a ti
 will move or rewrite that part of the code: Cue keeps the hold for the repository, and every Desk on it sees it in its \
 Desk block and under its header till the item lands, is dropped or parks)
 UNHOLD: #<id>      (lift that hold early)
+SHOW: #<id> #<id>      (those items in full: done when, you'll see, files; Cue tells you at once)
+SHOW: desk      (your whole Desk block, sent at once)
 TELL DESK: <Desk's name> | <words>      (to another Desk's lead on this repository, e.g. to agree who lands first; \
 start the words with #<id> when it's about one of your items. Its answer comes back to you the same way)
 TELL DESKS: <words>      (to every other Desk's lead on this repository: a heads-up before you change shared code)

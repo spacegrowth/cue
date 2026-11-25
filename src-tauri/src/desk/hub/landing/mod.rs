@@ -2,9 +2,11 @@
 
 pub(crate) mod finish;
 pub(crate) mod commit;
+pub(crate) mod committed;
 pub(crate) mod trees;
 pub(crate) mod copies;
 pub(crate) mod copy_guard;
+pub(crate) mod stale_index;
 pub(crate) mod install;
 pub(crate) mod install_pick;
 pub(crate) mod install_shown;

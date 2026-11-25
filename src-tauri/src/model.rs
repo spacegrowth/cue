@@ -33,6 +33,11 @@ pub struct Exchange {
     /// or a dialog it opened). Cue keeps looking for a while; the bubble shows a faint ring meanwhile.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending: bool,
+    /// Yours, not sent (`unsent`) because the session it went to didn't wake for it: Cue started its agent again to
+    /// take it, and the agent ended, or never took it within `hub::hosted::WAKE_LIMIT_MS` (a very large chat to
+    /// resume, say). The bubble says the session didn't wake, with Try again and Send to a fresh session (#857).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_wake: bool,
     /// Yours, sent now (⌘↵) right after the one above, before it was answered: stopping its turn put that
     /// one back into Claude Code's box and this was typed after it, so the agent got both as one message.
     /// The text is what you typed; the bubble says it went with the one above (sessions/thread.rs note_with).
@@ -58,6 +63,19 @@ pub struct Exchange {
     /// when you wrote it, so the chat draws it there, where it stood while it waited. 0: `at_ms` is that time.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub written_ms: u64,
+    /// In the thread as yours ("you"), but Cue wrote it: one of its own messages to the session (a brief, a nudge, a
+    /// lead's note, a check line to redo…, #836), known as Cue's when it was sent (sessions/cue_said.rs). The chat
+    /// draws it as Cue's, never as your bubble.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cue: bool,
+    /// Cue's (`cue`) only: what kind of message it is ("brief", "nudge"… sessions/cue_said.rs Kind), set where it was
+    /// sent (#837).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    /// A kept message (Session::held) only: the parts of it that are Cue's, kept with yours (#836). Your bubble shows
+    /// the rest; they go after yours, a message of their own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cue_parts: Vec<String>,
 }
 
 fn is_zero(n: &u64) -> bool {

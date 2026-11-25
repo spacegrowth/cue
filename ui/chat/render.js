@@ -1,8 +1,8 @@
 // Cue UI chat — the chat's HTML: turns, status, the meta line and the ⋯ menu.
 /** One turn's steps, between your message and its reply, folded by default into one chip ("Working · 13 steps ·
  *  9 commands, 2 tools, 1 edit"), with what it said between them left in view, each ending in a count of the steps
- *  that led to it; while it works, the line under the chat says what it's doing and how many steps since its last
- *  words. The chip opens the whole turn, every step back in place between its messages; a message's count opens only
+ *  that led to it; while it works, the step it's running shows once, under the chip (open, as the list's last row), and
+ *  the line under the chat says only how long the turn has run (#866). The chip opens the whole turn, every step back in place between its messages; a message's count opens only
  *  the steps that led to it (runOpen). Each step is one line; it opens in full only when you click it (turnFold
  *  remembers your choice; Settings → Steps "Open" opens every turn by default). `live`: the turn it's working on now. `latest`: the newest turn.
  *  `part`: when you wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
@@ -39,8 +39,12 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   // their count. Cut off (the turn ended under a step), that step stays at the bottom, on one line.
   const shown = (x) => open || runOpen.has(`${sid}|${runOf.get(x.id)}`);
   const last = open ? null : footStep(sid, turn, live, latest, replied);
-  const foot = last && !shown(last) && last.at_ms >= part.from && last.at_ms < part.to ? lastStepRow(sid, turn, last, runOf.get(last.id)) : "";
-  if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
+  const inPart = (x) => x.at_ms >= part.from && x.at_ms < part.to;
+  // Folded while it works: the step it's running now, once, right under the chip (open, it's the list's last row) (#866).
+  const now = open ? null : runningStep(sid, turn, live);
+  const foot = last && !shown(last) && inPart(last) ? lastStepRow(sid, turn, last, runOf.get(last.id))
+    : now && !shown(now) && inPart(now) ? `<div class="stx-steps stx-now" data-key="now:${esc(now.id)}">${stepLine(sid, now)}</div>` : "";
+  if (!items.length) return first || fold || foot ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}${foot}</div>` : "";
   let body = "", run = [], runKey = "";
   // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
   const flush = () => { if (run.length) body += `<div class="stx-steps" data-key="run:${esc(runKey)}">${run.join("")}</div>`; run = []; };
@@ -76,24 +80,10 @@ function runCount(sid, first, n, words = "") {
   const k = `${sid}|${first}`;
   return `<button class="stx-cnt" data-run-fold="${esc(k)}" aria-expanded="${runOpen.has(k)}">· ${n} step${n === 1 ? "" : "s"}${words}</button>`;
 }
-/** The line under the chat while it works: how many steps since its last words, opening just those (a Stop hook's
- *  part: its fold). "" when there are none or steps are hidden. */
-function workingCount(s) {
-  const sid = s?.session_id, t = sid && stepsMode() !== "hidden" ? stepFeeds.get(sid)?.turns?.at(-1) : null;
-  const x = t?.items?.at(-1);
-  if (x?.t !== "step") return "";
-  if (hookedPart(t, x)) {
-    let n = 0;
-    for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "step" && hookedPart(t, t.items[k]); k--) n++;
-    return `<button class="stx-cnt" data-hook-fold="${esc(`${sid}|${t.at_ms}`)}">· ${n} step${n === 1 ? "" : "s"}</button>`;
-  }
-  const r = turnRuns(t).tail;
-  return r ? runCount(sid, r.first, r.n) : "";
-}
 /** Words' html with a count at their end: in their last paragraph, as their last words. */
 const withCount = (html, c) => (!c ? html : /<\/p>\s*$/.test(html) ? html.replace(/<\/p>\s*$/, `${c}</p>`) : html + c);
 /** A folded turn's newest step (a Stop hook's part too), shown at its foot when the turn was cut off under it (while
- *  it works, the line under the chat says it); null when the turn is open or ends in words. */
+ *  it works, runningStep); null when the turn is open or ends in words. */
 function footStep(sid, turn, live, latest, replied) {
   if (live || !latest || replied || turnOpen(`${sid}|${turn.at_ms}`)) return null;
   if (!turn.items.some((x) => x.t === "step" && !hookedPart(turn, x))) return null;
@@ -101,6 +91,13 @@ function footStep(sid, turn, live, latest, replied) {
   // A Stop hook's step with its fold open is in that list already: not twice.
   if (x?.t === "step" && hookedPart(turn, x) && hookOpen.has(`${sid}|${turn.at_ms}`)) return null;
   return x?.t === "step" ? x : null;
+}
+/** The step a turn it's working on now is running (its newest item, not done yet); null otherwise, or when it's in a
+ *  Stop hook's fold that's open (it's in that list already). */
+function runningStep(sid, turn, live) {
+  const x = live ? turn.items.at(-1) : null;
+  if (x?.t !== "step" || x.done) return null;
+  return hookedPart(turn, x) && hookOpen.has(`${sid}|${turn.at_ms}`) ? null : x;
 }
 /** Replies the chat draws as its own rows (a turn's reply, words shown mid-turn): each one's "· N steps", the steps
  *  that led to it, by index into `ex` (the counts in the turn and these add up to its chip's). */
@@ -213,18 +210,20 @@ function reviewFolds(ex, team) {
 
 /** `page`: a page that draws this chat as its own (the crew's page, team_page.js): `extra`, more rows of its own placed
  *  by time ({ at, html }, each keyed). It folds replies as the chat does. The Desk's lead chat (desk.js deskChat):
- *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (the Desk's lead hands work on by its own lines).
+ *  `lines`, md's hook that draws the lead's own ITEM/ROUTE/DONE/CONTEXT lines; `noActs`, no Send to… on its messages (only a hand-off's inert tail, desk/earlier.js).
  *  `reply(e, key)`: { text, after } a reply drawn as the page splits it; `say(text)`: the words being written, likewise.
  *  `folds(ex)`: turns the page folds to a line of its own (an item's page, the holder's turns about other items):
  *  { skip: the messages not drawn, by index; rows: its fold lines, placed by time; hides(at): their steps }.
  *  `acts({ st, sid, held })`: a held or queued message's controls as the page has them (heldRow, queuedRow).
+ *  `dkOut`: a Desk chat that doesn't draw the lead's lines (a session's, an item's): Cue's messages to it (hand-offs,
+ *  sent back, landed…) leave it all the same, for Activity (#789).
  *  `pending`: what you sent from the page's own box that the thread doesn't show yet (the Desk's, #688), each drawn
  *  as the chat's own outbox is (outboxRow): { text, images, at, key, m: its msgLine state, head, picsHtml }. */
 function chatHtml(it, s, harness, paged = false, page = null) {
   const original = conversation(it, s);
   const ex = original.map(deskSaidE);
   // An ask the hub noted ("Bash: …") is drawn as an ask with your answer beside it, not as its words (chatAsks).
-  const { asks, answers, decided } = chatAsks(ex);
+  const { asks, answers, decided, hidden } = chatAsks(ex, asksUp(s?.session_id || it?.session_id));
   const lastAgent = ex.findLastIndex((e, n) => e.role === "agent" && !asks.has(n));
   const agentAt = ex.flatMap((e, n) => (e.role === "agent" && !asks.has(n) ? [n] : []));
   const recent = new Set(agentAt.slice(-OPEN_REPLIES));
@@ -244,31 +243,51 @@ function chatHtml(it, s, harness, paged = false, page = null) {
   // `page.noSteps`: a chat without its turns' steps (the Desk lead's: what it read to route is not yours to read).
   const stepsOf = page?.noSteps || stepsMode() === "hidden" ? null : sid;
   const counts = replyCounts(stepsOf, s, ex, asks);
-  const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, lastAgent, recent, project, sid, near,
-    chose, reviews, reviewAt, fold, counts };
-  const drawn = withSteps(stepsOf, s, ex, ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
-  // A Desk chat (#688, desk/runs.js): each run of the Desk's own rows between your turns is one count line; Activity has them.
-  const rows = page?.lines && typeof dkFoldRows === "function" ? dkFoldRows(drawn) : drawn;
+  // Which chat this is (chat/who.js chatPlace): the Desk's lead, session or item chat, else the Board's.
+  const chat = page?.chat || (page?.lines ? "lead" : page?.dkOut ? "session" : "board");
+  const c = { it, s, harness, paged, page, original, ex, asks, answers, decided, hidden, lastAgent, recent, project, sid, near,
+    chose, reviews, reviewAt, fold, counts, chat };
+  const msgRows = ex.map((e, n) => keyed(chatRowHtml(c, e, n), K(`${e.role[0]}:${e.at_ms}`)));
+  const drawn = withSteps(stepsOf, s, ex, msgRows, chose.concat(ran, restarts, page?.extra || [], fold?.rows || [], chatWaitRows(s, page, K)), fold?.hides, page?.say);
+  // A Desk chat (#688, #789, desk/runs.js): the Desk's own rows leave it; Activity has them.
+  const dkChat = (page?.lines || page?.dkOut) && typeof dkFoldRows === "function";
+  const rows = dkChat ? dkFoldRows(drawn) : drawn;
+  // …so a page of Cue's log can be all the Desk's (a run of its updates and the lead's answers to them, as after an
+  // install, #869) and draw nothing: the chat loads the next page by itself until enough of the conversation shows,
+  // and says Loading earlier messages… meanwhile, never "No messages yet" over messages still in the log.
+  const filling = dkChat && paged && sid && fillOlder(sid, msgRows.filter((r) => r && !dkRow(r)).length);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(outboxRow(o, s, K(`out:${o.at}`), page));
   for (const o of page?.pending || []) rows.push(outboxRow(o, s, K(o.key || `p:${o.at}`), page));
   if (s?.send_at) rows.push(sendAtRow(s, page));
-  return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
+  return rows.length || filling ? (paged && sid && !page?.noOlder ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** Message `e`, the `n`th of chatHtml's thread, as drawn there: an ask, a decision, a card of a page's or Cue's own, a
  *  bubble of yours or the agent's reply; "" for one not drawn. `c`: what chatHtml worked out for the whole thread. */
 function chatRowHtml(c, e, n) {
-  const { it, s, harness, page, asks, answers, decided, chose, near, reviews, reviewAt, fold, sid } = c;
-  if (fold?.skip.has(n)) return "";
+  const { it, s, harness, page, asks, answers, decided, hidden, chose, near, reviews, reviewAt, fold, sid } = c;
+  if (fold?.skip.has(n) || hidden.has(n)) return "";
+  // Another Desk's band in the lead's chat goes to Activity (chat/who.js chatPlace, #837): marked the Desk's, it leaves.
+  const out = (h) => (chatPlace(e, c.chat) === "activity" && typeof dkMark === "function" ? dkMark(h, "peer") : h);
   // From another Desk's session, in a lead's chat: a band across the chat (desk/lead.js, #472).
-  if (e.role === "peer") return (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text);
+  if (e.role === "peer") return out((typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text));
   if (answers.has(n)) return "";
   if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
   if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
   // Another Desk's lead, through Cue (TELL DESK, TELL DESKS, a HOLD, #540): the same band (desk/lead.js).
   const told = e.role === "you" && typeof deskToldBand === "function" && deskToldBand(sid, e);
-  if (told) return told;
+  if (told) return chatFrom(e) === "cue" ? out(told) : told;
+  // Who said it, from its tags (chat/who.js, #837): Cue's is its card, its quiet line, or Activity's in a Desk chat
+  // (chatCueRow marks it so), never your bubble; its words only pick how it looks. A message from before the tags
+  // goes on as it always did, below.
+  const place = chatPlace(e, c.chat);
+  if (place === "reply") return reviews.has(n) ? "" : chatAgentHtml(c, e, n);
+  if (place !== "bubble") return chatCueRow(page, s, sid, e, n, reviewAt) || "";
   // Your send-back of an item ("Not done", #688): your bubble with the item's head, as your other words about it.
   if (e.role === "you" && youBack(e)) return chatYouHtml(c, e, n);
+  // In a Desk chat, your words that went in one message with a session's words for the lead (#812: you wrote while it
+  // was busy): your bubble with only yours, the lead's answer under it; the session's words are Activity's (runs.js).
+  const mixed = e.role === "you" && (page?.lines || page?.dkOut) && typeof deskRelaySplit === "function" && deskRelaySplit(e.text);
+  if (mixed?.yours) return chatYouHtml(c, { ...e, text: mixed.yours }, n);
   const cueRow = e.role === "you" && chatCueRow(page, s, sid, e, n, reviewAt);
   if (cueRow) return cueRow;
   if (reviews.has(n)) return "";
@@ -285,19 +304,24 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   // Each of these is the Desk's own (data-dk, desk/runs.js): it leaves the chat for Activity, unless it's meant for you.
   // Your pick (#667, "… picked option B2 on #d5 …") and your words Cue passed on (on its question, #651) are yours,
   // not the Desk's: they stay.
-  const mine = () => (/\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
-  const dk = (h) => (page?.lines && typeof dkMark === "function" ? dkMark(h, mine()) : h);
+  // Marked Cue's (#837, chat/who.js): its tag says whether it stays (your words on Cue's question) or leaves; an older
+  // message without the mark, its words.
+  const mine = () => (chatFrom(e) === "cue" ? (chatPlace(e, "session") === "activity" ? "cue" : "yours")
+    : /\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
+  const dk = (h, kind = mine()) => ((page?.lines || page?.dkOut) && typeof dkMark === "function" ? dkMark(h, kind) : h);
   const own = e.role === "you" && page?.you?.(e, n);
   if (own) return dk(own);
   // The Desk's hand-off of an item: a card, Cue's standing words to the session left out (desk/lead.js).
   const hand = e.role === "you" && typeof deskHandHtml === "function" && deskHandHtml(e);
-  if (hand) return dk(hand);
+  if (hand) return dk(hand, "route");
   const cue = e.role === "you" && cueSaid(e.text);
   if (cue) return dk(cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n)));
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
   // folded under it (desk/cue_said.js).
-  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
-  return cm ? dk(cm) : "";
+  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: e.no_wake ? "it didn't wake for this" : "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
+  if (cm) return dk(cm);
+  // Any other message Cue sent it, marked Cue's by the hub as it went (#836): one quiet line of Cue's, never your bubble.
+  return chatFrom(e) === "cue" && typeof cueQuietHtml === "function" ? dk(cueQuietHtml(e, s, `${sid}:${e.at_ms}:cueq`)) : "";
 }
 /** A page's own head on your words `e` (the Desk: what item they're about) and the words without it. Anywhere else (a
  *  session's own chat) your words from an item's page show the same way, Cue's words around them left out (#605). */
@@ -306,6 +330,9 @@ const youHeadOf = (page, e) => (page?.youHead ? page.youHead(e) : typeof deskAbo
 const youBack = (e) => typeof cueBackOf === "function" && !!cueBackOf(e?.text);
 /** Send again on a message of yours that didn't go (`attrs`: what sends it, the board's resend or a page's own). */
 const sendAgainBtn = (attrs) => `<button class="q-now" ${attrs}>Send again</button>`;
+/** Your message (`text`) that session `sid` didn't wake for (#857): Try again wakes it once more; Send to a fresh session
+ *  starts one in its place, from its last reply, with this message (the old one closes, Closed keeps it). */
+const noWakeActs = (sid, text) => sid ? `${sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(text)}"`).replace(">Send again<", ">Try again<")} <button class="q-now" data-act="fresh-send" data-sid="${esc(sid)}" data-text="${esc(text)}">Send to a fresh session</button>` : "";
 /** Your message `e` (the `n`th) in chatHtml's thread: your bubble, with how it went. */
 function chatYouHtml(c, e, n) {
   const { it, s, page, original, sid } = c;
@@ -316,7 +343,9 @@ function chatYouHtml(c, e, n) {
   // seen it take it: Queued while it's mid-turn (#531), else Sending until it does (past half a minute, that Cue
   // hasn't seen it yet).
   const resend = sid ? sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}"`) : "";
-  const m = e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
+  // Cue started it again for this, and it ended or never took it (#857): said plainly, the message kept.
+  const m = e.unsent && e.no_wake ? { st: "failed", head: `${esc(msgTo(s) || "It")} didn't wake`, why: "your message is kept here", acts: noWakeActs(sid, original[n].text) }
+    : e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
     : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
     : { st: queued ? "queued" : "delivered", at: msgTaken(e) };
   // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
@@ -329,10 +358,11 @@ function chatYouHtml(c, e, n) {
 function chatAgentHtml(c, e, n) {
   const { it, s, harness, paged, page, ex, lastAgent, recent, project, sid, counts } = c;
   const key = `${s?.session_id || it?.id}:${e.at_ms}`;
-  const long = e.text.length > 280 || e.text.split("\n").length > 4;
+  // Long by what it shows: Cue's lines in it (core/md.js cueLineOf) are left out of it.
+  const shown = e.text.split("\n").filter((l) => !cueLineOf(l));
+  const long = shown.join("\n").length > 280 || shown.length > 4;
   const foldable = !recent.has(n) && long, folded = foldable && !openMsgs.has(key);
   const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
-  fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
   // Listen and Read go together: a reply worth hearing is worth reading set larger (Read shows wherever Listen does).
   // A page's own split of a reply (the Desk's item chat: its own lines out, a stop hook's checklist folded under it).
   const split = page?.reply?.(e, key);
@@ -340,12 +370,25 @@ function chatAgentHtml(c, e, n) {
   const cnt = counts?.get(n) || "";
   const said = addOn.reply(sid, split ? split.text : e.text), listen = sid && proseWords(said.text, page?.lines) >= LISTEN_WORDS;
   // A Desk chat (#688): its Desk lines taken out for the count line around it; a reply of nothing but those leaves whole.
-  const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, run });
+  const draw = (run) => md(said.text, { runIn: s?.session_id, lines: page?.lines, refs: page?.refs, run });
   const talk = page?.lines && typeof dkReplyTake === "function" ? dkReplyTake(draw) : null;
   const body = talk ? talk.html : draw(null);
-  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${talk?.all && !split?.after && !said.after && !e.images?.length ? " data-dkr" : ""} data-at="${e.at_ms}"><div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
+  // The lead's answer to a turn of only Cue's notices (#816): in Activity under the notice, unless it acted on it; then
+  // here, the notices one quiet line over it.
+  const notice = talk && typeof dkNoticeReply === "function" ? dkNoticeReply(s, ex, n, page) : null;
+  const out = (talk?.all && !split?.after && !said.after && !e.images?.length) || (notice && !notice.stays);
+  const quiet = notice?.stays ? dkNoticeQuiet(s, ex, notice.turn, page) : "";
+  return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${out ? " data-dkr" : ""} data-at="${e.at_ms}">${quiet}<div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`}</div>${follow}</div>`;
+      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : fwdBtn(key, e.text, project, sid)}</div>${follow}</div>`;
+}
+/** "↗ Send to…" on an agent's words, the one button every chat that talks to a session draws (#854): this chat's, the
+ *  Board's, the Desk's item and session chats, a crew member's (helpers.js agentChatHtml) and a parked session's
+ *  (parked.js). It keeps what it sends (fwdMsgs; `key` starts with the session's id and ":", so window.js keeps it
+ *  while the session lasts), and a click opens the one menu (sheets.js forwardPop) over the same list of sessions. */
+function fwdBtn(key, text, from, fromSid) {
+  fwdMsgs.set(key, { text: addOn.plain(text), from, fromSid });
+  return `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button>`;
 }
 /** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */
 const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentName(harness))}</span>${machTag(machine)} · ${ago(at)} ago`;
@@ -357,7 +400,20 @@ const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentN
 function chatWaitRows(s, page, K) {
   const out = [];
   // `cut`: a turn's steps split at it, as at a message in the thread, so the steps around it stay put when it goes.
-  if (s?.held) out.push({ at: s.held.at_ms, cut: true, html: heldRow(s, page, K(`y:${s.held.at_ms}`)) });
+  // A session's words for a Desk lead kept with yours (#831): never in your bubble, and alone, not in the chat (they
+  // go as a message of their own, Activity's once sent).
+  const relay = s?.held && typeof deskRelaySplit === "function" && deskRelaySplit(s.held.text);
+  const held = relay ? (relay.yours ? { ...s, held: { ...s.held, text: relay.yours, cue_parts: [] } } : null) : s;
+  // Cue's own words kept with yours (#836, the hub's cue_parts): your bubble holds only yours; Cue's are its quiet line,
+  // going after yours, a message of their own. All Cue's with a card of its own (cue_said.js, team.js): that card.
+  const parts = held?.held?.cue_parts || [];
+  const cueText = parts.join("\n\n"), at = held?.held?.at_ms;
+  const card = parts.length && typeof cueQuietHtml === "function" && !cueWithout(held.held.text, parts) && (cueSaid(cueText) || (typeof cueMsgOf === "function" && cueMsgOf(cueText)));
+  if (parts.length && typeof cueQuietHtml === "function" && !card) {
+    const yours = cueWithout(held.held.text, parts);
+    if (yours) out.push({ at, cut: true, html: heldRow({ ...held, held: { ...held.held, text: yours, cue_parts: [] } }, page, K(`y:${at}`)) });
+    out.push({ at, cut: true, html: keyed(cueQuietHtml({ ...held.held, text: cueText }, s, `${s.session_id}:held:cueq`, { st: "held" }), K(`yc:${at}`)) });
+  } else if (held?.held) out.push({ at, cut: true, html: heldRow(held, page, K(`y:${at}`)) });
   // A kept message sent now and queued: where you wrote it, as its copy is drawn once read (written_ms).
   const qAt = s?.queued && (s.queued.written_ms && s.queued.written_ms < s.queued.at_ms ? s.queued.written_ms : s.queued.at_ms);
   if (s?.queued) out.push({ at: qAt, cut: true, html: queuedRow(s, page, K(`y:${qAt}`)) });
@@ -396,14 +452,16 @@ function laterOwn(e, page, key, meta) {
 function queuedRow(s, page, key = "queued") {
   const sid = esc(s.session_id), now = `<button class="q-now" data-act="send-now" data-sid="${sid}">Send now</button>`;
   const m = { st: "queued", to: msgTo(s), acts: page?.acts?.({ st: "queued", sid: s.session_id }) ?? now };
-  // Your send-back of an item (#688): yours, drawn below as any of your words.
-  if (!youBack(s.queued)) {
+  // Your send-back of an item (#688): yours, drawn below as any of your words; one marked Cue's (#837) never is.
+  if (chatFrom(s.queued) === "cue" || !youBack(s.queued)) {
     const own = laterOwn(s.queued, page, key, msgLine(m));
     if (own) return own;
     const cue = cueSaid(s.queued.text);
     if (cue) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:queued`, s.queued.text, m), key);
     const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.queued, s, `${s.session_id}:queued:cue`, m);
     if (cm) return keyed(cm, key);
+    // Any other of Cue's (#836): its quiet line, never your bubble.
+    if (chatFrom(s.queued) === "cue" && typeof cueQuietHtml === "function") return keyed(cueQuietHtml(s.queued, s, `${s.session_id}:queued:cueq`, m), key);
   }
   const hd = youHeadOf(page, s.queued);
   return msgRow(m, yourBubble(hd ? { ...s.queued, text: hd.text } : s.queued, `${s.session_id}:queued`, "", true, hd?.html || "") + thumbs(s.queued.images), "queued", ` data-key="${esc(key)}"`);
@@ -417,14 +475,16 @@ function heldRow(s, page, key = "held") {
   const m = heldWhy ? { st: "failed", why: esc(heldWhy.slice(15)), acts, to: msgTo(s) } : { st: "held", acts, to: msgTo(s) };
   const mine = page?.acts?.({ st: m.st, held: true, sid: s.session_id });
   if (mine != null) m.acts = mine;
-  // Your send-back of an item (#688): yours, drawn below as any of your words.
-  if (!youBack(s.held)) {
+  // Your send-back of an item (#688): yours, drawn below as any of your words; one marked Cue's (#837) never is.
+  if (chatFrom(s.held) === "cue" || !youBack(s.held)) {
     const own = !heldWhy && laterOwn(s.held, page, key, msgLine(m));
     if (own) return own;
     const cue = cueSaid(s.held.text);
     if (cue && !heldWhy) return keyed(cueSaidLine({ ...cue, html: cueWill(cue.html) }, `${s.session_id}:held`, s.held.text, m), key);
     const cm = typeof cueMsgHtml === "function" && cueMsgHtml(s.held, s, `${s.session_id}:held:cue`, m);
     if (cm) return keyed(cm, key);
+    // Any other of Cue's (#836, #837): its quiet line, never your bubble.
+    if (chatFrom(s.held) === "cue" && typeof cueQuietHtml === "function") return keyed(cueQuietHtml(s.held, s, `${s.session_id}:held:cueq`, m), key);
   }
   const hd = youHeadOf(page, s.held);
   return msgRow(m, yourBubble(hd ? { ...s.held, text: hd.text } : s.held, `${s.session_id}:held`, "", true, hd?.html || "") + thumbs(s.held.images), "queued held", ` data-key="${esc(key)}"`);
@@ -504,12 +564,15 @@ function whereNow(it, s, steps = true) {
   if (s?.compacting_ms) return `<div class="mg-status cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // It finished compacting (until the next turn starts).
   if (s?.compacted_ms && s.state !== "working") return `<div class="mg-status cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
+  // Working, with its steps in the chat: the step it's running is a row there (stepsBlock), so this says only how long
+  // the turn has run (#866, option B2): no command, no count (the chip has it).
+  if (s?.state === "working" && steps && stepsMode() !== "hidden") return `<div class="mg-status cv-status"><span class="dot-live"></span><b>Working</b><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // What it's doing right now (its latest step), else the prompt it's on.
-  if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span>${steps ? workingCount(s) : ""}<span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "working" && s.doing) return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
   // count since the turn started, so a long think doesn't look stuck.
   const prompt = (typeof cueMsgPlain === "function" && cueMsgPlain(s?.prompt, msgTo(s))) || deskSaid(s?.prompt);
-  if (s?.state === "working") return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span>${steps ? workingCount(s) : ""}<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "working") return `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Working${prompt ? ` on: ${esc(prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Its turn over while its scripts (or, for a Desk lead, Cue's update) run on, or one failed since (#867).
   const bgWait = bgWaitLine(it, s);
   if (bgWait) return bgWait;
@@ -541,9 +604,11 @@ function whereNow(it, s, steps = true) {
 /** The ask lines in a chat's thread (askLnOf), each with the answer right after it: `asks` (index → { ask, answer },
  *  the answer with its at_ms), `answers` (the indexes of those answers, not drawn on their own), `decided` (index →
  *  answer: one with no ask before it, a terminal dialog's choice or one whose ask scrolled out, drawn as a decision
- *  line, not as a message of yours). */
-function chatAsks(ex) {
-  const asks = new Map(), answers = new Set(), decided = new Map();
+ *  line, not as a message of yours). `hidden` (#801): asks not drawn, each shown once elsewhere: one asked again before
+ *  any answer (the hook lost Cue mid-wait and asked anew: the later copy stands for it), and the newest one while its
+ *  session's ask is up (`live`: asksUp), whose card under the chat is that ask. */
+function chatAsks(ex, live = new Set()) {
+  const asks = new Map(), answers = new Set(), decided = new Map(), hidden = new Set();
   ex.forEach((e, n) => {
     const ask = askLnOf(e);
     if (!ask) {
@@ -555,19 +620,47 @@ function chatAsks(ex) {
     asks.set(n, { ask, answer: answer ? { ...answer, at_ms: ex[n + 1].at_ms } : null });
     if (answer) answers.add(n + 1);
   });
-  return { asks, answers, decided };
+  for (const [n, { answer }] of asks) {
+    if (answer) continue;
+    let k = n + 1;
+    while (k < ex.length && ex[k].role !== "you" && !(asks.has(k) && ex[k].text.trim() === ex[n].text.trim())) k++;
+    if (k < ex.length && ex[k].role !== "you") hidden.add(n);
+  }
+  const lastYou = ex.findLastIndex((e) => e.role === "you");
+  for (const [n, { answer }] of asks) if (!answer && n > lastYou && live.has(ex[n].text.trim())) hidden.add(n);
+  return { asks, answers, decided, hidden };
+}
+/** The asks session `sid` has up now, as the hub words them in its thread (hub/asks.rs asked_line, history.rs summary):
+ *  each one's card under the chat (askFoot) is that ask, so the chat doesn't draw it again (#801). */
+function asksUp(sid) {
+  const up = new Set();
+  for (const i of sid ? state.items : []) {
+    if (i.session_id !== sid || (i.kind !== "permission" && i.kind !== "question")) continue;
+    const t = i.tool_input || {}, tool = String(i.tool_name || "");
+    const what = i.kind === "question" ? `asked: ${t.questions?.[0]?.question ?? t.question ?? ""}`
+      : `${tool}: ${{ bash: t.command ?? "", webfetch: `Fetch ${t.url ?? ""}` }[tool.toLowerCase()] ?? (["edit", "write", "multiedit", "notebookedit"].includes(tool.toLowerCase()) ? `${tool} ${t.file_path ?? ""}` : tool)}`;
+    up.add(what.trim());
+  }
+  return up;
 }
 /** A decision as a line in the chat, in the result line's look: "✓ Chose 1. Yes", "✕ Denied". */
 const chatDecisionLine = ({ text, no }, at, cls = no ? "no" : "") => `<div class="cv-result ${cls}"><span class="sent-check">${no ? "✕" : "✓"}</span><span>${esc(text)}</span><span class="grow"></span><span class="dim nowrap">${ago(at)} ago</span></div>`;
-/** An ask the agent made, as the chat draws it (#501, messages.css .mg.ask): the family's card outlined in deny, its head
- *  "Claude Code · ASKS YOU · 6m ago", what it asked as its words ("Asked to run", "Asked: …"), the command whole in a code
- *  block (never cut or faded), and how you answered as its foot's status, the card back to plain. */
+/** An ask the agent made, as the chat draws it. A tool's ask (#801) is one quiet line once it's settled: how you answered
+ *  ("✓ Allowed", "✕ Denied", or "Not answered here" when it went unanswered in Cue), what it asked and the command's first
+ *  line; while it waits, the card under the chat is that ask and the chat draws none (chatAsks). A question (#501,
+ *  messages.css .mg.ask) stays a card, its words whole: "Claude Code · ASKS YOU · 6m ago", what it asked, and your
+ *  answer as its foot's status, the card back to plain. */
 function chatAskHtml(key, e, { ask, answer }, harness, machine) {
-  const code = !ask.code ? "" : `<pre class="mg-code ask-code"><code>${ask.tool === "Bash" ? `<span class="ask-ps">$ </span>` : ""}${esc(ask.code)}</code></pre>`;
-  const what = ask.tool ? "" : ` <span class="ask-q">${esc(ask.what)}</span>`;
+  if (ask.tool) {
+    const mark = answer ? `<span class="sent-check">${answer.no ? "✕" : "✓"}</span>` : `<span class="sent-check none" aria-hidden="true">–</span>`;
+    const line = String(ask.code || "").split("\n").find((l) => l.trim()) || "";
+    const said = answer ? answer.text : "Not answered here";
+    return `<div class="cv-ask cv-result ask-done${answer?.no ? " no" : ""}${answer ? "" : " none"}">${mark}<span class="ask-said">${esc(said)}</span><span class="ask-head">${esc(ask.head)}</span>${line ? `<code class="ask-line">${esc(line)}</code>` : ""}<span class="grow"></span><span class="dim nowrap">${ago((answer || e).at_ms)} ago</span></div>`;
+  }
+  const what = ` <span class="ask-q">${esc(ask.what)}</span>`;
   const st = answer ? `<span class="mg-st ask-ans${answer.no ? " failed no" : ""}"><span class="mg-mark" aria-hidden="true">${answer.no ? "✕" : "✓"}</span> ${esc(answer.text)}</span>` : "";
   return `<div class="cv-ask mg ask${answer ? " answered" : ""}"><div class="mg-h">${mgAgentHead(harness, machine, e.at_ms).replace(/ · (.*)$/, `<span class="mg-tag">${answer ? "Asked you" : "Asks you"}</span><span class="mg-age">$1</span>`)}</div>
-    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}${ask.tool ? "" : ":"}</b>${what}</div>${code}${st ? `<div class="mg-f">${st}</div>` : ""}</div>`;
+    <div class="mg-t whole"><b class="ask-head">${esc(ask.head)}:</b>${what}</div>${st ? `<div class="mg-f">${st}</div>` : ""}</div>`;
 }
 /** After a decision: what you chose. Replies need no line, they're already in the chat. */
 function resultLine(it) {
@@ -591,7 +684,7 @@ let newProjFor = null, newProjNote = "";
 function projMoveList(sid) {
   const own = folderProject(sid), now = sessionOf(sid)?.project ?? findItem(active?.id)?.project ?? own;
   const names = [...new Set([own, ...projectsKnown().map(([p]) => p)])].filter((p) => p && p !== now);
-  const rows = names.map((p) => `<button data-move-proj="${esc(p)}" data-sid="${esc(sid)}">${projDot(p)}${esc(projLabel(p))}${p === own ? "<span>Its folder's own</span>" : ""}</button>`).join("");
+  const rows = names.map((p) => `<button data-move-proj="${esc(p)}" data-sid="${esc(sid)}">${esc(projLabel(p))}${p === own ? "<span>Its folder's own</span>" : ""}</button>`).join("");
   const add = newProjFor === sid
     ? `<div class="pm-new"><input class="pm-new-in" data-text="newproj:${esc(sid)}" maxlength="40" placeholder="Name the new project" spellcheck="false" value="${esc(draft(`newproj:${sid}`).text)}"/>${newProjNote ? `<div class="pm-note">${esc(newProjNote)}</div>` : ""}</div>`
     : `<button class="pm-add" data-new-proj="${esc(sid)}">+ New project…</button>`;
@@ -637,7 +730,7 @@ function moreMenu(sid, s, closable = false) {
  *  yourself (ipc/move_out.rs). Only for moving away from Cue, so it's here, not a button, and says so. Not while it
  *  works or asks you something. */
 function moveOutItem(sid, s) {
-  if (!s || !(s.hosted || (inTmux(sid) && !s.machine))) return "";
+  if (!s || !(s.hosted || (inTmux(sid) && !s.machine)) || isDeskLead(sid)) return "";   // never a Desk's lead (#842)
   const why = s.state === "working" ? "When this turn ends" : s.state === "deciding" ? "Once you've answered what it asks" : "";
   const where = s.hosted && s.machine ? `in tmux on ${machName(s.machine)}` : `in a ${termName()} tab`;
   return `<button data-act="move-term" data-sid="${esc(sid)}" ${why ? "disabled" : ""}>Move to terminal<span>${why || `Only if you're moving away from Cue: the conversation goes on ${esc(where)}, and Cue stops running it`}</span></button>`;
@@ -715,7 +808,7 @@ function quietPane() {
   const turns = (f?.turns || []).slice(-8);
   const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane ${busy ? "busy" : ""}">
-    <div class="ap-head">${projBtn(q.project || projOf(q.cwd), "ap")}${badge(q.harness)}<span class="proj">${esc(q.name || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
+    <div class="ap-head">${badge(q.harness)}<span class="proj">${esc(q.name || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
       ${moveBtn(q.session_id, q.harness, busy ? "working" : "idle", "btn primary")}<button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
     ${subHead(q.cwd, "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
@@ -736,6 +829,6 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
 const LISTEN_WORDS = 20;
 /** How many words a reply has of its own, the lines a page draws as cards of its own (`lines`, as md's) left out. */
 function proseWords(text, lines) {
-  const kept = String(text || "").split("\n").filter((l) => l.trim() && !(lines && lines(l, (x) => x)));
+  const kept = String(text || "").split("\n").filter((l) => l.trim() && !cueLineOf(l) && !(lines && lines(l, (x) => x)));
   return kept.join("\n").split(/\s+/).filter((w) => /\w/.test(w)).length;
 }

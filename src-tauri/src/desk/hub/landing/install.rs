@@ -327,7 +327,7 @@ impl Hub {
             }
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             let log = if log.is_empty() { String::new() } else { format!("\nThe end of its log:\n{log}") };
-            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {question}.{log}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}", i.title, crate::desk::check_words(&id))));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {question}.{log}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}", i.title, crate::desk::check_words(&id))), crate::sessions::Kind::FollowUp));
             let project = i.project.clone();
             crate::desk::hub::core::desk::decide(st, &project, Some(id.clone()), "Cue", "", question, &format!("sent back to {}", h.name), now, &mut fx);
             if let Some(d) = st.desk.decisions.last_mut() {

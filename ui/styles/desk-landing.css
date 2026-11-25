@@ -66,7 +66,6 @@
 .nd-drop { max-height: 240px; border-radius: var(--radius-tray); }
 .nd-drop .nf-dopt { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font: var(--type-body) var(--sans); }
 .nd-drop .nf-dopt.on .nd-pp { color: inherit; opacity: .75; }
-.nd-drop .nf-dopt.on .pdot { box-shadow: 0 0 0 1.5px var(--on-accent); }   /* its dot stays seen on the lit row */
 .nd-hint { margin-top: 8px; color: var(--muted); font-size: var(--type-body); }
 .nd-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 /* The Sessions head (pick B2): one lime strip set 8px in from the card's sides, 12px round, so in light it never runs

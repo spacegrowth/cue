@@ -10,9 +10,11 @@
 //! aren't started; the lead itself isn't paused, so it can plan and RESUME. Resume sends what was held, tells each
 //! session it stopped to carry on, and starts the items that were queued after ones finished meanwhile.
 
+use crate::desk::hub::core::desk::DeskSend;
+use crate::sessions::Kind;
 use crate::desk::hub::prelude::*;
 use crate::desk::hub::core::desk::{secs, Effects, NewStart};
-use crate::desk::hub::turn::route::release;
+use crate::desk::hub::turn::route::release_kept;
 
 /// What a session at work on the Desk is told as it pauses.
 pub(crate) const PAUSE_WORDS: &str = "The Desk is paused. Stop at the next safe point: finish the step you're on, leave your work as it is in your copy (don't commit, push or undo anything, and don't say DONE), say in one line where you stopped, and end your turn. Cue tells you when to go on.";
@@ -61,9 +63,10 @@ pub(crate) fn pause_block(desk: &str, now: u64) -> Option<String> {
     })
 }
 
-/// Whether item `id` is over for what's queued after it: done (Looks right, #576), or gone.
+/// Whether item `id` is over for what's queued after it: done (Looks right, #576), landed where its Desk starts them
+/// then (#808), or gone.
 fn over(st: &Store, id: &str) -> bool {
-    st.desk.item(id).is_none_or(|i| i.state == "done")
+    crate::desk::hub::turn::route::let_go(st, id)
 }
 
 impl Hub {
@@ -102,7 +105,7 @@ impl Hub {
         if let Some(lead) = lead {
             let words = if on { pause_block(desk, now).unwrap_or_default() } else { "The Desk is resumed: its sessions carry on and what was held is sent. Route as usual.".to_string() };
             self.later(0, move |h| {
-                if let Err(e) = h.tell(&lead, &words) {
+                if let Err(e) = h.tell(&lead, &words, crate::sessions::Kind::Desk) {
                     eprintln!("cue: desk: couldn't tell {lead} about the pause: {e}");
                 }
             });
@@ -140,7 +143,7 @@ impl Hub {
         }
         for sid in stopped {
             self.later(0, move |h| {
-                if let Err(e) = h.send_to_session(&sid, PAUSE_WORDS, &[], true) {
+                if let Err(e) = h.tell_now(&sid, PAUSE_WORDS, true, crate::sessions::Kind::Route) {
                     eprintln!("cue: desk: couldn't pause {sid}: {e}");
                 }
             });
@@ -151,8 +154,9 @@ impl Hub {
     /// Desk `desk` resumed from its saved pause `was`: what was held is sent, sessions it stopped are told to carry
     /// on, items held from starting start, and items queued after ones that finished meanwhile start.
     fn desk_resumed(&self, desk: &str, was: &Value, now: u64) {
-        let held: Vec<(String, String)> = was.get("held").and_then(Value::as_array).into_iter().flatten()
-            .filter_map(|p| Some((p.get(0)?.as_str()?.to_string(), p.get(1)?.as_str()?.to_string()))).collect();
+        // Each with the kind it was to go as (#837); one held before kinds were kept, a notice.
+        let held: Vec<DeskSend> = was.get("held").and_then(Value::as_array).into_iter().flatten()
+            .filter_map(|p| Some((p.get(0)?.as_str()?.to_string(), p.get(1)?.as_str()?.to_string(), Kind::named(p.get(2).and_then(Value::as_str).unwrap_or(""))))).collect();
         let stopped: Vec<String> = was.get("stopped").and_then(Value::as_array).into_iter().flatten().filter_map(|s| s.as_str().map(str::to_string)).collect();
         let starts: Vec<NewStart> = was.get("starts").and_then(Value::as_array).into_iter().flatten().filter_map(|s| {
             let f = |k: &str| s.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -171,16 +175,16 @@ impl Hub {
             afters.dedup();
             afters.retain(|a| over(st, a));
             for a in afters {
-                release(st, &a, now, &mut fx);
+                release_kept(st, &a, now, &mut fx);
             }
             fx.sends.extend(held);
             for sid in stopped {
-                if fx.sends.iter().any(|(to, _)| *to == sid) {
+                if fx.sends.iter().any(|(to, _, _)| *to == sid) {
                     continue;
                 }
                 let ids: Vec<String> = st.desk.items.iter().filter(|i| i.project == desk && i.state == "working" && i.paused.is_none() && i.holder.as_ref().is_some_and(|h| h.to() == sid)).map(|i| format!("#{}", i.id)).collect();
                 if !ids.is_empty() {
-                    fx.sends.push((sid, format!("The Desk is resumed: carry on with {} from where you stopped.", ids.join(", "))));
+                    fx.sends.push(crate::desk::hub::core::desk::kinded((sid, format!("The Desk is resumed: carry on with {} from where you stopped.", ids.join(", "))), crate::sessions::Kind::Desk));
                 }
             }
             // Items held from starting: still waiting for a session (nobody took them meanwhile).
@@ -204,7 +208,7 @@ impl Hub {
         if !paused {
             return;
         }
-        let (held, sends): (Vec<_>, Vec<_>) = self.read(|st| std::mem::take(&mut fx.sends).into_iter().map(|(sid, text)| (paused_desks_of(st, &sid), (sid, text))).partition(|(desks, _)| !desks.is_empty()));
+        let (held, sends): (Vec<_>, Vec<_>) = self.read(|st| std::mem::take(&mut fx.sends).into_iter().map(|(sid, text, kind)| (paused_desks_of(st, &sid), (sid, text, kind))).partition(|(desks, _)| !desks.is_empty()));
         fx.sends = sends.into_iter().map(|(_, s)| s).collect();
         let (late, starts): (Vec<NewStart>, Vec<NewStart>) = std::mem::take(&mut fx.starts).into_iter().partition(|s| is_paused(&s.project));
         fx.starts = starts;
@@ -213,10 +217,10 @@ impl Hub {
         }
         let saved = crate::config::update_with("desk.paused", |c| {
             let mut map = c.pointer("/desk/paused").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
-            for (desks, (sid, text)) in &held {
+            for (desks, (sid, text, kind)) in &held {
                 // One copy, with the first paused Desk it's on: Resume of that one sends it.
                 if let Some(list) = desks.first().and_then(|d| map.get_mut(d)).and_then(|d| d.get_mut("held")).and_then(Value::as_array_mut) {
-                    list.push(json!([sid, text]));
+                    list.push(json!([sid, text, kind.as_str()]));
                 }
             }
             for s in &late {

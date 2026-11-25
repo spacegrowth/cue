@@ -2,6 +2,7 @@
 //! confirming that what was typed was taken.
 
 use super::*;
+use crate::sessions::{Kind, Said};
 use super::history::{first_line, push_history};
 use crate::clock::now_mono_ms as mono_ms;
 
@@ -418,23 +419,43 @@ impl Hub {
         (origin, direct)
     }
 
+    /// Your words to a session, and only yours: Cue's go by `tell` (#837).
     /// `now`: if it's mid-turn, interrupt it first so this is handled right away (Ctrl+Enter).
     pub fn send_to_session(&self, session_id: &str, text: &str, images: &[Upload], now: bool) -> Result<String, String> {
         if text.trim().is_empty() && images.is_empty() {
             return Err("nothing to send".into());
         }
         let saved = crate::uploads::save(images)?;
-        self.send_saved(session_id, text, saved, now)
+        self.send_saved(session_id, text, saved, now, Said::You)
     }
 
-    /// Cue's own words to a session: `send_to_session` with no images, not interrupting (kept if it's mid-turn).
-    pub fn tell(&self, session_id: &str, text: &str) -> Result<String, String> {
-        self.send_to_session(session_id, text, &[], false)
+    /// Cue's own words to a session, of kind `kind`: no images, not interrupting (kept if it's mid-turn). Known as
+    /// Cue's, so its chat never shows them as yours (#836), and of that kind (#837).
+    pub fn tell(&self, session_id: &str, text: &str, kind: Kind) -> Result<String, String> {
+        self.tell_now(session_id, text, false, kind)
     }
 
-    /// Send `typed` (and images already saved) to a session. Mid-turn, to an agent Cue types into: Cue
-    /// keeps it and sends it when the turn ends (see `held`), unless `now`.
-    pub(crate) fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool) -> Result<String, String> {
+    /// `tell`; `now`: at once, its turn stopped first if it's at work (a turn that waits on what this asks).
+    pub fn tell_now(&self, session_id: &str, text: &str, now: bool, kind: Kind) -> Result<String, String> {
+        if text.trim().is_empty() {
+            return Err("nothing to send".into());
+        }
+        self.send_saved(session_id, text, vec![], now, Said::Cue(kind))
+    }
+
+    /// `text` is about to go to a session as Cue's own words of kind `kind`, however it's sent (a new session's first
+    /// message, a lead resumed with it…): its copy in the chat is Cue's, not yours (#836, sessions/cue_said.rs).
+    pub fn cue_says(&self, text: &str, kind: Kind) {
+        self.write(|st| st.sessions.cue_says(text, kind));
+    }
+
+    /// Send `typed` (and images already saved) to a session, as `said` says whose it is. Mid-turn, to an agent Cue
+    /// types into: Cue keeps it and sends it when the turn ends (see `held`), unless `now`.
+    pub(crate) fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool, said: Said) -> Result<String, String> {
+        self.write(|st| match said {
+            Said::Cue(kind) => st.sessions.cue_says(typed, kind),
+            Said::You => st.sessions.you_say(typed),
+        });
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
@@ -641,7 +662,7 @@ impl Hub {
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
         *failed = self.desk_fresh_held(session_id);
-        let h = self.read(|st| st.sessions.held(session_id)).ok_or("nothing kept for it")?;
+        let h = self.write(|st| crate::desk::hub::lead::held_yours_first(st, session_id)).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
         let sent = self.send_in_turn(session_id, &h.text, saved, now, Some(&h)).inspect_err(|e| {
             self.write(|st| st.sessions.held_failed(session_id, e));
@@ -663,7 +684,7 @@ impl Hub {
         if !crate::desk::has_block(&text) {
             return Vec::new();
         }
-        let (summary, failed) = self.desk_summary(&project, session_id, false);
+        let (summary, failed) = self.desk_block(&project, session_id, crate::desk::without_block(&text), false, true);
         self.write(|st| st.sessions.held_text_to(session_id, crate::desk::with_fresh_block(&text, &summary)));
         failed
     }
@@ -703,7 +724,7 @@ impl Hub {
             Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
             Err(std::sync::TryLockError::WouldBlock) => return None,
         };
-        let h = self.write(|st| st.sessions.take_held(session_id));
+        let h = self.write(|st| crate::desk::hub::lead::take_back_yours(st, session_id));
         if let Some(h) = &h {
             self.team_kept_left(session_id, &h.text, false);
             self.changed();
@@ -883,7 +904,8 @@ struct Watch {
 pub(super) fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
     // When you wrote it, too (a kept message sent now): its row stands there, where its bubble was (#422).
     let (at, written) = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| (e.at_ms, e.written_ms)).unwrap_or_else(|| (now_ms(), 0));
-    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written };
+    let kind = st.sessions.cue_kind(text);
+    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: written, cue: kind.is_some(), kind: kind.map(|k| k.as_str().to_string()).unwrap_or_default(), cue_parts: vec![] };
     st.sessions.set_queued(session_id, Some(q));
 }
 
@@ -965,8 +987,8 @@ mod tests {
         let origin = Origin { session_id: "s5".into(), harness: "claude".into(), ..Default::default() };
         let hub = Hub::new(None);
         hub.event(origin, "active", "refactor the router".into(), vec![], "");
-        assert!(hub.tell("s5", "also keep the old session").unwrap().starts_with("kept in Cue"));
-        hub.tell("s5", "and run the tests").unwrap();
+        assert!(hub.send_to_session("s5", "also keep the old session", &[], false).unwrap().starts_with("kept in Cue"));
+        hub.send_to_session("s5", "and run the tests", &[], false).unwrap();
         let held = |h: &Hub| h.read(|st| st.sessions.held("s5"));
         assert_eq!(held(&hub).map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()), "one kept message, the second after the first");
         assert!(hub.read(|st| st.sessions.thread("s5")).iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
@@ -975,5 +997,4 @@ mod tests {
         assert!(held(&hub).is_none() && hub.unhold("s5").is_none());
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
-    }
-}
+    }}

@@ -155,12 +155,17 @@ const MD_DROP = "<!--drop-->";
 /** `lines`: a hook for lines of a page's own (the Desk's lead lines, desk/lead.js deskLineHtml): (line, inline) → its
  *  html, MD_DROP to leave it out, or "" for an ordinary line. Lines in code blocks never reach it; a run of them is one block.
  *  `run`: a hook for each such block drawn (and, with `lines`, each block of decisions): its html → what goes in its place. */
-function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run = null } = {}) {
+/** `refs`: a hook for each line's words once drawn (html, links already made) → them with a page's own links added
+ *  (the lead chat's items and sessions, desk/lead.js deskRefs). Never given code blocks. */
+/** `cue`: Cue's own lines (cueLineHook) out of the words, as every chat has them; off for a file (`doc`) or a page with
+ *  its own `lines`. */
+function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run = null, refs = null, cue = true } = {}) {
   const out = [];
+  const cueHook = cue && !doc && !lines ? cueLineHook(text) : null;
   // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
   // whose paths these are, with no Run on its commands (the mini window).
   const base = sessBase(runIn || pathsOf);
-  const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base);
+  const inline = (s) => { const h = linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base); return refs ? refs(h) : h; };
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {
     if (i % 2 === 1) {
@@ -175,7 +180,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
       // A paragraph can mix a heading line, text lines and list lines: split it into runs.
       const runs = [];
       for (const l of para.split("\n").filter((x) => x.trim())) {
-        const own = lines ? lines(l, inline) : "";
+        const own = lines ? lines(l, inline) : cueHook ? cueHook(l) : "";
         if (own === MD_DROP) continue;
         if (own) { if (runs.at(-1)?.kind === "own") runs.at(-1).lines.push(own); else runs.push({ kind: "own", lines: [own] }); continue; }
         const kind = DECIDED_LINE.test(l) ? "decided" : QUOTE.test(l) ? "quote" : TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
@@ -195,7 +200,7 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
           const h = decidedHtml(r.lines, inline, !!lines);
           out.push(run && lines ? run(h) : h);
         } else if (r.kind === "quote") {
-          out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"))}</blockquote>`);
+          out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"), { refs })}</blockquote>`);
         } else if (r.kind === "table") {
           out.push(table(r.lines, inline));
         } else if (r.kind === "list") {
@@ -212,6 +217,57 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
     }
   });
   return out.join("");
+}
+
+/** A line a session writes for Cue to act on, as desk/parse.rs reads it (a list mark or bold around its word): DONE,
+ *  CHECK, IF PICKED, DESIGNS, TO LEAD… Cue reads these, so no chat shows them as written (#833). Its { word, body },
+ *  null for any other line, or one Cue wouldn't act on (an empty or "<…>" body, no item number where one goes). */
+const CUE_LINE = /^[-*+ ]*(?:\d+[.)]\s+)?\**(DONE|NOT DONE|CHECK|IF PICKED|DESIGNS|SEE|ANSWER|PASS|ITEM|TO LEAD|USER VERIFY|DECIDED \(minor\))\**\s*:(.*)$/;
+const CUE_NUMBERED = new Set(["DONE", "NOT DONE", "CHECK", "IF PICKED", "DESIGNS", "SEE", "ANSWER", "PASS"]);
+function cueLineOf(line) {
+  const m = CUE_LINE.exec(String(line || "").trim());
+  if (!m) return null;
+  const body = m[2].trim().replace(/^\*\*/, "").trim().replace(/\*+$/, "").trim();
+  if (!body || body.startsWith("<")) return null;
+  if (CUE_NUMBERED.has(m[1]) && !body.startsWith("#")) return null;
+  if (m[1] === "ITEM" && !/^(bug|feature|task)\s*\|/i.test(body)) return null;
+  return { word: m[1], body };
+}
+/** A DESIGNS line's link ("#833 https://…", as parse.rs designs), "" for none. */
+const cueDesignsUrl = (body) => /^#\S+\s.*?(https?:\/\/[^\s>)\]"`*]+)/.exec(body)?.[1]?.replace(/[.,;]+$/, "") || "";
+/** The mocks' link as a button (a DESIGNS line, an IF PICKED line's). */
+const cueMocksBtn = (url) => `<a class="mg-btn cue-mocks" href="#" data-href="${esc(url)}">Open the mocks ↗</a>`;
+/** The one filter every chat draws a reply through (md's own `lines` when a page gives none; #833): what `text`'s Cue
+ *  lines become, line by line. DESIGNS: an Open the mocks button. IF PICKED: its first, one quiet line, how many options
+ *  and (with no DESIGNS line in the reply) the item's mocks; the rest left out. Every other one (DONE, CHECK, TO LEAD…)
+ *  left out: Cue shows it where it acts (CHECK on its item's check card). null when `text` has none. */
+function cueLineHook(text) {
+  const t = String(text ?? "");
+  if (!/\b(?:DONE|CHECK|IF PICKED|DESIGNS|SEE|ANSWER|PASS|ITEM|TO LEAD|USER VERIFY|DECIDED \(minor\))\**\s*:/.test(t)) return null;
+  const all = t.split(/```/).filter((_, i) => i % 2 === 0).join("\n").split("\n").map(cueLineOf).filter(Boolean);
+  if (!all.length) return null;
+  const picks = all.filter((c) => c.word === "IF PICKED");
+  const opts = new Set(picks.map((c) => (c.body.split("|")[1] || "").trim().toLowerCase()));
+  const designs = all.some((c) => c.word === "DESIGNS" && cueDesignsUrl(c.body));
+  let said = false;
+  return (l) => {
+    const c = cueLineOf(l);
+    if (!c) return "";
+    if (c.word === "DESIGNS") { const url = cueDesignsUrl(c.body); return url ? `<div class="cue-ln">${cueMocksBtn(url)}</div>` : MD_DROP; }
+    if (c.word !== "IF PICKED" || said) return MD_DROP;
+    said = true;
+    const url = designs ? "" : cueItemMocks(c.body);
+    const n = opts.size;
+    return `<div class="cue-ln cue-pick"><span>${n} option${n === 1 ? "" : "s"} to pick from</span>${url ? ` · <a class="cue-mocks-a" href="#" data-href="${esc(url)}">Open the mocks ↗</a>` : ""}</div>`;
+  };
+}
+/** The mocks of the item an IF PICKED line names ("#833 | B | …"), as its page links them (desk/page.js deskCanvas);
+ *  "" outside the Desk or for none. */
+function cueItemMocks(body) {
+  const id = (/^#([a-z0-9]+)/i.exec(body)?.[1] || "").toLowerCase();
+  if (!id || typeof deskCanvas !== "function" || typeof state === "undefined") return "";
+  const it = (state?.desk?.projects || []).flatMap((d) => d.items || []).find((i) => (typeof deskIdIs === "function" ? deskIdIs(i, id) : i.id === id));
+  return it ? deskCanvas(it) : "";
 }
 
 /** A judgment call an agent made on its own, as it writes it: `DECIDED: what — why` (a list mark before it is fine). */

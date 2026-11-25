@@ -76,11 +76,18 @@ const CUE_MSGS = [
   }, "Back"],
   // The Desk's changes since the lead last heard (desk/hub/lead/feed.rs, #616): a paragraph each, numbered at the end.
   [/^([\s\S]+?)\n\n\(Desk changes [^)\n]*\)$/, (m) => cueChanges(m[1]), "Desk changes"],
-  [cueRe(String.raw`^Queued: #ID is next for (.+?), after #([\w.-]+)`), (m, t) => ({ verb: "Told", id: m[1], what: `next for ${m[2]}, after #${m[3]}`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued"), next: t.split("\n")[0].split("; ")[1] || "" }), "Queued"],
+  [cueRe(String.raw`^Queued: #ID is next for (.+?)(?:, after #([\w.-]+)| \(busy with #([\w.-]+)\))`), (m, t) => ({ verb: "Told", id: m[1], what: m[3] ? `next for ${m[2]}, after #${m[3]}` : `next for ${m[2]} (busy with #${m[4]})`, more: cueMore(cueLines(t).length - 1, "more queued", "more queued"), next: t.split("\n")[0].split("; ")[1] || "" }), "Queued"],
   [/^Cue asked .+?, for the leads of .+?: ([^\n]*)\nThe user's answer: ([^\n]*?)\./, (m) => ({ verb: "Told", what: `your answer: ${cueQ(m[2], 60)}`, by: "You", said: m[2], next: "The lead carries on with your answer" }), "Answered"],
   [/^Away mode:\n(?:Away is paused: ([^.\n]+)|(?:The owner|.+?) is away (until [^,\n]+))/, (m) => ({ verb: "Told", what: m[1] ? `Away paused: ${m[1]}` : `Away is on, ${m[2]}` }), "Away"],
+  // An item's holder gone quiet (desk/hub/stall/stuck.rs silent_words, #816): who, how long, its last step.
+  [cueRe(String.raw`^#ID \((.*)\) looks stuck: (.+?) has shown no new output for (\d+) minutes`), (m, t) => ({ verb: "Told", id: m[1], what: `looks stuck: ${m[3]} quiet for ${m[4]} min`, said: /Its last step: ([^\n]*)/.exec(t)?.[1] || "", label: "Its last step", next: "The lead looks at its chat, then nudges it, pauses it or routes it on" }), "Stuck"],
+  // An item that stopped on its way to main (desk/hub/lead/stop_lead.rs), or landed without files left in the main folder (landing/own_work.rs).
+  [cueRe(String.raw`^Desk item #ID \((.*)\) stopped while landing: ([^\n]*)`), (m) => ({ verb: "Told", id: m[1], what: `stopped while landing: ${cueQ(m[3])}`, said: m[3], label: "Why", next: "The lead sends it back or clears the way and says DONE again" }), "Landing"],
+  [cueRe(String.raw`^#ID \((.*)\) lands from its copy without these files[^:]*: ([^\n]*?)\. They stay there`), (m) => ({ verb: "Told", id: m[1], what: `landed without ${m[3]}`, said: m[3], label: "Left in the main folder", next: "Those files stay uncommitted in the main folder" }), "Landing"],
+  // The Desk's new lead's first message (desk/hub/lead/run.rs desk_handoff_words).
+  [/^(.+?) now runs (.+?)'s Desk\./, (m) => ({ verb: "Told", what: `${m[1]} now runs ${m[2]}'s Desk`, next: "The new lead carries on with the Desk" }), "Hand-off"],
   // Replies to the lead's own command lines (Refused:, not cut, not split, …): its first line, the rest folded.
-  [cueRe(String.raw`^(?:Refused: |Noted: |#ID (?:note )?(?:not|copy not) |Couldn't read this line as a route|No question from #ID|FEATURE #ID: left out|Cue couldn't (?:route|queue|start) |Cue didn't reopen )`), (m, t) => {
+  [cueRe(String.raw`^(?:Refused: |Noted: |Told: |#ID (?:note )?(?:not|copy not) |#ID got no copy|Couldn't read this line as a route|No question from #ID|FEATURE #ID: left out|Cue couldn't (?:route|queue|start) |Cue didn't reopen )`), (m, t) => {
     const ls = cueLines(t), first = ls[0].split(/(?<=\.) /)[0].replace(/\.$/, "");
     // A reply about one item ("#d5 not cut: …") puts that item in the card's head, as every other line does.
     const [, id, rest] = /^#(\S+) (.+)$/.exec(first) || [];
@@ -242,4 +249,59 @@ function cueMsgHtml(e, s, key, m = null) {
   const foot = m ? msgLine({ ...m, by: "", acts: `${m.acts ? `${m.acts} ` : ""}${lk}` }) : `<div class="mg-f"><span class="mg-acts">${lk}</span></div>`;
   return `<div class="mg cue-msg${open ? " open" : ""}${m && m.st !== "delivered" ? ` ${m.st}` : ""}"><div class="mg-h">${head}</div><div class="mg-t">${words}</div>`
     + `${open ? cueFoldHtml(c, full, who, it?.title || "") : ""}${foot}</div>`;
+}
+
+/** A few of Cue's messages to a session in Cue's words for you, for its quiet line (#836): [pattern on its text, its
+ *  Desk block and teammate prefix dropped, → { id, what }]. Any other one says its first sentence. */
+const CUE_GISTS = [
+  // A failed full run of main (landing/full_run.rs): which tests and the end of its log only in the folded text.
+  [cueRe(String.raw`^Desk item #ID \([^\n]*\) is open again: the full run of main failed`), (m) => ({ id: m[1], what: `Reopened #${m[1]}: the full test run failed` })],
+  [cueRe(String.raw`^Desk item #ID \([^\n]*\): the full run of main failed on its commit`), (m) => ({ id: m[1], what: `Told it the full test run failed on #${m[1]}'s commit: fix it there too` })],
+  [cueRe(String.raw`^Your DONE for #ID is in, but its check line needs another go`), (m) => ({ id: m[1], what: "Asked it to redo its check line" })],
+  [/^Your background agent “(.+?)” has gone quiet/, (m) => ({ what: `Asked it to wake its background agent ${m[1]}` })],
+  [/^Stop your background agent “(.+?)”/, (m) => ({ what: `Asked it to stop its background agent ${m[1]}` })],
+  [/^Carry on where you stopped: your usage limit reset/, () => ({ what: "Asked it to carry on: the usage limit reset" })],
+  [/^\/handoff resume\b/, () => ({ what: "Asked it to carry on from the hand-off note" })],
+];
+/** What Cue's message `text` is about, in short: { mate, id, what }. A kind CUE_GISTS knows in its words; any other its
+ *  first sentence (an item's "Desk item #id (title):" left out, its number kept for the chip), Cue's standing words to
+ *  the session left out. */
+function cueGist(text) {
+  const [mate, t] = cueMate(deskSaid(String(text ?? "")).trim());
+  for (const [re, f] of CUE_GISTS) {
+    const m = re.exec(t);
+    if (m) return { mate, id: "", ...f(m) };
+  }
+  const plain = cueNoRules(t) || t;
+  const id = (/#([\w.-]+)/.exec(plain)?.[1] || "").replace(/\.+$/, "");
+  const body = plain.replace(/^Desk item #[\w.-]+(?: \([^\n]*?\))?:\s*/, "");
+  const what = (body.split(/(?<=[.!?])\s+|\n/).map((x) => x.trim()).find(Boolean) || body).replace(/:$/, "");
+  return { mate, id, what: cueCut(what && what[0].toUpperCase() + what.slice(1), 110) };
+}
+/** One of Cue's own messages to a session, the hub's mark on it (#836, sessions/cue_said.rs), with no card of its own:
+ *  one quiet line at the left, as Cue's lines in a lead's chat are (desk/lead.js deskCueLine): "+ ◔ Cue → cue-383 ·
+ *  #832 · 3m", what it says in short under it (cueGist), and a click opens Cue's full text. `key`: what keeps it open
+ *  (openAsks). `m`: its state when it hasn't gone (held: kept till its turn ends; queued). Never your bubble. */
+function cueQuietHtml(e, s, key, m = null) {
+  const g = cueGist(e.text);
+  const who = g.mate || (s ? nameOf(s.session_id, s.project) : "");
+  const it = g.id ? (state.desk?.projects || []).flatMap((d) => d.items || []).find((i) => deskIdIs(i, g.id)) : null;
+  const chip = !g.id ? "" : typeof deskMgId === "function" ? ` ${deskMgId(g.id, it?.kind || "", deskNum(it || { id: g.id }))}` : ` <span class="mg-id">#${esc(g.id)}</span>`;
+  const open = openAsks.has(key), full = deskSaid(String(e.text ?? "")).trim();
+  const st = m?.st === "held" ? " · goes when its turn ends" : m?.st === "queued" ? " · queued" : e.unsent ? " · not sent" : e.pending ? " · not read yet" : "";
+  const to = who || st ? ` <span class="mg-v">${who ? `→ ${esc(who)}` : ""}${st}</span>` : "";
+  return `<div class="dk-ln dk-cue cue-quiet${open ? " open" : ""}"><div class="mg-line"><button class="dk-cue-t" data-ask-open="${esc(key)}" aria-expanded="${open}">`
+    + `<span class="dk-cue-pm">${open ? "−" : "+"}</span>${cueMark()}<b class="mg-who">Cue</b>${to}</button>${chip}`
+    + `${e.at_ms ? `<span class="mg-age">${ago(e.at_ms)}</span>` : ""}</div><button class="dk-cue-w" data-ask-open="${esc(key)}" aria-expanded="${open}">${esc(g.what)}</button>`
+    + `${open ? `<div class="mg-full">${esc(full)}</div>` : ""}</div>`;
+}
+/** A kept message's text (`text`) without Cue's `parts` of it (#836, the hub's cue_parts): your words alone. */
+function cueWithout(text, parts) {
+  let rest = String(text ?? "");
+  for (const p of parts || []) {
+    const t = String(p).trim();
+    const i = t ? rest.indexOf(t) : -1;
+    if (i >= 0) rest = rest.slice(0, i) + rest.slice(i + t.length);
+  }
+  return rest.split("\n\n").map((x) => x.trim()).filter(Boolean).join("\n\n");
 }

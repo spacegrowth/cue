@@ -57,9 +57,11 @@ if [ "$full" = 1 ]; then
   [ -d "$shared" ] || shared="$dir"
   lock="$shared/cue-full-test-run.lock"
   exec 9>>"$lock"
+  # Asked again every few seconds, sleeping in between: lockf waiting on a descriptor (`lockf -s 9`) spins a whole
+  # processor core for as long as it waits.
   if ! lockf -s -t 0 9; then
     echo "test-runner: another full test run of this repository is going (in another copy); waiting for its end…" >&2
-    lockf -s 9
+    until lockf -s -t 0 9; do sleep "${CUE_TEST_LOCK_POLL:-5}"; done
     echo "test-runner: its turn is over; running." >&2
   fi
 fi

@@ -63,7 +63,9 @@ impl Hub {
 
     /// Sent like anything you send it (kept in Cue if it's busy); if it can't be, it's put back with why, for you.
     fn send_one_later(&self, session_id: &str, l: SendAt) -> Result<String, String> {
-        let sent = self.send_saved(session_id, &l.text, vec![], false);
+        // Cue's carry on (at 0) is Cue's words, not yours (#836); a message you set for later is yours.
+        let said = if l.at_ms == 0 { crate::sessions::Said::Cue(crate::sessions::Kind::Nudge) } else { crate::sessions::Said::You };
+        let sent = self.send_saved(session_id, &l.text, vec![], false, said);
         if let Err(e) = &sent {
             eprintln!("cue: couldn't send the message for later to {session_id}: {e}");
             self.write(|st| {

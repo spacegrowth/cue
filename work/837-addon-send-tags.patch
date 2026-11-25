@@ -1,0 +1,117 @@
+diff --git a/mac/hub/loop_decisions.rs b/mac/hub/loop_decisions.rs
+index 7e0762e..63dc3fd 100644
+--- a/mac/hub/loop_decisions.rs
++++ b/mac/hub/loop_decisions.rs
+@@ -518,7 +518,7 @@ impl Hub {
+             "The user answered your decision{}:\n\n{answers}\n\nCarry on with round {} of {}: {}. End your turn when you think {}.",
+             if said.len() == 1 { "" } else { "s" }, run.round, run.max_rounds, run.goal, super::loops::passes(&run)
+         );
+-        if let Err(e) = self.loop_send(&run, &msg) {
++        if let Err(e) = self.loop_send(&run, &msg, crate::sessions::Kind::Note) {
+             let why = format!("Couldn't send your answer to the lead: {e}");
+             self.loop_stop_as(run, "error", &why);
+             return Err(e);
+@@ -622,7 +622,7 @@ impl Hub {
+     /// go into the round's notes, which say what reached the lead. Not sent: they wait for the next round again.
+     pub(super) fn loop_send_round(&self, run: &Run, msg: &str, changes: Option<String>) -> Result<(), String> {
+         let (id, n) = (run.id.clone(), run.round);
+-        if let Err(e) = self.loop_send(run, msg) {
++        if let Err(e) = self.loop_send(run, msg, crate::sessions::Kind::Nudge) {
+             if changes.is_some() {
+                 self.loop_changes_back(&id, |d| d.applied_round == n);
+                 self.loop_edit_sent(&id, n, false);
+diff --git a/mac/hub/loop_quiet.rs b/mac/hub/loop_quiet.rs
+index cf16d05..cf28dcc 100644
+--- a/mac/hub/loop_quiet.rs
++++ b/mac/hub/loop_quiet.rs
+@@ -17,7 +17,7 @@ impl Hub {
+         } else {
+             let Some(run) = db::update_run(&run.id, |r| r.quiet_mates.push(t.name.clone())) else { return true };
+             let text = format!("Your teammate {name} has been quiet for {mins} min with nothing running. Wake it once with SendMessage (to: \"{name}\"): ask where it is and to finish its part. If it goes quiet again, Cue stops the loop for the user.", name = t.name);
+-            if let Err(e) = self.loop_send(&run, &text) {
++            if let Err(e) = self.loop_send(&run, &text, crate::sessions::Kind::Nudge) {
+                 let why = format!("Couldn't ask the lead to wake its teammate {}: {e}", t.name);
+                 self.loop_stop_as(run, "error", &why);
+             }
+diff --git a/mac/hub/loops.rs b/mac/hub/loops.rs
+index 9d0013c..de03400 100644
+--- a/mac/hub/loops.rs
++++ b/mac/hub/loops.rs
+@@ -78,7 +78,7 @@ impl Hub {
+         };
+         let run = db::save_run(&run).ok_or("couldn't keep the run in Cue's database")?;
+         let text = if proposing { propose_message(&run, &crate::ext::ipc::checks_in(std::path::Path::new(cwd))) } else { first_message(&run) };
+-        self.loop_send(&run, &text)?;
++        self.loop_send(&run, &text, crate::sessions::Kind::Brief)?;
+         self.loops_changed();
+         Ok(run)
+     }
+@@ -467,7 +467,7 @@ impl Hub {
+         run.head = crate::changes::ext::branch_and_head(&run.cwd).1;
+         self.loop_save(&run);
+         let text = format!("{}. Commit the changes this loop made on {branch} now: one commit, its message from the goal (\"{}\"). Only the files you changed for it. Don't push.", upper_first(&passes(&run)), run.goal);
+-        if let Err(e) = self.loop_send(&run, &text) {
++        if let Err(e) = self.loop_send(&run, &text, crate::sessions::Kind::Nudge) {
+             run.status = "green".into();
+             run.why = format!("Couldn't ask it to commit: {e}");
+             self.loop_save(&run);
+@@ -518,7 +518,7 @@ impl Hub {
+         run.tick_ms = now_ms();
+         self.loop_save(&run);
+         let text = format!("The usage limit has reset. Carry on with round {} of {}: {}\n\nEnd your turn when you think {}. {ASK_RULE}", run.round, run.max_rounds, run.goal, passes(&run));
+-        if let Err(e) = self.loop_send(&run, &text) {
++        if let Err(e) = self.loop_send(&run, &text, crate::sessions::Kind::Nudge) {
+             self.loop_stop_as(run, "error", &format!("Couldn't carry on after the usage limit: {e}"));
+         }
+         self.loops_changed();
+@@ -553,7 +553,7 @@ impl Hub {
+                     } else {
+                         format!("Cue restarted during round {} of {}. Carry on: {}\n\nEnd your turn when you think {}; Cue looks then.", run.round, run.max_rounds, run.goal, passes(&run))
+                     };
+-                    if let Err(e) = self.loop_send(&run, &text) {
++                    if let Err(e) = self.loop_send(&run, &text, crate::sessions::Kind::Nudge) {
+                         self.loop_stop_as(run, "error", &format!("Couldn't carry on after Cue restarted: {e}"));
+                     }
+                 }
+@@ -750,7 +750,7 @@ impl Hub {
+             r.tick_ms = now;
+         })
+         .ok_or("that run is gone")?;
+-        if let Err(e) = self.loop_send(&run, &first_message(&run)) {
++        if let Err(e) = self.loop_send(&run, &first_message(&run), crate::sessions::Kind::Brief) {
+             let why = format!("Couldn't send round 1 to the lead: {e}");
+             self.loop_stop_as(run, "error", &why);
+             return Err(e);
+@@ -938,7 +938,7 @@ impl Hub {
+         } else {
+             carry_on(&run)
+         };
+-        if let Err(e) = self.loop_send(&run, &msg) {
++        if let Err(e) = self.loop_send(&run, &msg, crate::sessions::Kind::Nudge) {
+             let why = format!("Couldn't tell the lead to carry on: {e}");
+             self.loop_stop_as(run, "error", &why);
+             return format!("Couldn't resume: {e}");
+@@ -970,7 +970,7 @@ impl Hub {
+         self.loop_save(&run);
+         let q = if asked.is_empty() { String::new() } else { format!("You asked: {asked}\n\n") };
+         let msg = format!("{q}The user answered:\n\n{answer}\n\n{}", carry_on(&run));
+-        if let Err(e) = self.loop_send(&run, &msg) {
++        if let Err(e) = self.loop_send(&run, &msg, crate::sessions::Kind::Note) {
+             let why = format!("Couldn't send your answer to the lead: {e}");
+             self.loop_stop_as(run, "error", &why);
+             return Err(e);
+@@ -1084,11 +1084,12 @@ impl Hub {
+     }
+ 
+     /// A message to the run's lead, as one of yours would go (started again first if its Claude isn't running).
+-    pub(super) fn loop_send(&self, run: &Run, text: &str) -> Result<(), String> {
++    /// `kind`: what kind of Cue's message it is, as its chat shows it.
++    pub(super) fn loop_send(&self, run: &Run, text: &str, kind: crate::sessions::Kind) -> Result<(), String> {
+         let busy = self.loop_lead_busy(run);
+         // Kept first: its lead can take it before the send returns. A message it takes that isn't one of these is yours.
+         super::loop_owner::cue_sent(&run.id, text);
+-        self.send_to_hosted(&run.session_id, text, &[], busy).map(|_| ())
++        self.tell_hosted(&run.session_id, text, busy, kind).map(|_| ())
+     }
+ 
+     /// What the run changed since it started, as the result shows it.

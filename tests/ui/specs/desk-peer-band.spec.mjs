@@ -1,20 +1,25 @@
 // A message between Desks in a lead's chat (#472, #540; #640 option B): a band across the whole chat in the sending
 // Desk's colour, headed by a tile and the Desk, who sent it and the item; the words; a foot saying whether the lead
 // answered, and Open <Desk>. The lead's own TELL DESK is the same band, "To <Desk>", with whether that lead answered.
-// One from the lead's own Desk keeps the usual "From …" bubble.
+// One from the lead's own Desk keeps the usual "From …" bubble. Since #837 a message another session sent the lead (a
+// peer) is the lead's Activity's, the band drawn there, with the lead's answer under it: the lead's chat holds only your
+// messages and the lead's answers to them. A TELL DESK band stays in the chat.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
-/** The band's look: across the chat's full width, tinted (not the chat's own background), no edge stripe, the chat's text size. */
-async function isBand(page, b) {
-  const [box, inner] = await Promise.all([b.boundingBox(), page.locator(".dk-chat").evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x + e.clientLeft, w: e.clientWidth }; })]);
-  expect(Math.abs(box.x - inner.x)).toBeLessThan(2);
-  expect(Math.abs(box.width - inner.w)).toBeLessThan(2);
+/** The band's look: tinted (not the background under it), no edge stripe, the chat's text size; in the chat, across
+ *  its full width. */
+async function isBand(page, b, inChat = true) {
+  if (inChat) {
+    const [box, inner] = await Promise.all([b.boundingBox(), page.locator(".dk-chat").evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x + e.clientLeft, w: e.clientWidth }; })]);
+    expect(Math.abs(box.x - inner.x)).toBeLessThan(2);
+    expect(Math.abs(box.width - inner.w)).toBeLessThan(2);
+  }
   const css = await b.evaluate((e) => { const c = getComputedStyle(e); let p = e.parentElement; while (p && getComputedStyle(p).backgroundColor === "rgba(0, 0, 0, 0)") p = p.parentElement; return [c.borderLeftWidth, c.backgroundColor, p ? getComputedStyle(p).backgroundColor : "", getComputedStyle(e.querySelector(".dk-band-t")).fontSize]; });
   expect(css[0]).toBe("0px");
   expect(css[1]).not.toBe("rgba(0, 0, 0, 0)");
   expect(css[1]).not.toBe(css[2]);
-  expect(css[3]).toBe(await page.locator(".dk-chat").evaluate((e) => getComputedStyle(e).getPropertyValue("--type-body").trim())); // the chat's text size
+  expect(css[3]).toBe(await page.locator(inChat ? ".dk-chat" : ".dk-moves").first().evaluate((e) => getComputedStyle(e).getPropertyValue("--type-body").trim())); // the chat's text size
 }
 
 const docsSite = (st, at) => {
@@ -25,7 +30,7 @@ const docsSite = (st, at) => {
 };
 
 for (const scheme of ["light", "dark"]) {
-  test(`a message from another Desk's session is the band in that Desk's colour; one from its own Desk isn't (${scheme}) (#472, #640)`, async ({ page, cue }) => {
+  test(`a message from another Desk's session is the band in that Desk's colour, in Activity, not the lead's chat; one from its own Desk isn't a band (${scheme}) (#472, #640, #837)`, async ({ page, cue }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await page.setViewportSize({ width: 1500, height: 950 });
     await cue.open("desk");
@@ -39,9 +44,14 @@ for (const scheme of ["light", "dark"]) {
       lead.thread.push({ role: "peer", from: "site-lead", text: "And one more, by name only.", at_ms: at + 1000 });
       lead.thread.push({ role: "peer", from: "host-lead", from_sid: "host", text: "From this Desk's own session.", at_ms: at + 2000 });
     }, { said, at: NOW - 2 * 60 * 1000, docsSite: docsSite.toString() });
-    const chat = page.locator(".dk-chat"), band = chat.locator('.dk-band[data-band="from"]');
+    // None of them in the lead's chat (#837): it holds only your messages and the lead's answers.
+    const chat = page.locator(".dk-chat");
+    await expect(chat.locator(".dk-band, .peer-msg")).toHaveCount(0);
+    for (const w of [said, "by name only", "own session"]) await expect(chat).not.toContainText(w);
+    await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+    const moves = page.locator(".dk-moves"), band = moves.locator('.dk-band[data-band="from"]');
     await expect(band).toHaveCount(2);
-    const b = band.first();
+    const b = moves.locator('.dk-band[data-band="from"]', { hasText: said });
     await expect(b.locator(".dk-band-desk")).toHaveText("Docs site Desk");
     await expect(b.locator(".dk-band-tile svg")).toHaveCount(1);
     await expect(b.locator(".dk-band-who")).toHaveText("site-lead");
@@ -50,17 +60,17 @@ for (const scheme of ["light", "dark"]) {
     await expect(b.locator(".dk-band-t")).toHaveText(said);
     await expect(b.locator(".dk-band-st")).toContainText("answers it below; you don't need to.");
     await expect(b.locator(".dk-band-open")).toHaveText("Open Docs site Desk");
-    await isBand(page, b);
-    // The one from the lead's own Desk keeps the usual bubble.
-    await expect(chat.locator(".peer-msg")).toHaveCount(1);
-    await expect(chat.locator(".peer-msg")).toContainText("From this Desk's own session.");
+    await isBand(page, b, false);
+    // The one from the lead's own Desk keeps the usual bubble, there too.
+    await expect(moves.locator(".peer-msg")).toHaveCount(1);
+    await expect(moves.locator(".peer-msg")).toContainText("From this Desk's own session.");
     await expect(page.locator("[title]")).toHaveCount(0);
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/desk-peer-band-${scheme}.png` });
   });
 }
 
 for (const scheme of ["light", "dark"]) {
-  test(`a message from another Desk on an older page of the lead's chat keeps its band (${scheme}) (#513)`, async ({ page, cue }) => {
+  test(`a message from another Desk on an older page of the lead's chat keeps its band, in Activity (${scheme}) (#513, #837)`, async ({ page, cue }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await page.setViewportSize({ width: 1500, height: 950 });
     await cue.open("desk");
@@ -71,7 +81,10 @@ for (const scheme of ["light", "dark"]) {
       { role: "agent", text: "Noted.", at_ms: beforeMs - 4000, images: [] },
     ]);
     await openDesk(page);
-    const band = page.locator(".dk-chat .dk-band[data-from-desk]");
+    await expect(page.locator(".dk-chat")).not.toContainText("An older one from the Docs site.");
+    await expect(page.locator(".dk-chat .dk-band")).toHaveCount(0);
+    await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+    const band = page.locator(".dk-moves .dk-band[data-from-desk]");
     await expect(band).toHaveCount(1);
     await expect(band.locator(".dk-band-t")).toHaveText("An older one from the Docs site.");
     await expect(band.locator(".dk-band-desk")).toHaveText("Docs site Desk");
@@ -138,3 +151,30 @@ for (const scheme of ["light", "dark"]) {
     await expect(page.locator(".dk-chat .dk-band")).toHaveCount(0);
   });
 }
+
+// As the hub sends it (#837): a TELL DESK from another Desk's lead marked Cue's (kind "desk") starts a turn of Cue's,
+// so it leaves the lead's chat with the lead's answer: both are Activity's, the band and the lead's own TELL DESK band
+// drawn there in full.
+test("a TELL DESK marked Cue's (kind desk) leaves the lead's chat with the lead's answer: both in Activity, as bands", async ({ page, cue }) => {
+  await cue.open("desk");
+  await cue.override("session_log_page", () => []);
+  const words = "#w118 is 20 min from landing. Land it first?", answer = "Yes: holding #452 until yours lands.";
+  await cue.change((st, { words, answer, at, docsSite }) => {
+    new Function("return " + docsSite)()(st, at);
+    const lead = st.sessions.find((x) => x.session_id === "lead");
+    lead.thread.push({ role: "you", text: `[From another Desk: Docs site · lead site-lead · about #w118]\n${words}\n\n(To answer: TELL DESK: Docs site | <your words>.)`, cue: true, kind: "desk", at_ms: at });
+    lead.thread.push({ role: "agent", text: `Holding #452 for Docs site.\n\nTELL DESK: Docs site | ${answer}`, at_ms: at + 60000 });
+  }, { words, answer, at: NOW - 3 * 60 * 1000, docsSite: docsSite.toString() });
+  await openDesk(page);
+  const chat = page.locator(".dk-chat");
+  await expect(chat.locator(".dk-band")).toHaveCount(0);
+  for (const w of [words, "Holding #452", answer]) await expect(chat).not.toContainText(w);
+  await page.evaluate(() => { deskMovesShown.set("cue", 200); deskOpenActivity(); });
+  const row = page.locator(".dk-moves .dk-mv", { hasText: words });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('.dk-band[data-band="from"] .dk-band-desk')).toHaveText("Docs site Desk");
+  const ans = row.locator(".dk-ans");
+  await expect(ans).toContainText("Holding #452 for Docs site.");
+  await expect(ans.locator('.dk-band[data-band="to"] .dk-band-t')).toHaveText(answer);
+  await expect(ans).not.toContainText("TELL DESK:");
+});

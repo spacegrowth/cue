@@ -50,6 +50,26 @@ pub(crate) struct FullRunResult {
     pub culprit_note: Option<String>,
     #[serde(default)]
     pub tail: Option<String>,
+    #[serde(default)]
+    pub steps: Vec<StepResult>,
+}
+
+/// One step of a run as its result file says: its name, whether it passed, and its log's path where it ran.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub(crate) struct StepResult {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub log: String,
+}
+
+impl FullRunResult {
+    /// The first failed step's log ("" for none): where the whole of what failed is.
+    pub(crate) fn failed_log(&self) -> &str {
+        self.steps.iter().find(|s| !s.ok && !s.log.is_empty()).map_or("", |s| s.log.as_str())
+    }
 }
 
 /// A result file's text read: None when it isn't one.
@@ -140,14 +160,10 @@ pub(crate) struct FullRunState {
     /// The commits a failed run was traced to and an item was told of: none is blamed twice.
     #[serde(default)]
     pub blamed: Vec<String>,
-    /// What the last run that finished failed on (its first names; empty when it passed), when it ended (ms) and the
-    /// items its commits landed: what the Desk's top line says of it (now_line.rs).
+    /// The last failure the lead was told of (what failed, and the commit blamed): the same one isn't told again
+    /// (#820). "" once a run passes.
     #[serde(default)]
-    pub failed_names: Vec<String>,
-    #[serde(default)]
-    pub judged_ms: u64,
-    #[serde(default)]
-    pub judged_items: Vec<String>,
+    pub told_failure: String,
 }
 
 impl FullRunState {

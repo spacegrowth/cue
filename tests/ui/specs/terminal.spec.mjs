@@ -82,3 +82,37 @@ test.describe("a terminal that stopped reading", () => {
     expect(await written(cue)).toBe("q");
   });
 });
+
+test.describe("its text size", () => {
+  test.beforeEach(async ({ cue }) => { await cue.open("terminal"); });
+
+  test("is the chat's", async ({ page }) => {
+    await openTerminal(page);
+    const { term, chat } = await page.evaluate(() => ({
+      term: termObj.options.fontSize,
+      // A chat message's code block: the chat's text size (--type-body), in a monospace font like the terminal's.
+      chat: (() => { const m = document.createElement("div"); m.className = "msg"; m.innerHTML = "<pre>x</pre>"; document.body.append(m); const px = parseFloat(getComputedStyle(m.firstChild).fontSize); m.remove(); return px; })(),
+    }));
+    expect(chat).toBe(14);
+    expect(term).toBe(chat);
+  });
+
+  test("follows Text size at once, drawn at the new zoom's pixels, refitted, still at the bottom", async ({ page }) => {
+    await openTerminal(page);
+    const cell = () => page.evaluate(() => ({ cols: termObj.cols, device: termObj._core._renderService.dimensions.device.cell.width, css: termObj._core._renderService.dimensions.css.cell.width }));
+    const before = await cell();
+    // The app's zoom as the Mac window does it: the page laid out that much smaller and drawn at that many more pixels
+    // per point, with no event a terminal hears (it learns of it only when its font is set).
+    await page.evaluate(() => {
+      const dpr = window.devicePixelRatio * 1.3;
+      Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => dpr });
+      document.documentElement.style.zoom = "1.3";
+    });
+    await page.evaluate(() => setSetting("appearance.zoom", 1.3));
+    await page.waitForFunction((d) => termObj._core._renderService.dimensions.device.cell.width > d * 1.2, before.device);
+    const after = await cell();
+    expect(after.cols).toBeLessThan(before.cols);
+    expect(after.css).toBeCloseTo(before.css, 0);   // the same size in points (to xterm's whole device pixels)
+    expect(await page.evaluate(() => termObj.buffer.active.viewportY >= termObj.buffer.active.baseY)).toBe(true);
+  });
+});

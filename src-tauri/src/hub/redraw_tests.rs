@@ -59,3 +59,16 @@ fn the_next_state_waits_for_the_windows_to_draw_the_last() {
     assert!(r.wait_drawn(std::time::Duration::from_secs(5)));
     assert!(t0.elapsed() < std::time::Duration::from_secs(1), "not waited for again");
 }
+
+/// The pages are told a state changed and fetch it (#794): once the store changed again after a draw, the fetch gets
+/// the state last sent, its clock read now (the draw that follows tells them again), not one built on the spot.
+#[test]
+fn a_page_told_of_a_change_fetches_the_state_last_sent() {
+    let _w = crate::testing::World::new();
+    let hub = Hub::new(None);
+    assert!(hub.sent_state().is_none(), "nothing sent yet");
+    *crate::locking::lock(&hub.redraws.sent, "state sent") = Some(Arc::new(json!({ "n": 1, "now_ms": 0 })));
+    let got = hub.sent_state().expect("the state last sent");
+    assert_eq!(got["n"], 1);
+    assert!(got["now_ms"].as_u64().unwrap() > 0, "its clock read now");
+}

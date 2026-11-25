@@ -415,7 +415,7 @@ impl Hub {
         let _ = git("", repo, &[], &["config", "cue.mainlinetold", &key]);
         let lead = self.read(|st| st.desk.lead_sid(&it.project).map(str::to_string));
         if let Some(lead) = lead {
-            self.desk_done(Effects { sends: vec![(lead, words.to_string())], ..Default::default() });
+            self.desk_done(Effects { sends: vec![crate::desk::hub::core::desk::kinded((lead, words.to_string()), crate::sessions::Kind::Desk)], ..Default::default() });
         }
     }
 

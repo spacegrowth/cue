@@ -93,7 +93,7 @@ impl Hub {
     /// Card `id` just given to its lead: the lead is told; yours if it isn't answered in time.
     pub(crate) fn cleanup_to_lead(&self, id: &str, lead: String, words: String) {
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&lead, &words) {
+            if let Err(e) = h.tell(&lead, &words, crate::sessions::Kind::Question) {
                 eprintln!("cue: desk: couldn't give the lead a question: {e}");
             }
         });

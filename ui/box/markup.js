@@ -34,7 +34,7 @@ function boxHtml(o) {
     const ta = `<textarea rows="${o.rows || 2}" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${k}"${sug ? ` class="sug"${o.sugSid ? ` data-sug-sid="${esc(o.sugSid)}"` : ""} aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : o.placeholder || "")}">${esc(text)}</textarea>`;
     const mic = o.mic === false ? "" : `<button class="icon-btn mic ${on ? "on" : ""}" data-mic="${k}" aria-label="Dictate">${MIC_ICON}</button>`;
     const attach = o.drop && o.attach !== false ? `<button class="icon-btn" data-attach="${k}" aria-label="Add image">${IMAGE_ICON}</button>` : "";
-    return `<div class="composer"><div class="field ${o.drop ? "drop" : ""} ${o.bang ? "bang" : ""}" data-drop="${o.drop ? k : ""}">${o.cmd || ""}${o.top || ""}${o.drop ? chips : ""}<div class="field-row">
+    return `<div class="composer${o.held ? " held" : ""}"${o.held ? " inert" : ""}><div class="field ${o.drop ? "drop" : ""} ${o.bang ? "bang" : ""}" data-drop="${o.drop ? k : ""}">${o.cmd || ""}${o.top || ""}${o.drop ? chips : ""}<div class="field-row">
     ${o.pre ? `<span class="field-to" data-desk-pre="">${Array.isArray(o.pre) ? `<span class="field-to1">${esc(o.pre[0])}</span><span class="field-to2">${esc(o.pre[1])}</span>` : esc(o.pre)}</span>` : ""}<div class="ta-wrap">${ta}${sugLineHtml(sug)}</div>
     ${mic}
     ${attach}

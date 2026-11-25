@@ -93,7 +93,7 @@ function deskBand({ d, label, to = false, who = "", id = "", title = "", at = nu
   const sub = [who ? `<b class="dk-band-who">${esc(who)}</b>` : "", id ? `<span class="dk-band-sub">#${esc(id)}${title ? ` ${esc(title)}` : ""}</span>` : ""].filter(Boolean).join(" · ");
   const head = `${tile}<span class="dk-band-desk">${to ? "To " : ""}${name}</span>${sub ? `<span class="dk-band-by">· ${sub}</span>` : ""}${at != null ? `<span class="dk-band-age">${ago(at)}</span>` : ""}`;
   const open = d ? `<button class="dk-band-open" data-desk-hand="${esc(d.project)}">Open ${esc(deskName(d))} Desk</button>` : "";
-  return `<div class="dk-band${to ? " out" : ""}" data-band="${to ? "to" : "from"}" data-from-desk="${esc(d ? d.project : label)}"${d ? ` style="${projStyle(d.project)}"` : ""}><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(text || "")}</div>${foot || open ? `<div class="dk-band-f">${foot}${open}</div>` : ""}</div>`;
+  return `<div class="dk-band${to ? " out" : ""}" data-band="${to ? "to" : "from"}" data-from-desk="${esc(d ? d.project : label)}"><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(text || "")}</div>${foot || open ? `<div class="dk-band-f">${foot}${open}</div>` : ""}</div>`;
 }
 /** One message of the family (#501, option B, ui/styles/messages.css): the card on panel-2, its head row (Cue's mark
  *  with `cue`, another Desk's `chip`, who → to, the TAG, the item's chip, the age at the right), then `body` (its
@@ -131,6 +131,10 @@ function deskCardLine(sid) {
 }
 /** Desk `d`'s lead ({ sid, name, state }), or null. */
 const deskLead = (d) => (d?.lead?.sid ? d.lead : null);
+/** Whether session `sid` runs a Desk as its lead, or is either side of a lead hand-off (#842: the old lead, and the new
+ *  one from the moment it starts, before the Desk names it its lead). By its role on the Desk, never by where its
+ *  process runs: a lead's chat offers nothing about terminals. */
+const isDeskLead = (sid) => !!sid && (state.desk?.projects || []).some((d) => d.lead?.sid === sid || d.lead?.handoff?.from === sid || d.lead?.handoff?.to === sid);
 /** The lead's name: one you just gave it (before the hub's next update has it), else what the hub named it, else its
  *  session's. */
 const deskLeadName = (d) => { const l = deskLead(d); return l ? deskHolderName(l.sid, renamedNow.get(l.sid)?.name || l.name) : ""; };
@@ -249,14 +253,32 @@ let deskGiveTop = null;
 function deskGivePlace() {
   const m = document.querySelector(".dk-givemenu"), b = m?.previousElementSibling;
   if (!m || !b) return;
-  const r = b.getBoundingClientRect(), pad = 8, W = innerWidth, H = innerHeight, top = deskGiveTop ?? m.scrollTop;
-  Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${W - 2 * pad}px`, maxHeight: "", overflowY: "" });
+  const r = b.getBoundingClientRect(), pad = 8, H = innerHeight, top = deskGiveTop ?? m.scrollTop;
+  // Kept inside the pane it opens in (#847), not only the window: the item page, the item list.
+  const p = b.closest(".dk-right, .dkn-items")?.getBoundingClientRect(), L = Math.max(0, p?.left ?? 0), R = Math.min(innerWidth, p?.right ?? innerWidth);
+  Object.assign(m.style, { position: "fixed", right: "auto", maxWidth: `${Math.max(0, R - L - 2 * pad)}px`, maxHeight: "", overflowY: "" });
   const w = m.offsetWidth, h = m.scrollHeight, below = H - r.bottom - 4 - pad, above = r.top - 4 - pad;
   const up = h > below && above > below, room = up ? above : below;
-  m.style.left = `${Math.max(pad, Math.min(r.left, W - pad - w))}px`;
+  // A ⋯ menu opens leftward from its button's right edge (it sits at a bar's or row's right end); Give to… rightward.
+  const want = m.classList.contains("dk-moremenu") ? r.right - w : r.left;
+  m.style.left = `${Math.max(L + pad, Math.min(want, R - pad - w))}px`;
   if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
   m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
+  deskRowMorePlace(m, b, r, w, h, L, pad);
   m.scrollTop = top;   // measuring it unscrolled dropped where you'd scrolled it to (#308)
+}
+/** A row's ⋯ menu in the item card (#839): never over a Now word, its own row's or a neighbour's (lying on the next
+ *  row's "Ready to check" it read as that word turning into "Start now"). Under its ⋯ when there's room, else over it;
+ *  sideways, clear of the Now column: its right edge at that column's left. Narrow, where Now sits under the title at
+ *  the left, it opens at the ⋯'s right edge. Up next's rows have no Now column: placed as any ⋯ menu. */
+function deskRowMorePlace(m, b, r, w, h, L, pad) {
+  const now = b.closest(".dkn-row")?.querySelector(":scope > .dkn-now")?.getBoundingClientRect();
+  if (!now) return;
+  const right = now.top < r.bottom && now.bottom > r.top ? now.left - 8 : r.right;
+  m.style.left = `${Math.max(L + pad, right - w)}px`;
+  const below = innerHeight - r.bottom - 4 - pad, above = r.top - 4 - pad, up = h > below && above > below, room = up ? above : below;
+  if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
+  m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
 }
 addEventListener("scroll", (e) => { if (deskGiveFor && !e.target?.closest?.(".dk-givemenu")) deskGivePlace(); }, true);
 addEventListener("resize", () => { if (deskGiveFor) deskGivePlace(); });
@@ -329,7 +351,7 @@ deskClicks({
   deskChange: () => { deskPick = deskSelection(); deskGiveFor = null; deskOpen = null; deskDropArm = null; renderMain(); },
   deskKeep: () => { deskPick = null; renderMain(); },
   // An item's ⋯ menu (#669): open and shut as Give to…'s, under the same one-open-at-a-time note.
-  deskMore: (el) => { deskGiveFor = deskGiveFor?.id === el.dataset.deskMore && deskGiveFor.at === "more" ? null : { id: el.dataset.deskMore, at: "more" }; renderMain(); },
+  deskMore: (el) => { const at = el.dataset.at || "more"; deskGiveFor = deskGiveFor?.id === el.dataset.deskMore && deskGiveFor.at === at ? null : { id: el.dataset.deskMore, at }; renderMain(); },
   deskGive: (el) => { const at = el.dataset.at; deskGiveFor = deskGiveFor?.id === el.dataset.deskGive && deskGiveFor.at === at ? null : { id: el.dataset.deskGive, at }; renderMain(); },
   deskGiveTo: (el) => deskGiveTo(el.dataset.id, el.dataset.deskGiveTo),
   deskWhy: (el) => { const k = el.dataset.deskWhy; if (!deskLnOpen.delete(k)) deskLnOpen.add(k); renderMain(); },
@@ -387,6 +409,38 @@ function deskLineHtml(line, inline) {
   const html = run(k);
   // Marked as the Desk's own (desk/runs.js): it leaves the chat for Activity (a count line says it), unless it's for you.
   return html && html !== MD_DROP ? dkMark(html, deskSignOf(m[1])) : html;
+}
+/** An item named in a message: "#826", or with its kind before it ("Bug #826"); not "&#39;" (an escaped quote) or a
+ *  path's "/#x". A session named: a word with a dash in it ("cue-826"), linked only when it is a session's name. */
+const DESK_REF = /(^|[^\w&/#-])(?:((?:bug|feature|task)\s+)?#([a-z0-9]+)\b|([a-z0-9][\w.]*-[\w.-]*\w))/gi;
+/** The lead chat's words (md's `refs`, html with its links made): each item number a link that opens that item, each
+ *  session's name a link that opens its chat. Only what exists: a number no item has, a word no session is named, stays
+ *  as it is. Never inside a link, a button or inline code already there. */
+function deskRefs(h) {
+  if (!/#|-/.test(h)) return h;
+  const p = typeof deskSelection === "function" ? deskSelection() : "";
+  let names = null;
+  const sessBy = (n) => {
+    names ??= new Map(state.sessions.map((s) => [nameOf(s.session_id, s.project).toLowerCase(), s.session_id]));
+    return names.get(n.toLowerCase());
+  };
+  const swap = (t) => t.replace(DESK_REF, (m, pre, kind, id, name) => {
+    if (id) {
+      const it = deskItemAny(p, id.toLowerCase());
+      // Its project too: a link outside the Desk (the Board's chat) opens the item on its own Desk (app/clicks_chat.js).
+      const of = (state.desk?.projects || []).find((d) => (d.items || []).includes(it))?.project || p;
+      return it ? `${pre}<a href="#" class="dk-ref" data-desk-chk-item="${esc(it.id)}" data-desk-project="${esc(of)}">${kind || ""}#${id}</a>` : m;
+    }
+    const sid = sessBy(name);
+    return sid ? `${pre}<a href="#" class="dk-ref" data-desk-session="${esc(sid)}">${name}</a>` : m;
+  });
+  // Tags as they are; text between them changed only outside <a>, <button> and <code>.
+  let deep = 0;
+  return h.split(/(<[^>]*>)/).map((part) => {
+    const tag = /^<(\/?)(a|button|code)\b/i.exec(part);
+    if (tag) { deep = Math.max(0, deep + (tag[1] ? -1 : 1)); return part; }
+    return part.startsWith("<") || deep ? part : swap(part);
+  }).join("");
 }
 /** A session's own Desk lines (#685: CHECK, IF PICKED, TO LEAD…), drawn as the lead's are, each with its sign. */
 const DESK_SESS = /^[-*+ ]*(CHECK|IF PICKED|TO LEAD|USER VERIFY|NOT DONE|DECIDED \(minor\))\**\s*:(.*)$/;
@@ -643,16 +697,29 @@ function deskStopNote(e) {
 }
 /** A session's words for the lead (#474: its TO LEAD: line, desk/hub/turn/heard.rs to_lead_said: "From <name> on #<id> (title):\n
  *  <words>\nAnswer it with NOTE: …", or "From <name>:\n<words>\nIt holds no item here…" when it's on none) as a card:
- *  who it's from, the item it's about (a click opens it), its words. Cue's last line, for the lead, isn't shown. null for
- *  any other message. */
+ *  who it's from, the item it's about (a click opens it), its words. Cue's last line, for the lead, isn't shown. A
+ *  message that joined several (Cue keeps what comes while the lead is busy, one message when its turn ends): a card
+ *  each. In a message that holds your words too (#812), these cards are Activity's; your words stay in the chat
+ *  (deskRelaySplit). null for any other message. */
 function deskFromSession(e) {
-  const text = String(e.text || "").replace(/^\s*<desk\b[\s\S]*?<\/desk>\s*/, "").trim();
-  const m = /^From ([^\n]+?)(?: on #(\S+) \(([^\n]*)\))?:\n([\s\S]+)\n(?:Answer it with NOTE: #\S+ \| <your words>\.|It holds no item here, so a NOTE can't reach it\.)$/.exec(text);
-  if (!m) return null;
-  const [, who, id, said, words] = m;
-  const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
-  return deskMg({ kind: "from", who: esc(who), tag: "TO LEAD", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
-    body: `${id ? `<div class="mg-t whole">${esc(it?.title || said)}</div>` : ""}${deskCut(`from:${e.at_ms}`, "mg-t whole", esc(words.trim()).replace(/\n/g, "<br>"), words.trim())}` });
+  const split = deskRelaySplit(e.text);
+  if (!split) return null;
+  return split.relays.map(({ who, id, said, words }, k) => {
+    const it = id ? (state.desk?.projects || []).flatMap((d) => d.items).find((i) => deskIdIs(i, id)) : null;
+    return deskMg({ kind: "from", who: esc(who), tag: "TO LEAD", id: id ? deskMgId(id, it?.kind || "", deskNum(it || { id })) : "", age: e.at_ms,
+      body: `${id ? `<div class="mg-t whole">${esc(it?.title || said)}</div>` : ""}${deskCut(`from:${e.at_ms}${k ? `:${k}` : ""}`, "mg-t whole", esc(words).replace(/\n/g, "<br>"), words)}` });
+  }).join("");
+}
+/** A session's words for the lead as Cue sent them (to_lead_said), each between blank lines: one or more of them. */
+const DESK_RELAY = /(^|\n\n)From ([^\n]+?)(?: on #(\S+) \(([^\n]*)\))?:\n([\s\S]+?)\n(?:Answer it with NOTE: #\S+ \| <your words>\.|It holds no item here, so a NOTE can't reach it\.)(?=\n\n|$)/g;
+/** Message `text` to the lead taken apart (#812): the sessions' words Cue passed on in it ({ who, id, said: the item's
+ *  title then, words }), and `yours`, whatever else it holds: your words, when you wrote while the lead was busy and
+ *  Cue sent them in one message with a session's. null when it passes on none. */
+function deskRelaySplit(text) {
+  const t = deskSaid(String(text ?? "")).trim();
+  const relays = [...t.matchAll(DESK_RELAY)].map(([, , who, id, said, words]) => ({ who, id, said, words: words.trim() }));
+  if (!relays.length) return null;
+  return { relays, yours: t.replace(DESK_RELAY, "$1").replace(/\n{3,}/g, "\n\n").trim() };
 }
 /** What Cue told the lead of a DONE it couldn't act on (desk/hub/core/desk.rs lead_done: "#69 not closed: it's done already",
  *  a line each, then its words for the lead, not shown, ending "Don't say DONE for these again." as older notes did):

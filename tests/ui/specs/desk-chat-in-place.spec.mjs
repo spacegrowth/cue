@@ -9,6 +9,9 @@ import { test, expect, openDesk } from "./cue.mjs";
 
 const LONG = (n) => `Reply ${n}: ` + "what it found and what it changed, in some detail. ".repeat(12);
 const NOT_DONE = "Desk item #d5 (x) isn't done: the header still jumps\n\nThe end of its log:\nline one\nline two";
+// Your words Cue passed on (#651): a card from Cue that stays in the chat; Cue's own messages (NOT_DONE) left for
+// Activity in #789 (22a2d7c9a8).
+const YOURS = 'On Cue\'s question in your chat ("Ship the header fix now?"), you wrote: "Not yet, it still jumps on a narrow window"\nPass it on.';
 // The holder's live turn: `n` steps, words after every third.
 const steps = (cue, n) => cue.override("session_steps", ({ sessionId }, n) => {
   const T = (globalThis.__t0 ??= Date.now() - 30000), items = [];
@@ -46,15 +49,15 @@ for (const scheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.setViewportSize({ width: 1400, height: 800 });
     await cue.open("desk");
-    await cue.change((st, [NOT_DONE, long]) => {
+    await cue.change((st, [NOT_DONE, long, YOURS]) => {
       const LONG = (0, eval)(`(${long})`);
       const t0 = Date.now() - 600000, s = st.sessions.find((x) => x.session_id === "host");
       s.thread = [{ role: "you", text: "About #d5 (x): go on", at_ms: t0 }];
       for (let k = 0; k < 6; k++) s.thread.push({ role: "agent", text: LONG(k), at_ms: t0 + 1000 * (k + 1) }, { role: "you", text: `Next ${k}`, at_ms: t0 + 1000 * (k + 1) + 500 });
-      s.thread.push({ role: "you", text: NOT_DONE, at_ms: t0 + 9000 }, { role: "you", text: "go on", at_ms: Date.now() - 30000 });
+      s.thread.push({ role: "you", text: NOT_DONE, at_ms: t0 + 9000 }, { role: "you", text: YOURS, at_ms: t0 + 9500 }, { role: "you", text: "go on", at_ms: Date.now() - 30000 });
       Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true });
       s.state = "working";
-    }, [NOT_DONE, LONG.toString()]);
+    }, [NOT_DONE, LONG.toString(), YOURS]);
     await steps(cue, 1);
     await openDesk(page);
     await page.locator('.dkn-items [data-desk-item="d5"]').first().click();
@@ -62,10 +65,12 @@ for (const scheme of ["light", "dark"]) {
     const SEL = '.dk-right .dkn-sp[data-desk-page="session"] [data-desk-chat="host"]';
     const chat = page.locator(SEL), pane = chat;
     await expect(chat).toContainText("Reply 5");
-    // Cue's "not done" message is a card in the chat (#744): opened with More. A reply under the pointer, and the
-    // chat scrolled up to read.
+    // Cue's "not done" message isn't in the chat (#789: Activity has it); your words Cue passed on are its card in the
+    // chat (#744, #651): opened with More. A reply under the pointer, and the chat scrolled up to read.
+    await expect(chat).not.toContainText("the header still jumps");
     const cm = chat.locator(".mg.cue-msg");
     await expect(cm).toHaveCount(1);
+    await expect(cm.locator(".mg-tag")).toHaveText("Your words");
     await cm.locator(".mg-lk", { hasText: "More" }).click();
     await expect(cm.locator(".mg-lk")).toHaveAttribute("aria-expanded", "true");
     await pane.evaluate((p) => { p.scrollTop = 300; });

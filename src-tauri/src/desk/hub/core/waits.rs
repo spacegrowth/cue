@@ -170,7 +170,7 @@ impl Hub {
                 for project in &projects {
                     let lead = st.desk.lead_sid(project).filter(|l| st.sessions.get(*l).is_some_and(|s| s.state != "stopped")).map(str::to_string);
                     if let Some(lead) = lead {
-                        fx.sends.push((lead, circle_note(c)));
+                        fx.sends.push(crate::desk::hub::core::desk::kinded((lead, circle_note(c)), crate::sessions::Kind::Question));
                         told = true;
                     }
                 }
@@ -209,7 +209,7 @@ pub(crate) fn cut_in(st: &mut Store, id: &str, on: &str, now: u64) -> Result<cra
             it.updated = crate::desk::hub::core::desk::secs(now);
             if let Some(h) = &it.holder {
                 it.state = "working".into();
-                fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", &rule)));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), crate::desk::handed_words(it, "", &rule)), crate::sessions::Kind::Brief));
             } else if it.next_for.is_some() {
                 // Next for a session (#576): it waits for that one from now.
                 it.queued_at = now;

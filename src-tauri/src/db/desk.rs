@@ -20,7 +20,7 @@ pub fn desk_put_space(desk: &crate::desk::model::DeskSpace) -> Result<(), String
 pub fn desk_delete(id: &str) -> Result<(), String> {
     with(|c| {
         let tx = c.unchecked_transaction()?;
-        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_members", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks", "desk_holds", "desk_bands"] {
+        for table in ["desk_items", "desk_decisions", "desk_lead", "desk_lead_past", "desk_members", "desk_moves", "desk_moves_cleared", "desk_feed", "desk_feed_marks", "desk_holds", "desk_bands"] {
             tx.execute(&format!("DELETE FROM {table} WHERE project = ?1"), params![id])?;
         }
         tx.execute("DELETE FROM desk_spaces WHERE id = ?1", params![id])?;
@@ -316,9 +316,15 @@ pub fn desk_moves_cleared() -> Vec<(String, u64)> {
     .unwrap_or_default()
 }
 
-/// `project`'s lead: session `session_id`, going by `name`.
+/// `project`'s lead: session `session_id`, going by `name`. The lead it replaces is kept as an earlier one (#792).
 pub fn desk_put_lead(project: &str, session_id: &str, name: &str, set_ms: u64) {
     with(|c| {
+        c.execute(
+            "INSERT INTO desk_lead_past (project, session_id, name, until_ms, next_session)
+             SELECT project, session_id, name, ?3, ?2 FROM desk_lead WHERE project = ?1 AND session_id != ?2
+             ON CONFLICT(project, session_id) DO UPDATE SET name = excluded.name, until_ms = excluded.until_ms, next_session = excluded.next_session",
+            params![project, session_id, set_ms as i64],
+        )?;
         c.execute(
             "INSERT INTO desk_lead (project, session_id, name, set_ms) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(project) DO UPDATE SET session_id = excluded.session_id, name = excluded.name, set_ms = excluded.set_ms",
@@ -352,6 +358,37 @@ pub fn desk_members() -> Vec<(String, String)> {
         Ok(rows.flatten().collect())
     })
     .unwrap_or_default()
+}
+
+/// A change of `project`'s lead to `failed` that didn't happen, put back to `session_id`: neither was the other's
+/// earlier lead after all.
+pub fn desk_unpast_lead(project: &str, session_id: &str, failed: &str) {
+    with(|c| {
+        c.execute("DELETE FROM desk_lead_past WHERE project = ?1 AND ((session_id = ?2 AND next_session = ?3) OR (session_id = ?3 AND next_session = ?2))", params![project, session_id, failed])?;
+        Ok(())
+    });
+}
+
+/// The lead `project`'s Desk had before session `sid` ran it (#792): (session, name, until_ms, from a hand-off). Kept
+/// since #792; before that, a lead that handed off to `sid` (the handoffs table), its name unknown here.
+pub fn desk_lead_before(project: &str, sid: &str) -> Option<(String, String, u64, bool)> {
+    use rusqlite::OptionalExtension;
+    let kept = with(|c| c.query_row(
+        "SELECT p.session_id, p.name, p.until_ms, h.session_id IS NOT NULL FROM desk_lead_past p
+         LEFT JOIN handoffs h ON h.session_id = p.session_id AND h.next_session = p.next_session
+         WHERE p.project = ?1 AND p.next_session = ?2 ORDER BY p.until_ms DESC LIMIT 1",
+        params![project, sid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)? as u64, r.get::<_, bool>(3)?)),
+    ).optional()).flatten();
+    kept.or_else(|| with(|c| c.query_row(
+        "SELECT session_id, continued_ms FROM handoffs WHERE next_session = ?1 ORDER BY continued_ms DESC LIMIT 1",
+        params![sid], |r| Ok((r.get::<_, String>(0)?, String::new(), r.get::<_, i64>(1)? as u64, true)),
+    ).optional()).flatten())
+}
+
+/// Session `sid`'s messages in Cue's log: how many, the first's time and the last's (0s for none).
+pub fn session_log_span(sid: &str) -> (u64, u64, u64) {
+    with(|c| c.query_row("SELECT COUNT(*), COALESCE(MIN(at_ms), 0), COALESCE(MAX(at_ms), 0) FROM exchanges WHERE session_id = ?1", params![sid],
+        |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64)))).unwrap_or((0, 0, 0))
 }
 
 /// `project`'s Desk has no lead (a change of lead that failed, where it had none before).

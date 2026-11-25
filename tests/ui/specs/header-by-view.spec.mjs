@@ -42,7 +42,7 @@ test("Desk: the Desks as chips, no projects pill; a chip switches Desk; the open
   await expect.poll(() => page.evaluate(() => [deskOpen, deskTab, deskSelection()])).toEqual([null, "lead", "cue"]);
 });
 
-test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk with what it has going, New Desk… and Desk settings…", async ({ cue, page }) => {
+test("Desk: no dot on a Desk's chip or row (#848); the Desks menu lists every Desk with what it has going, New Desk… and Desk settings…", async ({ cue, page }) => {
   await cue.open("desk");
   await openDesk(page);
   const going = await page.evaluate(() => deskSorted().map((d) => [d.project, hvGoingText(hvDeskGoing(d))]));
@@ -51,8 +51,8 @@ test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk w
   for (const [p, text] of going) {
     const row = page.locator(`.top .hv-menu [data-hv-desk="${p}"]`);
     await expect(row).toContainText(text);
-    await expect(row.locator(".hv-dot.ask")).toHaveCount(/wait/.test(text) ? 1 : 0);
-    await expect(area(page).locator(`.hv-chip[data-hv-desk="${p}"] .hv-dot.ask`)).toHaveCount(/wait/.test(text) ? 1 : 0);
+    await expect(row.locator("i")).toHaveCount(0);
+    await expect(area(page).locator(`.hv-chip[data-hv-desk="${p}"] i`)).toHaveCount(0);
   }
   expect(going.some(([, t]) => /waits? on you/.test(t)), "a Desk in the scenario waits on you").toBe(true);
   await expect(rows.nth(going.length)).toHaveText("All Desks");

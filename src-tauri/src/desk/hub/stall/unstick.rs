@@ -114,7 +114,7 @@ fn take_copy(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u
     let back = matches!(it.state.as_str(), "working" | "queued" | "finishing");
     if back {
         if let Some(h) = it.holder.take() {
-            fx.sends.push((h.to().to_string(), format!("Desk item #{id}: the Desk lead took back its copy ({}). Its work, if any, is kept on branch {}. Stop work on it until it's routed to you again.", t.path, t.branch)));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{id}: the Desk lead took back its copy ({}). Its work, if any, is kept on branch {}. Stop work on it until it's routed to you again.", t.path, t.branch)), crate::sessions::Kind::Route));
         }
         (it.state, it.after, it.finish, it.tree_wait) = ("new".into(), None, None, false);
         it.paused = None;
@@ -209,7 +209,7 @@ fn start(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
     it.after_why = why.to_string();
     if let Some(h) = it.holder.clone() {
         it.state = "working".into();
-        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, why, &rule)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), crate::desk::handed_words(it, why, &rule)), crate::sessions::Kind::Brief));
     } else {
         it.state = "new".into();
         let (name, sid) = lead.as_ref().map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
@@ -244,7 +244,7 @@ fn pause(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, 
         if h.kind != "crew" {
             fx.now.push(h.to().to_string());
         }
-        fx.sends.push((h.to().to_string(), pause_words(id, &h, why)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), pause_words(id, &h, why)), crate::sessions::Kind::Route));
     }
     st.desk.run.nudged.remove(id);
     fx.items.push(id.to_string());
@@ -273,7 +273,7 @@ fn resume(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64,
     if let Some(h) = it.holder.clone() {
         let why = if why.trim().is_empty() { String::new() } else { format!(" ({})", why.trim().trim_end_matches('.')) };
         let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} is resumed{why}: carry on from where you stopped. Say DONE: #{id} on a line of its own when it's done.\n{}", crate::desk::check_words(id))));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("{who}Desk item #{id} is resumed{why}: carry on from where you stopped. Say DONE: #{id} on a line of its own when it's done.\n{}", crate::desk::check_words(id))), crate::sessions::Kind::Route));
     }
     fx.items.push(id.to_string());
     step(st, project, by, "resume", id, &format!("Resumed #{id}"), why, now, fx);
@@ -293,7 +293,7 @@ pub(crate) fn hold(st: &mut Store, by: &str, id: &str, why: &str, now: u64, fx: 
     }
     if let Some(h) = it.holder.clone() {
         let who = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
-        fx.sends.push((h.to().to_string(), format!("{who}Desk item #{id} ({}) is parked: it's off your list. Don't start it; Cue tells you if it comes back.", it.title)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("{who}Desk item #{id} ({}) is parked: it's off your list. Don't start it; Cue tells you if it comes back.", it.title)), crate::sessions::Kind::Route));
         it.remember_holder();
     }
     let ahead = it.after.take();
@@ -330,7 +330,7 @@ pub(crate) fn unhold(st: &mut Store, id: &str, now: u64, fx: &mut Effects) -> Re
 }
 
 /// UNPARK (#499): a parked item back to be routed as any new item, only when the message the lead's turn answers is
-/// yours (sent from the Desk) and names it. Parking stays yours: the lead never unparks one on its own.
+/// yours (sent from the Desk) and asks for it back, in your own words (desk/unpark_said.rs, #853). Parking stays yours: the lead never unparks one on its own.
 fn unpark(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let was = shown_state(st, id);
     if st.desk.item(id).is_none_or(|i| i.state != "held") {
@@ -363,8 +363,15 @@ fn drop_said(st: &mut Store, project: &str, by: &By, id: &str, why: &str, now: u
 fn you_asked(st: &Store, sid: &str, id: &str) -> bool {
     let Some(prompt) = st.sessions.get(sid).map(|s| s.prompt.clone()) else { return false };
     let words = prompt.split_once("</desk>").map_or(prompt.as_str(), |(_, w)| w).trim();
-    let yours = st.desk.run.yours.get(sid).is_some_and(|y| y.iter().any(|m| !m.is_empty() && words.starts_with(m.as_str())));
-    yours && words.split(|c: char| !(c.is_ascii_alphanumeric() || c == '#')).any(|w| w.trim_start_matches('#').eq_ignore_ascii_case(id))
+    let Some(mine) = st.desk.run.yours.get(sid).and_then(|y| y.iter().rev().find(|m| !m.is_empty() && words.starts_with(m.as_str()))) else {
+        return false;
+    };
+    // The lead's reply before your message, for "unpark it" (#853): the last of its replies ahead of your message.
+    let thread = st.sessions.thread(sid);
+    let at = thread.iter().rposition(|e| e.role == "you" && e.text.contains(mine.as_str()));
+    let before = at.and_then(|i| thread[..i].iter().rev().find(|e| e.role == "agent")).map(|e| e.text.as_str());
+    let parked: Vec<String> = st.desk.items.iter().filter(|i| i.state == "held").map(|i| i.id.clone()).collect();
+    crate::desk::unpark_said::asks_to_unpark(words, id, before, &parked)
 }
 
 /// Item `id`'s state as the lead is told it.
@@ -399,7 +406,7 @@ impl Hub {
             Ok(found) => found,
             Err(not) => {
                 let where_ = if !not.is_empty() { not.join("; ") } else { "Cue found no repository to look in".to_string() };
-                let fx = Effects { sends: vec![(o.by_sid.clone(), format!("Desk item #{} not closed: {where_}. Say the commit on main that holds its work: CLOSE: #{} | commit: <sha> | why: …", o.id, o.id))], ..Default::default() };
+                let fx = Effects { sends: vec![crate::desk::hub::core::desk::kinded((o.by_sid.clone(), format!("Desk item #{} not closed: {where_}. Say the commit on main that holds its work: CLOSE: #{} | commit: <sha> | why: …", o.id, o.id)), crate::sessions::Kind::Answer)], ..Default::default() };
                 self.desk_done(fx);
                 return;
             }
@@ -431,7 +438,7 @@ impl Hub {
         let Some(it) = it else { return };
         if !self.desk_no_code(&it) {
             let id = &o.id;
-            let fx = Effects { sends: vec![(o.by_sid.clone(), format!("Desk item #{id} not closed: Cue doesn't know which commit holds its work. Say it: CLOSE: #{id} | commit: <sha> | why: …"))], ..Default::default() };
+            let fx = Effects { sends: vec![crate::desk::hub::core::desk::kinded((o.by_sid.clone(), format!("Desk item #{id} not closed: Cue doesn't know which commit holds its work. Say it: CLOSE: #{id} | commit: <sha> | why: …")), crate::sessions::Kind::Answer)], ..Default::default() };
             self.desk_done(fx);
             return;
         }
@@ -450,7 +457,7 @@ impl Hub {
             it.tree_wait_repo.clear();
             (it.done_at, it.updated) = (Some(secs(now)), secs(now));
             if let Some(h) = it.holder.as_ref().filter(|_| matches!(was.as_str(), "working" | "queued" | "finishing")) {
-                fx.sends.push((h.to().to_string(), format!("Desk item #{} is closed: it had no code to land. Stop work on it.", o.id)));
+                fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{} is closed: it had no code to land. Stop work on it.", o.id)), crate::sessions::Kind::Route));
             }
             fx.items.push(o.id.clone());
             release(st, &o.id, now, &mut fx);
@@ -508,7 +515,7 @@ fn closed_on_main(st: &mut Store, o: &OnMain, spent: bool, repo: &str, branch: &
         it.commit_in = vec![(repo.to_string(), short.to_string())];
     }
     if let Some(h) = it.holder.as_ref().filter(|_| matches!(was.as_str(), "working" | "queued")) {
-        fx.sends.push((h.to().to_string(), format!("Desk item #{} is closed: its work is already on {branch} ({short}). Stop work on it.", o.id)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{} is closed: its work is already on {branch} ({short}). Stop work on it.", o.id)), crate::sessions::Kind::Route));
     }
     fx.items.push(o.id.clone());
     release(st, &o.id, now, &mut fx);

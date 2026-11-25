@@ -210,7 +210,7 @@ fn tell_holder(it: &DeskItem, option: &str, ids: &[String], routed: &[String], c
     let follows = format!("{}{}", follows[..1].to_uppercase(), &follows[1..]);
     let next = if routed.is_empty() { String::new() } else { format!(" What follows: {}.", routed.join("; ")) };
     let mark = if canvas.is_empty() { String::new() } else { format!(" Mark \"Picked: {option}\" where it shows its options ({canvas}), keeping the others.") };
-    fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {follows}.{next}{mark} Do no other work on #{id}.", it.title)));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {follows}.{next}{mark} Do no other work on #{id}.", it.title)), crate::sessions::Kind::Note));
 }
 
 /// An item of options to pick from (#667): mocks or a canvas, what follows each option (IF PICKED: lines), or a pick

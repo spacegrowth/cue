@@ -328,8 +328,8 @@ function hostRestart() {
   renderMain();
   invoke("host_restart").then(toast, (e) => toast(`Couldn't restart cue-host: ${e}`)).finally(() => { hostAsked = 0; renderMain(); });
 }
-/** Settings → General's Color: All projects' swatches (core/colors.js projBtn's), so the window's color can be picked here too. */
-const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
+/** Settings → General → Color: the window's one color (core/colors.js swatchPicker). */
+const themeSwatches = () => `<div class="set-sw">${swatchPicker()}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a
  *  tab of its own; the others show under Agents. */
 let extSections = null;
@@ -595,8 +595,7 @@ function setGeneralPane(st) {
     ${updateRow()}
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
-    ${setRow("Color", st.appearance?.project === true ? "The window's color, the same as All projects' dot. A project picked at the top wears its own. Moss is Cue's own." : "The window's color, the same as All projects' dot. Moss is Cue's own.", themeSwatches())}
-    ${setRow("Project colors", "Each project gets a color of its own: its dot, and the window while it's picked at the top. Off, every project's dot is in the window's Color.", toggle("appearance.project", st.appearance?.project === true))}
+    ${setRow("Color", "The window's color, the same for every project. Moss is Cue's own.", themeSwatches())}
     ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
     ${setRow("Test", "Cue waits a minute: still waiting then, the notification comes (never while you're looking at it, here or in the mini window). This sends one now: if nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
