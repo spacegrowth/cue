@@ -50,6 +50,31 @@ pub(crate) async fn desk_lands_set(hub: State<'_, Arc<Hub>>, desk: String, lands
     with_hub(&hub, move |h| h.desk_lands_set(&desk, &lands)).await?
 }
 
+/// New Desk's look at `folder` (#927), one part at a time ("files", "github", "history", "sessions"): { part, lines,
+/// found }. Only reads; Cue's names for the folder's past sessions are taken from the store, the files read after.
+#[tauri::command]
+pub(crate) async fn desk_look(hub: State<'_, Arc<Hub>>, folder: String, part: String) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| {
+        let names: std::collections::HashMap<String, String> = if part == "sessions" {
+            h.read(|st| st.sessions.iter().filter_map(|s| {
+                let n = if !s.name.is_empty() { s.name.clone() } else { s.claude_name.clone().unwrap_or_default() };
+                (!n.is_empty()).then(|| (s.origin.session_id.clone(), n))
+            }).collect())
+        } else {
+            Default::default()
+        };
+        crate::desk::look::look(&folder, &part, &|id| names.get(id).cloned())
+    })
+    .await?
+}
+
+/// New Desk's rows from the four parts' answers (`found`: { files, github, history, sessions }, any missing taken as
+/// nothing found): { place, summary, rows, lands }, `lands` ready for desk_lands_set.
+#[tauri::command]
+pub(crate) async fn desk_look_rows(folder: String, found: serde_json::Value) -> Result<serde_json::Value, String> {
+    super::blocking(move || crate::desk::look::rows(&folder, &found)).await?
+}
+
 /// Desk `desk`'s default model for new sessions (#620): "" or "default" for Claude Code's own pick.
 #[tauri::command]
 pub(crate) async fn desk_model_set(hub: State<'_, Arc<Hub>>, desk: String, model: String) -> Result<String, String> {

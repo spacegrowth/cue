@@ -11,6 +11,10 @@ pub(crate) mod hold_check;
 pub mod holds;
 pub(crate) mod hub;
 pub(crate) mod lands;
+pub(crate) mod look;
+pub(crate) mod look_sessions;
+#[cfg(test)]
+mod look_tests;
 pub(crate) mod model_pick;
 pub(crate) mod machine_pref;
 pub(crate) mod one_way;
