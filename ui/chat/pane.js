@@ -92,7 +92,8 @@ function fullView(sid, it, s, harness) {
 function activeHead(a) {
   const { it, s, sid, harness, project, pending, ch } = a;
   const closable = sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" });
-  return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : ""}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+  // Its state's dot first (#865, the headers' option B): the working green while it works, else ink.
+  return `<div class="ap-head">${s ? `<i class="ap-dot${s.state === "working" ? " w" : ""}" aria-hidden="true"></i>` : ""}${s?.watch_ms ? watchMark(project) : ""}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, closable) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}

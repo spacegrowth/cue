@@ -292,16 +292,59 @@
 /* The strip over the lead's chat (panel hidden, or a narrow chat): its item chips as full capsules, as every small label. */
 .dk-c .dk2b-chip { border-radius: var(--radius-pill); }
 
-/* An item opened on the new layout is its session's chat (desk/c.js deskCItemChat): this bar over it, its steps, and
-   when it's ready to check, what to try with Looks right and Send back. */
-.dkn-ib { flex: none; padding: 10px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-.dkn-ib2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
-.dkn-ib2 .dkn-ks { flex: 0 1 260px; min-width: 160px; }
-/* A button's height whatever it holds (Looks right and Send back, "Done · Undo", Reopen), so the bar doesn't change
+/* An item opened is its session's chat (desk/c.js deskCItemChat) under the item's own head (#865, the headers' option B
+   with #851's D3): kind, number, where it stands and title on one line at the Dispatcher's size (muted, the number and
+   title in ink), its buttons at that line's right, a line of what it is under it; then its session's head. */
+.dkn-ib { flex: none; padding: 16px 16px 0; display: flex; flex-direction: column; gap: 4px; }
+.dkn-ib2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dkn-ih1 { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; align-items: center; gap: 7px; font: 600 var(--type-page)/var(--type-page-lh) var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.dkn-ih1 .dkn-k { display: inline-flex; flex: none; color: var(--muted); }
+.dkn-ih1 .dkn-k .dk-kic { width: 18px; height: 18px; }
+.dkn-ih1 .dkn-ikw:empty { display: none; }
+.dkn-ih1 .dkn-iid { flex: none; color: var(--ink); }
+.dkn-ih1 .dkn-ist { flex: none; font: 500 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--muted); white-space: pre; }
+.dkn-ih1 .dkn-itt { min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+/* A button's height whatever it holds (Looks right and Send back, "Done · Undo", Reopen), so the head doesn't change
    height as you check the item and the chat under it stays put (#791). */
-.dkn-ibacts { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; min-height: 28px; }
+.dkn-ibacts { margin-left: auto; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; min-height: 28px; }
+.dkn-ibacts:empty { display: none; }
+.dkn-ids { font-size: var(--type-body); line-height: var(--type-body-lh); color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .dkn-ibsee { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); }
 .dkn-ibsee b { font-weight: 600; margin-right: 4px; }
+/* The item's session's head under it: a little closer, the item's head being its heading. */
+.dkn-ib + .ap-head { padding-top: 10px; }
+/* The smallest window: the head a size down, what it is on one line, the bar's times and key left out. */
+@media (max-height: 680px) {
+  .dkn-ih1 { font-size: var(--type-title); line-height: var(--type-title-lh); }
+  .dkn-ib { padding-top: 10px; }
+  .dkn-ids { -webkit-line-clamp: 1; }
+  .dkn-sp > .ap-bar .bar-key, .dkn-sp > .ap-bar .bar-labels { display: none; }
+}
+
+/* What to try (or the options to pick) on an item, at its chat's foot over the box (#865, #851's D3): a bar on the
+   green that stays there as the chat goes on until you answer; Where, Do and Expect each with its word at the left;
+   folded to one line (at the smallest window to begin with). */
+.dkn-hc { flex: none; margin: 0 10px 8px; padding: 10px 14px 12px; border-radius: var(--radius-card, 12px); background: var(--bg); color: var(--on-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--on-bg-muted) 22%, transparent); display: flex; flex-direction: column; gap: 6px; font-size: var(--type-body); line-height: var(--type-body-lh); }
+.dkn-hct { display: flex; align-items: center; gap: 8px; }
+.dkn-hcc { font: 700 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--on-bg-muted); }
+.dkn-hcf { all: unset; cursor: pointer; margin-left: auto; padding: 0 4px; font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--on-bg-muted); white-space: nowrap; }
+.dkn-hcf:hover { color: var(--on-bg); }
+.dkn-hcf:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-btn); }
+.dkn-hcl { display: grid; grid-template-columns: 62px minmax(0, 1fr); column-gap: 10px; }
+.dkn-hck { font: 600 var(--type-small)/var(--type-body-lh) var(--sans); color: var(--on-bg-muted); }
+.dkn-hcl ol { margin: 0; padding-left: 20px; }
+.dkn-hcl ol li::marker { color: var(--on-bg-muted); }
+.dkn-hc.fold { flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; }
+.dkn-hc.fold .dkn-hcf { color: var(--on-bg); }
+.dkn-hcw { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dkn-hcw b { font-weight: 600; margin-right: 6px; }
+.dkn-hcw span { color: var(--on-bg-muted); }
+.dkn-hco { margin: 0; }
+.dkn-hco li { color: var(--on-bg); }
+.dkn-hco .dk-optw { color: var(--on-bg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dkn-hco .btn { background: transparent; color: var(--on-bg); box-shadow: inset 0 0 0 1px var(--on-bg-muted); border-color: transparent; }
+.dkn-hc, .dkn-ib, .dkn-ids { user-select: text; -webkit-user-select: text; }
+.dkn-hc button, .dkn-ib button { user-select: none; -webkit-user-select: none; }
 
 /* A session's chat on the new layout (desk/c.js deskCSessChat): back, the Board's top bar, the item it's on, Chat and
    Files as tabs, then the chat (or its files) and the box. No panel. */
@@ -310,22 +353,30 @@
 /* Its ‹ back (a crew member's to its lead) on the page's own edge, not the old layout's margins (desk-lead.css). */
 .dkn-crew > .dkn-sback > .dk-back { margin: 0 0 0 -6px; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dkn-sp > .ap-head { flex: none; }
+/* An item's ‹ Items back is left out while the sessions column (the lead on top) is there to go back by (#865: the
+   headers' option B has none); at one column it's the only way back, so it stays. */
+@media (min-width: 821px) { .dkn-sp[data-desk-page="item"] > .dkn-sback:has(> .dk2b-items), .dkn-sp > .dkn-sback:has(> .dk2b-items) { display: none; } }
+.dkn-sback:empty { display: none; }
+.dkn-smeta.dkn-on { display: flex; align-items: center; gap: 6px; padding-top: 8px; font-size: var(--type-body); line-height: var(--type-body-lh); color: var(--ink); }
+.dkn-smeta.dkn-on .dkn-onk { color: var(--muted); }
+.dkn-smeta.dkn-on .dk-sch-t { flex: none; font-weight: 600; }
+.dkn-smeta.dkn-on .dkn-ont { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dkn-smeta { flex: none; padding: 4px 16px 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-sp > .dkn-ib { margin-top: 10px; border-top: 1px solid var(--line); }
-/* The tabs over a session's or crew member's chat sit in a band between two lines; the picked one is filled. */
-.dkn-stabs { flex: none; display: flex; gap: 0; margin-top: 8px; padding: 0 2px; /* first label under the heading text (16px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+/* The tabs over a session's or crew member's chat: the picked one is filled. */
+/* One line under each header (#865): the tabs' own, at their foot. */
+.dkn-stabs { flex: none; display: flex; gap: 0; margin-top: 10px; padding: 0 2px; /* first label under the heading text (16px in) */ border-bottom: 1px solid var(--line); }
 .dkn-stab { all: unset; cursor: pointer; padding: 7px 14px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .dkn-stab:hover { color: var(--ink); }
 .dkn-stab.on { color: var(--on-accent); background: var(--accent); }
 .dkn-stab.on .n { color: inherit; opacity: 0.8; }
 .dkn-stab .n { margin-left: 4px; font-weight: 500; color: var(--muted); }
-/* The tabs' top line is the only line over them (as the lead's, below): whatever sits right above them in a session's
+/* The tabs. line is the only line under a header (as the lead.s, below): whatever sits right above them in a session.s
    or crew member's chat (an item's bar, #827) drops its own bottom line. */
 .dkn-sp > :has(+ .dkn-stabs) { border-bottom: 0; }
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
-/* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: a band between two lines,
+/* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: one line at their foot,
    the picked one filled moss. */
-.dk-c .dk-ptabs { gap: 0; min-height: 0; margin-top: 8px; padding: 0 6px; /* first label under the heading text (20px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dk-c .dk-ptabs { gap: 0; min-height: 0; margin-top: 8px; padding: 0 6px; /* first label under the heading text (20px in) */ border-bottom: 1px solid var(--line); }
 .dk-c .dk-ptabs .dk-tab, .dk-c .dk-ptabs .dk-tname > .dk-tab { align-self: stretch; padding: 7px 14px; border: 0; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .dk-c .dk-ptabs .dk-tab:hover { color: var(--ink); }
 .dk-c .dk-ptabs .dk-tab.on { color: var(--on-accent); background: var(--accent); }
@@ -372,13 +423,8 @@
 .dkn-band > .dkn-gh { position: sticky; top: 0; z-index: 2; background: var(--panel); padding-top: 10px; padding-bottom: 6px; }
 .dkn-band.dkn-b-blocked > .dkn-gh { background: color-mix(in srgb, var(--deny) 9%, var(--panel)); }
 .dkn-band.dkn-b-you > .dkn-gh { background: var(--panel-2); }
-/* An item no session has (desk/c.js deskCItemBare, #748): its kind, number and title, where it stands, its bar, then
-   what it was added with, the box at the foot. */
-.dkn-ihead { flex: none; padding: 8px 16px 0; }
-.dkn-ih1 { margin: 0; display: flex; align-items: baseline; gap: 6px; font-size: var(--type-title); font-weight: 600; color: var(--ink); min-width: 0; }
-.dkn-ih1 .dkn-iid { color: var(--muted); font-weight: 500; flex: none; }
-.dkn-ih1 .dkn-itt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dkn-ihead .dkn-smeta { padding: 2px 0 0; }
+/* An item no session has (desk/c.js deskCItemBare, #748): its head (as an opened item's), then what it was added
+   with, the box at the foot. */
 .dkn-ibare { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 20px; }
 .dkn-isee { margin: 0; padding-left: 18px; }
 .dkn-ibback { padding-top: 2px; }
@@ -396,6 +442,7 @@
 /* The item's own buttons in its bar's row: no page margins; what it waits on (Clear and land…) takes the whole row. */
 .dkn-ibacts .dk-acts { padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .dkn-ibacts .dk-drop { margin: 0; }
+.dkn-ib2:has(.dk-wo) { flex-wrap: wrap; }
 .dkn-ibacts:has(.dk-wo) { flex: 1 1 100%; margin-left: 0; justify-content: stretch; }
 .dkn-ibkept { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 
