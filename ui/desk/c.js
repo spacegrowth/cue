@@ -103,6 +103,9 @@ function deskCMate(project, sid, t, o) {
  *  it; then a heading per machine ("THIS MAC · 3 of 4 busy") over its sessions, each with its crew in play. A click
  *  opens that session's chat in the middle; the lead's brings its chat back. All N sessions › at the foot opens the
  *  full list (add, remove, close the old ones). In a narrow window the column is a strip of dots (styles/desk-c.css). */
+/** How long the Desk lead's turn runs before its row says "working" (#874). */
+const DESK_LEAD_WORK_MS = 5000;
+let deskLeadWorkTimer = 0;
 function deskCSessions(project) {
   const d = deskOf(project), o = deskOpen, leadSid = deskLead(d)?.sid;
   if (!d) return "";
@@ -121,7 +124,16 @@ function deskCSessions(project) {
   // The lead: its name, Lead, how it stands; lit while its chat is what's in the middle.
   let lead = "";
   if (leadSid) {
-    const s = sessionOf(leadSid), [dot, word] = s ? deskSessWithHelpers(s, false) : ["idle", "ended"];
+    const s = sessionOf(leadSid);
+    let [dot, word] = s ? deskSessWithHelpers(s, false) : ["idle", "ended"];
+    // A short wake (#874): "working" only once its turn has run DESK_LEAD_WORK_MS, so a few seconds' reply doesn't
+    // flicker the row; a redraw is due when that time is up.
+    const worked = s?.state === "working" ? Date.now() - (s.since_ms || 0) : Infinity;
+    if (dot === "" && worked < DESK_LEAD_WORK_MS) {
+      [dot, word] = ["idle", "idle"];
+      clearTimeout(deskLeadWorkTimer);
+      deskLeadWorkTimer = setTimeout(renderMain, DESK_LEAD_WORK_MS - Math.max(0, worked) + 50);
+    }
     const on = !o && deskPick !== project;
     lead = `<button class="dkn-lead${on ? " on" : ""}" data-desk-c-lead aria-label="${esc(deskLeadName(d))}, the Desk lead"><span class="dkn-n">${deskKindIcon("desk")}<span class="dkn-nm">${esc(deskLeadName(d))}</span><span class="dkn-lp">Lead</span><span class="dkn-st">${dot === "" ? '<i class="dkn-d work" aria-hidden="true"></i>' : ""}${esc(dot === "ask" ? "asks you" : word.split(" · ")[0])}${dot === "idle" && s ? bgPills(s, false) : ""}${on ? " ›" : ""}</span></span></button>`;
   }

@@ -65,6 +65,9 @@
 .dkn-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-st { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); }
 .dkn-lead .dkn-st { color: inherit; }
+/* The state word's own slot (#874): wide enough for the dot, "working" and the open mark, so the name keeps its width
+   as the lead goes from idle to working and back. */
+.dkn-lead .dkn-st { min-width: calc(14px + 9.5ch); justify-content: flex-end; }
 .dkn-chev { margin-left: auto; font-size: var(--type-title); line-height: 1; }
 .dkn-s { margin-left: 16px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--on-bg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-ask { color: color-mix(in srgb, var(--deny) 40%, #fff); }
