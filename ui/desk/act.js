@@ -472,6 +472,9 @@ deskClicks({
     const key = el.dataset.deskOlder;
     if (!deskOlderOpen.delete(key)) deskOlderOpen.add(key);
     renderMain();
+    // Closed opened at the foot of the column (#834): its rows land below the fold, so the column glides up till the
+    // heading sits near its top, only when the opened rows would be out of view.
+    if (key.startsWith("closed:") && deskOlderOpen.has(key)) requestAnimationFrame(() => deskShowOpened(key));
   },
   deskGroup: (el) => deskGroupFold(el.dataset.deskGroup),
   deskDoneFold: (el) => {
@@ -674,4 +677,16 @@ if (typeof document !== "undefined") {
     deskSwitchAt = rows.indexOf(row);
     for (const r of rows) r.classList.toggle("at", r === row);
   });
+}
+/** Brings an opened group's heading (data-desk-older=`key`) near the top of the list that scrolls it, smoothly, when
+ *  the rows it opened end below what's in view (#834). */
+function deskShowOpened(key) {
+  const head = document.querySelector(`[data-desk-older="${CSS.escape(key)}"]`), box = head?.closest(".dkn-list, .dk-scroll");
+  if (!box) return;
+  let last = head;
+  while (last.nextElementSibling) last = last.nextElementSibling;
+  const view = box.getBoundingClientRect();
+  if (last.getBoundingClientRect().bottom <= view.bottom) return;
+  const top = box.scrollTop + head.getBoundingClientRect().top - view.top - 8;
+  box.scrollTo({ top, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 }
