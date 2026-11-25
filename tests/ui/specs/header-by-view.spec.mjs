@@ -93,7 +93,7 @@ test("Desk: no dot on a Desk's chip or row (#848); the Desks menu lists every De
   await expect.poll(() => page.evaluate(() => window.__set)).toBe("website");
 });
 
-test("the Desks menu: a long Desk name stops before its count and ends in "…", every name at one left edge (#240, #885)", async ({ cue, page }) => {
+test("the Desks menu: a long Desk name stops before its count and ends in “…”, every name at one left edge (#240, #885)", async ({ cue, page }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "website").name = "Website launch checklist and the whole pricing page redo, start to end"; });
