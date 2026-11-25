@@ -88,7 +88,7 @@ function deskBox(d, o = deskOpen) {
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
 // Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member.
-const deskCBox = (key, pre, ph, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
+const deskCBox = (key, pre, ph, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, nowSid: deskBoxSid(key), top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
 /** Box `to` is the lead's own: about no item, crew member, kept copy or other session. */
 const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kept;
 // The lead's box writes to its session (chat/compose.js sidOfKey): its "/" menu, Send at and suggestion are the lead's.

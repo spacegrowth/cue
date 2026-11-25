@@ -12,6 +12,18 @@ pub(crate) use crate::desk::hub::turn::pick::{letter_of, pick, pick_letters};
 
 /// What you did to item `id` ("looks_right" | "reopen" | "send_back" | "start_now" | "put_before" | "hold" | "drop"), in the store.
 fn act_on(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
+    // ⌘↵ in an item's box (#861): a note as any other, but it goes now, mid-turn, as a session's ⌘↵ does.
+    let at_once = act == "note_now";
+    let act = if at_once { "note" } else { act };
+    let mut fx = act_on_with(st, id, act, text, now)?;
+    if at_once {
+        let to: Vec<String> = fx.sends.iter().map(|(to, _, _)| to.clone()).collect();
+        fx.now.extend(to);
+    }
+    Ok(fx)
+}
+
+fn act_on_with(st: &mut Store, id: &str, act: &str, text: &str, now: u64) -> Result<Effects, String> {
     // What you did, for the lead's picture: read first, as a drop removes the item.
     // Words on its page (a note) to check or done that ask something are a question (#475): said to the lead as such
     // (#567). Any other note is a note, never a Send back (#584).
@@ -764,7 +776,7 @@ impl Hub {
     }
 
     /// What you did to an item: "looks_right" (done), "send_back" (to its holder again, with `text`), "note" (your
-    /// words to its holder, never a Send back, #584), "phrase" (a quick phrase: a note, #488), "start_now"
+    /// words to its holder, never a Send back, #584; "note_now": sent at once, mid-turn, #861), "phrase" (a quick phrase: a note, #488), "start_now"
     /// (not waiting on another any more), "put_before" (ahead of the item it waited on), "install_now" (its install
     /// starts without waiting, desk/hub/landing/finish.rs), "skip_install" (waiting to install, done now with no install of its own,
     /// #490), "rerun" (its landing run again: a plain retry, offered only when Cue

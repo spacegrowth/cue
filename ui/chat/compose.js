@@ -516,7 +516,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "", q
   // always drawn, so a redraw never swaps out the box you're typing in. Send sits inside the box, at the end of its
   // row, so the box spans the full width (as the terminal dock does).
   return boxHtml({
-    key, look: "composer", rows: 2, placeholder, drop: !!images, held,
+    key, look: "composer", rows: 2, placeholder, drop: !!images, held, nowSid: images && !held ? sid : "",
     sug: images ? suggestionFor(sid) : "", sugSid: key.startsWith("s:") ? "" : sid,
     bang: bangTyped(d.text),
     cmd: sid ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : "",

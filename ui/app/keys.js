@@ -165,9 +165,7 @@ function enterInSessionBox(e, key) {
   const sid = key.slice(2);
   if (!sessionOf(sid) && (parkedOf(sid) || closedOf(sid))) { if (draft(key).text.trim()) wakeParked(sid, draft(key).text.trim()); return; }
   const turn = state.items.find((i) => i.session_id === sid && i.kind === "waiting");
-  const fresh = draft(key).text.trim() || draft(key).images.length;
-  if ((e.ctrlKey || e.metaKey) && !fresh && sendWaitingNow(sid)) return;
-  if (turn) reply(turn); else sendTo(sid, e.ctrlKey || e.metaKey);
+  return boxEnter(e, key, sid, (now) => (turn ? reply(turn) : sendTo(sid, now)));
 }
 /** Enter in a box (keyTyping: not ⇧↵, never while an input method composes): what that box is for. Every box's Enter
  *  comes here: first the boxes the window's parts own (box/send.js BOX_OWNERS: the Desk's lead's, an item's, an ask's,

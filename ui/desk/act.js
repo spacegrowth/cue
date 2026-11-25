@@ -42,11 +42,11 @@ async function deskSendBox(key, sendNow = false) {
   if (deskLeadBoxTo(to) || document.querySelector(`.dk-right textarea[data-text="${CSS.escape(key)}"]`)) { deskChatEnd = true; deskChatSent = true; }
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
-  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
+  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text, sendNow);
   if (to.sid) {
     // To a crew member: through its lead, named (the guards, "It's restarting" and the rest, look at the lead).
     if (!to.mate) await sendTo(to.sid, sendNow, key);
-    else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid)(`About ${to.mate}: ${typed}`, images), true);
+    else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid, { now: sendNow })(`About ${to.mate}: ${typed}`, images), true);
     return;
   }
   // A "/" command or a "!" line in the lead's own box (the Board's composer, #688): sent as a session's box sends it,
@@ -62,7 +62,7 @@ async function deskSendBox(key, sendNow = false) {
  *  it goes back with your words, unless they ask a question (to check or done: a note it answers). Held by no one,
  *  or done: to the lead. Your words stay in the box until the hub has
  *  them, so a restart or a change of state can't lose them. `text`: what's in the box, trimmed. */
-async function deskSendItem(to, key, text) {
+async function deskSendItem(to, key, text, sendNow = false) {
   const project = to.project || deskSelection(), it = deskItem(project, to.item);
   if (!it) return toast("That item isn't on this Desk any more.");
   // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
@@ -71,7 +71,7 @@ async function deskSendItem(to, key, text) {
   const phrase = phraseSending && it.state === "to_check";
   const asks = phrase || (["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || ""));
   const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check" || asks);
-  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text);
+  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text, sendNow);
   if (it.state === "to_check" && !asks) {
     await deskSendBack(it.id, key);
     return renderMain();
@@ -82,7 +82,8 @@ async function deskSendItem(to, key, text) {
     guardSid: hs, save: true,
     // An answer: the page says what you answered (deskChain).
     before: (t) => { if (it.state === "needs_you") deskAnswers.set(it.id, { q: deskQuestion(it), a: t || "a picture", ask: it.ask?.item_id || "", at: now() }); },
-    pending: (t, images) => deskPend(it.id, t || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : "note" }),
+    // ⌘↵ (#861): "note_now", so it reaches a holder at work at once, mid-turn.
+    pending: (t, images) => deskPend(it.id, t || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : sendNow ? "note_now" : "note" }),
     call: (t, images, p) => invoke("desk_item_act", { id: it.id, act: p.act, text: p.text, images: p.images }),
     sent: () => renderMain(),
     // Didn't go: red on its Thread with why, Retry and Edit (#422). The saved draft keeps it till then, so a restart
@@ -554,25 +555,27 @@ function deskKeptBox(sid) {
   const lead = (to) => !to.sid && !to.item && deskLead(deskOf(to.project))?.sid === sid;
   return [...deskBoxes].filter(([, to]) => (to.sid === sid && !to.mate && !to.item) || lead(to)).map(([k]) => k).find(shown) || "";
 }
-/** The session Desk box `key` writes to itself: a session's or holder's page's, or the lead's chat's (its lead); null
- *  for one that goes about an item or a crew member. */
+/** The session Desk box `key` writes to: a session's or holder's page's, an item's live holder, a crew member's lead,
+ *  else the Desk's lead (the lead's own chat, an item nobody is at work on). Its ⌘↵ and "⌘↵ send now" are that
+ *  session's (#861). */
 function deskBoxSid(key) {
   const to = deskBoxes.get(key);
-  if (!to || to.item || to.mate) return null;
-  return to.sid || deskLead(deskOf(to.project))?.sid || null;
+  if (!to) return null;
+  // An item ready to check goes back to its holder (deskSendItem): that session's.
+  const it = to.item && !to.sid ? deskItem(to.project || deskSelection(), to.item) : null;
+  if (it?.state === "to_check" && it.holder && sessionOf(deskHolderSid(it))) return deskHolderSid(it);
+  return to.sid || deskLead(deskOf(to.project || deskSelection()))?.sid || null;
 }
 // The Desk's boxes, on the window's shared box (box/send.js BOX_OWNERS): Enter and a quick phrase send them, ↑ ↓ bring
 // back what went to their session, an item page's suggested reply, and the Desk's chat end for the reader.
 BOX_OWNERS.push({
   owns: (key) => key.startsWith("back:") || deskBoxes.has(key),
   send: (key) => (key.startsWith("back:") ? deskAct(key.slice(5), "back_go") : deskSendBox(key)),
-  // ↵ sends; ⌘↵ as in a session's box (app/keys.js enterInSessionBox, #630): what's typed goes now, and with nothing
+  // ↵ sends; ⌘↵ as in every chat's box (box/send.js boxEnter, #630, #861): what's typed goes now, and with nothing
   // typed, the message Cue kept for the session this box writes to goes now.
   enter(e, key) {
-    if (key.startsWith("back:") || !(e.metaKey || e.ctrlKey)) return this.send(key);
-    const typed = draft(key).text.trim() || draft(key).images.length, sid = deskBoxSid(key);
-    if (!typed && sid && sendWaitingNow(sid)) return;
-    return deskSendBox(key, true);
+    if (key.startsWith("back:")) return this.send(key);
+    return boxEnter(e, key, deskBoxSid(key), (now) => deskSendBox(key, now));
   },
   recall: (key) => deskRecall(key),
   view: "desk",

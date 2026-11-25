@@ -16,7 +16,8 @@
  *  - head: { label, cancel } puts a "desk" box under a title and a Cancel (.dk-sb, Send back, Go back); cancel is the
  *    Cancel button's attributes. sbClass: more classes for that .dk-sb.
  *  - "composer" only: bang (a "!" line typed), cmd (the "/" menu's slot), clock (the "Send at" button), below (under
- *    the row: the "Send at" bar and the "/" hint).
+ *    the row: the "Send at" bar and the "/" hint), nowSid (the session it writes to: "⌘↵ send now" beside Send while
+ *    that one is at work, box/send.js boxNowHint).
  *  Other looks, each the box of one place:
  *  - "mini": an answer in the mini panel's Desk row (.m-dk-box; rows 1): the words and Send, no mic or pictures.
  *    attrs: more of the textarea's attributes.
@@ -39,7 +40,7 @@ function boxHtml(o) {
     ${mic}
     ${attach}
     ${o.clock || ""}
-    ${o.extra || ""}<button class="btn primary send" ${send.attrs || ""} ${send.disabled ? "disabled" : ""}>${send.label ?? "Send"}</button></div>${o.below || ""}</div></div>`;
+    ${o.extra || ""}${o.nowSid ? boxNowHint(o.nowSid) : ""}<button class="btn primary send" ${send.attrs || ""} ${send.disabled ? "disabled" : ""}>${send.label ?? "Send"}</button></div>${o.below || ""}</div></div>`;
   }
   const placeholder = esc(sug ? " " : o.placeholder || "");
   if (o.look === "btw") return `<div class="btw-ask"><textarea data-text="${k}" rows="${o.rows || 1}" placeholder="${placeholder}" spellcheck="false">${esc(text)}</textarea></div>`;
