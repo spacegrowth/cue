@@ -2,19 +2,6 @@
 // Cue UI app — the window's state as Cue sends it (setState), and boot(). The draw (and a draw that fails, shown as an
 // error) is ui/app/render.js; its listeners ui/app/bind.js.
 addEventListener("wheel", () => { glide = null; }, { capture: true, passive: true });
-/** The closed strip's line: the open session's screen, every 2 s (its last line with anything on it). */
-setInterval(async () => {
-  const sid = active?.sid;
-  if (!sid || document.hidden || termSid === sid || !inTmux(sid)) return;
-  try {
-    const screen = await invoke("session_screen", { sessionId: sid });
-    const last = (screen.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 200);
-    if (termLast.get(sid) === last) return;
-    termLast.set(sid, last);
-    const el = document.querySelector(`.tstrip[data-sid="${CSS.escape(sid)}"] .tlast`);
-    if (el) el.textContent = last;
-  } catch {}
-}, 2000);
 setInterval(trimCaches, 5 * 60000);
 
 let setupShown = false;
@@ -123,7 +110,7 @@ async function boot() {
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);
   });
-  await T.event.listen("term", (e) => { onTermOutput(e.payload); onShellOutput(e.payload); });
+  await T.event.listen("term", (e) => onShellOutput(e.payload));
   await T.event.listen("shell", (e) => onShellEvent(e.payload));
   restoreShells();   // the shells still running in tmux, back in their tabs
   await listenApp();

@@ -135,11 +135,7 @@ function sent(sid, text, images, via) {
 
 async function goTo(it) {
   try { toast(`Jumped to ${await invoke("focus_session", { id: it.id })}`); }
-  catch (e) {
-    // A "Runs in Cue" session has no tab: its terminal is the one here.
-    if (inTmux(it.session_id)) { setActive(it.id); return openTerm(it.session_id); }
-    toast(`Couldn't jump: ${e}`);
-  }
+  catch (e) { toast(`Couldn't jump: ${e}`); }
 }
 
 /** Thumbnails of sent images; click to open full size (← → between them). */

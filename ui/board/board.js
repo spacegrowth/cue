@@ -250,9 +250,7 @@ function dialogHtml(it) {
   return `${d.detail ? `<div class="qtext">${linkify(esc(d.detail), sessBase(it.session_id))}</div>` : ""}<div class="opts">${d.options.map((o, n) => `<button class="opt ${n === d.selected ? "on" : ""}" data-tpick="${n + 1}" data-id="${esc(it.id)}">${n + 1} · ${esc(o)}</button>`).join("")}</div>`;
 }
 function decisionButtons(it, denyLabel = "Deny") {
-  if (inTerminal(it) && inTmux(it.session_id) && termSid === it.session_id) return `<div class="row-btns"><span class="dim">Answer it in the terminal above.</span></div>`;
-  if (inTerminal(it) && it.tool_input?.dialog?.options?.length) return `${dialogHtml(it)}<div class="row-btns"><span class="dim">Or answer it in its terminal.</span><span class="grow"></span>${inTmux(it.session_id) ? `<button class="btn" data-act="term-open" data-sid="${esc(it.session_id)}">Open terminal</button>` : `<button class="btn" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
-  if (inTerminal(it) && inTmux(it.session_id)) return `<div class="row-btns"><span class="dim">It's waiting in its terminal: answer it there.</span><span class="grow"></span><button class="btn primary" data-act="term-open" data-sid="${esc(it.session_id)}">Answer in terminal</button></div>`;
+  if (inTerminal(it) && it.tool_input?.dialog?.options?.length) return `${dialogHtml(it)}<div class="row-btns"><span class="dim">Or answer it in its terminal.</span><span class="grow"></span><button class="btn" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 ? "Use answer" : "Send") : "Redirect")}</div>`;
   if (it.kind === "input") return formButtons(it);
@@ -413,7 +411,7 @@ function needQuick(it) {
   let quick = "";
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
   else if (inTerminal(it) && (it.tool_input?.dialog?.options || []).length && it.tool_input.dialog.options.length <= 4) quick = `<div class="nrow-acts wrap">${it.tool_input.dialog.options.map((o, n) => `<button class="btn" data-tpick="${n + 1}" data-id="${esc(it.id)}">${esc(o)}</button>`).join("")}</div>`;
-  else if (inTerminal(it)) quick = `<div class="nrow-acts">${inTmux(it.session_id) ? `<button class="btn primary" data-act="term-card" data-id="${esc(it.id)}">Answer in terminal</button>` : `<button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
+  else if (inTerminal(it)) quick = `<div class="nrow-acts"><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   else if (q.length) quick = `${qFoldLine(it)}<div class="nrow-acts wrap">${qFoldBtns(it, `<button class="btn" data-act="choose" data-id="${esc(it.id)}">Choose…</button>`)}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;

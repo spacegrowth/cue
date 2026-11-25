@@ -22,15 +22,14 @@ function keyAnywhere(e) {
 }
 
 /** Inside Cue's own terminal, as in a terminal app: ⌘K clears it (not Cue's ⌘K), ⌘1–9 go to its tabs (⌘9 the
- *  last), and every other key but a ⌘ shortcut is its shell's. A session's terminal takes every key but those too. */
+ *  last), and every other key but a ⌘ shortcut is its shell's. */
 function keyInTerminal(e) {
   const inPip = !!e.target.closest?.(".pip");
   if (inPip && cmdOnly(e)) {
     if (e.key.toLowerCase() === "k") { e.preventDefault(); clearShell(); return true; }
     if (/^[1-9]$/.test(e.key)) { e.preventDefault(); shellNumber(+e.key); return true; }
   }
-  if (inPip && !e.metaKey) return true;
-  return !!e.target.closest?.(".term-host") && !e.metaKey;
+  return inPip && !e.metaKey;
 }
 
 /** In a box: its "/" menu (arrows move, Tab fills, Enter runs, Esc closes it), and ↑ / ↓ in a session's box back

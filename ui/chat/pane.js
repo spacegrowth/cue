@@ -128,7 +128,7 @@ function openPane(a, full, crew = null) {
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
     ${activeChat(a, full, crew)}${extSlot(sid)}${diffSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${paneFoot(a, full, crew)}${sid ? continueCover(sid) : ""}</div>`;
+    ${paneFoot(a, full, crew)}${sid ? continueCover(sid) : ""}</div>`;
 }
 /** Under the chat: the full view's own foot, or the reply being read out, the crew's tray and the box (or the ask's
  *  card). On the crew's page (`crew`), its Needs you (`crew.needs`) in the tray's place: the list beside it has the

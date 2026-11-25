@@ -391,7 +391,6 @@ function fitAfterDraw(focused) {
   fitTips();
   const bp = document.querySelector(".btw-pop"), ah = document.querySelector(".ap-head");
   if (bp && ah) bp.style.top = `${ah.offsetTop + ah.offsetHeight + 2}px`;
-  placeTerm(!!termHost && termHost.contains(focused));
   showCopied();
   fitTop();
 }

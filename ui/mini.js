@@ -593,7 +593,6 @@
     // An item number or a session's name in a reply (#832): the item on its Desk in Cue, the session's chat here.
     rule("a[data-desk-chk-item]", (t, e) => { e.preventDefault(); deskInCue(t.dataset.deskProject, t.dataset.deskChkItem); }),
     rule("a[data-desk-session]", (t, e) => { e.preventDefault(); openChat(t.dataset.deskSession); }),
-    rule("[data-act=term], [data-act=term-open], [data-act=term-card]", () => inCue(m.open)),
     ...CHAT_CLICKS,
   ];
   /** Keys in the chat: its box's own ("/" menu, ↑ for what you sent, Enter sends, ⌘↵ sends what waits now), a picture

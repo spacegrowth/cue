@@ -10,12 +10,6 @@ const BTW_CLICKS = [
 ];
 
 const TERM_CLICKS = [
-  rule("[data-act=term], [data-act=term-open], [data-act=term-card]", (tm) => {
-    if (tm.dataset.act === "term") return termSid === tm.dataset.sid ? closeTerm() : openTerm(tm.dataset.sid);
-    // From a Waiting card: open its session, then its terminal.
-    if (tm.dataset.act === "term-card") { const it = findItem(tm.dataset.id); setActive(tm.dataset.id); return it && openTerm(it.session_id); }
-    return termSid === tm.dataset.sid ? termObj?.focus() : openTerm(tm.dataset.sid);
-  }),
   rule("[data-act=btw], [data-act=btw-close]", (bw) => { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) { tipUsed("btw"); return openBtw(bw.dataset.sid); } btwFor = null; renderMain(); }),
 ];
 
@@ -120,7 +114,6 @@ const READER_CLICKS = [
   rule("[data-read]", (rd) => { const k = rd.dataset.read; openReader(k.slice(0, k.lastIndexOf(":")), k); }),
   rule("[data-reader-back]", () => closeReader()),
   rule("[data-reader-open]", (ro) => invoke("open_link", { url: ro.dataset.readerOpen }).catch((err) => toast(`Couldn't open: ${err}`))),
-  rule("[data-reader-term]", (rt) => { closeReader(); openTerm(rt.dataset.readerTerm); }),
   rule("[data-reader-reply]", () => replyFromReader()),
   rule("[data-reader-copy]", () => copyReader()),
   rule("[data-reader-step]", (rs) => stepReader(+rs.dataset.readerStep)),

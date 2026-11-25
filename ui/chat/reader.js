@@ -94,12 +94,10 @@ function copyReader() {
  *  column, and a foot only when the session is asking you something (then Back to chat answers it there). */
 function readerPane(sid, it, s, harness, rv) {
   const r = rv.all[rv.at], n = rv.all.length;
-  // The reader has the pane to itself (activePane leaves out the session's head, bar, tabs and terminal strip):
-  // its one bar says which session it is, and that it's waiting in its terminal when it is (an amber Terminal, as
-  // the strip goes amber; a click: the chat, with the terminal open).
+  // The reader has the pane to itself (activePane leaves out the session's head, bar and tabs): its one bar says
+  // which session it is.
   const who = `<span class="badge h-${esc(harness || "other")}">${agentLetter(harness)}</span><span class="proj rd-name">${esc(nameOf(sid, it?.project || s?.project))}</span>`;
-  const term = inTmux(sid) && waitsInTerminal(sid) ? `<button class="rd-term" data-reader-term="${esc(sid)}" aria-label="Waiting in its terminal: open it"><span class="tlive"></span>Terminal</button>` : "";
-  const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button>${who}<span class="grow"></span>${term}
+  const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button>${who}<span class="grow"></span>
     <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
     <span class="rd-listen">${listenPlainBox()}${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</span></div>`;

@@ -16,17 +16,6 @@ const openSettings = async (page, tab) => {
   await page.locator(`[data-act="set-tab"][data-tab="${tab}"]`).click();
   await expect(page.locator(`[data-act="set-tab"][data-tab="${tab}"]`)).toHaveAttribute("aria-selected", "true");
 };
-/** agent-relay's terminal open, its screen written, and nothing focused (a focused terminal's cursor blinks). */
-const openTerminal = async (page) => {
-  await openCard(page, "n1");
-  await page.locator('.tstrip[data-sid="relay"]').click();
-  // Its screen is in the terminal's buffer (the fake's permission menu); it's drawn by the time the shot is taken.
-  await page.waitForFunction(() => {
-    const b = typeof termObj !== "undefined" && termObj?.buffer.active;
-    return b && Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString()).some((l) => l?.includes("Do you want to proceed?"));
-  });
-};
-
 /** world-team's ask (hub, a teammate of the lead), and its lead's chat with the team open. */
 const TEAM_ASK = "n1793984390004";
 /** The crew's tray on the box, open or closed as `open` says (it opens by itself while one waits on you). */
@@ -60,8 +49,6 @@ const SCREENS = {
   "board-waiting": { scenario: "board-waiting", done: (p) => p.locator('.nrow[data-big="n6"]').waitFor() },
   "many-sessions": { scenario: "many-sessions", done: (p) => p.locator('.nrow[data-big="mi0"]').waitFor() },
   "chat-long-thread": { scenario: "board-waiting", setup: (p) => openCard(p, "n1"), done: (p) => p.locator(".active-pane pre").first().waitFor() },
-  "terminal-open": { scenario: "terminal", setup: openTerminal, done: (p) => p.evaluate(() => document.activeElement?.blur()) },
-  "terminal-stalled": { scenario: "terminal", flags: "stalled=1", setup: async (p) => { await openTerminal(p); await p.keyboard.type("ls"); }, done: async (p) => { await p.locator(".term-stalled").waitFor(); await p.evaluate(() => document.activeElement?.blur()); } },
   ...Object.fromEntries(SETTINGS_TABS.map((tab) => [`settings-${tab}`, { scenario: "board-waiting", setup: (p) => openSettings(p, tab), done: (p) => p.locator(".sheet .set-row, .sheet .set-group").first().waitFor() }])),
   "insights": { scenario: "board-waiting", setup: (p) => p.locator('[data-view="insights"]').click(), done: (p) => p.waitForFunction(() => CueBridge.called("insights_summary").some((c) => "result" in c)) },
   "shelf-parked": { scenario: "parked-ended", setup: (p) => p.locator('[data-shelf="parked"]').click(), done: (p) => p.locator('.prow.parked[data-session="guide"]').waitFor() },

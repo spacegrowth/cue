@@ -1,15 +1,15 @@
 // Cue UI sheets — Settings, Search, the conversation sheet, the setup sheet, Forward and the move dialog.
 // "Move to Cue" in progress: a dialog over the window says what's happening, step by step, and the screen
 // behind it stays as it is (the session vanishes from the lists while it's ended and resumed). When it's
-// done the moved session is the selected one; its terminal stays closed until you open it.
-let moving = null;   // { sid, name, harness, project, step, err, at, last, hosted }
+// done the moved session is the selected one, hosted.
+let moving = null;   // { sid, name, harness, project, step, err, at }
 function movingDialog() {
   const m = moving;
-  const steps = m.hosted ? ["Ending it in its terminal", "Resuming it hosted: loading the conversation", "Ready"] : ["Ending it in its tab", "Resuming it in Cue: loading the conversation", "Ready"];
+  const steps = ["Ending it in its tab", "Resuming it hosted: loading the conversation", "Ready"];
   const secs = Math.round((now() - m.at) / 1000);
   return `<div class="move-scrim"><div class="move-dialog" role="dialog" aria-live="polite">${m.err
     ? `<div class="move-title">Couldn't move ${esc(m.name || m.project)} to Cue</div><div class="move-err">${esc(m.err)}</div><div class="row-btns"><span class="grow"></span><button class="btn primary" data-act="move-dismiss">OK</button></div>`
-    : `<div class="move-title"><span class="dot-live"></span>Moving ${esc(m.name || m.project)} to Cue…<span class="grow"></span><span class="move-secs">${secs}s</span></div><ol class="move-steps">${steps.map((t, n) => `<li class="${n < m.step ? "done" : n === m.step ? "now" : ""}">${t}</li>`).join("")}</ol>${m.step === 1 && m.last ? `<div class="move-screen">${esc(m.last)}</div>` : ""}<div class="dim">${m.step === 1 ? "A long conversation takes a while to load." : "Its conversation comes back whole."}</div>`}
+    : `<div class="move-title"><span class="dot-live"></span>Moving ${esc(m.name || m.project)} to Cue…<span class="grow"></span><span class="move-secs">${secs}s</span></div><ol class="move-steps">${steps.map((t, n) => `<li class="${n < m.step ? "done" : n === m.step ? "now" : ""}">${t}</li>`).join("")}</ol><div class="dim">${m.step === 1 ? "A long conversation takes a while to load." : "Its conversation comes back whole."}</div>`}
   </div></div>`;
 }
 async function moveToCue(sid) {
@@ -18,18 +18,13 @@ async function moveToCue(sid) {
   const s = sessionOf(sid) || (q && { name: q.name || baseName(q.cwd), harness: q.harness, project: q.project || projOf(q.cwd) });
   if (!s || moving) return;
   if (quietOpen === sid) quietOpen = null;   // it opens in Active as it moves
-  // With hosting on it comes back hosted (from a terminal app's tab or from Cue's own terminal), with no screen to watch.
-  const hosted = !!state.settings?.hosted?.on;
-  const arrived = () => hosted ? !!sessionOf(sid)?.hosted : inTmux(sid);
-  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "", hosted };
+  // It comes back hosted, with no screen to watch.
+  const arrived = () => !!sessionOf(sid)?.hosted;
+  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now() };
   renderMain();
-  // Every second: the clock, and once it's in its new window, that window's last line.
-  const watch = setInterval(async () => {
+  // Every second: the clock.
+  const watch = setInterval(() => {
     if (!moving || moving.sid !== sid) return clearInterval(watch);
-    if (!hosted && inTmux(sid)) {
-      moving.step = Math.max(moving.step, 1);
-      try { const sc = await invoke("session_screen", { sessionId: sid }); moving.last = (sc.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 120); } catch {}
-    }
     renderMain();
   }, 1000);
   try {

@@ -130,33 +130,8 @@ function modelRow() {
   const reload = `<button class="nf-reload" data-lv="models-reload" aria-label="Reload the model list" ${modelsReading ? "disabled" : ""}>${RELOAD_ICON}</button>`;
   return `<div class="nf-row"><span class="nf-k">Model</span><div class="nf-where"><select class="nf-in nf-sel" id="new-model" data-model aria-label="Model">${opts.map((m) => `<option value="${esc(m.value)}" ${m.value === pick ? "selected" : ""}>${esc(m.label || m.value)}</option>`).join("")}</select>${typed}${big}${reload}<span class="nf-hint">${esc(hint)}</span></div></div>`;
 }
-/** + New's Runs in: hosted by Cue (Settings → Cue-hosted sessions on), Cue's own terminal (tmux installed), or a
- *  terminal tab. On a machine: hosted there by cue-host, or tmux there (Cue's terminal over SSH). Shown when there's
- *  a choice. */
-function whereRow() {
-  if (newMachine) return machineWhereRow();
-  const tmux = !!state.settings?.sessions?.tmux_installed;
-  if (!tmux && !hostedOffered()) return "";
-  const opts = [...(hostedOffered() ? [["hosted", "Hosted"]] : []), ...(tmux ? [[true, "Cue"]] : []), [false, termName()]];
-  const cur = newHosted() ? "hosted" : newTmux() && tmux;
-  const hint = cur === "hosted" ? `no terminal: Cue talks to ${agentName(newAgent)} directly, and every ask is an item in Waiting` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
-  return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v === false ? TERM_ICON : CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
-}
-/** Runs in, on a machine: hosted there (cue-host, which Cue puts there) or tmux there. */
-function machineWhereRow() {
-  if (!hostedOffered()) return "";
-  const cur = newHosted() ? "hosted" : true;
-  const hint = cur === "hosted" ? `no terminal: it runs on that machine under cue-host (Cue puts it in ~/.cue there), every ask an item in Waiting, and it carries on if Cue quits or the connection drops` : "in tmux there, shown in Cue's terminal";
-  return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[["hosted", "Hosted"], [true, "Cue"]].map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
-}
 const OTHER = "other…";   // the drop-down's "Other…" entry's value: no model id has an ellipsis
 const RELOAD_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>`;
-let newWhere = { true: true, false: false, hosted: "hosted" }[remembered("newWhere")] ?? null;   // tmux or not, or hosted (null: Settings' default)
-/** + New can start a Claude Code, Pi or Codex session hosted by Cue, with no terminal: Settings → Cue-hosted sessions
- *  on, on this Mac or a machine (there by cue-host). */
-const hostedOffered = () => !!state.settings?.hosted?.on && ["claude", "pi", "codex"].includes(newAgent);
-const newHosted = () => hostedOffered() && newWhere === "hosted";
-const newTmux = () => (newWhere === "hosted" || newWhere == null ? !!state.settings?.sessions?.tmux : newWhere);
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
 /** + New session: which machine (this Mac, or one from + New → Machine). Remembered. */
 let newMachine = (() => { try { return localStorage.getItem("cue.newMachine") || ""; } catch { return ""; } })();
@@ -270,7 +245,6 @@ function newForm() {
     ${newAgent === "claude" ? modelRow() : ""}
     ${`<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>`}
     <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button><button class="icon-btn nf-attach nf-mic ${dictating?.key === "new-msg" ? "on" : ""}" data-mic="new-msg" aria-label="${dictating?.key === "new-msg" ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button></div>${draftChips("new-msg")}</div></div>
-    ${whereRow()}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
     ${ran}</div>${acts}`;
@@ -289,7 +263,7 @@ function nfRecentLine(folders) {
   return `<div class="nf-recent"><span class="nf-k">In</span>${three.map(pill).join("")}<button class="nf-rf" data-lv="folder-more" aria-label="Another folder">…</button></div>`;
 }
 function nfSummary(withFolder = true) {
-  const where = newMachine ? `${newHosted() ? "Hosted on " : ""}${machShort(newMachine)}` : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
+  const where = newMachine ? `Hosted on ${machShort(newMachine)}` : "Hosted";
   const model = newAgent !== "claude" ? "" : newModel === "default" || !newModel ? "" : `${(modelsOf(newMachine) || []).find((m) => m.value === newModel)?.label || newModel}${newModel1m && !/\[.*\]$/.test(newModel) ? " 1M" : ""}`;
   const perm = PERMS[newAgent]?.find(([v]) => v === newPerm)?.[1] || "";
   return [agentName(newAgent), withFolder && (draft("new-cwd").text.trim() || "no folder yet"), model, where, perm && `${perm}${newPerm === "skip" ? " (runs anything without asking)" : ""}`].filter(Boolean).join(" · ");
@@ -384,7 +358,7 @@ async function lvStart(_d, trust = false) {
     const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
     const mk = `f:${cwd}`;
     const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted(), trust });
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: draft("new-name").text, perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, trust });
     mcpPick.delete(mk);
     rememberFolder(newMachine, cwd);
     afterNewSession(r);
@@ -417,7 +391,6 @@ const LV_ACTS = {
   all: () => { liveOpen = newOpen = false; view = "sessions"; renderMain(); },
   new: lvNew,
   agent: (d) => { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); renderMain(); },
-  where: (d) => { newWhere = d.tmux === "hosted" ? "hosted" : d.tmux === "true"; remember("newWhere", String(newWhere)); renderMain(); },
   "machine-add": lvMachineAdd,
   machine: (d) => { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); renderMain(); },
   perm: (d) => { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); renderMain(); },

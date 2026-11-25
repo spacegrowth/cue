@@ -729,11 +729,11 @@ function moreMenu(sid, s, closable = false) {
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
 }
-/** ⋯ → Move to terminal, for a session Cue runs (hosted, or in Cue's own terminal): resumed where you run agents
+/** ⋯ → Move to terminal, for a session Cue hosts: resumed where you run agents
  *  yourself (ipc/move_out.rs). Only for moving away from Cue, so it's here, not a button, and says so. Not while it
  *  works or asks you something. */
 function moveOutItem(sid, s) {
-  if (!s || !(s.hosted || (inTmux(sid) && !s.machine)) || isDeskLead(sid)) return "";   // never a Desk's lead (#842)
+  if (!s || !s.hosted || isDeskLead(sid)) return "";   // never a Desk's lead (#842)
   const why = s.state === "working" ? "When this turn ends" : s.state === "deciding" ? "Once you've answered what it asks" : "";
   const where = s.hosted && s.machine ? `in tmux on ${machName(s.machine)}` : `in a ${termName()} tab`;
   return `<button data-act="move-term" data-sid="${esc(sid)}" ${why ? "disabled" : ""}>Move to terminal<span>${why || `Only if you're moving away from Cue: the conversation goes on ${esc(where)}, and Cue stops running it`}</span></button>`;

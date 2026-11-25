@@ -226,9 +226,6 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
    (chat/reader.js). */
 .rd-listen { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 /* Waiting in its terminal, in the reader's bar: the terminal strip's waiting amber, as a chip. */
-.rd-term { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--caution) 32%, var(--slab)); color: var(--on-slab); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; white-space: nowrap; flex: none; }
-.rd-term:hover { background: color-mix(in srgb, var(--caution) 44%, var(--slab)); }
-.rd-term .tlive { background: var(--caution); }
 .rd-seg { display: inline-flex; align-items: center; height: 30px; border: 1px solid var(--line); border-radius: var(--radius-btn); overflow: hidden; background: var(--panel); }
 .rd-seg button { height: 100%; min-width: 30px; padding: 0 8px; color: var(--ink); font-size: var(--type-body); font-weight: 700; }
 .rd-seg button + button, .rd-seg .rd-of + button { border-left: 1px solid var(--line); }
