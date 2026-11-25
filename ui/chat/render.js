@@ -27,6 +27,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const bk = `t:${turn.at_ms}:${part.from}`;
   const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
   if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
+  if (stepsBullets()) return bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first, fold, say });
   let body = "", run = [], runKey = "";
   // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
   const flush = () => { if (run.length) body += `<div class="stx-steps" data-key="run:${esc(runKey)}">${run.join("")}</div>`; run = []; };
@@ -43,6 +44,56 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   flush();
   if (!first) return body || fold ? `<div class="stx" data-key="${esc(bk)}">${body}${fold}</div>` : "";
   return `<div class="stx" data-key="${esc(bk)}">${head}${open && turn.more ? `<div class="stx-more dim" data-key="more">${turn.more} earlier steps not shown</div>` : ""}${body}${fold}</div>`;
+}
+/** Settings → Chat → "Bullets with a clock" (#931; off unless you turn it on): a turn as bullets, one for each thing
+ *  it said with the steps that followed it. On the left, when that bullet started (the live one counts up) and a mark
+ *  per step, red for a failed one; the live bullet pulses with its running step under it. "N steps ›" opens a
+ *  bullet's steps as rows (a row opens its output, as ever). The turn's count sits in a bar at the top that stays
+ *  in view while it works ("Working · 4:12 · 17 steps · … · 1 failed", Show all steps); once it's done the bar is a
+ *  chip ("Worked 6m 18s · 22 steps · 9 updates"), and a folded turn keeps only that chip. */
+const stepsBullets = () => !!state.settings?.steps?.bullets;
+const bulletOpen = new Map();   // "sid|turn|bullet" -> open? (your choice over the turn's Show all steps)
+/** "6m 18s", "40s": how long a finished turn worked. */
+const workedFor = (ms) => { const s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60); return m ? (s % 60 ? `${m}m ${s % 60}s` : `${m}m`) : `${s}s`; };
+/** A turn's items as bullets: each thing it said starts one, its steps follow; steps before it said anything are a
+ *  bullet of their own ("First steps"). */
+function bulletGroups(items) {
+  const groups = [];
+  for (const [x, i] of items) {
+    if (x.t === "say" || !groups.length) groups.push({ say: x.t === "say" ? [x, i] : null, steps: [] });
+    if (x.t !== "say") groups.at(-1).steps.push(x);
+  }
+  return groups;
+}
+function bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first, fold, say }) {
+  const bad = steps.filter((x) => x.bad).length;
+  const groups = bulletGroups(items);
+  const many = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const stepsWord = `${steps.length}${turn.more ? "+" : ""} step${steps.length === 1 ? "" : "s"}`;
+  const failed = bad ? `<span class="bul-bad">· ${bad} failed</span>` : "";
+  const allBtn = `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Hide steps" : "Show all steps"}</button>`;
+  const rest = turnSummary(steps).replace(/(^| · )\d+ failed$/, "");
+  const end = turn.items.at(-1)?.at_ms ?? turn.at_ms;
+  const head = !first ? "" : live
+    ? `<div class="stx-head bul-pin" data-key="head"><span class="dot-live"></span><b>Working · <span data-clock="${turn.at_ms}">${clockText(now() - turn.at_ms)}</span></b><span class="bul-sum">· ${stepsWord}${rest ? ` · ${esc(rest)}` : ""}</span>${failed}${allBtn}</div>`
+    : `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}" aria-expanded="${open}"><span class="stx-tri">${open ? "▾" : "▸"}</span><b>Worked ${esc(workedFor(end - turn.at_ms))}</b><span class="stx-sum"> · ${stepsWord} · ${many(groups.filter((g) => g.say).length, "update")}</span>${failed}</button>${open ? allBtn : ""}</div>`;
+  if (!live && !open) return head || fold ? `<div class="stx bul" data-key="${esc(bk)}">${head}${fold}</div>` : "";
+  const rows = groups.map((g, n) => {
+    const gk = `${key}|${g.say ? g.say[0].at_ms : g.steps[0]?.id ?? n}`;
+    const isNow = live && n === groups.length - 1;
+    const opened = bulletOpen.has(gk) ? bulletOpen.get(gk) : all;
+    const start = g.say ? g.say[0].at_ms : g.steps[0]?.at_ms ?? turn.at_ms;
+    const gbad = g.steps.filter((x) => x.bad).length;
+    const running = isNow ? g.steps.findLast((x) => !x.done) : null;
+    const time = isNow ? `<span class="bul-t" data-clock="${turn.at_ms}">${clockText(now() - turn.at_ms)}</span>` : `<span class="bul-t">${clockText(start - turn.at_ms)}</span>`;
+    const marks = g.steps.map((x) => `<i class="${x.bad ? "bad" : x.done ? "" : "run"}"></i>`).join("");
+    const text = g.say ? md(say ? say(g.say[0].text) : g.say[0].text) : `<span class="dim">First steps</span>`;
+    const count = g.steps.length ? `<button class="bul-n" data-bul="${esc(gk)}" data-open="${opened ? 1 : 0}" aria-expanded="${opened}">${gbad ? `<span class="bul-bad">${gbad} failed · </span>` : ""}${many(g.steps.length, "step")} ${opened ? "⌄" : "›"}</button>` : "";
+    const run = running && !opened ? `<div class="bul-run"><span class="dot-live"></span><span class="bul-cmd">${esc(running.verb)}${running.subject ? ` <span class="${running.mono ? "mono" : ""}">${esc(running.subject)}</span>` : ""}</span><span class="dim">· <span data-ago="${running.at_ms}">${ago(running.at_ms)}</span></span></div>` : "";
+    const rowsHtml = opened && g.steps.length ? `<div class="stx-steps">${g.steps.map((x) => stepLine(sid, x, false)).join("")}</div>` : "";
+    return `<div class="bul-row ${isNow ? "now" : "done"}${gbad ? " fail" : ""}${opened ? " open" : ""}" data-key="g:${esc(gk)}"><div class="bul-c">${time}<span class="bul-m">${marks}</span></div><i class="bul-dot"></i><div class="bul-b"><div class="bul-l"><div class="bul-x msg">${text}</div>${count}</div>${run}${rowsHtml}</div></div>`;
+  }).join("");
+  return `<div class="stx bul" data-key="${esc(bk)}">${head}${rows}${fold}</div>`;
 }
 /** Whether a turn's steps are open: your choice, else open for the newest turn (`fresh`), or every turn with
  *  Settings → Steps "Everything"; "Hidden" draws none. */

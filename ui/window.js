@@ -375,7 +375,10 @@ async function loadDrafts() {
 let untilNext = null;   // the moment a countdown's shown number next changes
 /** The live "what it's doing · 3s" counts, every second, without redrawing everything. Both windows tick it (app.js,
  *  mini.js). */
+/** "4:12": minutes and seconds since a turn started, on a bullet's clock (chat/render.js bulletsBlock). */
+const clockText = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 function tickAges() {
+  document.querySelectorAll("[data-clock]").forEach((el) => { const t = clockText(now() - +el.dataset.clock); if (el.textContent !== t) el.textContent = t; });
   // Only where the words changed: setting the same text still swaps the node, so a row kept in place (#480) would change.
   document.querySelectorAll("[data-ago]").forEach((el) => { const t = ago(+el.dataset.ago); if (el.textContent !== t) el.textContent = t; });
   let coldDone = false;

@@ -178,7 +178,9 @@ const MESSAGE_CLICKS = [
 ];
 
 const CHAT_FOOT_CLICKS = [
-  rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); renderMain(); wantDetails(k.split("|")[0]); }),
+  // A bullet's "N steps ›" (Settings → Chat → Bullets with a clock): its steps open under it, or close.
+  rule("[data-bul]", (b) => { bulletOpen.set(b.dataset.bul, b.dataset.open !== "1"); renderMain(); }),
+  rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); for (const b of [...bulletOpen.keys()]) if (b.startsWith(`${k}|`)) bulletOpen.delete(b); renderMain(); wantDetails(k.split("|")[0]); }),
   rule("[data-agent-brief]", (ab) => { flipIn(agentBriefOpen, ab.dataset.agentBrief); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),
   rule("[data-follow]", (fo) => { flipIn(openFollow, fo.dataset.follow); renderMain(); }),
