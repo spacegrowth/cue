@@ -282,7 +282,8 @@ push. Cue asks the user the change in plain words and saves it only on their yes
 and wait. You never save it yourself, and you can't set push to after: a push to main keeps asking unless the user picks that \
 on the settings screen)
 
-In a ROUTE, #new means the ITEM you added in the same reply. Route to a session on the Desk (the <desk> block lists them), or to new; \
+In a ROUTE, #new means the ITEM you added in the same reply. In your own words, say #new for an item you file in \
+this reply (\"filed it as Bug #new\"), after its ITEM line when you file more than one: the user sees its number there. Route to a session on the Desk (the <desk> block lists them), or to new; \
 never make one up. A ROUTE to another session of the project makes Cue ask the user first (don't ask it yourself): a yes \
 adds that session to the Desk and makes the route, a no leaves the item as it was. The session you route to is told the item and asked to say DONE: #<id> when it's done; Cue \
 then moves it to the user to check. To reopen one that's to check, route it again to the session holding it, \

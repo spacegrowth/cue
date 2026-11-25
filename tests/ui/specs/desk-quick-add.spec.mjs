@@ -300,6 +300,31 @@ test("a hand-off to a new session names that session once Cue has started it, an
   await expect(last.locator(".dk-ln").first().locator(".mg-who")).toHaveText("web-lead");
 });
 
+test("the lead's words say the number of each item it files, where it wrote #new (#934)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await openDesk(page);
+  const say = (text) => page.evaluate((t) => { sessionOf("lead").thread.push({ at_ms: Date.now(), role: "agent", text: t }); renderMain(); }, text);
+  const words = page.locator(".dk-chat .cv-agent").last().locator(".cv-text");
+  await say(["Filed it as Bug #new; the footer one is #new too.", "", "ITEM: bug | Header jumps | done when: it stays put", "ROUTE: #new -> new | why: no one has it",
+    "ITEM: task | Footer gap | done when: none", "Then #new waits on nothing."].join("\n"));
+  // Not numbered yet: as the lead wrote it.
+  await expect(words).toContainText("Filed it as Bug #new");
+  await page.evaluate(() => {
+    const d = state.desk.projects.find((p) => p.project === "cue");
+    d.items.push({ id: "q7", project: "cue", kind: "bug", title: "Header jumps", state: "working", created: Date.now(), updated: Date.now() });
+    d.items.push({ id: "q8", project: "cue", kind: "task", title: "Footer gap", state: "todo", created: Date.now(), updated: Date.now() });
+    renderMain();
+  });
+  // Words above the ITEM lines are the first item; words under an ITEM line are that one.
+  await expect(words).toContainText("Filed it as Bug #q7; the footer one is #q7 too.");
+  await expect(words).toContainText("Then #q8 waits on nothing.");
+  await expect(words).not.toContainText("#new");
+  await expect(words.locator("a.dk-ref").first()).toHaveText("Bug #q7");
+  // Its ROUTE line is that item too.
+  const l = (await deskActivityOpen(page)).locator(".dk-ln");
+  await expect(l.filter({ hasText: "Gave" }).first().locator(".mg-lh")).toHaveText("Gave Bug #q7 to a new session");
+});
+
 test("a reply of only routing lines is short lines at the left: TITLE and ROUTE, its title and why on a click (#157)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);

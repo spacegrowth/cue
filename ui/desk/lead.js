@@ -525,7 +525,7 @@ function deskLineItem(k) {
   const first = p[0].toLowerCase();
   const kind = DESK_KINDS.includes(first) ? first : "";
   const rest = kind ? p.slice(1) : p;
-  const title = rest.find((s) => lab(s, "done when") === null && deskSeeOf(s) === null && !/^why\s*:/i.test(s)) || "";
+  const title = deskItemTitle(p);
   if (!title) return "";
   deskSaidItem = title;
   // What you'll see (#382); its done when is the session's check, not shown.
@@ -533,6 +533,34 @@ function deskLineItem(k) {
   const it = deskNewlySaid(title);
   const what = it ? ref(it.id, it) : kind ? `a ${kind}` : "";
   return ln(`<span class="mg-v">Added</span> ${what ? `${what}: ` : ""}${inline(title)}`, see ? `You'll see ${inline(see)}` : "");
+}
+/** An ITEM line's title, from its parts (split at "|"): the first that isn't its kind, you'll see, done when or why. */
+function deskItemTitle(p) {
+  const rest = DESK_KINDS.includes((p[0] || "").toLowerCase()) ? p.slice(1) : p;
+  return rest.find((s) => !/^done when\s*:/i.test(s) && deskSeeOf(s) === null && !/^why\s*:/i.test(s)) || "";
+}
+/** Reply `text` with each "#new" as the number Cue gave the item it means (#934), so "filed it as Bug #new" reads
+ *  "filed it as Bug #933", and a ROUTE, START or FEATURE line's #new is that item too: the ITEM line nearest above it,
+ *  as parse.rs reads #new (the reply's first ITEM, for words above them all). Left as it is until the Desk has the item,
+ *  and in a reply with no ITEM line. */
+function deskFillNew(text) {
+  const t = String(text ?? "");
+  if (!/#new\b/i.test(t)) return t;
+  const lines = t.split("\n");
+  const ids = lines.map((l) => {
+    const m = /^[-*+ ]*\**ITEM\**\s*:(.*)$/.exec(l.trim());
+    if (!m) return null;
+    const body = m[1].trim().replace(/^\*\*/, "").trim().replace(/\*+$/, "").trim();
+    return body && !body.startsWith("<") ? deskNewlySaid(deskItemTitle(body.split("|").map((x) => x.trim())))?.id || "" : null;
+  });
+  const first = ids.find((x) => x !== null);
+  if (first === undefined) return t;
+  let above = null;
+  return lines.map((l, i) => {
+    if (ids[i] !== null) above = ids[i];
+    const id = above ?? first;
+    return id ? l.replace(/#new\b/gi, `#${id}`) : l;
+  }).join("\n");
 }
 /** A SEE line (deskLineHtml): "Said what you'll see for Bug #12". */
 function deskLineSee(k) {

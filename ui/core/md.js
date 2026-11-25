@@ -163,6 +163,8 @@ function md(text, { runIn = null, pathsOf = null, doc = false, lines = null, run
   // whose paths these are, with no Run on its commands (the mini window).
   const base = sessBase(runIn || pathsOf);
   const inline = (s) => { const h = linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base); return refs ? refs(h) : h; };
+  // A Desk reply's "#new" as the number of the item it filed (desk/lead.js deskFillNew, #934).
+  if (!doc && typeof deskFillNew === "function") text = deskFillNew(text);
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {
     if (i % 2 === 1) {
