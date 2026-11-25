@@ -119,10 +119,22 @@ function deskChatRows(s, page) {
   // A lead's chat: its Desk lines out, a count line for each run of them (desk/runs.js, #688), and Cue's notes as its
   // short lines (#616) wherever it shows, so one message is drawn one way. Any other session's chat draws its lines
   // for Cue as every chat does (core/md.js cueLineHook, #833): left out, IF PICKED one quiet line, DESIGNS a button.
+  return any ? chatHtml(null, s, s.harness || "claude", true, { ...deskChatPage(sid), ...page }) : "";
+}
+/** How session `sid`'s chat is drawn wherever it shows, on the Desk or the Board (#872): Cue's messages to it and its
+ *  Desk lines go only to Activity (#789); a lead's own lines are its short lines. Item numbers and session names are
+ *  links in all of them (#832), and Send to… is on every one, the lead's too (#854). chat/render.js chatHtml's `page`. */
+function deskChatPage(sid) {
   const lead = (state.desk?.projects || []).some((x) => deskLead(x)?.sid === sid);
-  // Every Desk chat (#789): Cue's messages to it and its Desk lines go only to Activity. Item numbers and session names
-  // are links in all of them (#832), and Send to… is on every one, the lead's too (#854).
-  return any ? chatHtml(null, s, s.harness || "claude", true, { lines: lead ? deskLineHtml : undefined, refs: deskRefs, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead, ...page }) : "";
+  return { lines: lead ? deskLineHtml : undefined, refs: deskRefs, dkOut: true, you: lead ? deskLeadNote : deskCueNote, youHead: deskAboutHead };
+}
+/** Session `sid`'s Activity, newest first, as its Activity tab lists it on the Desk and the Board (#872): its Desk's
+ *  moves about it and the lines out of its chat (deskActivity's rows), or, a session on no Desk, the lines out of its
+ *  chat alone. */
+function deskSessActivity(sid, d = deskForSession(sid)) {
+  const rows = d ? deskActivity(d).filter((r) => r.line?.sid === sid || r.x?.sid === sid) : [];
+  if (rows.some((r) => r.line)) return rows;
+  return rows.concat(dkActivityOf(sid).filter((r) => !/^act:/.test(r.key) && r.at > (d?.moves_cleared || 0)).map((r) => ({ at: r.at, line: r }))).sort((a, b) => b.at - a.at);
 }
 /** For ↑ ↓ in a Desk's box (chat/compose.js recallSent): the session it goes to ({ s, said }: your words as its chat
  *  shows them), the lead's for the lead's box; null for a box of no session's. */

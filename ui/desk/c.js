@@ -663,7 +663,7 @@ function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
   const t = (k, label) => `<button class="dkn-stab${tab === k ? " on" : ""}" role="tab" aria-selected="${tab === k}" data-desk-c-stab="${k}" data-sid="${esc(sid)}">${label}</button>`;
   // Activity (#789): the Desk's moves on the item open here (or, a session opened on its own, those in its chat and
   // Cue's messages to it), which its chat no longer shows.
-  const acts = tab === "activity" ? (item ? deskItemActivity(d, item) : deskActivity(d).filter((r) => r.line?.sid === sid || r.x?.sid === sid)) : null;
+  const acts = tab === "activity" ? (item ? deskItemActivity(d, item) : deskSessActivity(sid, d)) : null;
   const tabs = `<div class="dkn-stabs" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}${t("activity", "Activity")}</div>`;
   let main;
   if (tab === "activity") main = `<div class="dk-pane dk-moves dkn-sact" data-scroll-key="sact:${esc(sid)}:${esc(item?.id || "")}">${acts.length ? acts.map((r) => deskActRowHtml(r, d)).join("") : `<div class="dk-quiet">Nothing yet.</div>`}</div>`;

@@ -105,12 +105,13 @@ function chatBody(it, s, harness, sid, page = null) {
   return chatHtml(it, s, harness, true, page) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status");
 }
 /** The chat area: the full view in its place, or the chat's body (with `crew.extra`, the crew's page's rows placed in
- *  it by time: chatHtml's `page`). */
+ *  it by time: chatHtml's `page`). Drawn as the Desk draws it (desk/page.js deskChatPage, #872): what you and the AI
+ *  wrote; Cue's messages are in the Activity tab beside Chat (background.js). */
 function activeChat(a, full, crew = null) {
   const { it, s, sid, harness } = a;
   // The add-on's page on the crew page's left (team_page.js crewLeftOf): in the chat's place, scrolling inside itself.
   if (crew?.page) return `<div class="ap-chat cp-addon-left" data-scroll-key="cpx:${esc(crew.page.key)}">${crew.page.html}</div>`;
-  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid, { refs: deskRefs, ...(crew ? { extra: crew.extra } : {}) }));
+  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid, { ...(sid ? deskChatPage(sid) : { refs: deskRefs }), ...(crew ? { extra: crew.extra } : {}) }));
 }
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs
