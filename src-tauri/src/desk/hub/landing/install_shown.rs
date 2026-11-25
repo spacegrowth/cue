@@ -50,7 +50,8 @@ fn began_of(tag: &str, step: &str, at: u64) -> u64 {
     if step == "building" {
         return at;
     }
-    tag.rsplit('-').next().and_then(|t| t.parse::<u64>().ok()).filter(|t| *t > 0 && *t <= at).unwrap_or(at)
+    // Only a time in ms (a tag's own number, e.g. an item's in "lead-install-854", isn't one).
+    tag.rsplit('-').next().and_then(|t| t.parse::<u64>().ok()).filter(|t| *t > 1_000_000_000_000 && *t <= at).unwrap_or(at)
 }
 
 impl Hub {
@@ -98,6 +99,60 @@ impl Hub {
         });
         if changed {
             self.changed();
+        }
+        self.desk_install_ended();
+    }
+
+    /// An install that ended (installed, failed, rolled back) leaves the Desk's top for its Activity: one move a Desk,
+    /// said once (a restart reads the same status again), on the Desk it was for, or every Desk on Cue's own folder
+    /// for one Cue didn't start (./install.sh). One that ended over a day ago is old news and isn't added.
+    fn desk_install_ended(&self) {
+        let Some(v) = self.read(|st| st.desk.run.install_shown.clone()) else { return };
+        let (step, at) = (v["step"].as_str().unwrap_or_default().to_string(), v["at"].as_u64().unwrap_or(0));
+        let now = now_ms();
+        if !(step == "installed" || stopped_install(&step)) || at == 0 || now.saturating_sub(at) > 24 * 3_600_000 {
+            return;
+        }
+        let project = v["project"].as_str().unwrap_or_default().to_string();
+        let projects: Vec<String> = if project.is_empty() {
+            // Read off the store: the folder check reads files.
+            let spaces: Vec<(String, String)> = self.read(|st| st.desk.spaces.values().map(|d| (d.project.clone(), d.folder.clone())).collect());
+            spaces.into_iter().filter(|(_, f)| crate::desk::hub::lead::checks::builds_this_cue(f)).map(|(p, _)| p).collect()
+        } else {
+            vec![project]
+        };
+        let items: Vec<String> = v["items"].as_array().map(|a| a.iter().filter_map(|i| i.as_str()).map(|i| format!("#{i}")).collect()).unwrap_or_default();
+        let with = if items.is_empty() { String::new() } else { format!(" with {}", items.join(", ")) };
+        let commit: String = v["commit"].as_str().unwrap_or_default().chars().take(7).collect();
+        let took = at.saturating_sub(v["began"].as_u64().unwrap_or(at)) / 60_000;
+        let (text, why) = if step == "installed" {
+            (format!("Cue updated to {commit}{with}"), if took > 0 { format!("took {took}m") } else { String::new() })
+        } else {
+            let at_step = match v["failed_step"].as_str().unwrap_or_default() {
+                "installing" => " at install",
+                "starting" => " at restart",
+                "building" => " at build",
+                _ => "",
+            };
+            let last = v["log"].as_str().unwrap_or_default().trim_end().lines().last().unwrap_or_default().to_string();
+            (format!("Cue update{with} failed{at_step}"), last)
+        };
+        let secs_at = crate::desk::hub::core::desk::secs(at);
+        let fx = self.write(|st| {
+            let mut fx = crate::desk::hub::core::desk::Effects::default();
+            for p in &projects {
+                if st.desk.decisions.iter().any(|d| d.act == "install" && d.project == *p && d.at == secs_at) {
+                    continue;
+                }
+                crate::desk::hub::turn::route::decide(st, p, None, "Cue", "", &text, &why, at, &mut fx);
+                if let Some(d) = st.desk.decisions.last_mut() {
+                    (d.act, d.undo) = ("install".into(), "none".into());
+                }
+            }
+            fx
+        });
+        if !fx.decisions.is_empty() {
+            self.desk_done(fx);
         }
     }
 

@@ -176,18 +176,14 @@ function bgWaitLine(it, s) {
   return "";
 }
 
-/** Cue updating itself (`state.desk.install`: built from main, swapped in, restarted), while it's worth showing:
- *  building, installing or restarting (`run`); installed, for 10 minutes after (`ok`); failed or rolled back, for an
- *  hour or till a newer one starts (`bad`). Null otherwise. */
+/** Cue updating itself (`state.desk.install`: built from main, swapped in, restarted), while it builds, installs or
+ *  restarts (`run`). Null otherwise: how it ended is in the Desk's Activity. */
 const CUE_INSTALL_STEPS = { building: "build", installing: "install", starting: "restart" };
 function cueInstallNow() {
   const x = state.desk?.install;
   if (!x?.step) return null;
-  const age = now() - (x.at || 0);
-  if (x.step in CUE_INSTALL_STEPS) return { ...x, run: true };
-  if (x.step === "installed") return age < 10 * 60000 ? { ...x, ok: true } : null;
-  if (x.step === "failed" || x.step === "rolled_back") return age < 3600000 ? { ...x, bad: true } : null;
-  return null;
+  // Only while it runs: once it's installed or failed it's a row of the Desk's Activity instead (#867).
+  return x.step in CUE_INSTALL_STEPS ? { ...x, run: true } : null;
 }
 /** The update as session `sid` shows it: only a Desk lead's (its pill, its tray, its status line). */
 function cueInstallFor(sid) {
