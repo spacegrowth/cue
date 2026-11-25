@@ -264,21 +264,20 @@ function deskGivePlace() {
   m.style.left = `${Math.max(L + pad, Math.min(want, R - pad - w))}px`;
   if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
   m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
-  deskRowMorePlace(m, b, r, w, h, L, pad);
+  deskRowMoreClear(m, b, r, pad);
   m.scrollTop = top;   // measuring it unscrolled dropped where you'd scrolled it to (#308)
 }
-/** A row's ⋯ menu in the item card (#839): never over a Now word, its own row's or a neighbour's (lying on the next
- *  row's "Ready to check" it read as that word turning into "Start now"). Under its ⋯ when there's room, else over it;
- *  sideways, clear of the Now column: its right edge at that column's left. Narrow, where Now sits under the title at
- *  the left, it opens at the ⋯'s right edge. Up next's rows have no Now column: placed as any ⋯ menu. */
-function deskRowMorePlace(m, b, r, w, h, L, pad) {
-  const now = b.closest(".dkn-row")?.querySelector(":scope > .dkn-now")?.getBoundingClientRect();
-  if (!now) return;
-  const right = now.top < r.bottom && now.bottom > r.top ? now.left - 8 : r.right;
-  m.style.left = `${Math.max(L + pad, right - w)}px`;
-  const below = innerHeight - r.bottom - 4 - pad, above = r.top - 4 - pad, up = h > below && above > below, room = up ? above : below;
-  if (h > room) Object.assign(m.style, { maxHeight: `${room}px`, overflowY: "auto" });
-  m.style.top = `${up ? r.top - 4 - Math.min(h, room) : r.bottom + 4}px`;
+/** A row's ⋯ menu in the item card (#839, #896): never over its own row's sentence (lying on it, it read as that
+ *  sentence turning into "Start now"). Narrow, where the ⋯ sits at the row's top right over the sentence's line, it
+ *  opens under the sentence when there's room, else over the ⋯. */
+function deskRowMoreClear(m, b, r, pad) {
+  const fl = b.closest(".dkn-row")?.querySelector(".dkn-t > .dkn-fl")?.getBoundingClientRect();
+  if (!fl) return;
+  const mb = m.getBoundingClientRect();
+  if (!(mb.left < fl.right && mb.right > fl.left && mb.top < fl.bottom && mb.bottom > fl.top)) return;
+  const h = mb.height;
+  if (innerHeight - fl.bottom - 4 - pad >= h) m.style.top = `${fl.bottom + 4}px`;
+  else if (r.top - 4 - pad >= h) m.style.top = `${r.top - 4 - h}px`;
 }
 addEventListener("scroll", (e) => { if (deskGiveFor && !e.target?.closest?.(".dk-givemenu")) deskGivePlace(); }, true);
 addEventListener("resize", () => { if (deskGiveFor) deskGivePlace(); });

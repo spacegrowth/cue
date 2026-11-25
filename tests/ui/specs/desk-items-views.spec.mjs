@@ -32,10 +32,10 @@ test("no List | Cards switch and no Strip | Line switch: Strip on every row, kep
   await expect(card(page).locator(".dkn-row .dkn-tline")).toHaveCount(0);
 });
 
-test("with no switch, the card's head over the rows reads Item, Progress, Now, and every row has its strip", async ({ page, cue }) => {
+test("with no switch, the card's head over the rows reads Item and now, and Progress, and every row has its strip", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
-  await expect(card(page).locator(".dkn-th > span")).toHaveText(["Item", "Progress", "Now"]);
+  await expect(card(page).locator(".dkn-th > span")).toHaveText(["Item and now", "Progress", ""]);
   const rows = card(page).locator(".dkn-row[data-desk-item]");
   const n = await rows.count();
   expect(n).toBeGreaterThan(0);
@@ -101,11 +101,9 @@ test("a row opens its item, lit in place, and back goes to the lead's chat", asy
   // In the middle, left of Items, which stays where it is; the row lit in the same place.
   expect((await sp.boundingBox()).x).toBeLessThan((await items(page).boundingBox()).x);
   await expect(row).toHaveClass(/\bon\b/);
-  // Lit in the same place: only its full line opens under it (#810 option C), so it grows downward, nothing above moves.
+  // Lit in the same place and size: its sentence is always under its title (#896), so nothing opens under it.
   const after = await row.boundingBox();
-  expect({ x: after.x, y: after.y, width: after.width }).toEqual({ x: before.x, y: before.y, width: before.width });
-  await expect(row.locator(".dkn-xl")).toBeVisible();
-  expect(after.height).toBeGreaterThan(before.height);
+  expect(after).toEqual(before);
   // A row in Up next opens its item too.
   await box(page, "next").locator('[data-desk-item="d4"]').click();
   await expect(page.locator(".dk-c > .dk-right .dkn-sp .dkn-smeta")).toContainText("#d4");

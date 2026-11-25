@@ -89,22 +89,22 @@ test("Items: a row per item with its strip, the step it's at striped; ready to c
   const bg = await d2.locator(".dkn-kp.cur i").evaluate((el) => getComputedStyle(el).backgroundImage);
   expect(bg).toContain("repeating-linear-gradient");
   // No number column: the title on top, the kind's icon and number at the head of the line under it (#744).
-  await expect(card.locator(".dkn-th > span")).toHaveText(["Item", "Progress", "Now"]);
+  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "Progress", ""]);
   expect(await d2.evaluate((el) => el.firstElementChild.className)).toBe("dkn-t");
   await expect(d2.locator(".dkn-tt")).toHaveText("Quick phrases at the right of Send");
   await expect(d2.locator(".dkn-sub")).toHaveText("#d2 · web-lead");
   await expect(d2.locator(".dkn-sub > .dkn-id:first-child .dkn-k")).toHaveAttribute("aria-label", "feature");
   await expect(card.locator('.dkn-row[data-desk-item="d1"] .dkn-sub .dkn-k')).toHaveAttribute("aria-label", "bug");
   await expect(card.locator(".dkn-row")).not.toContainText([/\b(Bug|Feature|Task)\b/]);
-  // Now, right-aligned in its 136px: ready to check is the words and a round ✓; asking, just red words.
-  const now = d2.locator(".dkn-now");
-  expect(await now.evaluate((el) => [Math.round(el.getBoundingClientRect().width), getComputedStyle(el).justifyContent])).toEqual([136, "flex-end"]);
-  await expect(now.locator(".dkn-nw")).toHaveText("Ready to check");
+  // No Now column (#896): the sentence under the title; ready to check is its words and a round ✓; asking, red words.
+  await expect(card.locator(".dkn-now")).toHaveCount(0);
+  const now = d2.locator(".dkn-t > .dkn-fl");
+  await expect(now.locator(".dkn-full")).toHaveText(/^Ready to check/);
   await expect(now.locator('.dk-ok[data-desk-act="looks_right"]')).toHaveAttribute("aria-label", "Looks right");
-  const ask = card.locator('.dkn-row[data-desk-item="d1"] .dkn-now');
-  await expect(ask).toHaveText("Asks you");
-  await expect(ask.locator(".dkn-nask")).toHaveCSS("color", await page.evaluate(() => { const p = document.createElement("i"); p.style.color = "var(--deny)"; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }));
-  await expect(card.locator("[data-desk-chk-item], .dkn-now .btn")).toHaveCount(0);
+  const ask = card.locator('.dkn-row[data-desk-item="d1"] .dkn-full');
+  await expect(ask).toHaveText(/^Asks: /);
+  await expect(ask).toHaveCSS("color", await page.evaluate(() => { const p = document.createElement("i"); p.style.color = "var(--deny)"; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }));
+  await expect(card.locator("[data-desk-chk-item], .dkn-fl .btn")).toHaveCount(0);
   await expect(card).not.toContainText(/Choose…|\bCheck\b/);
   // The row opens it: its session's chat.
   await card.locator('.dkn-row[data-desk-item="d1"] .dkn-tt').click();
@@ -400,19 +400,18 @@ test("a laptop's window: the sessions a strip, Items never under 520; the smalle
   await expect.poll(() => w(".dk-c > .dkn-side")).toBe(64);
   // The cards redraw once they've measured themselves after a resize.
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(900);
-  // Narrow, the strip goes on its own line under the title, Now under it.
+  // Narrow, the strip goes on its own line under the title, its sentence and #id line.
   const box = (q) => page.locator(`.dkn-row[data-desk-item="d1"] ${q}`).boundingBox();
-  const [t, k, n] = await Promise.all([box(".dkn-t"), box(".dkn-ks"), box(".dkn-now")]);
+  const [t, k] = await Promise.all([box(".dkn-t"), box(".dkn-ks")]);
   expect(k.y).toBeGreaterThanOrEqual(t.y + t.height);
-  expect(n.y).toBeGreaterThanOrEqual(k.y + k.height);
 });
 
 test("progress: a strip on every row, no switch; each piece as long as its step took, its time under it", async ({ page, cue }) => {
   await open(page, cue);
   await stampSteps(page);
-  // Strip is the one view: no Strip · Line switch, no line along a row's foot; Item, Progress and Now over the rows.
+  // Strip is the one view: no Strip · Line switch, no line along a row's foot; Item and now, and Progress over the rows.
   await expect(page.locator(".dkn-ih .dkn-lsw, .dkn-ih [data-desk-c-line]")).toHaveCount(0);
-  await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item", "Progress", "Now"]);
+  await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item and now", "Progress", ""]);
   await expect(page.locator(".dkn-card .dkn-tline")).toHaveCount(0);
   const d3 = page.locator('.dkn-card .dkn-row[data-desk-item="d3"]');
   // At its tests: 2m picked up, 21m building, 12m so far at tests (bold), three stubs to come.

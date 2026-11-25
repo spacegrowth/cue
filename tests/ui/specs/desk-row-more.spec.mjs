@@ -88,15 +88,15 @@ test("Waiting on you, Working, Up next and Parked: Start now and Park wherever n
 test("the ⋯ shows as you point at a row and stays on the open one, and showing it moves nothing", async ({ page, cue }) => {
   await open(page, cue);
   await page.mouse.move(2, 2);
-  const now = row(page, "d3").locator(".dkn-now"), title = row(page, "d3").locator(".dkn-tt");
+  const now = row(page, "d3").locator(".dkn-full"), title = row(page, "d3").locator(".dkn-tt");
   const before = [await now.boundingBox(), await title.boundingBox()];
   await expect.poll(() => shown(dots(page, "d3"))).toBe("0");
   await row(page, "d3").hover();
   await expect.poll(() => shown(dots(page, "d3"))).toBe("1");
   expect([await now.boundingBox(), await title.boundingBox()]).toEqual(before);
-  // At the row's right end, past its Now column.
-  const b = await dots(page, "d3").boundingBox(), r = await row(page, "d3").boundingBox();
-  expect(b.x).toBeGreaterThanOrEqual(before[0].x + before[0].width);
+  // At the row's right end, past its strip.
+  const b = await dots(page, "d3").boundingBox(), r = await row(page, "d3").boundingBox(), strip = await row(page, "d3").locator(".dkn-ks").boundingBox();
+  expect(b.x).toBeGreaterThanOrEqual(strip.x + strip.width);
   expect(b.x + b.width).toBeLessThanOrEqual(r.x + r.width);
   // Up next keeps room for it beside the drag grip.
   await row(page, "d4").hover();
@@ -129,17 +129,18 @@ for (const [name, size] of [["laptop", LAPTOP], ["the smallest window", SMALLEST
         expect(b.y).toBeGreaterThanOrEqual(r.y);
         expect(b.y + b.height).toBeLessThanOrEqual(r.y + r.height + 0.5);
       }
-      // In the card, a row's open menu lies over no Now word, its own or another row's, and each still says what it did
-      // ("Ready to check" never reads as "Start now").
-      const words = () => page.locator(".dkn-card .dkn-row[data-desk-item] .dkn-now").allTextContents();
+      // In the card, a row's open menu lies over no row's sentence (the smallest window, where each sentence spans its
+      // row and the menu must lie over the rows under it: not its own row's), and each still says what it did ("Ready to
+      // check" never reads as "Start now").
+      const words = () => page.locator(".dkn-card .dkn-row[data-desk-item] .dkn-fl").allTextContents();
       const said = await words();
       expect(said.join(" ")).toContain("Ready to check");
       for (const id of ["d1", "d2", "d3", "d5"]) {
         await row(page, id).hover();
         await dots(page, id).click();
         const mb = await menu(page).boundingBox();
-        const over = await page.locator(".dkn-card .dkn-row .dkn-now > *").evaluateAll((els, b) => els.map((e) => e.getBoundingClientRect()).filter((r) => r.width && r.left < b.x + b.width && r.right > b.x && r.top < b.y + b.height && r.bottom > b.y).length, mb);
-        expect(over, `${id}'s menu lies over a Now word`).toBe(0);
+        const over = await page.locator(size === SMALLEST ? `.dkn-card .dkn-row[data-desk-item="${id}"] .dkn-fl > *` : ".dkn-card .dkn-row .dkn-fl > *").evaluateAll((els, b) => els.map((e) => e.getBoundingClientRect()).filter((r) => r.width && r.left < b.x + b.width && r.right > b.x && r.top < b.y + b.height && r.bottom > b.y).length, mb);
+        expect(over, `${id}'s menu lies over a row's sentence`).toBe(0);
         // Under its ⋯ when there's room, else over it.
         const bb = await dots(page, id).boundingBox(), vh = page.viewportSize().height;
         if (vh - (bb.y + bb.height) - 12 >= mb.height) expect(mb.y).toBeGreaterThanOrEqual(bb.y + bb.height);

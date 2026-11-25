@@ -134,7 +134,7 @@
 .dkn-wmore { display: block; padding: 4px 16px 8px; border-top: 0; }
 /* Strip (K, #751): Item, Progress (a 180px strip), Now. */
 /* A fourth narrow column, always kept, for the row's ⋯ (#839): it shows without moving anything in the row. */
-.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 136px 24px; gap: 0 12px; align-items: center; }
+.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 24px; gap: 0 12px; align-items: center; }
 .dkn-th { align-items: end; padding: 10px 8px 8px 16px; border-bottom: 1px solid var(--line); font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .dkn-th > span:last-child { text-align: right; }
 .dkn-gh { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer; padding: 18px 16px 4px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; }
@@ -144,18 +144,13 @@
 .dkn-row:hover { background: var(--panel-2); }
 .dkn-row.on { background: var(--sel); color: var(--on-sel); }
 .dkn-id { font: 600 var(--type-small)/var(--type-small-lh) var(--mono); color: inherit; white-space: nowrap; }
-.dkn-row.on:not(.dkn-b-blocked *) :is(.dkn-id, .dkn-sub, .dkn-kt, .dkn-nw) { color: var(--on-sel); }
+.dkn-row.on:not(.dkn-b-blocked *) :is(.dkn-id, .dkn-sub, .dkn-kt) { color: var(--on-sel); }
 .dkn-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .dkn-tt { font-weight: 600; font-size: var(--type-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-sub { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dkn-k { display: inline-flex; vertical-align: -2px; margin-right: 4px; }
 /* On a selected row the icon takes the row's text colour: the accent it has elsewhere is the selection's own fill. */
 :is(.dkn-row, .dkn-nx).on:not(.dkn-b-blocked *) .dk-kic { color: var(--on-sel); }
-.dkn-now { min-width: 0; font-size: var(--type-small); line-height: var(--type-small-lh); display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow: hidden; }
-.dkn-nw { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.dkn-nw.mono { font-family: var(--mono); }
-.dkn-nask { color: var(--deny); white-space: nowrap; }
-.dkn-now :is(.btn, .dk-ok) { flex: none; }
 /* Ticked (commit.js deskLooksSoon, #791): "Done · Undo" in its Now cell for a moment, the row otherwise as the rows
    round it are (no fill, no greying); nothing on it but Undo takes a click. */
 .dkn-row.soon { pointer-events: none; }
@@ -163,7 +158,6 @@
 /* Undo comes up under the pointer that ticked it: that mustn't fill the row as a hover. */
 .dkn-row.soon:not(.on):hover { background: none; }
 /* The ✓'s height in its Now cell whatever it says now, so the row doesn't change height before it folds. */
-.dkn-row.soon .dkn-now { min-height: 24px; }
 /* Then it folds shut, the rows under it sliding up as it does; Undo still works till it's shut. At once with reduced
    motion. */
 .dkn-row.dk-leave { box-sizing: border-box; overflow: hidden; animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
@@ -175,27 +169,17 @@
 /* No scroll anchoring while one folds: scrolled to the list's end, the browser's anchoring and the end coming up
    together moved the rows twice as far as the fold, down. Without it, the rows over it come down as it shuts. */
 .dkn-body:has(.dk-leave) { overflow-anchor: none; }
-.dkn-now .dk-soon { margin-left: 0; order: -1; }
-/* Stuck, stopped or quiet: amber, darkened toward the ink so small words still read (amber alone is 3.8:1 on white). */
-.dkn-nw.amber { color: color-mix(in srgb, var(--amber) 72%, var(--ink)); font-weight: 500; }
-/* The open row's full line (desk/c.js deskCFull, #810 option C): across the whole row under it, what it's doing in full,
-   what it waits on and what's next. Every row has it; only the open one shows it, so the rest keep their height. */
-.dkn-xl { display: none; grid-column: 1 / -1; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); gap: 4px 10px; align-items: baseline; flex-wrap: wrap; font-size: var(--type-small); line-height: var(--type-small-lh); min-width: 0; }
-.dkn-row.on .dkn-xl { display: flex; }
-.dkn-xl > b { font-weight: 600; color: var(--muted); flex: none; }
-.dkn-xs { min-width: 0; overflow-wrap: anywhere; }
-.dkn-xn { color: var(--muted); }
-.dkn-row.on:not(.dkn-b-blocked *) .dkn-xl { border-top-color: color-mix(in srgb, var(--on-sel) 25%, transparent); }
-.dkn-row.on:not(.dkn-b-blocked *) :is(.dkn-xl > b, .dkn-xn) { color: var(--on-sel); }
-/* The sentence look (#896, #810 option B, a Desk setting): no Now column; under each title what it's doing and what's
-   next, in full, up to two lines, between the title and its #id line; Ready to check keeps its ✓ beside it. */
-.dkn-sent :is(.dkn-th, .dkn-row) { grid-template-columns: minmax(130px, 1fr) 180px 24px; }
+/* The sentence under each title (#810 option B, #896): what it's doing and what's next, in full, up to two lines,
+   between the title and its #id line; Ready to check keeps its ✓ beside it. Stuck, stopped or quiet: amber, darkened
+   toward the ink so small words still read (amber alone is 3.8:1 on white). */
 .dkn-fl { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
 .dkn-full { min-width: 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .dkn-full.ask { color: var(--deny); font-weight: 600; }
 .dkn-full.amber { color: color-mix(in srgb, var(--amber) 72%, var(--ink)); font-weight: 500; }
 .dkn-full.ok { font-weight: 500; }
 .dkn-fl > :is(.dk-ok, .dk-soon) { flex: none; }
+/* Done · Undo takes the ✓'s height, so the row keeps its size (#791). */
+.dkn-row.soon .dkn-fl { min-height: 24px; align-items: center; }
 .dkn-fl > .dk-soon { margin-left: 0; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dkn-row.on:not(.dkn-b-blocked *) .dkn-full { color: var(--on-sel); }
 
@@ -229,14 +213,12 @@
 .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: dkn-zmarch .9s linear infinite; }
 @keyframes dkn-zmarch { to { background-position: 8.49px 0; } }
 @media (prefers-reduced-motion: reduce) { .dkn-kp.cur.live i, .dkn-d.work, .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: none; } }
-/* Narrow Items: no heading row; the strip goes on its own line under the title, Now under it. */
+/* Narrow Items: no heading row; the strip goes on its own line under the title and its sentence. */
 @container dkn (max-width: 620px) {
   .dkn-th { display: none; }
   .dkn-card .dkn-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding-right: 40px; }
   /* One column: the ⋯ goes to the row's top right corner, in the room kept for it. */
   .dkn-card .dkn-row > .dkn-rwrap { position: absolute; top: 10px; right: 8px; }
-  .dkn-now { justify-content: flex-start; align-items: flex-start; }
-  .dkn-now:has(.dkn-nw:empty) { display: none; }
 }
 
 /* ---------- Up next and Done today, side by side on the green ---------- */

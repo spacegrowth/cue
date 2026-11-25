@@ -115,7 +115,7 @@ fn from_config(c: &Value) -> Value {
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         "owner": { "names": c.pointer("/owner/names").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])) },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "look": c.pointer("/project/look").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -254,21 +254,6 @@ pub fn context_keep() -> usize {
 /// Sessions moved to another project in Cue (session id: project), shown under it in place of their folder's.
 /// The agent stays in its folder. Each project trimmed; an empty one is dropped (its folder's again).
 const MOVES_MAX: usize = 500;
-/// How each Desk's item list looks (#896): Desk → "sentence"; today's short words ("short", or anything else) are no
-/// setting and dropped.
-fn look(value: &Value) -> Result<Value, String> {
-    let mut out = serde_json::Map::new();
-    for (d, l) in value.as_object().ok_or("a Desk's look must be desk: look")? {
-        match l.as_str().ok_or("a look is text")? {
-            "sentence" if !d.is_empty() => {
-                out.insert(d.clone(), json!("sentence"));
-            }
-            "sentence" | "short" | "" => {}
-            other => return Err(format!("a Desk's item list looks short or sentence, not {other}")),
-        }
-    }
-    Ok(Value::Object(out))
-}
 fn moves(value: &Value) -> Result<Value, String> {
     let mut out = serde_json::Map::new();
     for (sid, p) in value.as_object().ok_or("moves must be session: project")? {
@@ -341,7 +326,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.look", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.rest_min"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.rest_min"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -372,7 +357,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     }
     match key {
         "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
-        "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.machine" | "project.model" | "project.look" | "project.asked" | "project.never" => checked_project(key, value),
+        "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.machine" | "project.model" | "project.asked" | "project.never" => checked_project(key, value),
         "insights.skills" | "quick.phrases" | "owner.names" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
@@ -434,8 +419,6 @@ fn checked_project(key: &str, value: Value) -> Result<Value, String> {
         "project.lands" => crate::desk::lands::checked(&value)?,
         // The model a Desk's new sessions start on (desk/model_pick.rs).
         "project.model" => crate::desk::model_pick::checked(&value)?,
-        // How each Desk's item list looks (#896): "sentence" (a sentence under each title) kept; today's look is none.
-        "project.look" => look(&value)?,
         // Where each Desk's new sessions start, and its clone's folder on each machine (desk/machine_pref.rs).
         "project.machine" => crate::desk::machine_pref::checked(&value)?,
         // Words never committed, per project (desk/hub/landing/commit.rs).

@@ -21,7 +21,7 @@ test("the How work lands steps show as one feature with its pieces under it (#28
   // Working (a piece is at work, B2 #666), with how many are done where it stands; its working piece isn't a row of its own.
   await expect(feat).toHaveCount(1);
   await expect(feat.locator(".dk-fp")).toHaveText("5 of 6 done");
-  await expect(feat.locator(".dkn-now .dk-fp")).toHaveCount(1);
+  await expect(feat.locator(".dkn-full .dk-fp")).toHaveCount(1);
   expect(await groupOf(page, "253f")).toBe("WORKING");
   await expect(page.locator('.dkn-items [data-desk-item="253"]')).toHaveCount(0);
   await expect(page.locator(".dkn-items .dk-it.pc")).toHaveCount(0);
