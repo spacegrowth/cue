@@ -99,6 +99,35 @@ test("a click on the Desk's card opens its lead's chat on the Board, ready to ty
   }
 });
 
+test("the Desk's card is picked out in place while its lead's chat is open, and lets go when another card opens (#918)", async ({ page, cue }) => {
+  await cue.open("desk");
+  await hostAsks(cue);
+  // A session of a project with no Desk, so it has a card of its own on the Board.
+  await cue.change((st) => {
+    const site = st.sessions.find((x) => x.session_id === "site");
+    st.sessions.push({ ...site, session_id: "solo", project: "solo", name: "solo", state: "idle", thread: [] });
+  });
+  await board(page);
+  const card = deskCard(page, "cue");
+  const other = page.locator('.sec-body .nrow[data-session="solo"], .sec-body [data-session="solo"]').first();
+  await other.click();
+  await expect(other).toHaveClass(/(^| )on( |$)/);
+  await expect(card).not.toHaveClass(/(^| )on( |$)/);
+  const at = () => card.evaluate((c) => [...c.parentElement.children].indexOf(c));
+  const before = await at();
+  const fill = () => card.evaluate((c) => getComputedStyle(c).backgroundColor);
+  const plain = await fill();
+  await card.locator(".nrow-who .proj").click();
+  await expect(card).toHaveClass(/(^| )on( |$)/);
+  expect(await fill()).not.toBe(plain);
+  expect(await at()).toBe(before);
+  await expect(other).not.toHaveClass(/(^| )on( |$)/);
+  // Another card opened: the highlight moves to it.
+  await other.click();
+  await expect(card).not.toHaveClass(/(^| )on( |$)/);
+  await expect(other).toHaveClass(/(^| )on( |$)/);
+});
+
 test("a Desk with nothing waiting is one line under Sessions that opens it; it comes back as a card when something waits (#825)", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st) => {

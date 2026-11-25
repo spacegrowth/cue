@@ -50,15 +50,16 @@ const dkwTag = (d) => `<span class="dkw-tag">${deskKindIcon("tray")}Desk · ${es
 /** "3 at work · 5 to check" (either left out at 0). */
 const dkwCounts = (w) => [w.atWork ? `<b>${w.atWork}</b> at work` : "", w.toCheck ? `<b>${w.toCheck}</b> to check` : ""].filter(Boolean).join(" · ");
 
-/** Desk `w.d`'s card in Waiting (`w` from deskWaitsOf). A click on it opens its lead's chat in the Board's chat pane (#850). */
+/** Desk `w.d`'s card in Waiting (`w` from deskWaitsOf). A click on it opens its lead's chat in the Board's chat pane (#850),
+ *  and while that chat is open the card is picked out in place as any open session's card is (#918). */
 function deskLeadCard(w, isOpen) {
   const d = w.d, lead = deskLead(d), s = lead ? sessionOf(lead.sid) : null;
   const [first, ...more] = w.asks;
   const rows = [...more.map((req) => ({ req })), ...w.items.map((item) => ({ item }))];
   const shown = rows.slice(0, DKW_ROWS), left = rows.length - shown.length;
   const who = `${s ? badge(s.harness) : ""}<span class="proj">${esc(lead ? deskLeadName(d) : deskName(d))}</span>${dkwTag(d)}`;
-  const counts = dkwCounts(w);
-  return `<div class="nrow dkw" data-dkw="${esc(d.project)}">`
+  const counts = dkwCounts(w), on = !!(lead?.sid && isOpen(lead.sid));
+  return `<div class="nrow dkw ${on ? "on" : ""}" data-dkw="${esc(d.project)}">`
     + `<div class="nrow-top"><span class="nrow-who">${who}</span><span class="nrow-side"><span class="age">${ago(w.at)}</span></span></div>`
     + (counts ? `<div class="dkw-cnt">${counts}</div>` : "")
     + `<div class="dkw-in"><div class="dkw-ih">Waits on you · ${w.n}</div>${first ? dkwAsk(w, first, isOpen(first.session_id)) : ""}${shown.map((r) => dkwRow(w, r)).join("")}`

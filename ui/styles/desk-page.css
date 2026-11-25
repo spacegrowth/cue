@@ -298,6 +298,14 @@
 .dkw-ask.on { background: var(--sel); color: var(--on-sel); }
 .dkw-ask.on .btn { background: transparent; color: var(--on-sel); border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); }
 .dkw-ask.on .btn.primary { background: var(--on-sel); color: var(--sel); border-color: var(--on-sel); }
+/* A Desk's card whose lead's chat is open (#918): the lime fill of an open card (cards.css .nrow.on), its words, rule and
+   rows in the fill's ink; an ask on it sits as a slightly darker box. */
+.dkw.on :is(.dkw-cnt, .dkw-ih, .dkw-st, .dkw-more) { color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
+.dkw.on :is(.dkw-cnt b, .dkw-ir, .dkw-more:hover, .dkw-st.ask) { color: var(--on-sel); }
+.dkw.on .dkw-in { border-top-color: color-mix(in srgb, var(--on-sel) 20%, transparent); }
+.dkw.on .dkw-ask { background: color-mix(in srgb, var(--on-sel) 8%, transparent); color: var(--on-sel); }
+.dkw.on .dkw-ask:not(.on) .dkw-from b { color: var(--on-sel); }
+.dkw.on .dkw-ask .dkw-from { color: color-mix(in srgb, var(--on-sel) 75%, transparent); }
 .dkw-ask.answering { opacity: 0.6; pointer-events: none; }
 .dkw-from { font-size: var(--type-small); line-height: 18px; color: var(--muted); }
 .dkw-ask.on .dkw-from { color: color-mix(in srgb, var(--on-sel) 75%, transparent); }
