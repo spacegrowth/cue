@@ -134,7 +134,7 @@ function bgFailedScripts(sid) {
   return helpersOf(sid).filter((h) => h.script && !helperRunning(h) && h.failed && !h.stopped && (h.finished_ms || h.last_ms || h.started_ms || 0) >= since);
 }
 /** Its pills, on a Board card and a Desk row: red "1 failed", "1 script" / "N scripts", "2 agents" (running only: they
- *  go when they're done), and on a Desk lead Cue's update ("updating Cue", red "update failed"). `button`: each opens
+ *  go when they're done). Never Cue's update: that's the Desk's own row (#891). `button`: each opens
  *  its session on that tab (a card); a Desk row is a button itself, so there they're plain. "" when it has none. */
 function bgPills(s, button = true) {
   if (!s?.session_id) return "";
@@ -142,9 +142,7 @@ function bgPills(s, button = true) {
   const pill = (text, tab, bad = false) => button && tab
     ? `<button class="bg-pill${bad ? " bad" : ""}" data-bg-open="${esc(sid)}" data-bg-open-tab="${tab}">${text}</button>`
     : `<span class="bg-pill${bad ? " bad" : ""}">${text}</span>`;
-  const x = cueInstallFor(sid);
-  if (x?.run) out.push(pill("updating Cue", ""));
-  else if (x?.bad) out.push(pill("update failed", "", true));
+  // Cue updating itself is no session's background work: it shows only in the Desk's own update row (#891).
   if (c.failed) out.push(pill("1 failed", "scripts", true));
   if (c.scripts) out.push(pill(`${c.scripts} script${c.scripts === 1 ? "" : "s"}`, "scripts"));
   if (c.agents) out.push(pill(`${c.agents} agent${c.agents === 1 ? "" : "s"}`, "agents"));
@@ -157,8 +155,7 @@ function bgFailShort(line) {
   return t.length > 40 ? t.slice(0, 40).replace(/\s+\S*$/, "") + "…" : t;
 }
 /** The status line of a session whose turn is over while its own work runs on (#867), "" otherwise: "Your turn ·
- *  npm test runs on · 4m" (live, from the script's start); a Desk lead while Cue updates itself: "Your turn ·
- *  Updating Cue runs on · 3m". Failed since its turn ended, nothing running: "Your turn · npm test failed · 2 of 412 ·
+ *  npm test runs on · 4m" (live, from the script's start). Failed since its turn ended, nothing running: "Your turn · npm test failed · 2 of 412 ·
  *  2:08pm", red, with the waiting stripe. Its background agents keep their own line ("Waiting on …"). */
 function bgWaitLine(it, s) {
   // Only for a turn that's simply over: a question or a permission it waits on keeps its own line.
@@ -166,12 +163,9 @@ function bgWaitLine(it, s) {
   const sid = s.session_id, tip = tipFor(it, s, "waiting");
   const live = (what, n, from) => `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Your turn · ${esc(what)} ${n > 1 ? "run" : "runs"} on</span>${from ? `<span class="dim"> · <span data-ago="${from}">${ago(from)}</span></span>` : ""}${tip}</div>`;
   const failed = (what, tail, at) => `<div class="mg-status cv-status"><i class="sw z live"></i><span class="cv-what">Your turn · <span class="bg-bad">${esc(what)} failed</span></span><span class="dim">${tail ? ` · ${esc(tail)}` : ""}${at ? ` · ${clockAt(at)}` : ""}</span>${tip}</div>`;
-  const x = cueInstallFor(sid);
-  if (x?.run) return live("Updating Cue", 1, x.began || x.at);
   const run = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms);
   const n = Math.max(run.length, +s.scripts || 0);
   if (n) return live(run[0] ? `${bgName(run[0])}${n > 1 ? ` and ${n - 1} more` : ""}` : `${n} script${n === 1 ? "" : "s"}`, n, run[0]?.started_ms || s.since_ms);
-  if (x?.bad) return failed("Updating Cue", "", x.at);
   if (bgCounts(s).failed) return failed(s.task_failed || bgFailedScripts(sid)[0]?.desc || "A script", bgFailShort(s.task_failed_line), s.task_failed_ms);
   return "";
 }
