@@ -382,17 +382,17 @@ function chatAgentHtml(c, e, n) {
       <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : fwdBtn(key, e.text, project, sid)}</div>${follow}</div>`;
 }
-/** "↗ Send to…" on an agent's words, a pill like Listen and Read, always shown, at the right end of their row (as on the Board): the one button every chat that talks to a session draws (#854): this chat's, the
+/** "↗ Send to…" on an agent's words, the one button every chat that talks to a session draws (#854): this chat's, the
  *  Board's, the Desk's item and session chats, a crew member's (helpers.js agentChatHtml) and a parked session's
  *  (parked.js). It keeps what it sends (fwdMsgs; `key` starts with the session's id and ":", so window.js keeps it
  *  while the session lasts), and a click opens the one menu (sheets.js forwardPop) over the same list of sessions. */
 function fwdBtn(key, text, from, fromSid) {
   fwdMsgs.set(key, { text: addOn.plain(text), from, fromSid });
-  return `<button class="mg-btn fwd-pill cv-fwd" data-fwd="${esc(key)}">${FWD_ICON}Send to…</button>`;
+  return `<button class="mg-btn cv-fwd" data-fwd="${esc(key)}">${FWD_ICON}Send to…</button>`;
 }
 /** Send to…'s icon, the Board's ↗ drawn as an icon like Listen's and Read's beside it: the one every chat's Send to
  *  shows (fwdBtn), never drawn anywhere else. */
-const FWD_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>`;
+const FWD_ICON = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>`;
 /** The head row over an agent's words (#501, messages.css .mg-h): "Claude Code · 6m ago", its machine beside the name. */
 const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentName(harness))}</span>${machTag(machine)} · ${ago(at)} ago`;
 /** Sent while it worked: kept in Cue till the turn ends (yours to take back, Edit or Esc; to drop, Cancel; or to send

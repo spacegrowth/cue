@@ -243,6 +243,8 @@ button.ins-n { cursor: pointer; }
 @media (max-width: 900px) { .itab-evidence, .itab-evidence.itab-wide, .itab-evidence.itab-pics, .itab-pairs { grid-template-columns: minmax(0, 1fr); } .itab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .itab-grid { grid-template-columns: minmax(0, 1fr); } .itab-claim { flex-direction: column; gap: 6px; } .itab-list { grid-template-columns: minmax(0, 1fr) auto auto; } .itab-list:has(.itab-row-bar) { grid-template-columns: minmax(0, 1fr) minmax(40px, 0.6fr) auto auto; } .itab-minor, .itab-ago { display: none; } }
 
+/* Send to… keeps the row's right end. */
+.cv-acts .cv-fwd { flex: none; margin-left: auto; }
 /* The Agents and Scripts tabs (background.js): each a list of rows like in the chat. */
 .bg-slot { flex: 1; min-height: 0; overflow-y: auto; }
 .bg-page { padding: 10px 16px 14px; display: flex; flex-direction: column; }

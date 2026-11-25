@@ -85,9 +85,9 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 /* Listen and Read under a reply keep their pill look from before #501 (#732): rounder, taller, the accent's ink on the
    second panel; the icons at their own sizes. Same text size as every other action. */
-.mg-btn:is(.ls-pill, .rd-pill, .fwd-pill) { height: 28px; padding: 0 12px; gap: 6px; border-radius: var(--radius-pill); background: var(--panel-2); color: var(--accent); }
-.mg-btn:is(.ls-pill, .rd-pill, .fwd-pill) svg { width: auto; height: auto; }
-.mg-btn:is(.ls-pill, .rd-pill, .fwd-pill):hover, .mg-btn:is(.ls-pill, .rd-pill, .fwd-pill).on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.mg-btn:is(.ls-pill, .rd-pill) { height: 28px; padding: 0 12px; gap: 6px; border-radius: var(--radius-pill); background: var(--panel-2); color: var(--accent); }
+.mg-btn:is(.ls-pill, .rd-pill) svg { width: auto; height: auto; }
+.mg-btn:is(.ls-pill, .rd-pill):hover, .mg-btn:is(.ls-pill, .rd-pill).on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 
 /* ---------- an ask: the same card, outlined all round ---------- */
 .mg.ask { background: var(--panel); border: 1px solid var(--deny); }
