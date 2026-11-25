@@ -262,7 +262,7 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   if (cue) return dk(cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, { st: "delivered", to: msgTo(s), at: msgTaken(e) }, reviewAt.get(n)));
   // Cue's own message to the session (a send-back, a reopen, a refusal…, #478): one short plain line, its full text
   // folded under it (desk/cue_said.js).
-  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: e.no_wake ? "it didn't wake for this" : "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
+  const cm = e.role === "you" && typeof cueMsgHtml === "function" && cueMsgHtml(e, s, `${sid}:${e.at_ms}:cue`, e.unsent ? { st: "failed", why: e.no_wake ? esc(noWakeWhy(e) || "it didn't wake for this") : "it may have run as a command, or still be in its box", to: msgTo(s) } : e.pending ? { ...(typedQueued(s) || { st: "sending" }), to: msgTo(s) } : { st: "delivered", to: msgTo(s), at: msgTaken(e) });
   if (cm) return dk(cm);
   // Any other message Cue sent it, marked Cue's by the hub as it went (#836): one quiet line of Cue's, never your bubble.
   return chatFrom(e) === "cue" && typeof cueQuietHtml === "function" ? dk(cueQuietHtml(e, s, `${sid}:${e.at_ms}:cueq`)) : "";
@@ -277,6 +277,17 @@ const sendAgainBtn = (attrs) => `<button class="q-now" ${attrs}>Send again</butt
 /** Your message (`text`) that session `sid` didn't wake for (#857): Try again wakes it once more; Send to a fresh session
  *  starts one in its place, from its last reply, with this message (the old one closes, Closed keeps it). */
 const noWakeActs = (sid, text) => sid ? `${sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(text)}"`).replace(">Send again<", ">Try again<")} <button class="q-now" data-act="fresh-send" data-sid="${esc(sid)}" data-text="${esc(text)}">Send to a fresh session</button>` : "";
+/** Why a session didn't wake for your message `e`, in plain words, from what Cue saw (its delivery record, #922): it
+ *  stopped before reading it, never picked it up in time, or couldn't be started (what starting it said). */
+function noWakeWhy(e) {
+  const d = [...(e.delivery || [])].reverse().find((x) => /it didn't wake: /.test(x.what || ""));
+  const why = d ? d.what.replace(/^.*it didn't wake: /, "").trim() : "";
+  const slow = why.match(/took nothing in (\d+)s/);
+  if (slow) return `it started but didn't pick up your message within ${slow[1]} seconds`;
+  const quit = why.match(/exited \((.*)\) before taking it/);
+  if (quit) return `it stopped (${quit[1]}) before reading your message`;
+  return why ? `it couldn't start: ${why}` : "";
+}
 /** Your message `e` (the `n`th) in chatHtml's thread: your bubble, with how it went. */
 function chatYouHtml(c, e, n) {
   const { it, s, page, original, sid } = c;
@@ -288,7 +299,7 @@ function chatYouHtml(c, e, n) {
   // hasn't seen it yet).
   const resend = sid ? sendAgainBtn(`data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(original[n].text)}"`) : "";
   // Cue started it again for this, and it ended or never took it (#857): said plainly, the message kept.
-  const m = e.unsent && e.no_wake ? { st: "failed", head: `${esc(msgTo(s) || "It")} didn't wake`, why: "your message is kept here", acts: noWakeActs(sid, original[n].text) }
+  const m = e.unsent && e.no_wake ? { st: "failed", head: `${esc(msgTo(s) || "It")} didn't wake`, why: [noWakeWhy(e), "your message is kept here"].filter(Boolean).map(esc).join(" · "), acts: noWakeActs(sid, original[n].text) }
     : e.unsent ? { st: "failed", why: "it may have run as a command, or still be in its box", acts: resend }
     : e.pending ? typedQueued(s) || { st: "sending", note: Date.now() - e.at_ms > 30_000 ? "Sending… · Cue hasn't seen it take this yet" : "" }
     : { st: queued ? "queued" : "delivered", at: msgTaken(e) };

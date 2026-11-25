@@ -80,6 +80,16 @@ test("A message the session didn't wake for says so and offers Try again and Sen
   expect((await cue.called("handoff_fresh", { sessionId: "relay" })).args).toMatchObject({ message: text });
 });
 
+test("A message the session didn't wake for says why in plain words", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  const t = Date.now();
+  await markLastYours(cue, "relay", { unsent: true, no_wake: true, delivery: [{ at_ms: t, what: "handed to it directly, once started again" }, { at_ms: t, what: "not taken: it didn't wake: started again, it took nothing in 50s" }] });
+  const row = page.locator(".active-pane .cv-you.unsent").last();
+  await expect(row).toContainText("didn't wake · it started but didn't pick up your message within 50 seconds · your message is kept here");
+  await markLastYours(cue, "relay", { unsent: true, no_wake: true, delivery: [{ at_ms: t, what: "not taken: it didn't wake: claude exited: No conversation found" }] });
+  await expect(row).toContainText("it couldn't start: claude exited: No conversation found");
+});
+
 test("A kept message that couldn't be sent says why", async ({ cue, page }) => {
   await openWorking(page, "eng");
   await cue.change((st) => {

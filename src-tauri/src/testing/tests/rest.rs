@@ -127,3 +127,25 @@ fn a_session_in_a_terminal_is_never_ended() {
     w.tick(true);
     assert!(w.hosted.closed().is_empty(), "its process is its terminal's: nothing of Cue's to end");
 }
+
+#[test]
+fn one_just_woken_for_a_message_is_never_ended_before_it_takes_it() {
+    // #922: a Desk lead idle for hours, woken for your message. Its agent takes a few seconds to start and say its turn
+    // began; meanwhile it still read as idle since its last reply, and the rest tick ended it, so it "didn't wake".
+    let w = World::new();
+    let sid = idle(&w, "Done.");
+    w.advance(7 * 60 * MIN);
+    w.tick(true);
+    assert_eq!(w.hosted.closed(), vec![sid.clone()], "rested after hours idle");
+    w.send_to(&sid, "remove the counts from the nav");
+    assert!(w.hub().session_origin(&sid).unwrap().agent_pid.is_some(), "started again for it");
+    w.advance(3_000);
+    w.tick(true);
+    assert_eq!(w.hosted.closed().len(), 1, "not ended again while your message is on its way");
+    w.hosted_says(&sid, HostedEvent::Taken { text: "remove the counts from the nav".into() });
+    w.settle();
+    w.advance(crate::hub::hosted::WAKE_LIMIT_MS);
+    let last = w.snapshot().last_yours(&sid).clone();
+    assert!(last["no_wake"].is_null() && last["unsent"].is_null(), "it woke and took it: {last}");
+    assert_eq!(w.snapshot().state(&sid), "working");
+}
