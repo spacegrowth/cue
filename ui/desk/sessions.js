@@ -18,9 +18,16 @@ const deskSessBusy = (s) => s?.state === "working" || (!!s?.running && ["waiting
  *  `crew`, its crew isn't counted: the Desk's own lead shows none (they aren't the Desk's). */
 function deskSessWithHelpers(s, crew = true) {
   const st = deskSessState(s);
-  if (st[0] !== "idle") return st;
-  const n = (s.state === "agent" ? +s.helpers || 0 : 0) + (crew ? (sessionOf(s.session_id)?.team || []).filter(deskMateBusy).length : 0);
-  return n ? ["", `working · ${n} helper${n === 1 ? "" : "s"}`] : st;
+  if (st[0] === "ask" || s.state === "working") return st;
+  // Its turn over with its own background work left (#867): its scripts, its agents, a script that failed, a lead's
+  // Cue update; its pills (chat/helpers.js bgPills) say what runs. Without one, a session still at work (its tests or
+  // landing running on, `running`) stays as it is.
+  const pill = !!bgPills(s, false);
+  if (st[0] !== "idle" && !pill) return st;
+  const n = crew ? (sessionOf(s.session_id)?.team || []).filter(deskMateBusy).length : 0;
+  if (n) return ["", `working · ${n} helper${n === 1 ? "" : "s"}`];
+  // With a pill it's your turn (idle dot), not counted as working, so the head's count and the Working rows agree.
+  return pill ? ["idle", "your turn"] : st;
 }
 /** The item a session holds (an ask before what's at work), or null. */
 const deskSessItem = (d, sid) => deskSessItems(d, sid)[0] || null;
@@ -165,7 +172,8 @@ function deskSessions(project) {
  *  Desk's { project, d, o (deskOpen), leadSid, lit(sid) → whether its row is lit }. */
 function deskSessionsRow(x, s, card) {
   const { d, leadSid, lit } = x;
-  const sid = s.session_id, [dot, word] = deskSessWithHelpers(s, sid !== leadSid);
+  const sid = s.session_id, [dot, w0] = deskSessWithHelpers(s, sid !== leadSid);
+  const word = dot === "idle" ? w0 + bgPills(s, false) : w0;   // "your turn" and what runs on (#867)
   const lead = sid === leadSid || deskIsLead(sid, d.items.filter((i) => deskGroupKey(i.holder) === sid));
   const attrs = sid === leadSid ? `data-desk-lead-chat="${esc(sid)}"` : `data-desk-chat-of="${esc(sid)}"`;
   const mate = (t, past) => deskSessionsMate(x, sid, t, past);

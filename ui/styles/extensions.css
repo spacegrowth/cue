@@ -4,6 +4,7 @@
 .stab:hover { color: var(--ink); }
 .stab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .stab-n { font: var(--type-label)/var(--type-label-lh) var(--sans); font-variant-numeric: tabular-nums; }
+.stab-n.bad { color: var(--deny); font-weight: 600; }   /* "1 failed" (#867) */
 .stab-n .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
 .stab-ran { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
 .stab-ran code { font-family: var(--mono); }
