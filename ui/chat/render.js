@@ -315,26 +315,36 @@ const mgAgentHead = (harness, machine, at) => `<span class="mg-who">${esc(agentN
  *  moving from the foot into the thread (#422). (What Cue itself will send its crew's lead once it's free waits on the
  *  member's row in the crew tray, team.js: the chat shows only what was sent.) */
 function chatWaitRows(s, page, K) {
-  const out = [];
+  const rows = [];
   // `cut`: a turn's steps split at it, as at a message in the thread, so the steps around it stay put when it goes.
   // A session's words for a Desk lead kept with yours (#831): never in your bubble, and alone, not in the chat (they
   // go as a message of their own, Activity's once sent).
   const relay = s?.held && typeof deskRelaySplit === "function" && deskRelaySplit(s.held.text);
-  const held = relay ? (relay.yours ? { ...s, held: { ...s.held, text: relay.yours, cue_parts: [] } } : null) : s;
+  let held = relay ? (relay.yours ? { ...s, held: { ...s.held, text: relay.yours, cue_parts: [] } } : null) : s;
+  // A session's chat, on the Desk or the Board (#872, #905): Cue's messages leave it for Activity whether sent, kept or
+  // queued; the lead's note is never a "Not sent yet" box in its holder's chat. Your words about an item that Cue
+  // passes on (youHeadOf: from its page, a send-back) stay, as yours.
+  const out = !!page?.dkOut && !page?.lines, yours = (text) => !!youHeadOf(page, { role: "you", text });
+  const gone = out ? (held?.held?.cue_parts || []).filter((p) => !yours(p)) : [];
+  if (out && held?.held && chatFrom(held.held) === "cue" && !yours(held.held.text)) held = null;
+  else if (gone.length) {
+    const rest = cueWithout(held.held.text, gone);
+    held = rest ? { ...held, held: { ...held.held, text: rest, cue_parts: held.held.cue_parts.filter((p) => !gone.includes(p)) } } : null;
+  }
   // Cue's own words kept with yours (#836, the hub's cue_parts): your bubble holds only yours; Cue's are its quiet line,
   // going after yours, a message of their own. All Cue's with a card of its own (cue_said.js, team.js): that card.
   const parts = held?.held?.cue_parts || [];
   const cueText = parts.join("\n\n"), at = held?.held?.at_ms;
   const card = parts.length && typeof cueQuietHtml === "function" && !cueWithout(held.held.text, parts) && (cueSaid(cueText) || (typeof cueMsgOf === "function" && cueMsgOf(cueText)));
   if (parts.length && typeof cueQuietHtml === "function" && !card) {
-    const yours = cueWithout(held.held.text, parts);
-    if (yours) out.push({ at, cut: true, html: heldRow({ ...held, held: { ...held.held, text: yours, cue_parts: [] } }, page, K(`y:${at}`)) });
-    out.push({ at, cut: true, html: keyed(cueQuietHtml({ ...held.held, text: cueText }, s, `${s.session_id}:held:cueq`, { st: "held" }), K(`yc:${at}`)) });
-  } else if (held?.held) out.push({ at, cut: true, html: heldRow(held, page, K(`y:${at}`)) });
+    const mine = cueWithout(held.held.text, parts);
+    if (mine) rows.push({ at, cut: true, html: heldRow({ ...held, held: { ...held.held, text: mine, cue_parts: [] } }, page, K(`y:${at}`)) });
+    rows.push({ at, cut: true, html: keyed(cueQuietHtml({ ...held.held, text: cueText }, s, `${s.session_id}:held:cueq`, { st: "held" }), K(`yc:${at}`)) });
+  } else if (held?.held) rows.push({ at, cut: true, html: heldRow(held, page, K(`y:${at}`)) });
   // A kept message sent now and queued: where you wrote it, as its copy is drawn once read (written_ms).
   const qAt = s?.queued && (s.queued.written_ms && s.queued.written_ms < s.queued.at_ms ? s.queued.written_ms : s.queued.at_ms);
-  if (s?.queued) out.push({ at: qAt, cut: true, html: queuedRow(s, page, K(`y:${qAt}`)) });
-  return out;
+  if (s?.queued && !(out && chatFrom(s.queued) === "cue" && !yours(s.queued.text))) rows.push({ at: qAt, cut: true, html: queuedRow(s, page, K(`y:${qAt}`)) });
+  return rows;
 }
 /** A message you sent that its thread doesn't show yet: sending, sent and how, kept in Cue till its turn ends, or not
  *  sent and why. `key`: its row's key in the chat. A page's own (`page.pending`, the Desk's box) brings its state as

@@ -83,20 +83,21 @@ test("the same words without Cue's mark are yours: a bubble, as you typed them",
   await expect(chat.locator(".cv-you-text")).toHaveText([OTHER]);
 });
 
-test("Cue's words kept with yours while it works: your kept bubble holds only yours, Cue's a quiet line going after it", async ({ cue, page }) => {
+// #905: Cue's kept words leave a session's chat as its sent ones do (#872); Activity has them once sent.
+test("Cue's words kept with yours while it works: your kept bubble holds only yours, Cue's not in the chat", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const chat = await engChat(page, cue, [{ role: "you", text: "Refactor the order router" }], { text: `fix the footer\n\n${QUIET}`, cue_parts: [QUIET] });
   const kept = chat.locator(".held .cv-you-text");
   await expect(kept).toHaveText(["fix the footer"]);
-  const line = chat.locator(".cue-quiet");
-  await expect(line).toHaveCount(1);
-  await expect(line.locator(".dk-cue-w")).toHaveText("Asked it to wake its background agent docs");
-  await expect(line.locator(".dk-cue-t")).toContainText("goes when its turn ends");
+  await expect(chat.locator(".held .ml-words")).toHaveText("Not sent yet · Cue sends it when its turn ends");
+  await expect(chat.locator(".cue-quiet")).toHaveCount(0);
+  await expect(chat).not.toContainText("background agent");
 });
 
-test("a kept message of Cue's alone is its quiet line, not a kept bubble of yours", async ({ cue, page }) => {
+test("a kept message of Cue's alone is not in the chat, not a kept bubble of yours", async ({ cue, page }) => {
   await cue.open("board-waiting");
   const chat = await engChat(page, cue, [{ role: "you", text: "Refactor the order router" }], { text: REDO, cue_parts: [REDO] });
-  await expect(chat.locator(".held .cv-you-text")).toHaveCount(0);
-  await expect(chat.locator(".cue-quiet .dk-cue-w")).toHaveText("Asked it to redo its check line");
+  await expect(chat.locator(".cv-you-text")).toHaveText(["Refactor the order router"]);
+  await expect(chat.locator(".held")).toHaveCount(0);
+  await expect(chat.locator(".cue-quiet")).toHaveCount(0);
 });

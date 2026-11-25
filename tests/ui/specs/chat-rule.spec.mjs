@@ -346,7 +346,8 @@ test("a session's question for the lead (question) is Activity's TO LEAD card wi
 });
 
 for (const where of ["the Board", "a Desk session's chat"]) {
-  test(`Cue's kept and queued messages (a kind, no cue mark, as the hub sends them) are Cue's lines in ${where}, never your bubble`, async ({ page, cue }) => {
+  // #905: as Cue's sent messages (#872), its kept and queued ones aren't in a session's chat: Activity has them once sent.
+  test(`Cue's kept and queued messages (a kind, no cue mark, as the hub sends them) are not in ${where}, never your bubble`, async ({ page, cue }) => {
     await cue.open("desk");
     await noEarlier(cue);
     await cue.change((st, [NOTICE, NUDGE, MINE]) => {
@@ -367,9 +368,8 @@ for (const where of ["the Board", "a Desk session's chat"]) {
     }
     await expect(chat.locator(".cv-you-text")).toHaveText([MINE]);
     for (const w of ["Main moved on", "gone quiet"]) await expect(chat.locator(".cv-you", { hasText: w })).toHaveCount(0);
-    const lines = chat.locator(".cue-quiet");
-    await expect(lines).toHaveCount(2);
-    await expect(lines.locator(".dk-cue-t .mg-v")).toContainText(["goes when its turn ends", "queued"]);
+    await expect(chat.locator(".cue-quiet")).toHaveCount(0);
+    for (const w of ["Main moved on", "gone quiet", "Not sent yet", "goes when its turn ends"]) await expect(chat).not.toContainText(w);
   });
 }
 
