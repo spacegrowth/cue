@@ -10,36 +10,70 @@ const cssOf = (loc, ...props) => loc.evaluate((el, ps) => { const c = getCompute
 // one call and reads it in the next, which a redraw can land between (then it reads the old element, gone: no style).
 const liveCss = (page, sel, ...props) => page.evaluate(([sel, ps]) => { const c = getComputedStyle(document.querySelector(sel)); return ps.map((p) => c.getPropertyValue(p)); }, [sel, props]);
 
-test("the head is one strip in the accent, flush across the card's top: the name (a switcher), its meta, then the lead's card in it", async ({ page, cue }) => {
+test("the head is the Desk's one header on the panel: All sessions · its name, its counts, ⋯; a column head; then the lead's line and card (#932)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const left = page.locator(".dk-sessions"), strip = left.locator(".dk-strip");
   await expect(strip).toHaveCount(1);
-  // Switching Desks is the window header's now (#666): the strip leads with ‹ Items N, back to the list.
+  // Switching Desks is the window header's (#666); ‹ Items N goes back, a quiet line over the header as a crew
+  // member's page has its back (#932), no lime pill.
   await expect(strip.locator("[data-desk-switch]")).toHaveCount(0);
-  await expect(strip.locator(".dk2b-items")).toHaveText(/^‹ Items \d+$/);
+  await expect(strip.locator(".dkn-sback .dk2b-items")).toHaveText(/^‹ Items \d+$/);
+  expect(await cssOf(strip.locator(".dk2b-items"), "background-color")).toEqual(["rgba(0, 0, 0, 0)"]);
+  // The Desk's one header (desk/c.js deskHead): its kind and name at the Dispatcher's size, the counts on its quiet line.
+  await expect(strip.locator(".dkh-t")).toHaveText("All sessions·cue");
   await expect(strip.locator(".dk-sh b")).toHaveText("cue");
   await expect(strip.locator(".dk-sub")).toHaveText("1 session · 1 working");
-  await expect(strip.locator("[data-desk-change]")).toHaveCount(1);
-  // The strip comes first in the card, flush to its top and sides, round only at the top as the card is.
+  await expect(strip.locator(".dkh-acts [data-desk-change]")).toHaveCount(1);
+  const leadHead = await page.evaluate(() => { const h = document.createElement("div"); h.innerHTML = deskHead({ kind: "desk", mark: "Dispatcher", name: "x" }); document.querySelector(".dk-sessions").append(h);
+    const t = getComputedStyle(h.querySelector(".dkh-t")), m = getComputedStyle(h.querySelector(".dkh-m")); const r = [t.fontSize, t.fontWeight, m.fontSize, m.color]; h.remove(); return r; });
+  const [tf, tw] = await cssOf(strip.locator(".dkh-t"), "font-size", "font-weight");
+  const [mf, mc] = await cssOf(strip.locator(".dk-sub"), "font-size", "color");
+  expect([tf, tw, mf, mc]).toEqual(leadHead);
+  expect((await cssOf(strip.locator(".dk-sub"), "font-family"))[0]).not.toMatch(/mono/i);
+  // The header comes first in the card, flush to its top and sides, on the panel with the ink: no green band.
   expect(await left.evaluate((el) => el.firstElementChild.classList.contains("dk-strip"))).toBe(true);
   const card = await boxOf(left), s = await boxOf(strip);
   expect(Math.round(s.x - card.x)).toBe(0);
   expect(Math.round(card.right - s.right)).toBe(0);
   expect(Math.round(s.y - card.y)).toBe(0);
-  // Light: the accent (the window's dark green) with on-accent text, no edge (#153, option B).
-  const [bg, ink, edge, radius, bottom] = await cssOf(strip, "background-color", "color", "box-shadow", "border-top-left-radius", "border-bottom-left-radius");
-  expect(bg).toBe("rgb(63, 74, 34)");
-  expect(ink).toBe("rgb(255, 255, 255)");
-  expect(edge).toBe("none");
-  expect(radius).toBe("14px");
-  expect(bottom).toBe("0px");
-  // Pick O: the column lifts off the window with a light hairline and a shadow; a 3px lime line closes the strip (the
-  // lead's working line, #263: lime while it's idle, the chat's working light while it works; its own test below).
-  expect((await cssOf(left, "box-shadow"))[0]).toMatch(/0px 0px 0px 1px.*0px 10px 28px/);
+  const [bg, ink] = await cssOf(strip, "background-color", "color");
+  expect([bg, ink]).toEqual(await cssOf(left, "background-color", "color"));
+  // A column head as the item list's: Session and now, State, in capitals; the lead's 3px line under it.
+  await expect(strip.locator(".dk-sth > span")).toHaveText(["Session and now", "State"]);
+  expect(await cssOf(strip.locator(".dk-sth"), "text-transform", "font-weight")).toEqual(["uppercase", "700"]);
   expect(await cssOf(left.locator(".dk-strip > .dk-lbar"), "height")).toEqual(["3px"]);
+  expect((await cssOf(left, "box-shadow"))[0]).toMatch(/0px 0px 0px 1px.*0px 10px 28px/);
   expect(await page.locator(".dk-board [title]").count()).toBe(0);
+});
+
+test("rows line up as the item list's: each state in one column, group heads in capitals, words in the system face (#932)", async ({ page, cue }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await cue.open("desk");
+  await openDesk(page);
+  await openSessions(page);
+  const left = page.locator(".dk-sessions");
+  // Every row's state starts at one x, under the column head's State.
+  const xs = await left.locator(":is(.dk-lcard, .dk-srow:not(.crew)) .dk-st").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)));
+  const head = await left.locator(".dk-sth > span").last().evaluate((e) => Math.round(e.getBoundingClientRect().x));
+  expect(new Set([...xs, head]).size).toBe(1);
+  // The item list's padding and type: 16px in, the name 600 at the body size, the lines under it at the small size.
+  const row = left.locator(".dk-scroll .dk-srow:not(.crew)").first();
+  expect(await cssOf(row, "padding-left")).toEqual(["16px"]);
+  expect(await cssOf(row.locator(".dk-nm"), "font-weight")).toEqual(["600"]);
+  const small = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--type-small").trim());
+  for (const q of [".dk-s2", ".dk-s3"]) {
+    const [size, family] = await cssOf(row.locator(q).first(), "font-size", "font-family");
+    expect(size).toBe(small);
+    expect(family).not.toMatch(/mono/i);
+  }
+  const gh = left.locator(".dk-gh").first();
+  expect(await cssOf(gh, "text-transform", "font-weight")).toEqual(["uppercase", "700"]);
+  expect(await gh.evaluate((e) => Math.abs(parseFloat(getComputedStyle(e).letterSpacing) - 0.06 * parseFloat(getComputedStyle(e).fontSize)) < 0.05)).toBe(true);
+  // The Lead tag is an outline, never filled; no stripes down a row's left.
+  expect(await cssOf(left.locator(".dk-ltag"), "background-color")).toEqual(["rgba(0, 0, 0, 0)"]);
+  expect(await left.locator(".dk-srow, .dk-lcard").evaluateAll((els) => els.filter((e) => parseFloat(getComputedStyle(e).borderLeftWidth) > 0).length)).toBe(0);
 });
 
 test("Run by shows the current Dispatcher's accessible agent icon", async ({ page, cue }) => {
@@ -99,7 +133,7 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   await openSessions(page);  // the sessions open on the right, from All N sessions (#666)
   const lead = page.locator('.dk-strip .dk-lcard[data-desk-lead-chat="lead"]');
   await expect(lead.locator(".dk-larrow")).toHaveText("›");   // open, so it has the › (#219)
-  // Pick M1 (#446): no "Run by" head; "Lead" in a lime pill right after its name, before its state.
+  // Pick M1 (#446): no "Run by" head; "Lead" in a pill (an outline since #932) right after its name, before its state.
   await expect(lead.locator(".dk-lk")).toHaveCount(0);
   await expect(page.locator(".dk-strip .dk-lh")).toHaveCount(0);
   await expect(lead.locator(".dk-s1 .dk-ltag")).toHaveText("Lead");
@@ -109,8 +143,8 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   expect(await cssOf(lead, "border-bottom")).toEqual([expect.stringMatching(/^1px solid/)]);
   // The line sits over the card, not under it (#359); it runs the strip's full width.
   expect(await page.locator(".dk-strip > .dk-lbar").evaluate((el) => el.nextElementSibling.matches(".dk-lcard"))).toBe(true);
-  // Not open, the card is white like the rows and its pill is the selection lime; open, the pill turns over.
-  const pillBg = () => lead.locator(".dk-ltag").evaluate((el) => getComputedStyle(el).backgroundColor);
+  // Its pill is an outline (#932): muted on the white card, the lime's ink on the lit one.
+  const pillBg = () => lead.locator(".dk-ltag").evaluate((el) => getComputedStyle(el).color);
   const litPill = await pillBg();
   await page.locator(".dk-sessions .dk-scroll .dk-srow:not(.crew)").first().click();
   await page.locator(".dk-right .dkn-sback .dk-back").first().click();   // its chat took the list's place (#666): back
@@ -149,7 +183,7 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   // list staying open (desk/act.js deskLeadChat).
   await expect(page.locator(".dk-board > .dk-sessions")).toHaveCount(1);
   expect(await page.evaluate(() => deskTab)).toBe("lead");
-  // Dark: the strip is a dark green with the ink, not lime, so the card lights exactly as an open row does.
+  // Dark: the header is the panel with the ink, not lime, so the card lights exactly as an open row does.
   await page.emulateMedia({ colorScheme: "dark" });
   const strip = page.locator(".dk-strip");
   const [sbg, sink] = await cssOf(strip, "background-color", "color");
@@ -164,7 +198,7 @@ test("the lead's card in the strip: a Lead pill, its state and the item it holds
   await expect(lead).not.toHaveClass(/\bon\b/);
   const [offBg] = await cssOf(lead, "background-color");
   expect(offBg).not.toBe(onBg);
-  expect(offBg).not.toBe(sbg);
+  expect(offBg).toBe(sbg);   // not lit, the card is the panel as the header is (#932)
   const [rowBg] = await cssOf(host, "background-color");
   expect(rowBg).toBe(onBg);
   await lead.click();

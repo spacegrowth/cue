@@ -157,7 +157,7 @@ function deskSessions(project) {
   const closed = recent(mine.filter((s) => !busy(s) && deskSessClosed(d, s)));
   const rest = recent(mine.filter((s) => !busy(s) && !closed.includes(s)));
   const older = rest.filter((s) => deskSessOlder(d, s)), idle = rest.filter((s) => !older.includes(s));
-  const group = (title, list) => (list.length ? `<div class="dk-gh">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
+  const group = (title, list) => (list.length ? `<div class="dk-gh dk-g-${title.toLowerCase()}">${title} <span class="n">${list.length}</span></div>${list.map((s) => row(s)).join("")}` : "");
   // The strip's meta line counts this Desk's sessions, and the working ones as the Working group lists them: working
   // itself, or its helpers ("agent") or crew at work; working means working (#402).
   const runs = atWork.length;
@@ -273,10 +273,12 @@ function deskSessHead(project, n, working, lead = "", bar = "") {
     ? `<input class="pj-name-in" data-text="pjname:${esc(project)}" maxlength="40" placeholder="${esc(project)}" aria-label="Rename this Desk" spellcheck="false" value="${esc(draft(`pjname:${project}`).text)}"/>`
     : `<b>${esc(title)}</b><button class="dk-ren" data-pjren="${esc(project)}" aria-label="Rename this Desk"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>`;
   const more = lead ? `<button class="dk-more-btn" data-desk-change aria-label="Hand this Desk to another session"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : "";
-  // Today's page (B2, desk/b2.js): this list opens on the right from All N sessions, ‹ Items back; switching Desks is
-  // the window header's, so no switcher, arrows or dots here.
-  const head = `${deskBack("")}<span class="dk-ric" aria-hidden="true">${deskKindIcon("tray")}</span>${pjRenaming === project ? name : `<b>${esc(title)}</b>${name.slice(name.indexOf("<button"))}`}`;
-  return `<div class="dk-strip"><div class="dk-sh"><div class="dk-shr">${head}<span class="grow"></span>${more}</div><div class="dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div>${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}${deskHoldsLine(d)}</div>${lead ? `${bar}${lead}` : ""}</div>`;
+  // The Desk's one header (#865, desk/c.js deskHead; #932): its icon, "All sessions · " and the Desk's name at the
+  // Dispatcher's size, ⋯ at the right, the counts on its quiet line; over it ‹ Items back to the lead's chat, a quiet
+  // line as a crew member's page has its back. Switching Desks is the window header's, so no switcher, arrows or dots.
+  const nm = pjRenaming === project ? name : `<b>${esc(title)}</b>${name.slice(name.indexOf("<button"))}`;
+  const head = `<div class="dkh-r dk-shr"><h1 class="dkh-t">${deskKindIcon("tray")}<span class="dkh-k">All sessions</span><span class="dkh-sep">·</span><span class="dkh-n">${nm}</span></h1><div class="dkh-acts">${more}</div></div>`;
+  return `<div class="dk-strip"><div class="dkn-sback">${deskBack("")}</div><div class="dk-sh dkh">${head}<div class="dkh-m dk-subr"><span class="dk-sub">${n} session${n === 1 ? "" : "s"}${working ? ` · ${working} working` : ""}</span></div>${lead && typeof deskSettingsLine === "function" ? deskSettingsLine(deskOf(project)) : ""}${deskHoldsLine(d)}</div><div class="dk-sth" aria-hidden="true"><span>Session and now</span><span>State</span></div>${lead ? `${bar}${lead}` : ""}</div>`;
 }
 /** A held part of the code as the header says it (#540): the path under src-tauri/src, a glob's extension left off
  *  ("src-tauri/src/hub/desk_*.rs" → "hub/desk_*"). */

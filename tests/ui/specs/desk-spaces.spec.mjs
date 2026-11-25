@@ -61,7 +61,7 @@ test("a Desk can start in a folder with no recent project", async ({ cue, page }
   await cue.called("desk_start", { folder: "/work/brand-new", name: "codex-cue-desk-feature" });
   await expect(deskTitle(page)).toHaveText("codex-cue-desk-feature");
   await deskAllSessions(page);
-  const tray = page.locator(".dk-shr .dk-ric svg.dk-kic");
+  const tray = page.locator(".dk-shr .dkh-t > svg.dk-kic");   // the Desk header's icon (#932)
   await expect(tray).toBeVisible();
   await expect(tray.locator("path").first()).toHaveAttribute("d", /^M4 13l3-7/);
   await expect(page.locator(".dk-lcard .dk-ric svg path").first()).toHaveAttribute("d", "M12 3v18M9 21h6");

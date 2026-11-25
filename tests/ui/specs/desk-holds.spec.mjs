@@ -16,9 +16,11 @@ test("a hold on this Desk's code shows as a quiet line under its header, and goe
   });
   await expect(holds.locator(".dk-hold")).toHaveText(["cue #509 holds hub/desk_*, ui/desk_* till it lands", "loops #533 holds ui/desk/thread.js till 5pm"]);
   await expect(holds.locator("[title]")).toHaveCount(0);
-  const look = await holds.locator(".dk-hold").first().evaluate((e) => { const s = getComputedStyle(e); return { border: s.borderLeftWidth, opacity: Number(s.opacity) }; });
+  // Quiet: the header's muted colour, as its counts line (#932: the Desk's header on the panel).
+  const look = await holds.locator(".dk-hold").first().evaluate((e) => { const s = getComputedStyle(e); return { border: s.borderLeftWidth, color: s.color, quiet: getComputedStyle(document.querySelector(".dk-strip .dk-sub")).color, ink: getComputedStyle(document.querySelector(".dk-strip .dkh-n b")).color }; });
   expect(look.border).toBe("0px");
-  expect(look.opacity).toBeLessThan(1);
+  expect(look.color).toBe(look.quiet);
+  expect(look.color).not.toBe(look.ink);
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "cue").holds = []; });
   await expect(holds).toHaveCount(0);
 });

@@ -168,3 +168,54 @@
 .dk-lcard.on .dk-ren { color: inherit; }
 .dk-lcard.on .dk-ren:hover { background: color-mix(in oklab, currentColor 14%, transparent); }
 .dk-sh .pj-name-in { width: 180px; padding: 2px 7px; font-size: var(--type-body); }
+
+/* All sessions in the Desk's look (#932): the Desk's one header (desk-c.css .dkh) on the panel, a column head as the
+   item list's (.dkn-th) over the lead's line, then rows at the item list's padding and type: name 15/600, what it's on
+   13 in the ink, its step and size 13 muted, in the system face (mono only for #ids); group heads in capitals as the
+   item list's bands; each row's state in one column at the right, its dot lined up from row to row. */
+.dk-sessions { container: dks / inline-size; --dk-stw: 150px; }
+.dk-sessions .dk-strip, :root[data-theme="dark"] .dk-sessions .dk-strip { padding: 0; border-radius: 0; background: var(--panel); color: var(--ink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-strip { background: var(--panel); color: var(--ink); } }
+.dk-sessions .dk-sh.dkh { padding: 4px 16px 10px; }
+.dk-sessions .dk-strip > .dkn-sback { padding: 10px 16px 0; }
+.dk-sessions .dk-strip .dk-back.dk2b-items { display: inline-flex; height: auto; margin: 0 0 0 -6px; padding: 2px 6px; border-radius: var(--radius-btn); background: none; color: var(--muted); font: 600 var(--type-small)/var(--type-small-lh) var(--sans); }
+.dk-sessions .dk-strip .dk-back.dk2b-items:hover { filter: none; background: var(--panel-2); color: var(--ink); }
+.dk-sessions .dkh-t > .dk-kic { color: var(--muted); }
+.dk-sessions .dkh-n { display: inline-flex; align-items: center; gap: 2px; }
+.dk-sessions .dkh-n b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; color: var(--ink); }
+.dk-sessions .dk-shr .dk-ren { color: var(--muted); }
+.dk-sessions .dk-strip .dk-more-btn { color: var(--muted); }
+.dk-sessions .dk-strip .dk-more-btn:is(:hover, :focus-visible) { color: var(--ink); background: var(--panel-2); }
+.dk-sessions .dk-strip .dk-sub { opacity: 1; color: var(--muted); font-family: var(--sans); }
+.dk-sessions .dk-strip .dk-ab { margin-top: 0; color: var(--muted); font-family: var(--sans); }
+.dk-sessions .dk-strip :is(.dk-ab-words, .dk-ab-sep, .dk-hold) { opacity: 1; }
+.dk-sessions .dk-strip .dk-ab-change { color: var(--ink); opacity: 1; }
+.dk-sessions .dk-strip .dk-holds { margin-top: 0; color: var(--muted); }
+.dk-sth { display: flex; justify-content: space-between; gap: 12px; padding: 10px 8px 8px 16px; border-top: 1px solid var(--line); font: 700 var(--type-label)/var(--type-label-lh) var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.dk-sth > span:last-child { flex: 0 0 var(--dk-stw); margin-right: 16px; }
+.dk-sessions .dk-strip > .dk-lbar { margin: 0; }
+.dk-sessions .dk-lcard { margin: 0; }
+.dk-sessions :is(.dk-srow, .dk-lcard) { padding: 10px 24px 10px 16px; }
+.dk-sessions .dk-srow.crew { padding: 4px 24px 10px 40px; }
+.dk-sessions .dk-sfold { padding: 4px 24px 8px 40px; }
+.dk-sessions :is(.dk-srow, .dk-lcard) .dk-st { flex: 0 0 var(--dk-stw); justify-content: flex-start; font-weight: 500; }
+.dk-sessions :is(.dk-srow, .dk-lcard) .dk-larrow { position: absolute; right: 8px; top: 9px; }
+.dk-sessions .dk-lcard { position: relative; }
+.dk-sessions .dk-s2 { margin-top: 3px; font-size: var(--type-small); line-height: var(--type-small-lh); }
+.dk-sessions .dk-s3 { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.dk-sessions .dk-ltag { padding: 0 6px; border: 1px solid currentColor; border-radius: 5px; background: none; color: var(--muted); }
+.dk-sessions .dk-lcard.on .dk-ltag { background: none; color: var(--on-sel); }
+.dk-sessions .dk-gh { margin: 0; padding: 18px 16px 4px; gap: 8px; align-items: baseline; color: var(--ink); letter-spacing: .06em; text-transform: uppercase; }
+.dk-sessions .dk-gh:not(.dk-gf)::before { content: ""; flex: none; align-self: center; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.dk-sessions .dk-gh.dk-g-working::before { background: var(--accent); }
+:root[data-theme="dark"] .dk-sessions .dk-gh.dk-g-working::before { background: var(--sel); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dk-sessions .dk-gh.dk-g-working::before { background: var(--sel); } }
+.dk-sessions .dk-gh .n { font-family: var(--sans); font-weight: 500; color: var(--muted); }
+.dk-sessions .dk-older-h > .dk-gchev { align-self: center; }
+.dk-sessions .dk-older-close { letter-spacing: 0; text-transform: none; }
+.dk-sessions .dk-scroll { padding-top: 0; }
+/* Narrow (the smallest window): no column head, and the state goes back to its own width at the row's right. */
+@container dks (max-width: 460px) {
+  .dk-sth { display: none; }
+  .dk-sessions :is(.dk-srow, .dk-lcard) .dk-st { flex: 0 1 auto; }
+}
