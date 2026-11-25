@@ -31,9 +31,14 @@ pub(crate) fn tmux_out(args: &[&str]) -> Option<String> {
 }
 
 /// Whether a pane lives in a tmux session Cue opened for a chat session named `label` (Cue's own terminal, or
-/// the tabs session "Runs in iTerm" used), not one of your own tmux sessions. A pane that's gone says no.
-pub(crate) fn pane_is_cues(pane: &str, label: &str) -> bool {
-    let Some(s) = tmux_out(&["display-message", "-p", "-t", pane, "#{session_name}"]).filter(|s| !s.is_empty()) else { return false };
+/// the tabs session "Runs in iTerm" used), not one of your own tmux sessions, and is still the session's: on
+/// its terminal `tty` (after a reboot a pane id can name another pane). A pane that's gone says no.
+pub(crate) fn pane_is_cues(pane: &str, label: &str, tty: &str) -> bool {
+    let Some(said) = tmux_out(&["display-message", "-p", "-t", pane, "#{session_name}|#{pane_tty}"]) else { return false };
+    let (s, pane_tty) = said.rsplit_once('|').unwrap_or((said.as_str(), ""));
+    if s.is_empty() || tty.is_empty() || pane_tty != tty {
+        return false;
+    }
     // Named after the session as Cue's own terminal named it ("bug-fixes", "bug-fixes-2"): the tag below is
     // missing on sessions opened before it was set right.
     let base = tmux_name(label);
@@ -188,13 +193,17 @@ mod tests {
         let your_pane = tmux_out(&["new-session", "-d", "-s", &yours, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
         let named = format!("named test {pid}");
         let named_pane = tmux_out(&["new-session", "-d", "-s", &tmux_name(&named), "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
-        let (cues, theirs, by_name) = (pane_is_cues(&pane, "x"), pane_is_cues(&your_pane, "x"), pane_is_cues(&named_pane, &named));
+        let tty_of = |p: &str| tmux_out(&["display-message", "-p", "-t", p, "#{pane_tty}"]).unwrap_or_default();
+        let (tty, your_tty, named_tty) = (tty_of(&pane), tty_of(&your_pane), tty_of(&named_pane));
+        let (cues, theirs, by_name) = (pane_is_cues(&pane, "x", &tty), pane_is_cues(&your_pane, "x", &your_tty), pane_is_cues(&named_pane, &named, &named_tty));
+        let stale = pane_is_cues(&pane, "x", &your_tty);
         let _ = run("tmux", &["kill-session", "-t", &format!("={}", tmux_name(&named))]);
         let _ = run("tmux", &["kill-session", "-t", &format!("={mine}")]);
         let _ = run("tmux", &["kill-session", "-t", &format!("={yours}")]);
         assert!(cues, "tagged as Cue's");
         assert!(by_name, "untagged, but named after the session as Cue names it");
         assert!(!theirs, "a tmux session of your own");
-        assert!(!pane_is_cues(&pane, "x"), "a pane that's gone");
+        assert!(!stale, "its id now on another terminal: not the session's pane");
+        assert!(!pane_is_cues(&pane, "x", &tty), "a pane that's gone");
     }
 }

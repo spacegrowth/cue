@@ -21,22 +21,41 @@ pub(crate) fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'st
     rx.recv_timeout(std::time::Duration::from_secs(secs)).ok()
 }
 
-/// This Mac's saved sessions to move at launch: in Cue's terminal (`is_cues` of its pane and name), their agent
-/// still `running`. One whose agent ended needs nothing: resuming it starts it hosted.
-pub(crate) fn launch_moves(saved: Vec<crate::sessions::Session>, running: &HashSet<String>, is_cues: impl Fn(&str, &str) -> bool) -> Vec<String> {
+/// This Mac's saved sessions to move at launch: in Cue's terminal (`is_cues` of its pane, name and terminal),
+/// their agent still `running`. One whose agent ended needs nothing: resuming it starts it hosted.
+pub(crate) fn launch_moves(saved: Vec<crate::sessions::Session>, running: &HashSet<String>, is_cues: impl Fn(&str, &str, &str) -> bool) -> Vec<String> {
     let label = |s: &crate::sessions::Session| if s.name.is_empty() { model::folder_of(&s.origin.cwd) } else { s.name.clone() };
     saved
         .into_iter()
-        .filter(|s| s.origin.machine.is_empty() && terminal_chat(&s.origin) && running.contains(&s.origin.session_id) && is_cues(&s.origin.tmux_pane, &label(s)))
+        .filter(|s| s.origin.machine.is_empty() && terminal_chat(&s.origin) && running.contains(&s.origin.session_id) && is_cues(&s.origin.tmux_pane, &label(s), &s.origin.tty))
         .map(|s| s.origin.session_id)
         .collect()
 }
 
-/// Between turns: at its prompt (its turn ended, or it never started one), and nothing it asked (a permission, a
-/// question, a prompt in its terminal) is open.
-pub(crate) fn between_turns(hub: &Arc<Hub>, session_id: &str) -> bool {
-    let idle = hub.saved_sessions().iter().any(|s| s.origin.session_id == session_id && matches!(s.state.as_str(), "waiting" | "stopped"));
-    idle && !hub.pending().iter().any(|i| i.origin.session_id == session_id && i.kind != "waiting")
+/// Between turns: at its prompt (its turn ended, or it never started one), nothing it asked (a permission, a
+/// question, a prompt in its terminal) open, and its pane agrees: what was typed into it while Cue was closed
+/// started a turn Cue never heard of.
+pub(crate) fn between_turns(hub: &Arc<Hub>, o: &model::Origin) -> bool {
+    let sid = &o.session_id;
+    let idle = hub.saved_sessions().iter().any(|s| &s.origin.session_id == sid && matches!(s.state.as_str(), "waiting" | "stopped"));
+    idle && !hub.pending().iter().any(|i| &i.origin.session_id == sid && i.kind != "waiting") && at_rest(o)
+}
+
+/// Its pane at rest: Claude Code's input box empty, no dialog up, no turn running ("esc to interrupt").
+fn at_rest(o: &model::Origin) -> bool {
+    let Some(screen) = pane_screen(o) else { return false };
+    crate::terminal::dialog::parse(&screen).is_none() && !screen.contains("esc to interrupt") && focus::box_empty_of(o) == Some(true)
+}
+
+/// What a session's tmux pane shows now, this Mac's or its machine's; None when it can't be read.
+fn pane_screen(o: &model::Origin) -> Option<String> {
+    if o.machine.is_empty() {
+        let mut cmd = std::process::Command::new(focus::tmux_bin());
+        let out = focus::capped(cmd.args(["capture-pane", "-p", "-J", "-t", &o.tmux_pane]), std::time::Duration::from_secs(10)).ok()?;
+        return out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned());
+    }
+    let m = machines::get(&o.machine)?;
+    machines::tmux(&m.host, &["capture-pane", "-p", "-J", "-t", &o.tmux_pane]).ok()
 }
 
 /// One pass: each session between turns is moved to hosted (Move to Cue: its agent ended, resumed hosted from
@@ -45,11 +64,8 @@ pub(crate) fn between_turns(hub: &Arc<Hub>, session_id: &str) -> bool {
 pub(crate) fn move_between_turns(hub: &Arc<Hub>, sids: Vec<String>) -> Vec<String> {
     let mut left = Vec::new();
     for sid in sids {
-        match hub.session_origin(&sid) {
-            Some(o) if terminal_chat(&o) => {}
-            _ => continue,
-        }
-        if !between_turns(hub, &sid) {
+        let Some(o) = hub.session_origin(&sid).filter(terminal_chat) else { continue };
+        if !between_turns(hub, &o) {
             left.push(sid);
             continue;
         }
@@ -65,30 +81,43 @@ pub(crate) fn move_between_turns(hub: &Arc<Hub>, sids: Vec<String>) -> Vec<Strin
 const RETRY_MS: u64 = 15_000;
 const GIVE_UP_MS: u64 = 12 * 60 * 60 * 1000;
 
+/// The sessions some waiter is waiting on to move.
+static WAITING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Sessions one waiter holds: let go when it's dropped, however its thread ends (a panic too).
+pub(crate) struct Waiting(pub(crate) Vec<String>);
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        crate::locking::lock(&WAITING, "WAITING").retain(|s| !self.0.contains(s));
+    }
+}
+
+/// Of `sids`, the ones no waiter has yet, held for a new one.
+pub(crate) fn wait_for(sids: Vec<String>) -> Waiting {
+    let mut w = crate::locking::lock(&WAITING, "WAITING");
+    let fresh: Vec<String> = sids.into_iter().filter(|s| !w.contains(s)).collect();
+    w.extend(fresh.iter().cloned());
+    Waiting(fresh)
+}
+
 /// Move `sids` in the background, each once it's between turns. A session already being waited on isn't
 /// taken twice.
 fn move_when_between_turns(hub: &Arc<Hub>, sids: Vec<String>) {
-    static WAITING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-    let sids: Vec<String> = {
-        let mut w = crate::locking::lock(&WAITING, "WAITING");
-        let fresh: Vec<String> = sids.into_iter().filter(|s| !w.contains(s)).collect();
-        w.extend(fresh.iter().cloned());
-        fresh
-    };
-    if sids.is_empty() {
+    let held = wait_for(sids);
+    if held.0.is_empty() {
         return;
     }
     let h = hub.clone();
     std::thread::spawn(move || {
-        let all = sids.clone();
-        let mut left = move_between_turns(&h, sids);
+        let held = held;
+        let mut left = move_between_turns(&h, held.0.clone());
         let mut waited = 0;
         while !left.is_empty() && waited < GIVE_UP_MS {
             crate::clock::sleep_ms(RETRY_MS);
             waited += RETRY_MS;
             left = move_between_turns(&h, left);
         }
-        crate::locking::lock(&WAITING, "WAITING").retain(|s| !all.contains(s));
     });
 }
 
@@ -117,13 +146,13 @@ echo GONE"#,
 }
 
 /// The script that says whether a session runs in Cue's terminal on a machine: its agent LIVE and its pane in
-/// Cue's tmux session there (MOVE), or not (STAY).
-pub(crate) fn cues_terminal_script(session_id: &str, pane: &str) -> String {
+/// Cue's tmux session there, still on its terminal `tty` (MOVE), or not (STAY).
+pub(crate) fn cues_terminal_script(session_id: &str, pane: &str, tty: &str) -> String {
     format!(
-        "[ \"$({live})\" = LIVE ] && [ \"$(tmux display-message -p -t {pane} '#{{session_name}}' 2>/dev/null)\" = {cue} ] && echo MOVE || echo STAY",
+        "[ \"$({live})\" = LIVE ] && [ \"$(tmux display-message -p -t {pane} '#{{session_name}}|#{{pane_tty}}' 2>/dev/null)\" = {want} ] && echo MOVE || echo STAY",
         live = agent_running_script(session_id),
         pane = focus::shq(pane),
-        cue = focus::shq(focus::TMUX_SESSION)
+        want = focus::shq(&format!("{}|{tty}", focus::TMUX_SESSION))
     )
 }
 
@@ -142,9 +171,10 @@ pub(crate) fn move_machine_sessions(hub: &Arc<Hub>, machine: &str) {
         busy.push(machine.to_string());
     }
     let mut sids = Vec::new();
-    for s in hub.saved_sessions().into_iter().filter(|s| s.origin.machine == machine && terminal_chat(&s.origin)) {
-        let (mn, sid, pane) = (machine.to_string(), s.origin.session_id.clone(), s.origin.tmux_pane.clone());
-        let said = with_timeout(move || machines::get(&mn).map(|m| machines::run(&m.host, &cues_terminal_script(&sid, &pane))), 8);
+    // One with no terminal recorded can't be told from another pane with its id: left where it is.
+    for s in hub.saved_sessions().into_iter().filter(|s| s.origin.machine == machine && terminal_chat(&s.origin) && !s.origin.tty.is_empty()) {
+        let (mn, sid, pane, tty) = (machine.to_string(), s.origin.session_id.clone(), s.origin.tmux_pane.clone(), s.origin.tty.clone());
+        let said = with_timeout(move || machines::get(&mn).map(|m| machines::run(&m.host, &cues_terminal_script(&sid, &pane, &tty))), 8);
         match said {
             Some(Some(Ok(out))) if out.trim() == "MOVE" => sids.push(s.origin.session_id),
             Some(Some(Err(e))) => machines::hooks::log_raw(machine, &format!("move {} skipped: {e}", s.origin.session_id)),
@@ -194,6 +224,29 @@ mod tests {
         assert_eq!(run("other"), "GONE", "another session's entry");
         std::fs::write(dir.join("999999.json"), r#"{"sessionId":"dead-1"}"#).unwrap();
         assert_eq!(run("dead-1"), "GONE", "its pid is gone");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// The machine check, run here with a stand-in tmux on PATH and Claude Code's registry in a folder of its own.
+    #[test]
+    fn a_machine_session_moves_only_live_in_cues_tmux_on_its_own_terminal() {
+        let home = std::env::temp_dir().join(format!("cue-cues-term-{}", std::process::id()));
+        let (reg, bin) = (home.join("sessions"), home.join("bin"));
+        std::fs::create_dir_all(&reg).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let tmux = bin.join("tmux");
+        std::fs::write(&tmux, "#!/bin/sh\ncase \"$4\" in %1) echo 'cue|/dev/pts/3' ;; %2) echo 'mine|/dev/pts/4' ;; *) exit 1 ;; esac\n").unwrap();
+        std::fs::set_permissions(&tmux, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        std::fs::write(reg.join(format!("{}.json", std::process::id())), r#"{"sessionId":"live-1"}"#).unwrap();
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+        let run = |sid: &str, pane: &str, tty: &str| {
+            let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("PATH", &path).args(["-c", &cues_terminal_script(sid, pane, tty)]).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(run("live-1", "%1", "/dev/pts/3"), "MOVE");
+        assert_eq!(run("live-1", "%1", "/dev/pts/9"), "STAY", "its pane id now on another terminal");
+        assert_eq!(run("live-1", "%2", "/dev/pts/4"), "STAY", "a tmux session of your own");
+        assert_eq!(run("gone-1", "%1", "/dev/pts/3"), "STAY", "its agent ended");
         std::fs::remove_dir_all(&home).ok();
     }
 
