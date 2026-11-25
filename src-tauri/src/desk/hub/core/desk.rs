@@ -397,6 +397,10 @@ impl Hub {
         let ask = NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: Value::Null, context: vec![], agent_id: String::new() };
         // Nobody waits on the card: its answer is sent to the lead as a message (`desk_answered`).
         let (id, _) = self.add_ask(origin, ask);
+        // The lead's older open ASK about the same item is moot now (#880): this one replaces it.
+        if let Some(about) = item.filter(|_| using.is_none()) {
+            self.desk_moot_older(lsid, &id, |t| t["desk_item"].as_str() == Some(about) && t.get("desk_use").is_none_or(Value::is_null));
+        }
         self.write(|st| {
             let workspace = st.desk.project_of(project).to_string();
             if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
@@ -445,8 +449,10 @@ impl Hub {
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         let answer = crate::desk::parse::plain_choice(&answer).to_string();
-        // Your own words on Cue's Yes / No card (a push, old copies, a change to how work lands) aren't a yes or a no
-        // (#651): the card stays open and the words go to the lead, who answers you in its chat.
+        // A plain no typed on Cue's Yes / No card is its No (#880).
+        let answer = if (push.is_some() || old.is_some() || lands.is_some()) && plain_no(&answer) { "No".to_string() } else { answer };
+        // Your own words on Cue's Yes / No card (a push, old copies, a change to how work lands) aren't a yes (#651):
+        // they go to the lead, the card open still for a question of yours, else closed with nothing changed (#880).
         if d.behavior != "deny" && (push.is_some() || old.is_some() || lands.is_some()) && !["Yes", "No"].iter().any(|c| answer.eq_ignore_ascii_case(c)) {
             return self.desk_card_words(id, &answer);
         }
@@ -487,26 +493,46 @@ impl Hub {
     }
 
     /// Your words `text` typed on Cue's own Yes / No card `id` in a lead's chat, which aren't one of its choices
-    /// (#651): never taken as a yes or a no. The card stays open (your words kept on it), and the words go to the
-    /// lead, who answers you in its chat. False when `id` isn't such a card (then the words go as they would).
+    /// (#651): never taken as a yes. A plain no ("no", "nope", "no thanks") is its No (#880). A question ("what does
+    /// it mean?") keeps the card open, your words kept on it, for its Yes or No once the lead has answered you (#651).
+    /// Anything else answers it in your words (#880): the card closes, nothing changes (as a no would), and the lead
+    /// is told it can ask again. Either way the words go to the lead, who answers you in its chat. False when `id`
+    /// isn't such a card (then the words go as they would).
     pub(crate) fn desk_card_words(&self, id: &str, text: &str) -> bool {
         let text = text.trim();
         let now = now_ms();
-        let Some((lead, question)) = self.write(|st| {
-            let it = st.items.iter_mut().find(|i| i.id == id && i.desk && i.status == "pending" && ["desk_push", "desk_old", "desk_lands"].iter().any(|k| i.tool_input.get(*k).is_some_and(|v| !v.is_null())))?;
-            if !it.tool_input["desk_said"].is_array() {
-                it.tool_input["desk_said"] = json!([]);
-            }
-            if let Some(all) = it.tool_input["desk_said"].as_array_mut() {
-                all.push(json!({ "text": text, "at": now }));
-            }
-            Some((it.origin.session_id.clone(), it.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string()))
+        let Some((lead, question, push)) = self.read(|st| {
+            let it = st.items.iter().find(|i| i.id == id && i.desk && i.status == "pending" && ["desk_push", "desk_old", "desk_lands"].iter().any(|k| i.tool_input.get(*k).is_some_and(|v| !v.is_null())))?;
+            Some((it.origin.session_id.clone(), it.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), it.tool_input.get("desk_push").cloned()))
         }) else { return false };
-        self.changed();
         if text.is_empty() {
             return true;
         }
-        let words = card_words(&question, text);
+        if plain_no(text) {
+            let d = Decision { behavior: "allow".into(), answers: Some(json!({ question.as_str(): "No" })), ..Default::default() };
+            return self.desk_answered(id, &d);
+        }
+        // A question anywhere in them ("what does it mean? what do i do"), pictures' paths left out.
+        let open = crate::desk::your_words(text).0.contains('?');
+        if open {
+            self.write(|st| {
+                if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
+                    if !it.tool_input["desk_said"].is_array() {
+                        it.tool_input["desk_said"] = json!([]);
+                    }
+                    if let Some(all) = it.tool_input["desk_said"].as_array_mut() {
+                        all.push(json!({ "text": text, "at": now }));
+                    }
+                }
+            });
+        } else {
+            let shown: String = text.lines().next().unwrap_or("").chars().take(200).collect();
+            self.finish(id, "answered", &format!("answered in your words: {shown}"));
+            // A push card answered in words: no yes, so its held starts go as a no would.
+            self.desk_push_card_closed(push);
+        }
+        self.changed();
+        let words = card_words(&question, text, open);
         self.later(0, move |h| {
             // Your own typed words: yours, never Cue's (#837).
             if let Err(e) = h.send_to_session(&lead, &words, &[], false) {
@@ -514,6 +540,18 @@ impl Hub {
             }
         });
         true
+    }
+
+    /// Lead `lsid`'s older open questions that its newer one `id` replaces (#880): moot, closed without an answer and
+    /// nothing sent. `same`: whether an older card asks the same thing (its `tool_input`).
+    pub(crate) fn desk_moot_older(&self, lsid: &str, id: &str, same: impl Fn(&Value) -> bool) {
+        let older: Vec<String> = self.read(|st| st.items.iter().filter(|i| i.id != id && i.desk && i.status == "pending" && i.origin.session_id == lsid && same(&i.tool_input)).map(|i| i.id.clone()).collect());
+        for o in &older {
+            self.finish(o, "gone", "a newer question replaced it");
+        }
+        if !older.is_empty() {
+            self.changed();
+        }
     }
 
     /// Ask `id` answered with `d`: when it's the question of an item's holder, and the answer is one of the options

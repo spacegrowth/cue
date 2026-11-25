@@ -240,10 +240,10 @@ impl Hub {
             return Err("nothing to send".into());
         }
         let it = self.get(id).filter(|i| i.status == "pending").ok_or("that item is gone")?;
-        // Your words on Cue's own Yes / No card in a lead's chat: never a yes or a no; the card stays open and the
-        // lead answers you (#651).
+        // Your words on Cue's own Yes / No card in a lead's chat: never a yes; a plain no is its No, a question keeps
+        // it open (#651), else it closes with nothing changed (#880). The lead answers you.
         if images.is_empty() && self.desk_card_words(id, text) {
-            return Ok("sent to the Desk lead: the question stays open".into());
+            return Ok("sent to the Desk lead".into());
         }
         let sid = it.origin.session_id.clone();
         // A reply to a finished turn is a message like the box's: a hosted lead's Team switch (and /team) say their piece.
