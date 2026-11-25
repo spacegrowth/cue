@@ -88,8 +88,12 @@ impl Hub {
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
         args.extend(crate::logs::mcp::selection_flags(sid));
         // A fork whose own conversation isn't written yet starts as that fork again, named again, so it isn't empty.
-        match fork_entry(sid) {
-            Some(f) if !written => args.extend(["--resume".to_string(), fork_source(origin, f.from), "--fork-session".to_string(), "-n".to_string(), f.name]),
+        // On a machine that can't be asked, it counts as not written: forked again, its entry kept.
+        let fork = fork_entry(sid);
+        let fork_written = fork.is_some() && (origin.machine.is_empty() && written || !origin.machine.is_empty() && written_on_machine_known(origin) == Some(true));
+        let start = if fork.is_some() && !fork_written { Start::New(sid.to_string()) } else { start };
+        match fork {
+            Some(f) if !fork_written => args.extend(["--resume".to_string(), fork_source(origin, f.from), "--fork-session".to_string(), "-n".to_string(), f.name]),
             Some(_) => forget_fork(sid),
             None => {}
         }
@@ -420,7 +424,7 @@ impl Hub {
     fn hosted_taken(&self, origin: Origin, text: String) {
         let sid = origin.session_id.clone();
         // A fork's first message taken: its own conversation is written now, so it resumes as itself from here on.
-        if origin.machine.is_empty() && fork_entry(&sid).is_some() && written_as(&origin, &sid) {
+        if origin.machine.is_empty() && fork_entry(&sid).is_some() && written_as(&origin, &sid) == Some(true) {
             forget_fork(&sid);
         }
         self.write(|st| st.hosted_waking.remove(&sid));
@@ -587,11 +591,20 @@ fn given(input: bool, reply: Result<Reply, oneshot::error::RecvError>) -> Given 
 /// says so; an empty or missing one is asked of the machine (the copy can lag behind). One the machine can't be asked
 /// about is taken to be there (it ran: a terminal session moved in, say), so a resume, not a second conversation.
 fn written_on_machine(origin: &Origin) -> bool {
+    written_on_machine_known(origin).unwrap_or(true)
+}
+
+/// As `written_on_machine`, but `None` when the machine couldn't be asked. A fork's entry is only dropped on a yes:
+/// dropped on a guess, a fork not yet written would come back empty.
+fn written_on_machine_known(origin: &Origin) -> Option<bool> {
     if std::fs::metadata(&origin.transcript_path).is_ok_and(|m| m.len() > 0) {
-        return true;
+        return Some(true);
     }
-    let Some(m) = crate::machines::get(&origin.machine) else { return true };
-    origin.transcript_path.is_empty() || crate::machines::log_mirror::written_there(&m, &origin.transcript_path).unwrap_or(true)
+    let m = crate::machines::get(&origin.machine)?;
+    if origin.transcript_path.is_empty() {
+        return Some(true);
+    }
+    crate::machines::log_mirror::written_there(&m, &origin.transcript_path)
 }
 
 /// A fork not yet written (`hosted.forked_from` in Settings): the session it forks, and its name. A fork is a copy of
@@ -636,7 +649,7 @@ pub(crate) fn fork_source(origin: &Origin, from: String) -> String {
     let mut from = from;
     for _ in 0..20 {
         match fork_entry(&from) {
-            Some(f) if !written_as(origin, &from) => from = f.from,
+            Some(f) if written_as(origin, &from) != Some(true) => from = f.from,
             Some(_) => {
                 forget_fork(&from);
                 break;
@@ -649,11 +662,11 @@ pub(crate) fn fork_source(origin: &Origin, from: String) -> String {
 
 /// Whether Claude has written conversation `id` beside `origin`'s (a fork's is in the same folder, here or on its
 /// machine).
-fn written_as(origin: &Origin, id: &str) -> bool {
+fn written_as(origin: &Origin, id: &str) -> Option<bool> {
     let mine = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, &origin.session_id) } else { origin.transcript_path.clone().into() };
     let path = mine.with_file_name(format!("{id}.jsonl"));
     if origin.machine.is_empty() {
-        return path.is_file();
+        return Some(path.is_file());
     }
-    written_on_machine(&Origin { transcript_path: path.to_string_lossy().into_owned(), ..origin.clone() })
+    written_on_machine_known(&Origin { transcript_path: path.to_string_lossy().into_owned(), ..origin.clone() })
 }
