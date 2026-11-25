@@ -221,8 +221,9 @@ function chatCueRow(page, s, sid, e, n, reviewAt) {
   // Your pick (#667, "… picked option B2 on #d5 …") and your words Cue passed on (on its question, #651) are yours,
   // not the Desk's: they stay.
   // Marked Cue's (#837, chat/who.js): its tag says whether it stays (your words on Cue's question) or leaves; an older
-  // message without the mark, its words.
-  const mine = () => (chatFrom(e) === "cue" ? (chatPlace(e, "session") === "activity" ? "cue" : "yours")
+  // message without the mark, its words. Asked of this chat (#909): in the lead's, Cue's message not drawn as another
+  // Desk's band above (a SHOW: desk answer once sent as one) is Activity's too, never left in the chat as yours.
+  const mine = () => (chatFrom(e) === "cue" ? (chatPlace(e, page?.lines ? "lead" : "session") === "activity" ? "cue" : "yours")
     : /\bpicked option \S+ on #/.test(e.text || "") ? "picked" : typeof cueMsgOf === "function" && cueMsgOf(e.text)?.tag === "Your words" ? "yours" : "cue");
   const dk = (h, kind = mine()) => ((page?.lines || page?.dkOut) && typeof dkMark === "function" ? dkMark(h, kind) : h);
   const own = e.role === "you" && page?.you?.(e, n);

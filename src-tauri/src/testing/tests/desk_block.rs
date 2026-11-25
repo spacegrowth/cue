@@ -224,6 +224,9 @@ fn the_whole_block_comes_every_twenty_messages_and_when_the_lead_asks() {
     ends(&w, &d, "SHOW: desk");
     let told = last(&w, &d);
     assert!(told.contains("Your whole Desk block, as you asked") && !changes_only(&told) && told.contains("Other open items:"), "{told}");
+    // Cue's answer to its line, as SHOW: #<id>'s (#909): never another Desk's band, which the lead's chat keeps.
+    let whole = w.hub().read(|st| st.sessions.thread(&d)).into_iter().rev().find(|e| e.role == "you" && e.text.contains("Your whole Desk block, as you asked")).expect("its copy in the chat");
+    assert!(whole.cue && whole.kind == "answer", "{whole:?}");
     assert!(!is_whole(&say(&w, &project, &d, "after")));
 }
 

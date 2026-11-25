@@ -479,3 +479,38 @@ test("a Desk session's chat: a reply to another session's message stays in its c
   expect(html).toContain("check the footer next");
   expect(html).not.toContain("data-dkr");
 });
+
+// Cue's answer to the lead's SHOW: desk (#909): the whole Desk block, then one line. Not in the lead's chat, once or
+// twice (an older one was sent marked as another Desk's band and stayed, its fold repeating its one line); Activity
+// lists it once.
+for (const kind of ["answer", "peer"]) {
+  test(`Cue's "whole Desk block" answer (${kind}) is not in the lead's chat; Activity lists it once`, async ({ page, cue }) => {
+    await cue.open("desk");
+    await noEarlier(cue);
+    const whole = `${SUMMARY}Your whole Desk block, as you asked (SHOW: desk).`;
+    await leadThread(cue, [
+      { role: "you", text: `${SUMMARY}What's next on the Desk?` },
+      { role: "agent", text: "Let me see the whole Desk.\n\nSHOW: desk" },
+      { role: "you", text: whole, cue: true, kind },
+      { role: "agent", text: "Then #d3 goes once #d2 lands." },
+    ]);
+    await openDesk(page);
+    const chat = page.locator(".dk-chat");
+    // An answer starts no turn: the lead's next reply stays (an old band-marked one started a turn of Cue's, Activity's).
+    await expect(chat.locator(".cv-agent", { hasText: "#d3 goes once #d2 lands" })).toHaveCount(kind === "answer" ? 1 : 0);
+    await expect(chat.locator(".cv-agent", { hasText: "Let me see the whole Desk" })).toHaveCount(1);
+    await expect(chat).not.toContainText("Your whole Desk block");
+    await expect(chat.locator(".cue-quiet, .dk-cue")).toHaveCount(0);
+    await leadActivity(page);
+    await expect(page.locator(".dk-moves .dk-mv", { hasText: "Your whole Desk block" })).toHaveCount(1);
+  });
+}
+
+test("a quiet line of Cue's with nothing more than its one line has no + that repeats it", async ({ page, cue }) => {
+  await cue.open("desk");
+  const html = await page.evaluate(() => cueQuietHtml({ role: "you", text: "Your whole Desk block, as you asked (SHOW: desk).", cue: true, at_ms: Date.now() }, null, "k909"));
+  expect(html).not.toContain("dk-cue-pm");
+  expect(html).not.toContain("mg-full");
+  const long = await page.evaluate(() => cueQuietHtml({ role: "you", text: "First line. And a second sentence with more.", cue: true, at_ms: Date.now() }, null, "k909b"));
+  expect(long).toContain("dk-cue-pm");
+});

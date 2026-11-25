@@ -143,7 +143,7 @@ pub(crate) fn send(st: &mut Store, from: &str, by: &str, sid: &str, to: &[String
         let b = Band { from: from.into(), to: d.clone(), item: item.clone(), text: words.into(), by: by.into(), sid: sid.into(), at, ask, answered: 0, asked: 0, reply: replied.contains(d) };
         st.desk.bands.push(b.clone());
         fx.bands.push(b);
-        fx.tells.push((d.clone(), text.clone(), sid.to_string()));
+        fx.tells.push((d.clone(), text.clone(), sid.to_string(), crate::sessions::Kind::Peer));
         let to_name = st.desk.name_of(d).to_string();
         decide_call(st, from, own_item.clone(), by, sid, (&format!("Told {to_name}'s lead: {words}"), "", true), true, now, fx);
         decide_call(st, d, None, by, sid, (&format!("{from_name}'s lead told this Desk: {words}"), "", true), true, now, fx);

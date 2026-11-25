@@ -123,7 +123,7 @@ pub(crate) fn move_said(st: &mut Store, desk: &str, by: &str, sid: &str, id: &st
     decide(st, &to, Some(id.to_string()), by, sid, &format!("#{id} came from {from_name}"), why, now, fx);
     if st.desk.lead_sid(&to).is_some() {
         let words = format!("#{id} ({title}) moved to your Desk from {from_name}, with {with}.{handoff}{why_said} It's on your list to route.");
-        fx.tells.push((to.clone(), crate::desk::tell::band_text(&from_name, by, Some(id), &words), sid.to_string()));
+        fx.tells.push((to.clone(), crate::desk::tell::band_text(&from_name, by, Some(id), &words), sid.to_string(), crate::sessions::Kind::Peer));
     }
     let stopped = if handoff.is_empty() { "" } else { " Its session was told to stop and write its hand-off." };
     format!("Moved: #{id} to {to_name}, with {with}.{stopped} It's off your Desk.")
