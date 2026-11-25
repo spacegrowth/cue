@@ -133,8 +133,10 @@
 .dkn-wl { overflow-y: auto; overscroll-behavior: contain; }
 .dkn-wmore { display: block; padding: 4px 16px 8px; border-top: 0; }
 /* Strip (K, #751): Item, Progress (a 180px strip), Now. */
-/* A fourth narrow column, always kept, for the row's ⋯ (#839): it shows without moving anything in the row. */
-.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 24px; gap: 0 12px; align-items: center; }
+/* Item and its sentence, the ✓ (#915: its own column, so it sits in one spot on every row however long the sentence),
+   the strip, and a narrow column, always kept, for the row's ⋯ (#839): it shows without moving anything in the row. */
+.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 24px 180px 24px; gap: 0 12px; align-items: center; }
+.dkn-okc { display: flex; align-items: center; justify-content: center; }
 .dkn-th { align-items: end; padding: 10px 8px 8px 16px; border-bottom: 1px solid var(--line); font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .dkn-th > span:last-child { text-align: right; }
 .dkn-gh { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; cursor: pointer; padding: 18px 16px 4px; font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; }
@@ -177,9 +179,8 @@
 .dkn-full.ask { color: var(--deny); font-weight: 600; }
 .dkn-full.amber { color: color-mix(in srgb, var(--amber) 72%, var(--ink)); font-weight: 500; }
 .dkn-full.ok { font-weight: 500; }
-.dkn-fl > :is(.dk-ok, .dk-soon) { flex: none; }
-/* Done · Undo takes the ✓'s height, so the row keeps its size (#791). */
-.dkn-row.soon .dkn-fl { min-height: 24px; align-items: center; }
+.dkn-fl > .dk-soon { flex: none; }
+/* Done · Undo takes the sentence's place, one line as tall as it, so the row keeps its size (#791). */
 .dkn-fl > .dk-soon { margin-left: 0; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .dkn-row.on:not(.dkn-b-blocked *) .dkn-full { color: var(--on-sel); }
 
@@ -213,10 +214,12 @@
 .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: dkn-zmarch .9s linear infinite; }
 @keyframes dkn-zmarch { to { background-position: 8.49px 0; } }
 @media (prefers-reduced-motion: reduce) { .dkn-kp.cur.live i, .dkn-d.work, .dk-c :is(.dk2b-trk i.cur.live, .dk2b-step.cur.live i) { animation: none; } }
-/* Narrow Items: no heading row; the strip goes on its own line under the title and its sentence. */
+/* Narrow Items: no heading row; the ✓ beside the title and sentence, the strip on its own line under them. */
 @container dkn (max-width: 620px) {
   .dkn-th { display: none; }
-  .dkn-card .dkn-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding-right: 40px; }
+  .dkn-card .dkn-row { grid-template-columns: minmax(0, 1fr) 24px; gap: 6px 12px; padding-right: 40px; }
+  /* The ✓ keeps its column beside the title and sentence; the strip goes under both. */
+  .dkn-card .dkn-row > .dkn-pl { grid-column: 1 / -1; }
   /* One column: the ⋯ goes to the row's top right corner, in the room kept for it. */
   .dkn-card .dkn-row > .dkn-rwrap { position: absolute; top: 10px; right: 8px; }
 }

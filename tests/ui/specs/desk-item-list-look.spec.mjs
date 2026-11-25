@@ -17,7 +17,7 @@ const open = async (page, cue, size = { width: 1440, height: 900 }, frozen = fal
 test("every row says its sentence under its title; no Now column, and Desk settings has no switch for it", async ({ page, cue }) => {
   await open(page, cue);
   const card = page.locator(".dkn-items .dkn-card");
-  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "Progress", ""]);
+  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "", "Progress", ""]);
   await expect(card.locator(".dkn-now, .dkn-xl")).toHaveCount(0);
   const rows = card.locator(".dkn-row[data-desk-item]");
   const n = await rows.count();
@@ -29,8 +29,9 @@ test("every row says its sentence under its title; no Now column, and Desk setti
   await expect(sentence(page, "d3")).toContainText("Next:");
   // Three lines tall: title, sentence, #id line.
   expect(await rows.first().evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(3 * 18);
-  // Ready to check keeps its ✓ beside the sentence.
-  await expect(card.locator('.dkn-row[data-desk-item="d2"] .dkn-fl [data-desk-act="looks_right"]')).toBeVisible();
+  // Ready to check has its ✓ in its own column (#915), not in the sentence.
+  await expect(card.locator('.dkn-row[data-desk-item="d2"] > .dkn-okc > [data-desk-act="looks_right"]')).toBeVisible();
+  await expect(card.locator('.dkn-fl .dk-ok')).toHaveCount(0);
   await expect(page.locator(".dkn-items [title]")).toHaveCount(0);
   // Desk settings: no Item list part.
   await page.locator('.top [data-hv-menu="desks"]').click();
@@ -52,6 +53,36 @@ test("light and dark, a laptop and the smallest window: the sentence stays under
     expect(s.y).toBeGreaterThanOrEqual(f.y + f.height - 1);
     expect(f.width).toBeGreaterThan(100);
     await page.locator(".dkn-items").screenshot({ path: `tests/ui/shots/desk-item-list-${size.width}-${scheme}.png` });
+  }
+});
+
+test("every row's ✓ sits in one spot and every strip starts and ends at the same place, short sentence or long (#915)", async ({ page, cue }) => {
+  await open(page, cue, undefined, true);
+  // Two rows ready to check, one with a short sentence and one whose sentence takes two lines.
+  const at = await page.evaluate(() => now() - 30 * 60000);
+  await patchItem(cue, "d3", { state: "to_check", finish: { step: "checked", at, commit: "c71e0b4", try: "open it" } });
+  await patchItem(cue, "d2", { finish: { step: "checked", at, commit: "c71e0b4", try: "in the box, type a long line, send it, and wait for the lead to answer it in its own chat, then open the item" } });
+  const card = page.locator(".dkn-items .dkn-card");
+  await expect(card.locator(".dkn-row[data-desk-item] .dk-ok")).toHaveCount(2);
+  for (const [size, scheme] of [[{ width: 1440, height: 900 }, "light"], [{ width: 1440, height: 900 }, "dark"], [{ width: 900, height: 600 }, "light"], [{ width: 900, height: 600 }, "dark"]]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize(size);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    const at = await card.locator(".dkn-row[data-desk-item]").evaluateAll((rows) => rows.map((r) => {
+      const ok = r.querySelector(":scope > .dkn-okc").getBoundingClientRect(), ks = r.querySelector(".dkn-ks").getBoundingClientRect();
+      const kp = [...r.querySelectorAll(".dkn-kp")].map((e) => e.getBoundingClientRect());
+      // A row not started yet has only stubs for steps to come: nothing to fill.
+      const begun = !!r.querySelector(".dkn-kp:not(.todo)");
+      return { ok: Math.round(ok.left), ks: [Math.round(ks.left), Math.round(ks.right)], fill: begun ? Math.round(kp[kp.length - 1].right) : Math.round(ks.right) };
+    }));
+    expect(new Set(at.map((a) => a.ok)).size).toBe(1);
+    expect(new Set(at.map((a) => a.ks.join())).size).toBe(1);
+    // Every begun strip's pieces fill it to its end.
+    for (const a of at) expect(Math.abs(a.fill - a.ks[1])).toBeLessThanOrEqual(1);
+    const oks = await card.locator(".dkn-row[data-desk-item] .dk-ok").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
+    expect(new Set(oks).size).toBe(1);
+    await card.locator('.dkn-row[data-desk-item="d2"]').scrollIntoViewIfNeeded();
+    await page.locator(".dkn-items").screenshot({ path: `tests/ui/shots/desk-item-list-aligned-${size.width}-${scheme}.png` });
   }
 });
 
