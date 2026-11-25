@@ -45,11 +45,12 @@ test("No switch in Desk settings, and the old switch's key changes nothing acros
 
 test("The Desks from the header, Desk settings' sections, the sessions' chats, Strip or Line, the groups' order", async ({ page, cue }) => {
   await open(page, cue);
-  // A row per Desk in the header's Desks menu, the open one ticked, and New Desk….
+  // A row per Desk in the header's Desks menu, the open one lit (no tick, #885), and New Desk….
   await page.locator('.top [data-hv-menu="desks"]').click();
   const menu = page.locator(".top .hv-menu");
   await expect(menu.locator(".hv-row[data-hv-desk]")).toHaveCount(2);
-  await expect(menu.locator('.hv-row.on[data-hv-desk="cue"] .hv-tick')).toHaveText("✓");
+  await expect(menu.locator('.hv-row.on[data-hv-desk="cue"]')).toHaveAttribute("aria-current", "true");
+  await expect(menu.locator(".hv-tick")).toHaveCount(0);
   await expect(menu.locator("[data-hv-new-desk]")).toHaveText("New Desk…");
   // Desk settings: a dialog with its sections; Esc closes it.
   await menu.locator("[data-hv-desk-set]").click();

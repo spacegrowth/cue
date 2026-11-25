@@ -698,8 +698,8 @@ test("the header's Desks menu: every Desk with what it has going, ✓ on the ope
   const rows = menu.locator(".hv-row[data-hv-desk]");
   await expect(rows).toHaveCount(2);
   await expect(menu.locator(".hv-row.on")).toHaveAttribute("data-hv-desk", "website");
-  await expect(menu.locator(".hv-row.on .hv-tick")).toHaveText("✓");
-  await expect(menu.locator('.hv-row[data-hv-desk="cue"] .hv-tick')).toHaveText("");
+  await expect(menu.locator(".hv-row.on")).toHaveAttribute("aria-current", "true");
+  await expect(menu.locator(".hv-tick")).toHaveCount(0);
   await expect(find).toBeFocused();
   await expect(menu.locator("[data-hv-desk-home]")).toHaveText("All Desks");
   await expect(menu.locator("[data-hv-new-desk]")).toHaveText("New Desk…");
