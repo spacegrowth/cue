@@ -549,7 +549,14 @@ function deskCItemBar(i, bare = false) {
 }
 /** Items whose How to check you folded (true) or opened (false) at the chat's foot; unset, it's open, folded at the
  *  smallest window. */
-const deskCHowFold = new Map();
+const deskCHowFold = (() => {
+  // Kept across reloads and restarts (#883): a bar you folded, or that folded as you sent a message, stays folded.
+  let kv = [];
+  try { kv = Object.entries(JSON.parse(localStorage.getItem("cue.deskHowFold") || "{}")); } catch { /* none kept */ }
+  const map = new Map(kv), put = map.set.bind(map);
+  map.set = (id, v) => { put(id, v); try { localStorage.setItem("cue.deskHowFold", JSON.stringify(Object.fromEntries([...map].slice(-200)))); } catch { /* this window only */ } return map; };
+  return map;
+})();
 /** Items you wrote to while they were to check (#883): their How to check stays (folded) though their session works
  *  on your words, till Looks right or Send back. */
 const deskCHowKeep = (() => {
