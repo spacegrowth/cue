@@ -383,15 +383,19 @@ function deskCDrawer(key, label, n, hint, rows, none, open = !deskCFolds.has(key
   const since = Date.now() - (deskCOpened.get(key) || 0), anim = open && since < DESK_C_OPEN_MS ? ` dkn-opening" style="animation-delay:-${since}ms` : "";
   return `<section class="dkn-dr${open ? "" : " fold"}" data-dkn-drawer="${key}"><button class="dkn-dh" data-desk-c-fold="${key}" aria-expanded="${open}">${DESK_C_ARROW(open)}${label} <span class="dkn-dn">${n}</span>${hint && (open || keep) ? `<span class="dkn-hint">· ${hint}</span>` : ""}</button>${open || keep ? `<div class="dkn-dl${anim}" data-dkn-list="${key}"${deskCFitStyle(key)}>${rows || `<div class="dkn-dnone">${none}</div>`}</div><button class="dkn-more" data-desk-c-all="${key}"${deskCFitBy.get(key) ? "" : " hidden"}>${deskCMoreBy.get(key) || ""}</button>` : ""}</section>`;
 }
-/** Items' card, Up next and Done today each scroll, and at rest end on a whole row: a list's height is cut to the
- *  last row that fits (what's left goes below it). Under each, "↓ N more" says how many rows are below its edge as
+/** Items' card, Up next and Done today each scroll. Up next and Done today, on the green, at rest end on a whole row:
+ *  a list's height is cut to the last row that fits (what's left goes below it). Items' card keeps its size, so its
+ *  list fills it down to its "↓ N more" (#901: cut to whole rows, the three-line rows of #896 left a white band of up
+ *  to a row's height above that line); its last row can show in part. Under each, "↓ N more" says how many rows are below its edge as
  *  you scroll (a click scrolls a page); at the end it shows nothing but keeps its room, so the list doesn't jump.
  *  The cuts are measured once (one layout) and kept while the window's size and the lists' rows stay the same. */
 let deskCFitKey = "", deskCFits = [];
 /** Each list's cut as last measured, by list ("items", "next", "done"), drawn with it so a redraw lays it out at that
  *  height at once (a list scrolled to its end is put back there, and stays at its end). */
 const deskCFitBy = new Map();
-const deskCFitStyle = (name) => (deskCFitBy.get(name) ? ` style="max-height:${deskCFitBy.get(name)}px"` : "");
+const deskCFitStyle = (name) => (deskCFitBy.get(name) && !deskCFills(name) ? ` style="max-height:${deskCFitBy.get(name)}px"` : "");
+/** Items' list fills its card to the "↓ N more" line at its foot rather than being cut to whole rows (#901). */
+const deskCFills = (name) => name === "items";
 /** How many of Working's rows show before it scrolls within (7 to 10 at once happens). */
 const DESK_C_WORK_ROWS = 4;
 /** Working's cut as last measured, drawn with it: a redraw lays it out at that height at once, as the card's own cut
@@ -412,6 +416,8 @@ function deskCFitLists() {
     for (const el of lists) { el.style.maxHeight = ""; el.nextElementSibling.hidden = false; el.nextElementSibling.textContent ||= "↓ 0 more"; }
     deskCFits = lists.map((el) => {
       if (el.scrollHeight <= el.clientHeight + 1) return 0;
+      // Items fills its card (not cut): it scrolls, so its "↓ N more" shows, though not one whole row fits.
+      if (deskCFills(el.dataset.dknList)) return Math.max(1, Math.floor(el.clientHeight));
       const top = el.getBoundingClientRect().top - el.scrollTop;
       let fit = 0;
       // Row by row, into each group's band (option A wraps a group in one): a cut never falls mid-row. Working's capped
@@ -461,7 +467,7 @@ function deskCCapWorking() {
  *  was scrolled (`tops`), or on along the slide a "↓ N more" click started. */
 function deskCCutLists(lists, tops) {
   lists.forEach((el, k) => {
-    el.style.maxHeight = deskCFits[k] ? `${deskCFits[k]}px` : "";
+    el.style.maxHeight = deskCFits[k] && !deskCFills(el.dataset.dknList) ? `${deskCFits[k]}px` : "";
     el.nextElementSibling.hidden = !deskCFits[k];
     // On its way after "↓ N more": a redraw meanwhile made it afresh where it had got to (its start, in the slide's
     // first frame), so it goes on from there to where the click sent it.

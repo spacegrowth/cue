@@ -5,6 +5,7 @@
 // over what it was added with: there's no other item page.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 import { stampSteps } from "./desk-steps.mjs";
+import { NARROWEST } from "./layout.mjs";
 
 const open = async (page, cue, size = { width: 1800, height: 1095 }) => {
   await page.setViewportSize(size);
@@ -257,6 +258,32 @@ const wholeRows = (list) => list.evaluate((el, q) => {
   const edge = el.getBoundingClientRect().bottom;
   return [...el.querySelectorAll(q)].filter((r) => { const b = r.getBoundingClientRect(); return b.top < edge - 1 && b.bottom > edge + 1; }).map((r) => r.dataset.deskItem || r.className);
 }, ROWS);
+/** The room between a list's foot and the top of its "↓ N more" line, in whole pixels. */
+const gapOverMore = (list) => list.evaluate((el) => Math.round(el.nextElementSibling.getBoundingClientRect().top - el.getBoundingClientRect().bottom));
+// #901: Items cut to whole rows left a white band of up to a row's height over "↓ 6 more" once rows took three lines
+// (#896). Its list now fills the card down to that line at any window size, light or dark, even scrolled part way.
+for (const [size, vp] of [["laptop", { width: 1440, height: 900 }], ["smallest", NARROWEST]]) {
+  for (const scheme of ["light", "dark"]) {
+    test(`Items' list reaches its "↓ N more" with no gap: ${size} window, ${scheme}`, async ({ page, cue }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await open(page, cue, vp);
+      await cue.change((st) => {
+        const its = st.desk.projects.find((d) => d.project === "cue").items;
+        const d2 = its.find((i) => i.id === "d2");
+        for (let k = 0; k < 9; k++) its.push({ ...d2, id: `c${k}`, title: `Ready to check item ${k} with a title long enough to wrap` });
+      });
+      await expect(page.locator('.dkn-card .dkn-row[data-desk-item="c8"]')).toHaveCount(1);
+      const list = page.locator('[data-dkn-list="items"]'), more = list.locator("xpath=following-sibling::*[1]");
+      await expect(more).toHaveText(/^↓ \d+ more$/);
+      await expect(more).toBeVisible();
+      expect(await gapOverMore(list)).toBe(0);
+      // Scrolled part way and drawn again: still no gap.
+      await list.evaluate((el) => { el.scrollTop = 37; });
+      await page.evaluate(() => renderMain());
+      expect(await gapOverMore(list)).toBe(0);
+    });
+  }
+}
 test("a list that overflows ends on a whole row with \"↓ N more\" under it; a click scrolls on, at its end the line keeps its room", async ({ page, cue }) => {
   await open(page, cue, { width: 1440, height: 900 });
   await cue.change((st) => {
@@ -277,7 +304,9 @@ test("a list that overflows ends on a whole row with \"↓ N more\" under it; a 
     await expect(more).toHaveText(/^↓ \d+ more$/);
     // The lists are cut while this line is still empty: it's as tall without its words as with them, or they'd cut the last row.
     expect(await more.evaluate((el) => { const full = el.offsetHeight, t = el.textContent; el.textContent = ""; const empty = el.offsetHeight; el.textContent = t; return empty - full; })).toBe(0);
-    expect(await wholeRows(list), name).toEqual([]);
+    // Up next ends on a whole row; Items' list fills its card down to the line, no band between them (#901).
+    if (name === "items") expect(await gapOverMore(list)).toBe(0);
+    else expect(await wholeRows(list), name).toEqual([]);
     // Its count is the rows below the edge.
     const below = await list.evaluate((el) => { const e = el.getBoundingClientRect().bottom; return [...el.querySelectorAll(":scope > .dk-it, :scope > .dkn-band > .dkn-bb > .dk-it")].filter((r) => r.getBoundingClientRect().bottom > e + 1).length; });
     expect(below).toBeGreaterThan(0);
