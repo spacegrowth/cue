@@ -523,11 +523,8 @@ impl Hub {
                 None => busy = false,
             }
         }
-        // ⌘↵ while it works: its turn stopped first, so this goes now rather than queued. A session Cue hands messages
-        // to directly too (#861: a Desk lead in a terminal), unless it's Pi, which reads a "now" message mid-turn
-        // itself (send_direct): Claude Code would only read it once its turn ends.
-        let steers = direct && origin.as_ref().is_some_and(|o| o.harness == "pi");
-        let stopped = now && busy && !steers;
+        // ⌘↵ while it works: its turn stopped first (a direct session's too, #861; Pi reads "now" mid-turn itself).
+        let stopped = now && busy && !(direct && origin.as_ref().is_some_and(|o| o.harness == "pi"));
         if stopped {
             self.stop_to_send(session_id, origin.as_ref().ok_or("that session is gone")?)?;
         }

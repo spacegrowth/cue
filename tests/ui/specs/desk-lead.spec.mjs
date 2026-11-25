@@ -40,7 +40,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-chat")).toContainText("host-lead is on it");
   // The lead's box, in its chat card (the sessions list takes that place once open, #666). The lead is at work in this
   // scenario: its box says what a message does now, as a session's box on the Board does (#688).
-  await expect(page.locator(".dk2b-chat .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Message web-lead… Cue keeps it and sends it when this turn ends");
+  await expect(page.locator(".dk2b-chat .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   // The Sessions head (All N sessions, on the right in the list's place, #666): the Desk's name, ✎ only on hover; no
   // "Change" anywhere.
   await openSessions(page);
@@ -262,7 +262,7 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").state = "working"; });
   await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
   // The lead at work: its box says what a message does now, as a session's box on the Board does (#688).
-  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Message web-lead… Cue keeps it and sends it when this turn ends");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("And the footer too");
 });
 
@@ -303,7 +303,7 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane.locator("h1 .dk-tname")).toHaveText("web-lead");
   await expect(pane.locator(".dk-crew .dk-mb")).toHaveCount(2);
-  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Talk to web-lead…");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   await pane.locator('[data-desk-crew="id-search"]').click();
   // Its own page (no panel): its name, whose crew and the item it's on, Chat · Files · Activity tabs.
   const crew = page.locator('.dk-right .dkn-crew[data-desk-page="crew"]');
