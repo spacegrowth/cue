@@ -889,6 +889,15 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
 }
 
 /// What the lead is told when you write your own words on Cue's Yes / No card `question` (#651).
-pub(crate) fn card_words(question: &str, text: &str) -> String {
-    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.")
+pub(crate) fn card_words(question: &str, text: &str, open: bool) -> String {
+    if open {
+        return format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.");
+    }
+    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nCue took that as their answer: the question is closed and nothing changed. Do what their words ask; if it still needs their yes, ask it again.")
+}
+
+/// Words typed on a Yes / No card that are a plain no (#880): "no", "nope", "nah", "no thanks", "not now", "don't".
+fn plain_no(text: &str) -> bool {
+    let t = text.trim().trim_end_matches(['.', '!']).trim().to_lowercase();
+    matches!(t.as_str(), "no" | "n" | "nope" | "nah" | "no thanks" | "no thank you" | "not now" | "don't" | "dont" | "don't do it" | "leave it" | "keep it")
 }
