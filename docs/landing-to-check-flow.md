@@ -218,7 +218,7 @@ work you commit yourself, older items). Every item that went through the queue h
 
 4. **The window makes its own install decision from timestamps** (`ui/desk/desk.js:110-118`).
    - What: for an item to check with no `finish`, `deskInstallWait` compares `installed_ms` (the mtime of the
-     running executable, `desk/hub/lead/checks.rs:96`) with `check.edited` (the newest mtime of the item's files).
+     running executable, `desk/hub/lead/checks.rs:105`) with `check.edited` (the newest mtime of the item's files).
      The hub decides the same thing everywhere else by commit ancestry (`installer.has`).
    - Why it looks patched on: the window and the hub decide the same thing twice, by different rules:
      - Any install after the edit flips the item to "to check", even one that doesn't contain the work (a project
@@ -304,7 +304,7 @@ work you commit yourself, older items). Every item that went through the queue h
     - Clean version: a small explicit enum per round (`Fresh | NothingNewWarned | NoCommitWarned`) and one
       "who closes it" field.
 
-12. **The add-on install reads the folder's HEAD, not the main line** (`desk/hub/landing/named_copy.rs:328`).
+12. **The add-on install reads the folder's HEAD, not the main line** (`desk/hub/landing/named_copy.rs:328`, set at `:332`).
     - What: `install_addon` sets `f.commit = rev(&cue, "HEAD")`. Everywhere else uses `in_place::main_head`, which
       knows when the folder is on another item's branch.
     - Why it looks patched on: a special case that copies the main path, but not all of it.
