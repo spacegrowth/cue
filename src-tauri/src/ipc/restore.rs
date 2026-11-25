@@ -41,10 +41,12 @@ pub(crate) fn between_turns(hub: &Arc<Hub>, o: &model::Origin) -> bool {
     idle && !hub.pending().iter().any(|i| &i.origin.session_id == sid && i.kind != "waiting") && at_rest(o)
 }
 
-/// Its pane at rest: Claude Code's input box empty, no dialog up, no turn running ("esc to interrupt").
+/// Its pane at rest, from one read of it: no dialog up, no turn running ("esc to interrupt"). What's in its input
+/// box isn't asked: a capture can't tell a dimmed suggestion from typed text, and a session held for that would
+/// never move; a draft never sent is all that's left behind.
 fn at_rest(o: &model::Origin) -> bool {
     let Some(screen) = pane_screen(o) else { return false };
-    crate::terminal::dialog::parse(&screen).is_none() && !screen.contains("esc to interrupt") && focus::box_empty_of(o) == Some(true)
+    crate::terminal::dialog::parse(&screen).is_none() && !screen.contains("esc to interrupt")
 }
 
 /// What a session's tmux pane shows now, this Mac's or its machine's; None when it can't be read.
