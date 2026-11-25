@@ -17,7 +17,7 @@ const open = async (page, cue, size = { width: 1440, height: 900 }, frozen = fal
 test("every row says its sentence under its title; no Now column, and Desk settings has no switch for it", async ({ page, cue }) => {
   await open(page, cue);
   const card = page.locator(".dkn-items .dkn-card");
-  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "", "Progress", ""]);
+  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "Progress", "", ""]);
   await expect(card.locator(".dkn-now, .dkn-xl")).toHaveCount(0);
   const rows = card.locator(".dkn-row[data-desk-item]");
   const n = await rows.count();
@@ -81,6 +81,8 @@ test("every row's ✓ sits in one spot and every strip starts and ends at the sa
     for (const a of at) expect(Math.abs(a.fill - a.ks[1])).toBeLessThanOrEqual(1);
     const oks = await card.locator(".dkn-row[data-desk-item] .dk-ok").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
     expect(new Set(oks).size).toBe(1);
+    // Wide, the ✓ is right of the strip.
+    if (size.width > 1000) for (const a of at) expect(a.ok).toBeGreaterThanOrEqual(a.ks[1]);
     await card.locator('.dkn-row[data-desk-item="d2"]').scrollIntoViewIfNeeded();
     await page.locator(".dkn-items").screenshot({ path: `tests/ui/shots/desk-item-list-aligned-${size.width}-${scheme}.png` });
   }

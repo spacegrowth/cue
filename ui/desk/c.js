@@ -327,7 +327,7 @@ function deskCLine(i) {
   const look = i.state === "needs_you" ? "ask" : check ? "ok" : deskCShort(i)[1];
   return `<div class="dkn-fl"><span class="dkn-full${look ? ` ${look}` : ""}">${st}${next ? `. Next: ${next}` : ""}</span></div>`;
 }
-/** A row's ✓ cell (#915): its own column between the sentence and the strip, so every row's ✓ sits in one spot however
+/** A row's ✓ cell (#915): its own column right of the strip, so every row's ✓ sits in one spot however
  *  long the sentence is; empty on rows not ready to check, and while Done · Undo shows. */
 function deskCOk(i) {
   const check = i.state === "to_check" && !deskInstallWait(i) && !deskUncommitted(i) && !deskLooksSoon.has(i.id);
@@ -338,7 +338,7 @@ function deskCOk(i) {
 function deskCRow(i) {
   // Lit while its page is open, or its holder's chat (that session's chat is the item's chat).
   const o = deskOpen, on = (o?.kind === "item" && deskIdIs(i, o.id)) || ((o?.kind === "chat" || o?.kind === "holder") && !!o.sid && deskHolderSid(i) === o.sid);
-  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span>${deskCLine(i)}<span class="dkn-sub">${deskCSub(i)}</span></div>${deskCOk(i)}<div class="dkn-pl">${deskCStrip(i)}</div>${deskCRowMore(i)}</div>`;
+  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span>${deskCLine(i)}<span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div>${deskCOk(i)}${deskCRowMore(i)}</div>`;
 }
 /** A row's ⋯ (#839): Start now, Park and Drop (page.js deskRowMoreItems), without opening the item. Shown as you point
  *  at the row and on the open one (desk-c.css .dkn-rwrap); "" when nothing fits. */
@@ -837,7 +837,7 @@ function deskCList(project, taskApprovals) {
   // The lead's own ask waits on you too, as the header and the strip count it (deskB2WaitN): one count.
   const ask = d && !deskLeadEnded(d) ? deskLeadAsk(d) : null;
   const leadSays = ask ? esc(deskOneLine(summary(ask) || "Asks you something")) : "";
-  const leadAsk = !ask ? "" : `<div class="dk-it dkn-row ask" role="button" tabindex="0" data-desk-c-lead><div class="dkn-t"><span class="dkn-tt">${esc(deskLeadName(d))}</span><div class="dkn-fl"><span class="dkn-full ask">${leadSays}</span></div><span class="dkn-sub">The Desk lead</span></div><div class="dkn-okc"></div><div class="dkn-pl"></div></div>`;
+  const leadAsk = !ask ? "" : `<div class="dk-it dkn-row ask" role="button" tabindex="0" data-desk-c-lead><div class="dkn-t"><span class="dkn-tt">${esc(deskLeadName(d))}</span><div class="dkn-fl"><span class="dkn-full ask">${leadSays}</span></div><span class="dkn-sub">The Desk lead</span></div><div class="dkn-pl"></div><div class="dkn-okc"></div></div>`;
   // What's blocked on you goes first, over Working: nothing moves till you answer. Steps held for your OK, oldest first
   // (#749), with the lead's own one-way ask among them; then the lead asking you, then asks while you were away.
   const hf = deskHeldFirst(aw, waits, deskCRow, ask?.one_way && leadAsk ? [[ask.created_ms || 0, leadAsk]] : []);
@@ -854,7 +854,7 @@ function deskCList(project, taskApprovals) {
   const tail = extra.map((h) => deskHolderHead({ ...h, addon: true, key: h.key || h.name }, deskOpen?.kind === "addon" && deskOpen.key === (h.key || h.name)) + (h.items || []).map(deskCRow).join("")).join("");
   // Working next: it's what's live, and it stays short (the Desk runs only so many at once); Waiting on you under it.
   const body = blocked + work + you + install + kept + tail;
-  const head = `<div class="dkn-th" aria-hidden="true"><span>Item and now</span><span></span><span>Progress</span><span></span></div>`;
+  const head = `<div class="dkn-th" aria-hidden="true"><span>Item and now</span><span>Progress</span><span></span><span></span></div>`;
   // Where it stands, in words only (deskB2Status is html, escaped already).
   const said = (i) => deskB2Status(i)[0].replace(/<(?!\/?span\b)[^>]*>/g, "");
   const why = (i) => deskCWhy(i) || said(i);

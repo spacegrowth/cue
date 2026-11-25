@@ -90,7 +90,7 @@ test("Items: a row per item with its strip, the step it's at striped; ready to c
   const bg = await d2.locator(".dkn-kp.cur i").evaluate((el) => getComputedStyle(el).backgroundImage);
   expect(bg).toContain("repeating-linear-gradient");
   // No number column: the title on top, the kind's icon and number at the head of the line under it (#744).
-  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "", "Progress", ""]);
+  await expect(card.locator(".dkn-th > span")).toHaveText(["Item and now", "Progress", "", ""]);
   expect(await d2.evaluate((el) => el.firstElementChild.className)).toBe("dkn-t");
   await expect(d2.locator(".dkn-tt")).toHaveText("Quick phrases at the right of Send");
   await expect(d2.locator(".dkn-sub")).toHaveText("#d2 · web-lead");
@@ -440,7 +440,7 @@ test("progress: a strip on every row, no switch; each piece as long as its step 
   await stampSteps(page);
   // Strip is the one view: no Strip · Line switch, no line along a row's foot; Item and now, and Progress over the rows.
   await expect(page.locator(".dkn-ih .dkn-lsw, .dkn-ih [data-desk-c-line]")).toHaveCount(0);
-  await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item and now", "", "Progress", ""]);
+  await expect(page.locator(".dkn-card .dkn-th > span")).toHaveText(["Item and now", "Progress", "", ""]);
   await expect(page.locator(".dkn-card .dkn-tline")).toHaveCount(0);
   const d3 = page.locator('.dkn-card .dkn-row[data-desk-item="d3"]');
   // At its tests: 2m picked up, 21m building, 12m so far at tests (bold), three stubs to come.

@@ -133,9 +133,9 @@
 .dkn-wl { overflow-y: auto; overscroll-behavior: contain; }
 .dkn-wmore { display: block; padding: 4px 16px 8px; border-top: 0; }
 /* Strip (K, #751): Item, Progress (a 180px strip), Now. */
-/* Item and its sentence, the ✓ (#915: its own column, so it sits in one spot on every row however long the sentence),
-   the strip, and a narrow column, always kept, for the row's ⋯ (#839): it shows without moving anything in the row. */
-.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 24px 180px 24px; gap: 0 12px; align-items: center; }
+/* Item and its sentence, the strip, the ✓ right of it (#915: its own column, so it sits in one spot on every row
+   however long the sentence), and a narrow column, always kept, for the row's ⋯ (#839): it shows without moving anything in the row. */
+.dkn-th, .dkn-row { display: grid; grid-template-columns: minmax(130px, 1fr) 180px 24px 24px; gap: 0 12px; align-items: center; }
 .dkn-okc { display: flex; align-items: center; justify-content: center; }
 .dkn-th { align-items: end; padding: 10px 8px 8px 16px; border-bottom: 1px solid var(--line); font-size: var(--type-label); line-height: var(--type-label-lh); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .dkn-th > span:last-child { text-align: right; }
@@ -219,7 +219,8 @@
   .dkn-th { display: none; }
   .dkn-card .dkn-row { grid-template-columns: minmax(0, 1fr) 24px; gap: 6px 12px; padding-right: 40px; }
   /* The ✓ keeps its column beside the title and sentence; the strip goes under both. */
-  .dkn-card .dkn-row > .dkn-pl { grid-column: 1 / -1; }
+  .dkn-card .dkn-row > .dkn-okc { grid-column: 2; grid-row: 1; }
+  .dkn-card .dkn-row > .dkn-pl { grid-column: 1 / -1; grid-row: 2; }
   /* One column: the ⋯ goes to the row's top right corner, in the room kept for it. */
   .dkn-card .dkn-row > .dkn-rwrap { position: absolute; top: 10px; right: 8px; }
 }
