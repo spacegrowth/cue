@@ -133,6 +133,10 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .row-btns { display: flex; gap: 6px; }
 .btn { height: 30px; padding: 0 12px; border-radius: var(--radius-btn); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; white-space: nowrap; }
 .btn:hover { border-color: var(--muted); }
+/* A link made a button (Open the mocks ↗, Open the PR): its words centred in its height as a <button>'s are, never
+   pinned to its top, and no link underline (#928). */
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+a.btn:hover { text-decoration: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.deny { color: var(--deny); }
