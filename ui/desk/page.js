@@ -514,14 +514,15 @@ const deskChatLink = (sid, name, d) => (sessionOf(sid) ? `<button class="dk-pwa"
 /** One page: `page` the kind of page (what Hide panel remembers), `kind` its icon and mark (DESK_MARKS), `mark` the
  *  quiet words before its name ("Bug #197 · "), `title` its name's html, `meta` its quiet line, `now` and `panel` the
  *  panel's sections, `main` its own column and `foot` the box under it. */
-function deskPage({ page, kind, back, acts = "", mark, title, meta = "", now = "", panel = "", main, foot = "", aside = "", activity = null }) {
+function deskPage({ page, kind, back, acts = "", mark, title, meta = "", state = "", now = "", panel = "", main, foot = "", aside = "", activity = null }) {
   // `aside`: more attributes on its panel. `activity`: the panel's Activity at
   // its foot (#688); left out, the open page's own chat's (deskPageActivity).
   panel += activity ?? deskPageActivity();
   const hid = deskPanelHidden(page);
   const tog = page === "dispatcher" ? "" : `<button class="btn small dk-ptog" data-desk-panel="${deskPanelKey(page)}" aria-pressed="${!hid}">${DESK_PANEL_ICON}<span>${hid ? "Show panel" : "Hide panel"}</span></button>`;
-  return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph">${back || acts || tog ? `<div class="dk-ph1">${back}<span class="grow"></span>${acts}${tog}</div>` : ""}`
-    + `<h1 class="dk-ph2"><span class="dk-hk"${["desk", "session", "crew", "lead"].includes(kind) ? ` data-desk-mark="${kind}"` : ""}>${deskKindIcon(kind)}${esc(mark.replace(/ · $/, ""))}</span><span class="dk-hsep"> · </span><span class="dk-tname">${title}</span></h1>${meta ? `<div class="dk-ph3">${meta}</div>` : ""}</div>`
+  // Its header is the Desk's one header (desk/c.js deskHead, #865); a way back over it when there is one.
+  return `<div class="dk-pg${hid ? " hid" : ""}" data-desk-page="${page}"><div class="dk-ph">${back ? `<div class="dk-ph1">${back}</div>` : ""}`
+    + `${deskHead({ kind, mark: esc(mark.replace(/ · $/, "")), name: title, state, meta, acts: acts + tog })}</div>`
     // The box runs under both the chat and the panel (the panel stops above it), so what you type has the whole width;
     // an item's page keeps it in its column (its rows are laid out for that).
     + `<aside class="dk-panel"${aside}>${now}${panel}</aside>` + (page === "item" || !foot ? `<div class="dk-pgm">${main}${foot}</div></div>` : `<div class="dk-pgm">${main}</div><div class="dk-pgf">${foot}</div></div>`);

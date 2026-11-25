@@ -496,6 +496,21 @@ function deskCMore() {
 }
 window.addEventListener("resize", () => { if (view === "desk") deskCFitLists(); });
 document.addEventListener("scroll", (e) => { if (e.target?.dataset?.dknList) deskCMore(); }, true);
+/** The one header every page in the Desk's middle draws (#865, the headers' option B): the lead's chat, a session's,
+ *  a crew member's and an item's. One line: its kind's icon, its kind ("Dispatcher", "Session", "Crew", "Task #12")
+ *  and its name, where it stands in a few words, its buttons at the right; then one quiet line (what it's on, whose
+ *  crew, who has the item). The same height, layout and type sizes on all four; anything more sits under it. */
+function deskHead({ kind, mark, name, state = "", meta = "", acts = "" }) {
+  return `<div class="dkh" data-desk-head="${esc(kind)}"><div class="dkh-r"><h1 class="dkh-t">${deskKindIcon(kind)}<span class="dkh-k">${mark}</span><span class="dkh-sep">·</span><span class="dkh-n">${name}</span>${state ? `<span class="dkh-st">${esc(state)}</span>` : ""}</h1><div class="dkh-acts">${acts}</div></div><div class="dkh-m">${meta || "&nbsp;"}</div></div>`;
+}
+/** A session's buttons in its header: ⋯ (its menu), btw, Stop while it works, Close when it can be closed; as the
+ *  Board's top bar has them (chat/pane.js activeHead), without hover words. */
+function deskCSessActs(sid, s) {
+  const closable = svClosable({ sid, st: s?.state || "idle" });
+  return `${moreMenu(sid, s, closable)}${s?.harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : ""}${closable ? closeBtn(sid) : ""}`.replace(/ title="[^"]*"/g, "");
+}
+/** A session's state in a word or two for its header ("Working", "Asks you", "Idle"). */
+const deskHeadWord = (s) => { const w = s ? deskSessWithHelpers(s)[1] : "idle"; return w ? w[0].toUpperCase() + w.slice(1) : ""; };
 /** An opened item's state in a few words, for its head between its number and its title ("Ready to check", "Pick
  *  one", "Asks you"…): the Now column's words, plain. */
 function deskCHeadState(i) {
@@ -530,12 +545,17 @@ function deskCItemBar(i, bare = false) {
   // Queued for its session, which is still on something else: what it waits for and Start now, over that chat.
   const log = deskFinLog(i), ns = bare ? "" : deskNotStarted(i);
   const kept = i.kept ? `<div class="dkn-ibkept">Its work is kept in ${esc(i.kept.path)} on ${esc(i.kept.branch)}. Pick up again puts it back on the Desk with this copy, for ${esc(deskLeadName(deskOf(i.project)) || "the lead")} to give out.</div>` : "";
-  const kind = ["bug", "feature", "task"].includes(i.kind) ? `${i.kind[0].toUpperCase()}${i.kind.slice(1)}` : "";
-  const st = deskCHeadState(i);
-  const h1 = `<h1 class="dkn-ih1">${deskCKind(i)}<span class="dkn-ikw">${kind}</span><span class="dkn-iid">#${id}</span><span class="dkn-ist"> · ${st ? `${esc(st)} · ` : ""}</span><span class="dkn-itt">${esc(i.title)}</span></h1>`;
-  const what = deskOneLine(i.words) || deskOneLine(i.see);
-  const ds = what && what !== plain(i.title) ? `<div class="dkn-ids">${linkify(esc(what))}</div>` : "";
-  return `<div class="dkn-ib${check ? " check" : ""}"><div class="dkn-ib2">${h1}<div class="dkn-ibacts">${acts}</div></div>${ds}${see}${kept}${back}${ns}${log ? `<div class="dkn-iblog">${log}</div>` : ""}</div>`;
+  const kind = ["bug", "feature", "task"].includes(i.kind) ? `${i.kind[0].toUpperCase()}${i.kind.slice(1)} ` : "";
+  // Who has it, on the header's quiet line; its session's Stop with the item's own buttons while it works.
+  const sid = deskHolderSid(i), hs = sid && sessionOf(sid), d = deskOf(i.project);
+  const meta = hs ? `with ${deskChatLink(sid, deskHolderName(sid), d)} · ${esc(deskHeadWord(hs).toLowerCase())}` : i.holder?.name ? `with <b>${esc(i.holder.name)}</b>` : bare ? deskB2Status(i)[0] : "";
+  const stop = hs?.state === "working" && !bare ? `<button class="btn small deny" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : "";
+  const head = deskHead({ kind: i.kind || "task", mark: `${kind}#${id}`, name: esc(i.title), state: deskCHeadState(i), meta, acts: acts + stop });
+  // What's under the header, only when there is some: how a finished item went, where its work is kept, Send back's
+  // box, what it waits for before it starts, a failed build's output. Its words and you'll-see aren't here: what to try
+  // is the bar at the chat's foot (deskCHowTo), what it was added with in its Activity.
+  const more = `${see}${kept}${back}${ns}${log ? `<div class="dkn-iblog">${log}</div>` : ""}`;
+  return head + (more ? `<div class="dkn-ib${check ? " check" : ""}">${more}</div>` : "");
 }
 /** Items whose How to check you folded (true) or opened (false) at the chat's foot; unset, it's open, folded at the
  *  smallest window. */
@@ -613,9 +633,10 @@ function deskCCrewPage({ lead, key, t, it, leadName, back, word, dot, acts, main
   const body = tab === "files" ? `<div class="dk-pane dkn-sfiles" data-scroll-key="cfiles:${esc(k)}">${files || `<div class="dk-quiet">Nothing changed yet.</div>`}</div>`
     : tab === "activity" ? `<div class="dk-pane dkn-sfiles" data-scroll-key="cact:${esc(k)}">${rows.length ? `<div class="dk-prows">${rows.map((r) => deskActPanelRow({ at: r.at, line: r }, d)).join("")}</div>` : `<div class="dk-quiet">Nothing yet.</div>`}</div>`
     : main;
-  const head = `<div class="dkn-chead"><i class="dk-pdot ${dot}" aria-hidden="true"></i>${DESK_C_CREW}<b class="dkn-cname">${esc(t.name)}</b><span class="dkn-cword">${esc(word)}</span><span class="grow"></span>${acts}</div>`;
-  const meta = `<div class="dkn-smeta">in <b>${esc(leadName)}</b>'s crew${it ? ` · on ${deskItemLink(it)} · ${esc(it.title)}` : t.what ? ` · on ${esc(t.what)}` : ""}</div>`;
-  return `<div class="dkn-sp dkn-crew" data-desk-page="crew"><div class="dkn-sback">${back}</div>${head}${meta}${tabs}<div class="dkn-spm">${body}${foot}</div></div>`;
+  // The Desk's one header (deskHead, #865).
+  const head = deskHead({ kind: "crew", mark: "Crew", name: esc(t.name), state: word, acts,
+    meta: `in <b>${esc(leadName)}</b>'s crew${it ? ` · on ${deskItemLink(it)} · ${esc(it.title)}` : t.what ? ` · on ${esc(t.what)}` : ""}` });
+  return `<div class="dkn-sp dkn-crew" data-desk-page="crew"><div class="dkn-sback">${back}</div>${head}${tabs}<div class="dkn-spm">${body}${foot}</div></div>`;
 }
 /** Under this turn's files in a session's Files tab: each item it worked on, newest first, with the files that item
  *  changed (its commit's, or so far). */
@@ -665,13 +686,15 @@ function deskCItemPending(i, s, d = deskOf(i.project)) {
 function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
   const s = sessionOf(sid);
   if (!s) return null;
-  const card = (state.items || []).find((x) => x.session_id === sid) || null;
   // The Board's own top bar, without its hover words (none on the Desk), and under it, as on the Board, its folder
   // (not on an item's page, whose head is the item's) and its last half hour as a bar (#865, the headers' option B).
-  const head = activeHead(paneArgs({ it: card, s })).replace(/ title="[^"]*"/g, "");
-  const track = `${item ? "" : subHead(s.cwd, sid)}<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>`;
-  const on = !item && deskSessItems(d, sid)[0];
-  const meta = on ? `<div class="dkn-smeta dkn-on"><span class="dkn-onk">On</span>${deskItemLink(on)}<span class="dkn-ont">${esc(on.title)}</span></div>` : "";
+  // Its header is the Desk's one header (deskHead, #865): its kind and name, its state, its buttons; what it's on (else
+  // its folder) on the quiet line. On an item's page the item's header stands in for it. Under it, as on the Board,
+  // its last half hour as a bar.
+  const on = !item && deskSessItems(d, sid)[0], k = deskSessKind(sid, d);
+  const head = item ? "" : deskHead({ kind: k, mark: DESK_MARKS[k], name: esc(deskHolderName(sid)), state: deskHeadWord(s), acts: deskCSessActs(sid, s),
+    meta: on ? `on ${deskItemLink(on)} · ${esc(on.title)}` : `<span class="dkh-path">${esc(homeless(s.cwd || ""))}</span>` });
+  const track = `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>`;
   // This turn's files and each of its items' (its Files tab lists them all).
   const n = (deskTurnDiff(sid)?.files || s.changes?.files || []).length + deskCSessTasks(d, sid).reduce((k, i) => k + (deskDiffs.get(deskDiffId(i))?.files || deskCFilesOn(i)).length, 0);
   const tab = ["files", "activity"].includes(deskCSessTabs.get(sid)) ? deskCSessTabs.get(sid) : "chat";
@@ -698,8 +721,8 @@ function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
   // opened from the left has no back (deskChatBack).
   // An item's page: the item's head first, then its session's (#865); what to try at the chat's foot, over the box.
   return item
-    ? `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskBack("")}</div>${itemHead}${head}${track}${tabs}<div class="dkn-spm">${main}${tab === "chat" ? deskCHowTo(item) : ""}${foot}</div></div>`
-    : `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${track}${meta}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
+    ? `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskBack("")}</div>${itemHead}${track}${tabs}<div class="dkn-spm">${main}${tab === "chat" ? deskCHowTo(item) : ""}${foot}</div></div>`
+    : `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${track}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
 }
 /** Items you just sent back, by id: what was open on the Desk then (commit.js deskLooksPlace). Their rows stay where
  *  they were in Waiting on you till you open something else (#791), rather than jump up to Working under you. */

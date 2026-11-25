@@ -458,3 +458,35 @@
 
 /* An item's row naming the landing step it waits on (#783, desk/now_line.js deskNowLineFor): a command in mono. */
 .dkl-cmd { font-family: var(--mono); }
+
+/* ---------- the one header (desk/c.js deskHead, #865, the headers' option B) ----------
+   The lead's chat, a session's, a crew member's and an item's: its kind's icon, kind and name at the Dispatcher's size
+   (the kind muted, the name in ink), where it stands in small muted words, its buttons at the right; one quiet line
+   under it. The same height, padding and type sizes on all four. */
+.dkh { flex: none; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 16px 16px 0; }
+.dkh-r { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 30px; }
+.dkh-t { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; align-items: center; gap: 7px; font: 600 var(--type-page)/var(--type-page-lh) var(--sans); letter-spacing: -.01em; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.dkh-t > .dk-kic { flex: none; width: 18px; height: 18px; color: var(--muted); }
+.dkh-k, .dkh-sep { flex: none; }
+.dkh-n { min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.dkh-st { flex: none; margin-left: 4px; font: 500 var(--type-small)/var(--type-small-lh) var(--sans); letter-spacing: 0; color: var(--muted); }
+.dkh-acts { flex: none; display: flex; align-items: center; gap: 8px; }
+.dkh-acts:empty { display: none; }
+.dkh-acts .dk-acts { padding: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
+.dkh-m { min-height: var(--type-small-lh); font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dkh-m b, .dkh-m .dk-sch-t, .dkh-m .dk-pwa { color: var(--ink); font-weight: 600; }
+.dkh-m .dk-sch-t .dk-kic { vertical-align: -2px; margin-right: 2px; }
+.dkh-path { font-family: var(--mono); }
+.dkh, .dkh-m { user-select: text; -webkit-user-select: text; }
+.dkh button, .dkh .btn { user-select: none; -webkit-user-select: none; }
+/* In the lead's page (desk/page.js deskPage) the header brings its own padding: the page's head adds none. */
+.dk-c .dk-ph, .dk-c .dk-pg[data-desk-page="dispatcher"] > .dk-ph { padding: 0; gap: 0; }
+.dk-c .dk-ph > .dk-ph1 { padding: 12px 16px 0; }
+/* What sits under an item's header (how it went, Send back's box, what it waits for): its own block, no line. */
+.dkn-ib { padding: 8px 16px 0; gap: 6px; }
+.dkn-ib:empty { display: none; }
+/* The smallest window: the header's line a size down, and less room over it. */
+@media (max-height: 680px) {
+  .dkh { padding-top: 10px; }
+  .dkh-t { font-size: var(--type-title); line-height: var(--type-title-lh); }
+}
