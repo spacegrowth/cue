@@ -1,12 +1,16 @@
 /* Extensions: a session's tabs under its activity bar; an extension tab's page floats over the slot. */
-.stabs { display: flex; align-items: baseline; gap: 18px; margin: 2px 16px 0; border-bottom: 1px solid var(--line); flex: none; min-width: 0; }
-.stab { font: 600 var(--type-body) var(--sans); color: var(--muted); background: none; border: 0; padding: 6px 1px 7px; margin-bottom: -1px; border-bottom: 2px solid transparent; display: inline-flex; gap: 6px; align-items: baseline; cursor: pointer; }
+/* The same tab row as a Desk chat's (desk-c.css .dkn-stabs): a band between two lines, its first label under the
+   heading text, the picked tab filled. */
+.stabs { flex: none; display: flex; align-items: stretch; gap: 0; min-width: 0; margin: 10px 0 0; padding: 0 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stab { all: unset; flex: none; cursor: pointer; display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; padding: 7px 14px; font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--muted); }
 .stab:hover { color: var(--ink); }
-.stab.on { color: var(--ink); border-bottom-color: var(--ink); }
-.stab-n { font: var(--type-label)/var(--type-label-lh) var(--sans); font-variant-numeric: tabular-nums; }
+.stab.on { color: var(--on-accent); background: var(--accent); }
+.stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
+.stab.on .stab-n { color: inherit; opacity: 0.8; }
+.stab-n { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
 .stab-n.bad { color: var(--deny); font-weight: 600; }   /* "1 failed" (#867) */
 .stab-n .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
-.stab-ran { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+.stab-ran { align-self: center; padding-right: 14px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
 .stab-ran code { font-family: var(--mono); }
 .ext-slot { flex: 1; min-height: 0; }
 .ext-frame { position: fixed; z-index: 2; border: 0; background: var(--panel); }

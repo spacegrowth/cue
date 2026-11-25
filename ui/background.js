@@ -34,10 +34,9 @@ function bgTabBtn(sid) {
   }).join("");
 }
 /** Activity (#872), next to Chat as on the Desk: Cue's messages to the session (hand-offs, Reopened, done…) and its
- *  Desk lines, which its chat leaves out (chat/pane.js activeChat). Shown once it has any (or while it's open). */
+ *  Desk lines, which its chat leaves out (chat/pane.js activeChat). Always there, as on the Desk (#898). */
 function bgActTabBtn(sid) {
   const on = bgTabOn.get(sid) === "activity";
-  if (!on && !(typeof dkActivityOf === "function" && dkActivityOf(sid).length)) return "";
   return `<button class="stab ${on ? "on" : ""}" data-bg-tab="activity" data-sid="${esc(sid)}">Activity</button>`;
 }
 /** The Activity tab's page: its rows as the Desk's session page lists them (desk/page.js deskSessActivity,
