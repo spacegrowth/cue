@@ -42,5 +42,5 @@ test("Keep them closes the list, removing nothing; none found says so", async ({
   expect(await cue.calls("desk_old_copies")).toHaveLength(0);
   await cue.change(withOld, null);
   await row(page).locator('[data-ld="old"]').click();
-  await expect(row(page)).toContainText("None: every other folder has work not in the app yet, or is in use.");
+  await expect(row(page)).toContainText("None: every other folder has work not on main yet, or is in use.");
 });

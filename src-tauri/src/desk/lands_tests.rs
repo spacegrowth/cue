@@ -15,7 +15,7 @@ fn an_older_builds_working_at_once_is_read_as_items_at_once() {
 fn a_new_project_gets_the_defaults_and_a_folder_with_no_repository_works_in_place() {
     let none = json!({});
     assert_eq!(of_in(&none, "p", Place::Repo), Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] });
-    assert_eq!(of_in(&none, "cue", Place::Cue), Lands { at: "copy", how: "squash", check: "cue", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: vec![], after_steps: app_steps() });
+    assert_eq!(of_in(&none, "cue", Place::Cue), Lands { at: "copy", how: "squash", check: "command", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: vec![APP_CHECK.into()], after_steps: app_steps() });
     let c = json!({ "project": { "lands": { "p": { "where": "copy", "how": "squash" } } } });
     assert_eq!(of_in(&c, "p", Place::NoRepo), Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: vec![], after_steps: vec![] }, "a copy needs a repository");
 }
@@ -31,7 +31,7 @@ fn what_cant_be_picked_says_why_in_plain_words() {
     assert_eq!(allowed("push", "after", Place::Cue), Ok("after"));
     assert_eq!(allowed("check", "command", Place::Cue), Ok("command"));
     assert_eq!(allowed("after", "command", Place::Repo), Ok("command"));
-    assert_eq!(allowed("check", "cue", Place::Repo), Err("only for Cue's own project"));
+    assert_eq!(allowed("check", "cue", Place::Cue), Err("not a choice"), "no check of the app's own: it's a step (#902)");
     assert_eq!(allowed("where", "copy", Place::NoRepo), Err("needs a git repository"));
     assert_eq!(allowed("how", "owner", Place::Repo), Ok("owner"));
 }
@@ -58,9 +58,10 @@ fn a_saved_setting_holds_and_you_commit_means_the_shared_folder() {
 }
 
 #[test]
-fn cues_own_project_keeps_its_check_and_install_and_a_new_project_gets_neither() {
+fn the_apps_own_source_starts_with_its_steps_and_a_new_project_gets_none() {
     let cue = of_in(&json!({}), "cue", Place::Cue);
-    assert_eq!((cue.check, cue.after, cue.push), ("cue", "command", "ask"), "Cue's own setup, nothing saved");
+    assert_eq!((cue.check, cue.after, cue.push), ("command", "command", "ask"), "the app's own setup, nothing saved");
+    assert_eq!(cue.check_steps, ["[Window loads] test ! -e scripts/check-window.mjs || node scripts/check-window.mjs ."], "its check is a step like any other (#902)");
     assert_eq!(cue.after_steps, ["[Build] app:build", "[Install] app:install", "[Restart] app:restart"]);
     assert!(cue.updates_app() && cue.plain_after().is_empty());
     let new = of_in(&json!({}), "web", Place::Repo);
@@ -165,7 +166,8 @@ fn one_way_decides_the_check() {
     let c = json!({ "project": { "lands": { "web": { "check": "command", "check_steps": ["npm test"] }, "off": { "check": "none" } } } });
     assert_eq!(check_in(&c, "web", Place::Repo), Check::Steps(vec!["npm test".into()]));
     assert_eq!(check_in(&c, "off", Place::Cue), Check::Off, "None picked: off, Cue's own project too");
-    assert_eq!(check_in(&c, "new", Place::Cue), Check::Repo, "not picked: the repository's own");
+    assert_eq!(check_in(&c, "new", Place::Cue), Check::Steps(vec![APP_CHECK.into()]), "not picked: the app's own source checks its window");
+    assert_eq!(check_in(&c, "new", Place::Repo), Check::Repo, "not picked elsewhere: the repository's own");
     assert_eq!(check_in(&json!({ "project": { "lands": { "p": { "check": "command" } } } }), "p", Place::Repo), Check::Repo, "no steps: as if not picked");
 }
 
@@ -205,6 +207,18 @@ fn a_desk_saved_with_the_old_install_choice_reads_as_the_apps_steps() {
     assert_eq!((l.app_step_name("building"), l.app_step_name("starting")), (Some("Build".into()), Some("Restart".into())));
     assert_eq!(of_in(&c, "web", Place::Repo).after, "nothing", "elsewhere it was never allowed");
     assert!(checked(&json!({ "cue": { "after": "install" } })).is_ok(), "an old setting still saves");
+}
+
+#[test]
+fn a_desk_saved_with_the_old_app_check_keeps_its_steps() {
+    let c = json!({ "project": { "lands": { "cue": { "check": "cue", "at_once": 2 }, "web": { "check": "cue" } } } });
+    let l = of_in(&c, "cue", Place::Cue);
+    assert_eq!((l.check, l.check_steps.clone(), l.at_once), ("command", vec![APP_CHECK.to_string()], 2), "the same check, as a step of its own");
+    assert_eq!(check_in(&c, "cue", Place::Cue), Check::Steps(vec![APP_CHECK.into()]));
+    assert_eq!(of_in(&c, "web", Place::Repo).check, "none", "elsewhere it was never allowed");
+    assert!(checked(&json!({ "cue": { "check": "cue" } })).is_ok(), "an old setting still saves");
+    let none = of_in(&json!({ "project": { "lands": { "cue": { "check": "none" } } } }), "cue", Place::Cue);
+    assert!(none.check == "none" && none.check_steps.is_empty(), "None picked: no steps");
 }
 
 #[test]

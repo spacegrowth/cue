@@ -68,7 +68,7 @@ fn a_new_project_shows_the_defaults_and_what_cant_be_picked_says_why() {
     assert_eq!(choice("how", "merge")["ok"], true, "merge can be picked in a repository");
     assert_eq!(choice("where", "branch")["ok"], true, "a branch can be picked in a repository");
     assert!(choice("where", "branch")["hint"].as_str().is_some_and(|h| h.contains("one item at a time")), "{}", choice("where", "branch"));
-    assert_eq!(choice("check", "cue")["why"], "only for Cue's own project");
+    assert!(l["parts"].as_array().unwrap().iter().all(|p| p["choices"].as_array().unwrap().iter().all(|c| c["key"] != "cue")), "no choice of the app's own (#902)");
     for (part, key) in [("how", "pr"), ("push", "after"), ("push", "never"), ("check", "command"), ("after", "command")] {
         assert_eq!(choice(part, key)["ok"], true, "{part} {key} can be picked");
     }
@@ -217,7 +217,7 @@ fn a_check_of_your_own_runs_in_order_and_stops_at_the_first_failure() {
     assert!(it.to_string().contains("echo two"), "it says which step failed: {it}");
 }
 
-/// A check of your own reads the tree Cue's own check reads (#381): main moved after the item started, and the steps
+/// A check of your own reads main plus the item (#381): main moved after the item started, and the steps
 /// see main's change with the item's.
 #[test]
 fn a_check_of_your_own_sees_main_moved_since_the_item_started() {
@@ -298,7 +298,7 @@ fn repo_beside(w: &World, name: &str, cue: bool) -> String {
 }
 
 #[test]
-fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_keeps_its_own() {
+fn every_desk_offers_the_same_choices_and_each_keeps_its_own() {
     // #460: two Desks in one workspace, one on Cue's own folder, one on another repository.
     let w = World::new();
     let (_h, project) = super::desk::holder(&w);
@@ -316,13 +316,15 @@ fn a_desk_on_another_project_never_offers_cues_own_check_or_install_and_each_kee
     };
     assert_eq!(shown("desk-web", "check"), ["none", "command"], "another project: None or your own steps");
     assert_eq!(shown("desk-web", "after"), ["nothing", "command"], "another project: Nothing or your own steps");
-    assert_eq!(shown("desk-cue", "check"), ["none", "cue", "command"], "Cue's own Desk keeps Cue's own check");
+    assert_eq!(shown("desk-cue", "check"), ["none", "command"], "the app's own Desk too: its check is a step of its own (#902)");
     assert_eq!(shown("desk-cue", "after"), ["nothing", "command"], "its build, install and restart are steps of its own (#796)");
-    assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["check"], "cue");
+    assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["check"], "command");
+    assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["check_steps"], json!(["[Window loads] test ! -e scripts/check-window.mjs || node scripts/check-window.mjs ."]));
     assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["after"], "command");
     assert_eq!(desk_of(&w, "desk-cue")["lands"]["set"]["after_steps"], json!(["[Build] app:build", "[Install] app:install", "[Restart] app:restart"]));
-    // Cue's own setting can't be saved on the other Desk.
+    // The old choice and the app's own steps can't be saved on the other Desk.
     assert!(w.hub().desk_lands_set("desk-web", &json!({ "check": "cue" })).is_err());
+    assert!(w.hub().desk_lands_set("desk-cue", &json!({ "check": "cue" })).is_err(), "not a choice anywhere now");
     assert!(w.hub().desk_lands_set("desk-web", &json!({ "after": "install" })).is_err());
     assert!(w.hub().desk_lands_set("desk-web", &json!({ "after": "command", "after_steps": ["[Build] app:build", "[Install] app:install", "[Restart] app:restart"] })).is_err(), "the app's own steps, on its own source only");
     // Each keeps its own: a change on one leaves the other as it was.

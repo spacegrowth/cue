@@ -6,7 +6,7 @@ import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 
 const line = (page) => page.locator(".dk-strip .dk-ab");
 
-test("Cue's own Desk says how its work lands, and Change opens the setting with Cue's setup", async ({ page, cue }) => {
+test("the app's own Desk says how its work lands, and Change opens the setting with its steps as its own (#902)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await deskAllSessions(page);
@@ -21,8 +21,11 @@ test("Cue's own Desk says how its work lands, and Change opens the setting with 
   await expect(seg("Where an item works").locator("button.on")).toHaveText("Own copy");
   await expect(dlg.locator(".ld-n")).toHaveText("3");
   await expect(seg("How it lands").locator("button.on")).toHaveText("One commit per item");
-  await expect(seg("Check before landing").locator("button.on")).toHaveText("Cue's own check");
-  await expect(dlg.locator(".ld-steps li b")).toHaveText(["Build", "Rust tests", "Window loads"]);
+  // The same choices as any Desk; its window's check is a step of its own (#902).
+  await expect(seg("Check before landing").locator("button")).toHaveText(["None", "Your own steps"]);
+  await expect(seg("Check before landing").locator("button.on")).toHaveText("Your own steps");
+  await expect(dlg.locator('[data-ld-steps="check"]')).toHaveValue("[Window loads] test ! -e scripts/check-window.mjs || node scripts/check-window.mjs .");
+  await expect(dlg.getByText(/Rust tests|Cue's own/)).toHaveCount(0);
   // Its build, install and restart are named steps after landing, as any project's own (#796).
   await expect(seg("After landing").locator("button.on")).toHaveText("Your own steps");
   await expect(dlg.locator('[data-ld-steps="after"]')).toHaveValue("[Build] app:build\n[Install] app:install\n[Restart] app:restart");
@@ -52,7 +55,7 @@ test("a change saved shows on the screen next time; you commit means the shared 
   await line(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   await dlg.locator('[data-ld-pick="none"]').click();
-  await expect(dlg.locator(".ld-steps")).toHaveCount(0);
+  await expect(dlg.locator('[data-ld-steps="check"]')).toHaveCount(0);
   await dlg.locator('[data-ld="less"]').click();
   await expect(dlg.locator(".ld-n")).toHaveText("2");
   await expect(dlg.locator(".ld-row", { hasText: "Items at once" }).locator(".ld-hint")).toHaveText("More than two wait for a free copy.");
@@ -121,7 +124,7 @@ test("a folder that isn't a git repository works in place and its settings say w
   await expect(dlg.locator(".ld-seg button", { hasText: "A branch" })).toBeDisabled();
 });
 
-test("a Desk on another project offers no Cue's own check or install, and keeps its own choices apart from Cue's (#460)", async ({ page, cue }) => {
+test("a Desk on another project offers the same choices, and keeps its own apart from the app's own Desk (#460, #902)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   await deskAllSessions(page);
@@ -138,7 +141,6 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   const seg = (label) => dlg.locator(".ld-row", { has: page.locator(".ld-label", { hasText: label }) }).locator(".ld-seg button");
   await expect(seg("Check before landing")).toHaveText(["None", "Your own steps"]);
   await expect(seg("After landing")).toHaveText(["Nothing", "Your own steps"]);
-  await expect(dlg.getByText("Cue's own check")).toHaveCount(0);
   await expect(dlg.locator("[title]")).toHaveCount(0);
   // Its own steps saved for it alone.
   await seg("After landing").filter({ hasText: "Your own steps" }).click();
@@ -154,12 +156,13 @@ test("a Desk on another project offers no Cue's own check or install, and keeps 
   await page.keyboard.press("Tab");
   await dlg.locator('[data-ld="save"]').click();
   await expect.poll(async () => (await cue.calls("desk_lands_set")).at(-1)?.args).toMatchObject({ desk: "desk-web", lands: { after: "command", after_steps: ["npm run deploy"] } });
-  // Cue's own Desk keeps its own check, and its build, install and restart as named steps.
+  // The app's own Desk keeps its own steps: its window's check, and its build, install and restart.
   await page.evaluate(() => { deskSelect("cue"); renderMain(); });
   await deskAllSessions(page);
   await line(page).locator("[data-lands-change]").click();
   await expect(dlg.locator(".move-title")).toHaveText("Settings for cue");
-  await expect(seg("Check before landing").and(page.locator(".on"))).toHaveText("Cue's own check");
+  await expect(seg("Check before landing").and(page.locator(".on"))).toHaveText("Your own steps");
+  await expect(dlg.locator('[data-ld-steps="check"]')).toHaveValue("[Window loads] test ! -e scripts/check-window.mjs || node scripts/check-window.mjs .");
   await expect(seg("After landing").and(page.locator(".on"))).toHaveText("Your own steps");
   await expect(seg("After landing")).toHaveText(["Nothing", "Your own steps"]);
 });

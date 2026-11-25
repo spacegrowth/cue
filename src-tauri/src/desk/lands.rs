@@ -2,13 +2,13 @@
 //! it lands, the check, after landing, push, items at once). Kept in config.json as `project.lands`: project → the
 //! parts you saved, next to Ask me before (desk/one_way.rs). Never in the project's files. A project not there has the
 //! defaults (part 7): its own copy per item, three at once, one commit per item, no check, nothing after, ask before
-//! a push. Cue's own project has Cue's setup (its check, then the app's build, install and restart as named steps after
-//! landing, `APP_STEPS`), and a folder that isn't a git repository can only work in place, its work committed by you.
+//! a push. The app's own source starts with its window's check as a step (`APP_CHECK`), then the app's build, install
+//! and restart as named steps after landing (`APP_STEPS`), and a folder that isn't a git repository can only work in place, its work committed by you.
 //!
 //! A choice shown before Cue can do it can't be picked, and says so (none now). A check or an
 //! after landing of your own is its steps, kept here too (`check_steps`, `after_steps`): run in order, the first that
-//! fails stops the rest (`run_steps`); a step is named by "[Name]" at its line's start. Cue's own check stays Cue's; any other
-//! project starts with no check and nothing after landing. A pull request and the push choices are built (desk/hub/landing/pr.rs). The Desk reads the rest as it works (desk/hub/landing/trees.rs,
+//! fails stops the rest (`run_steps`); a step is named by "[Name]" at its line's start. Any other project starts with no check
+//! and nothing after landing. A pull request and the push choices are built (desk/hub/landing/pr.rs). The Desk reads the rest as it works (desk/hub/landing/trees.rs,
 //! desk/hub/landing/finish.rs, desk/hub/landing/commit.rs).
 
 use serde_json::{json, Map, Value};
@@ -58,8 +58,7 @@ pub const PARTS: &[Part] = &[
         label: "Check before landing",
         choices: &[
             c("none", "None", "Nothing is run. An item lands and says \"landed, not checked\".", true),
-            c("cue", "Cue's own check", "Run in a clean copy of main plus the item, in order. If one fails, nothing reaches main.", true),
-            c("command", "Your own steps", "Your steps run in order in a clean copy of main plus the item. The first that fails stops the rest, and nothing reaches main. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first.", true),
+            c("command", "Your own steps", "Your steps run in order in a clean copy of main plus the item, as in your terminal. The first that fails stops the rest, and nothing reaches main. Up to 15 minutes a step and 30 in all, counting anything a step leaves running in the background.", true),
         ],
     },
     Part {
@@ -67,7 +66,7 @@ pub const PARTS: &[Part] = &[
         label: "After landing",
         choices: &[
             c("nothing", "Nothing", "Landed is the last step: an item is done when it's on main.", true),
-            c("command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder. Start a line with [Name] to name its step. The first that fails stops the rest, and the item waits for you. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first.", true),
+            c("command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder, as in your terminal. Start a line with [Name] to name its step. The first that fails stops the rest, and the item waits for you. Up to 15 minutes a step and 30 in all, counting anything a step leaves running in the background.", true),
         ],
     },
     Part {
@@ -87,7 +86,7 @@ pub const PARTS: &[Part] = &[
         choices: &[
             c("all", "All tests", "", true),
             c("changed", "Only what changed", "", true),
-            c("changed_full", "Changed, full run at landing", "", true),
+            c("changed_full", "Changed, all before done", "", true),
         ],
     },
     // When an item queued after another (after:) starts (#808; desk/hub/turn/route.rs `release`): once the one before
@@ -105,6 +104,9 @@ pub const PARTS: &[Part] = &[
 
 /// After landing's old choice, before it was steps: read as the app's built-in steps (`app_steps`).
 const OLD_INSTALL: &str = "install";
+
+/// The check's old choice, before the app's own check was a step (`APP_CHECK`): kept when saved, read as the defaults.
+const OLD_APP_CHECK: &str = "cue";
 
 /// "Working at once", as a build saved it while it was a setting of its own (#798): read once as Items at once.
 const OLD_WORKING: &str = "working";
@@ -180,12 +182,11 @@ fn refused_app_steps(steps: &[String], place: Place) -> Result<(), String> {
 
 /// What a choice that isn't built yet says.
 pub const NOT_YET: &str = "not yet";
-/// Cue's own check, as its steps (docs/desk-landing-design.md part 7).
-pub const CUE_STEPS: &[(&str, &str)] = &[
-    ("Build", "the app built from a clean copy"),
-    ("Rust tests", "the hub's own tests"),
-    ("Window loads", "from the clean copy, failing on a name missing or declared twice"),
-];
+/// The check before landing the app's own source starts with, as a step of its own like any you'd write: its window
+/// loaded from the clean copy of main plus the item (scripts/check-window.mjs), failing on a name missing or declared
+/// twice; a commit from before that check has none to run. A Desk there saved before the check was steps (it had a
+/// choice of its own) reads as this.
+pub const APP_CHECK: &str = "[Window loads] test ! -e scripts/check-window.mjs || node scripts/check-window.mjs .";
 
 /// What the project's folder is, which decides what can be picked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -287,7 +288,7 @@ impl Lands {
 /// on every Desk (#808).
 pub fn defaults(place: Place) -> Lands {
     match place {
-        Place::Cue => Lands { at: "copy", how: "squash", check: "cue", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: app_steps() },
+        Place::Cue => Lands { at: "copy", how: "squash", check: "command", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![APP_CHECK.into()], after_steps: app_steps() },
         Place::Repo => Lands { at: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
         Place::NoRepo => Lands { at: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: AT_ONCE_DEFAULT, check_steps: vec![], after_steps: vec![] },
     }
@@ -423,7 +424,6 @@ pub fn allowed(part: &str, key: &str, place: Place) -> Result<&'static str, &'st
         return Err(NOT_YET);
     }
     match (part, key, place) {
-        ("check", "cue", p) if p != Place::Cue => Err("only for Cue's own project"),
         ("where", "copy" | "branch", Place::NoRepo) | ("how", "squash" | "merge" | "pr", Place::NoRepo) => Err("needs a git repository"),
         _ => Ok(ch.key),
     }
@@ -445,7 +445,10 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
         if let Some(n) = s.get("at_once").and_then(Value::as_u64).or(old).filter(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(n)) {
             l.at_once = n as u32;
         }
-        l.check_steps = s.get("check_steps").and_then(steps_in).unwrap_or_default();
+        // The check's steps as saved; none saved, the defaults' (the window's check on the app's own source).
+        if let Some(steps) = s.get("check_steps").and_then(steps_in) {
+            l.check_steps = steps;
+        }
         // After landing's steps as saved; none saved, the defaults' (the app's built-in steps on its own source).
         if let Some(steps) = s.get("after_steps").and_then(steps_in) {
             l.after_steps = steps;
@@ -461,7 +464,11 @@ pub fn of_in(c: &Value, project: &str, place: Place) -> Lands {
     }
     // Your own steps with none saved: as if not picked.
     if l.check == "command" && l.check_steps.is_empty() {
-        l.check = defaults(place).check;
+        (l.check, l.check_steps) = (defaults(place).check, defaults(place).check_steps);
+    }
+    // No check: no steps kept with it.
+    if l.check != "command" {
+        l.check_steps.clear();
     }
     if l.after == "command" && l.after_steps.is_empty() {
         (l.after, l.after_steps) = (defaults(place).after, defaults(place).after_steps);
@@ -604,10 +611,9 @@ pub fn desk_view(project: &str, folder: &str) -> Value {
             json!({ "key": p.key, "label": p.label, "choices": choices, "now": l.get(p.key) })
         })
         .collect();
-    let steps: Vec<Value> = CUE_STEPS.iter().map(|(w, h)| json!({ "label": w, "hint": h })).collect();
     json!({
         "project": project, "place": place.key(), "set": l.to_json(), "summary": summary, "parts": parts,
-        "at_once": { "min": AT_ONCE.0, "max": AT_ONCE.1 }, "steps": steps,
+        "at_once": { "min": AT_ONCE.0, "max": AT_ONCE.1 },
         "why": if place == Place::NoRepo { NO_REPO_WHY } else { "" },
     })
 }
@@ -711,7 +717,7 @@ pub fn propose(c: &Value, project: &str, place: Place, part: &str, to: &str, ste
         }
         allowed(p.key, ch.key, place).map_err(|why| format!("{part}: {to} can't be picked ({why})"))?;
         set[p.key] = json!(ch.key);
-        let mut w = format!("{} → {}", part_words(p.key), ch.label.to_lowercase().replace("cue's", "Cue's"));
+        let mut w = format!("{} → {}", part_words(p.key), ch.label.to_lowercase());
         if ch.key == "command" {
             if steps.is_empty() {
                 return Err(format!("{part}: give its steps (steps: <one>{STEP_SEP}<two>)"));
@@ -761,6 +767,7 @@ pub fn checked(value: &Value) -> Result<Value, String> {
                 "at_once" => v.as_u64().is_some_and(|n| (AT_ONCE.0 as u64..=AT_ONCE.1 as u64).contains(&n)),
                 // Saved before after landing was steps: kept, and read as the app's built-in steps.
                 "after" if v.as_str() == Some(OLD_INSTALL) => true,
+                "check" if v.as_str() == Some(OLD_APP_CHECK) => true,
                 part => PARTS.iter().find(|p| p.key == part).is_some_and(|p| p.choices.iter().any(|c| Some(c.key) == v.as_str())),
             };
             if !ok {

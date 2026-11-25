@@ -91,7 +91,7 @@ test("your own check: steps one per line, saved in order with a tick by one Save
   await check.locator("textarea.ld-cmd").fill("npm test\n\n npm run lint ");
   await check.locator("textarea.ld-cmd").blur();
   await expect(check.locator(".ld-hint")).toContainText("The first that fails stops the rest");
-  await expect(check.locator(".ld-hint")).toContainText("all of them 30 minutes together; anything a step leaves running in the background counts toward that time");
+  await expect(check.locator(".ld-hint")).toContainText("Up to 15 minutes a step and 30 in all, counting anything a step leaves running in the background");
   await dlg.locator('[data-ab-kind="release"]').click();
   // Nothing saved yet: the foot says so.
   await expect(dlg.locator(".ld-foot-t")).toHaveText("Unsaved changes");
@@ -180,7 +180,8 @@ test("the settings screen is short: it fits a 900-high window without scrolling 
   await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
-  await expect(dlg.locator(".ld-steps li b")).toHaveText(["Build", "Rust tests", "Window loads"]);
+  // Its check's step and its steps after landing both in their boxes (#902).
+  await expect(dlg.locator("[data-ld-steps]")).toHaveCount(2);
   const [sh, ch] = await dlg.evaluate((e) => [e.scrollHeight, e.clientHeight]);
   expect(sh).toBeLessThanOrEqual(ch);
   expect(sh).toBeLessThan(780);
@@ -203,12 +204,12 @@ test("Cancel drops what you changed; nothing is saved and the screen shows the s
   expect(await cue.calls("ask_before_set")).toHaveLength(0);
   await deskAllSessions(page);
   await lands(page).locator("[data-lands-change]").click();
-  await expect(check.locator("button.on")).toHaveText("Cue's own check");
+  await expect(check.locator("button.on")).toHaveText("Your own steps");
   await expect(dlg.locator(".ld-n")).toHaveText("3");
   await expect(dlg.locator('[data-ab-kind="release"]')).toHaveAttribute("aria-checked", "false");
   // Changed back by hand counts as nothing changed: Save goes off, and Esc leaves without asking.
   await check.locator('[data-ld-pick="none"]').click();
-  await check.locator('[data-ld-pick="cue"]').click();
+  await check.locator('[data-ld-pick="command"]').click();
   await expect(dlg.locator('[data-ld="save"]')).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);

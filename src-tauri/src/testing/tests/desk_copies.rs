@@ -104,7 +104,7 @@ fn old_copies_whose_work_is_on_main_are_asked_about_once_in_the_leads_chat_and_r
     w.settle();
     let card = old_card(&w, &lead).expect("the lead asks");
     let q = card["tool_input"]["questions"][0]["question"].as_str().unwrap();
-    assert!(q.starts_with("2 old working folders (") && q.contains(" KB) have work that's already in the app"), "{q}");
+    assert!(q.starts_with("2 old working folders (") && q.contains(" KB) have work that's already on main"), "{q}");
     let choices: Vec<&str> = card["tool_input"]["questions"][0]["options"].as_array().unwrap().iter().map(|o| o["label"].as_str().unwrap()).collect();
     assert_eq!(choices, ["Yes", "Not now"]);
     assert!(landed.exists() && empty.exists(), "nothing removed before you say so");
@@ -117,7 +117,7 @@ fn old_copies_whose_work_is_on_main_are_asked_about_once_in_the_leads_chat_and_r
     assert!(empty.join("b.txt").exists() && work.join("b.txt").exists() && item_copy.exists(), "the rest untouched");
     assert_eq!(sent_to(&w, &lead).len(), before, "Cue's question: nothing sent to the lead");
     let said = desk(&w, &project)["decisions"].to_string();
-    assert!(said.contains("Removed 1 old working folder") && said.contains("1 kept: it has work not in the app yet"), "{said}");
+    assert!(said.contains("Removed 1 old working folder") && said.contains("1 kept: it has work not on main yet"), "{said}");
 
     // Asked once: not again, even with old copies left.
     std::fs::remove_file(empty.join("b.txt")).unwrap();

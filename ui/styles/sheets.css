@@ -76,9 +76,6 @@ kbd { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); padding: 2px
 .ld-old-list { max-height: 140px; overflow-y: auto; font-size: var(--type-small); line-height: 1.6; color: var(--muted); word-break: break-all; }
 .ld-old-b { display: flex; gap: 8px; margin: 6px 0 2px; }
 .ld-old-b .btn.armed { color: var(--deny); }
-.ld-steps { display: flex; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; font-size: var(--type-body); line-height: 1.5; color: var(--ink); }
-.ld-steps li + li::before { content: "→"; margin: 0 6px; color: var(--muted); }
-.ld-steps span { color: var(--muted); }
 .ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
 .ld-step .btn { min-width: 30px; padding: 4px 8px; }
 .ld-n { min-width: 14px; text-align: center; font-size: var(--type-body); }

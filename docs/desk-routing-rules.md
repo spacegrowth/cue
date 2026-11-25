@@ -135,11 +135,10 @@ This one is built (#778): Cue puts it in the brief every session gets with its i
 without the lead repeating it.
 
 13. **A session runs only the tests its change touches.** It runs the tests for the files it
-    changed and for code that uses them, never the full suite: Cue's own check runs the full suite
-    at landing.
+    changed and for code that uses them, never the full suite: the full suite runs after landing.
     Why: a full run on every item made items slow; the run at landing still catches what the
     narrow runs miss.
 
     Each Desk picks this in its settings, under Tests (#780): All tests (a new Desk's), Only what
-    changed (Cue's own Desk), or Changed, full run at landing (only what changed while it works,
+    changed (Cue's own Desk), or Changed, all before done (only what changed while it works,
     then the full suite once just before its DONE). The brief says whichever is picked.

@@ -94,12 +94,12 @@ function landsSeg(p) {
 }
 function landsPart(p, l) {
   const now = p.choices.find((c) => c.key === lands.set[p.key]);
-  const steps = p.key === "check" && lands.set.check === "cue"
-    ? `<ol class="ld-steps">${(l.steps || []).map((s) => `<li><b>${esc(s.label)}</b></li>`).join("")}</ol>`
-    : (p.key === "check" || p.key === "after") && lands.set[p.key] === "command"
-      ? `<textarea class="ld-cmd" rows="3" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>` : "";
+  const steps = (p.key === "check" || p.key === "after") && lands.set[p.key] === "command"
+    ? `<textarea class="ld-cmd" rows="${landsRows(lands.steps[p.key])}" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>` : "";
   return `<div class="ld-row"><div class="ld-label">${esc(p.label)}</div><div class="ld-body">${landsSeg(p)}${steps}${now?.hint ? `<div class="ld-hint">${esc(now.hint)}</div>` : ""}${p.key === "where" ? landsWhereNote() : ""}</div></div>`;
 }
+/** A steps box as tall as its steps (three lines while empty, five at most), so the screen stays short (#447). */
+const landsRows = (text) => (text || "").trim() ? Math.min(5, text.split("\n").length) : 3;
 /** Items at once: the most of this Desk's items at work on This Mac together, however they work there (#798: in the
  *  shared folder and on a branch too; in their own copies it's also the most copies). */
 function landsAtOnce(l) {
@@ -114,15 +114,15 @@ function landsAtOnce(l) {
 }
 /** A size given in KB, as people say it. */
 const landsKb = (kb) => (kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb || 0} KB`);
-/** Remove old working folders: the folders of this project whose work is already in the app and that nothing uses. */
+/** Remove old working folders: the folders of this project whose work is already on main and that nothing uses. */
 function landsOld() {
   const o = lands.old, l = o?.list, n = l?.copies?.length || 0;
   let body;
   if (!o) body = `<button class="btn" data-ld="old">Remove old working folders</button>
-    <div class="ld-hint">Their work is already in the app and nothing uses them. Listed before anything is removed.</div>`;
+    <div class="ld-hint">Their work is already on main and nothing uses them. Listed before anything is removed.</div>`;
   else if (o.looking) body = `<button class="btn" disabled>Looking…</button>`;
   else if (o.removing) body = `<button class="btn" disabled>Removing…</button>`;
-  else if (!n) body = `<div class="ld-hint">None: every other folder has work not in the app yet, or is in use.</div>`;
+  else if (!n) body = `<div class="ld-hint">None: every other folder has work not on main yet, or is in use.</div>`;
   else body = `<div class="ld-old-list">${l.copies.map((c) => `<div>${esc(c.path)} · ${landsKb(c.kb)}</div>`).join("")}</div>
     <div class="ld-old-b"><button class="btn armed" data-ld="old-yes">Remove ${n} (${landsKb(l.kb)})</button><button class="btn" data-ld="old-no">Keep them</button></div>
     <div class="ld-hint">Any that gets new work or comes into use first stays.</div>`;
@@ -423,6 +423,8 @@ document.addEventListener("input", (e) => {
   if (!t || !lands) return;
   const was = landsChanged(lands);
   lands.steps[t.dataset.ldSteps] = t.value;
+  // Grows with a new line as you type, without drawing the box again.
+  t.rows = Math.max(t.rows, landsRows(t.value));
   // The foot says "Unsaved changes" and Save comes on; only it is drawn again, so the box keeps your caret.
   if (was !== landsChanged(lands)) { const f = document.querySelector(".ld-dialog .ld-foot"); if (f) f.outerHTML = landsFoot(); }
 }, true);

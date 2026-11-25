@@ -143,8 +143,8 @@ pub(crate) fn view(desk: &str) -> Value {
     let first = live.iter().find(|x| x.kind == "check").or_else(|| live.iter().find(|x| x.kind == "after"));
     if let Some(x) = first {
         let what = if x.kind == "check" { format!("Checking #{} before it lands", x.item) } else { format!("After landing #{}", x.item) };
-        // Cue's own check says no step of its own: it's named.
-        let (step, cmd) = if x.step.is_empty() && x.kind == "check" { ("Cue's own check".into(), false) } else { step_shown(&x.step) };
+        // The repository's own check says no step of its own: it's named.
+        let (step, cmd) = if x.step.is_empty() && x.kind == "check" { ("The repository's check".into(), false) } else { step_shown(&x.step) };
         return Line { what, step, items: vec![x.item.clone()], cmd }.to_json();
     }
     let all = crate::locking::lock(&FULL, "landing full run");
