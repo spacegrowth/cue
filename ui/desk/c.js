@@ -147,7 +147,7 @@ function deskCSessions(project) {
     return head + (list.map(row).join("") || `<div class="dkn-none">No sessions here yet.</div>`);
   }).join("");
   const ckey = `closed:${project}`, copen = deskOlderOpen.has(ckey);
-  const closedGroup = closed.length ? `<button class="dkn-mg dkn-cg" data-desk-older="${esc(ckey)}" aria-expanded="${copen}">${DESK_C_ARROW(copen)}<b>CLOSED</b><span>· ${closed.length}</span></button>${copen ? closed.map(row).join("") : ""}` : "";
+  const closedGroup = closed.length ? `<div class="dkn-rule" aria-hidden="true"></div><button class="dkn-mg dkn-cg" data-desk-older="${esc(ckey)}" aria-expanded="${copen}">${DESK_C_ARROW(copen)}<b>CLOSED</b><span>· ${closed.length}</span></button>${copen ? closed.map(row).join("") : ""}` : "";
   // How many are at work, and on how many machines; how many sessions in all is on All N sessions at its foot.
   const count = [`${working} working`, machines.length > 1 ? `${machines.length} machines` : ""].filter(Boolean).join(" · ");
   return `<nav class="dkn-side" aria-label="Sessions"><div class="dkn-head"><div class="dkn-dn">${deskKindIcon("tray")}<b>${esc(deskName(d))}</b></div><div class="dkn-cnt">${esc(count)}</div></div>${lead}<div class="dkn-rule" aria-hidden="true"></div><div class="dkn-list" data-scroll-key="desk-n-sessions:${esc(project)}">${groups}${closedGroup}</div><div class="dkn-foot"><button class="dkn-alls" data-desk2b-sessions aria-label="All ${mine.length + (leadS ? 1 : 0)} sessions">All<span class="dkn-w"> ${mine.length + (leadS ? 1 : 0)} sessions</span> ›</button></div></nav>`;
