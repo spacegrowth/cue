@@ -74,7 +74,6 @@ CueBridge.area("state", (w) => {
       if (!w.answer(id, `replied — “${text}”`, { text, images })) throw "That message was already answered";
       return "via tmux pane %1";
     },
-    answer_terminal: ({ id, n }) => { w.answer(id, `answered ${n} in its terminal`); return `Pressed ${n} in its terminal`; },
     forget_session: ({ sessionId }) => {
       w.state.sessions = w.state.sessions.filter((s) => s.session_id !== sessionId);
       w.state.items = w.state.items.filter((i) => i.session_id !== sessionId);

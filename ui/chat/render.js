@@ -551,10 +551,6 @@ function waitingFor(it, s) {
 }
 /** One line under the chat: where the session is now. */
 function whereNow(it, s, steps = true) {
-  // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
-  if (s?.trust_ms) return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
-  // Waiting for Enter on a screen before Claude Code starts ("Security notes … Press Enter to continue").
-  if (s?.enter_ms) return `<div class="mg-status cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is waiting for Enter in its terminal before it starts.</b> Nothing runs until then.</span><button class="btn small primary" data-act="continue-start" data-sid="${esc(s.session_id)}">Continue</button></div>`;
   // Working, but Claude Code can't reach the API (or the proxy in front of it) and keeps trying: minutes of a
   // spinner in its terminal otherwise. What failed, which try; Stop ends the turn instead of waiting it out.
   if (s?.state === "working" && s.retry) {

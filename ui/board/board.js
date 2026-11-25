@@ -243,11 +243,11 @@ function whyLine(it) {
   const why = askWhy(it);
   return why ? `<div class="why"${why.includes("\n") ? "" : " data-cut"}>Why: ${esc(firstLine(why))}</div>` : "";
 }
-/** A dialog Cue read off the session's screen (a terminal card): what it says, and its choices as buttons. */
+/** A dialog Cue read off the session's screen (a terminal card): what it says, and its choices (answered in its terminal). */
 function dialogHtml(it) {
   const d = it.tool_input?.dialog;
   if (!d?.options?.length) return "";
-  return `${d.detail ? `<div class="qtext">${linkify(esc(d.detail), sessBase(it.session_id))}</div>` : ""}<div class="opts">${d.options.map((o, n) => `<button class="opt ${n === d.selected ? "on" : ""}" data-tpick="${n + 1}" data-id="${esc(it.id)}">${n + 1} · ${esc(o)}</button>`).join("")}</div>`;
+  return `${d.detail ? `<div class="qtext">${linkify(esc(d.detail), sessBase(it.session_id))}</div>` : ""}<div class="qtext">${d.options.map((o, n) => `${n + 1} · ${esc(o)}`).join("<br>")}</div>`;
 }
 function decisionButtons(it, denyLabel = "Deny") {
   if (inTerminal(it) && it.tool_input?.dialog?.options?.length) return `${dialogHtml(it)}<div class="row-btns"><span class="dim">Or answer it in its terminal.</span><span class="grow"></span><button class="btn" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
@@ -302,10 +302,10 @@ function recentEntry(i) {
  *  in words. The dot: pulsing while it works, red when it asks you, Moss on your turn, amber when stuck. */
 function starEntry(s, open) {
   const sid = s.session_id, it = state.items.find((i) => i.session_id === sid);
-  const stuck = s.state === "working" && (s.stuck_ms || preStart(s)) && !s.compacting_ms;
+  const stuck = s.state === "working" && s.stuck_ms && !s.compacting_ms;
   const dot = stuck ? "stuck" : it ? (it.kind === "waiting" ? "ok" : "no") : s.state === "working" || s.compacting_ms ? "live" : "";
   const what = it ? plain(summary(it)) : s.compacting_ms ? "Compacting…" : s.state === "working" ? s.doing || (s.prompt ? `› ${s.prompt}` : "Thinking") : s.prompt ? `› ${s.prompt}` : plain(firstLine(lastSaid(s)));
-  const st = preStart(s) ? preStart(s) : stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
+  const st = stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
   return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" data-session="${esc(sid)}">
     <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}${oddAgent(s.harness)}${machTag(s.machine)}<span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
     <div class="tl-title">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
@@ -410,7 +410,6 @@ function needQuick(it) {
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
-  else if (inTerminal(it) && (it.tool_input?.dialog?.options || []).length && it.tool_input.dialog.options.length <= 4) quick = `<div class="nrow-acts wrap">${it.tool_input.dialog.options.map((o, n) => `<button class="btn" data-tpick="${n + 1}" data-id="${esc(it.id)}">${esc(o)}</button>`).join("")}</div>`;
   else if (inTerminal(it)) quick = `<div class="nrow-acts"><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   else if (q.length) quick = `${qFoldLine(it)}<div class="nrow-acts wrap">${qFoldBtns(it, `<button class="btn" data-act="choose" data-id="${esc(it.id)}">Choose…</button>`)}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
@@ -482,7 +481,7 @@ function drawWithDesks(rows, desks, draw, isOpen) {
 /** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
 function sessionNote(s) {
   const i = state.items.find((x) => x.session_id === s.session_id);
-  return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s);
+  return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s);
 }
 /** A message's words in one line (Queued: …, Not sent yet: …): Cue's in its plain line, anything else quoted, cut at
  *  `max`. */
@@ -490,7 +489,7 @@ const msgPlainWords = (text, to, max = 80) => cueMsgPlainHtml(text, to) ?? `“$
 /** A session's card under Sessions. */
 function sessionCard(s, open) {
   const go = `data-session="${esc(s.session_id)}"`;
-  const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
+  const doing = s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
   const desk = deskCardLine(s.session_id);
   const words = deskSaid(s.prompt);
   const to = nameOf(s.session_id, s.project), cue = desk && /^Desk item #/i.test(words) ? null : cueMsgPlainHtml(words, to);

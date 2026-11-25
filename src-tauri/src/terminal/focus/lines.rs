@@ -17,13 +17,6 @@ pub fn new_session_id() -> String {
     format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
 }
 
-/// The command line that starts an agent in a folder: `cd <folder> && claude --session-id <id> -n <name> <message>`.
-/// Claude and Pi take the session id Cue picked; Pi has no name option; Codex takes the message only.
-#[cfg(test)]
-pub fn start_line(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str) -> Result<String, String> {
-    start_line_with(agent, cwd, session_id, message, name, "ask", "")
-}
-
 /// How much a new session may do without asking you (+ New session → Permissions), per agent, as its
 /// flags. "ask": asks before anything it isn't allowed, whatever your own default mode is (Claude's
 /// `defaultMode` in your settings could be "auto"); empty: as it normally does (a resume). Pi asks through Cue's own gate (Settings → Pi), so "skip" turns
@@ -43,44 +36,6 @@ pub fn permission_flags(agent: &str, perm: &str) -> Result<(Option<(&'static str
         ("pi", "skip") => (Some(("CUE_PI_GATE", "off")), &[]),
         _ => return Err(format!("{agent} has no “{perm}” permission mode")),
     })
-}
-
-/// The same, with permissions (`perm`, see permission_flags) and any extra flags you typed (each word
-/// quoted on its own, so it's flags, never more shell).
-pub fn start_line_with(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str, perm: &str, extra: &str) -> Result<String, String> {
-    start_line_args(agent, cwd, session_id, message, name, perm, extra, &[])
-}
-
-/// The same, with arguments Cue adds itself (`args`, each quoted whole, so a path with spaces stays
-/// one argument), e.g. a session's MCP selection: `--mcp-config <file> --strict-mcp-config`.
-#[allow(clippy::too_many_arguments)]
-pub fn start_line_args(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str, perm: &str, extra: &str, args: &[String]) -> Result<String, String> {
-    let program = match agent {
-        "claude" => "claude",
-        "pi" => "pi",
-        "codex" => "codex",
-        other => return Err(format!("unknown agent {other}")),
-    };
-    let (env, flags) = permission_flags(agent, perm)?;
-    let env = env.map(|(k, v)| format!("{k}={v} ")).unwrap_or_default();
-    let flags: String = flags.iter().map(|f| format!(" {f}")).collect();
-    let mut line = format!("cd {} && {env}{program}{flags}", shq(cwd));
-    for a in args {
-        line += &format!(" {}", shq(a));
-    }
-    for word in extra.split_whitespace() {
-        line += &format!(" {}", shq(word));
-    }
-    if agent != "codex" && !session_id.is_empty() {
-        line += &format!(" --session-id {}", shq(session_id));
-    }
-    if agent == "claude" && !name.trim().is_empty() {
-        line += &format!(" -n {}", shq(name.trim()));
-    }
-    if !message.trim().is_empty() {
-        line += &format!(" {}", shq(message.trim()));
-    }
-    Ok(line)
 }
 
 /// Whether Claude Code trusts `dir` already: it or a folder above it was accepted ("Yes, I trust this
@@ -125,21 +80,6 @@ pub fn resume_line_with(cwd: &str, session_id: &str, args: &[String]) -> Result<
     let mut line = format!("cd {} && claude --resume {}", shq(cwd), shq(session_id));
     for a in args {
         line += &format!(" {}", shq(a));
-    }
-    Ok(line)
-}
-
-/// The command line that forks a Claude Code session into a new one that keeps going (btw's Fork):
-/// `cd <folder> && claude --resume <id> --fork-session --session-id <new id> -n <name> <args…> [message]`.
-/// Cue picks the new id, so it knows the fork at once.
-pub fn fork_line(cwd: &str, session_id: &str, fork_id: &str, name: &str, args: &[String], message: &str) -> Result<String, String> {
-    let mut line = resume_line_with(cwd, session_id, &[])?;
-    line += &format!(" --fork-session --session-id {} -n {}", shq(fork_id), shq(name));
-    for a in args {
-        line += &format!(" {}", shq(a));
-    }
-    if !message.trim().is_empty() {
-        line += &format!(" {}", shq(message.trim()));
     }
     Ok(line)
 }
@@ -212,15 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn a_start_line_quotes_everything_it_types() {
-        assert_eq!(start_line("claude", "/x/my repo", "S1", "fix it's bug", "bugfix").unwrap(), "cd '/x/my repo' && claude --permission-mode default --session-id 'S1' -n 'bugfix' 'fix it'\\''s bug'");
-        assert_eq!(start_line("claude", "/x", "", "", "").unwrap(), "cd '/x' && claude --permission-mode default");
-        assert_eq!(start_line("pi", "/x", "P1", "hello $(rm -rf ~)", "ignored").unwrap(), "cd '/x' && pi --session-id 'P1' 'hello $(rm -rf ~)'");
-        assert_eq!(start_line("codex", "/x", "C1", "go", "").unwrap(), "cd '/x' && codex 'go'");
-        assert!(start_line("bash", "/x", "", "", "").is_err());
-    }
-
-    #[test]
     fn a_parked_session_resumes_with_its_own_agents_command() {
         assert_eq!(resume_line_for("claude", "/x/my repo", "3f2a-91").unwrap(), "cd '/x/my repo' && claude --resume '3f2a-91'");
         assert_eq!(resume_line_for("codex", "/x", "a91f").unwrap(), "cd '/x' && codex resume 'a91f'");
@@ -231,27 +162,6 @@ mod tests {
         let mcp = vec!["--mcp-config".to_string(), "/a b/mcp/3f2a-91.json".to_string(), "--strict-mcp-config".to_string()];
         assert_eq!(resume_line_for_with("claude", "/x", "3f2a-91", &mcp).unwrap(), "cd '/x' && claude --resume '3f2a-91' '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config'");
         assert_eq!(resume_line_for_with("codex", "/x", "a91f", &mcp).unwrap(), "cd '/x' && codex resume 'a91f'");
-        assert_eq!(start_line_args("claude", "/x", "S1", "hi", "", "ask", "--verbose", &mcp).unwrap(), "cd '/x' && claude --permission-mode default '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config' '--verbose' --session-id 'S1' 'hi'");
     }
 
-    #[test]
-    fn a_new_sessions_permissions_and_extra_flags_go_on_its_command_line() {
-        let l = |agent, perm, extra| start_line_with(agent, "/x", "", "", "", perm, extra);
-        assert_eq!(l("claude", "skip", "").unwrap(), "cd '/x' && claude --dangerously-skip-permissions");
-        assert_eq!(l("claude", "plan", "--model opus").unwrap(), "cd '/x' && claude --permission-mode plan '--model' 'opus'");
-        assert_eq!(l("codex", "skip", "").unwrap(), "cd '/x' && codex --dangerously-bypass-approvals-and-sandbox");
-        assert_eq!(l("codex", "edits", "").unwrap(), "cd '/x' && codex --sandbox workspace-write");
-        // Pi asks through Cue's gate: skipping turns it off for this session only.
-        assert_eq!(l("pi", "skip", "").unwrap(), "cd '/x' && CUE_PI_GATE=off pi");
-        assert_eq!(l("pi", "ask", "").unwrap(), "cd '/x' && pi");
-        // Ask is ask, whatever your own default mode is (it may be "auto"); no mode given (a resume) is Claude's own.
-        assert_eq!(l("claude", "ask", "").unwrap(), "cd '/x' && claude --permission-mode default");
-        assert_eq!(l("claude", "", "").unwrap(), "cd '/x' && claude");
-        assert!(l("pi", "plan", "").is_err(), "a mode the agent doesn't have");
-        // Extra flags are words, quoted: never more shell.
-        assert_eq!(l("claude", "", "; rm -rf ~").unwrap(), "cd '/x' && claude ';' 'rm' '-rf' '~'");
-        let id = new_session_id();
-        assert_eq!((id.len(), &id[14..15]), (36, "4"), "a UUID v4: {id}");
-        assert_ne!(id, new_session_id());
-    }
 }

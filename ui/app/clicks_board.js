@@ -120,8 +120,6 @@ function renameAgain(rn2) {
 }
 const START_CLICKS = [
   rule("[data-act=rename-again], [data-act=rename-dismiss]", renameAgain),
-  rule("[data-act=continue-start]", (cs) => invoke("continue_start", { sessionId: cs.dataset.sid }).then(() => toast("Pressed Enter: it's starting")).catch((e) => toast(`Couldn't: ${e}. Answer it in its terminal.`))),
-  rule("[data-act=trust]", (tr) => invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Answer it in its terminal.`))),
   rule("[data-act=go-session]", (goS) => invoke("focus_session_id", { sessionId: goS.dataset.sid }).then((r) => toast(`Jumped to ${r}`)).catch((e) => toast(`Couldn't jump: ${e}`))),
 ];
 
@@ -141,12 +139,6 @@ const PARKED_CLICKS = [
   rule("[data-park-all]", (pka) => { parkedAll = parkedAll === pka.dataset.parkAll ? null : pka.dataset.parkAll; renderMain(); }),
 ];
 
-/** A terminal's own question answered by its number; the card stays the one shown. */
-function answerTerminal(tp) {
-  const it = findItem(tp.dataset.id);
-  if (it) active = { id: it.id, sid: it.session_id };
-  return invoke("answer_terminal", { id: tp.dataset.id, n: +tp.dataset.tpick }).then((r) => toast(r)).catch((e) => toast(`Couldn't answer it: ${e}`));
-}
 /** A long reply's Show all / Fold, and a review folded into Cue's bubble: the chat's own, in both windows (clicks.js CHAT_CLICKS). */
 const FOLD_CLICKS = [
   rule("[data-msg]", (mo) => { flipIn(openMsgs, mo.dataset.msg); renderMain(); }),
@@ -155,7 +147,6 @@ const FOLD_CLICKS = [
 /** An ask's answers on its card: a question's steps and choices, a terminal's numbered choice, Always…. */
 const ANSWER_CLICKS = [
   rule("[data-qstep]", (qs) => { const [id, n] = qs.dataset.qstep.split(/:(?=\d+$)/); qStep[id] = +n; renderMain(); }),
-  rule("[data-tpick]", answerTerminal),
   rule("[data-pick]", (pk) => { const [qi, oi] = pk.dataset.pick.split(":").map(Number); const it = findItem(pk.dataset.id); return it && pick(it, qi, oi); }),
   rule("[data-always]", (al) => { const it = findItem(al.dataset.id); return it && respond(it, { behavior: "allow_always", permission: it.suggestions[+al.dataset.always] }); }),
 ];

@@ -160,38 +160,6 @@ impl Hub {
         }
     }
 
-    /// Pick choice `n` (1-based) of the dialog a terminal card shows: that number pressed in its pane, and
-    /// Enter if the dialog is still there a moment later. Blocking: call off the UI thread.
-    pub fn answer_terminal(&self, id: &str, n: usize) -> Result<String, String> {
-        let it = self.get(id).filter(|i| i.status == "pending").ok_or("that item is gone")?;
-        let d: crate::dialog::Dialog = serde_json::from_value(it.tool_input.get("dialog").cloned().unwrap_or(Value::Null)).map_err(|_| "that item has no choices")?;
-        let label = d.options.get(n.wrapping_sub(1)).ok_or("that isn't one of its choices")?.clone();
-        let o = &it.origin;
-        // The screen now, not the card's copy of it: the dialog may have closed since, and a permission
-        // prompt in its place has numbered choices too, so the same key there would answer that instead.
-        if !self.keys().dialog_on(o).is_some_and(|now| now.options == d.options) {
-            return Err("that dialog isn't on its screen any more".into());
-        }
-        self.keys().press_keys(o, &[n.to_string()])?;
-        crate::clock::sleep_ms(400);
-        if self.keys().dialog_on(o).is_some_and(|now| now.options == d.options) {
-            self.keys().press_keys(o, &["Enter".into()])?;
-        }
-        self.finish(id, "answered", &format!("chose {n}. {label}"));
-        // A command's dialog ("/model …"): answered, it's back at its prompt, not at work.
-        let at_prompt = it.tool_name.is_empty() && self.write(|st| {
-            let command = st.sessions.thread(&o.session_id).iter().rev().find(|e| e.role == "you").is_some_and(|e| e.text.starts_with('/'));
-            if command {
-                st.sessions.mark(o, "waiting", None);
-            }
-            command
-        });
-        if at_prompt {
-            self.changed();
-        }
-        Ok(format!("chose {label}"))
-    }
-
     pub(super) fn clear_terminal_asks(&self, session_id: &str) {
         let ids: Vec<String> = self.read(|st| st.items.iter().filter(|i| i.kind == "terminal" && i.origin.session_id == session_id).map(|i| i.id.clone()).collect());
         for id in ids {

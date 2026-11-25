@@ -14,15 +14,17 @@ mod typing;
 
 pub use agents::{agents_installed, end_agent, end_machine_agent, AGENT_PATH};
 pub use apps::{open_tab_with, terminal_name, NewTab};
-pub use lines::{claude_trusts, fork_line, model_args, new_session_id, permission_flags, resume_line_for, resume_line_for_with, resume_line_local, resume_line_with, shq, start_line_args, start_line_with};
+pub use lines::{claude_trusts, model_args, new_session_id, permission_flags, resume_line_for, resume_line_for_with, resume_line_local, shq};
 pub(crate) use exec::{capped, capped_group};
 #[cfg(test)]
 pub(crate) use exec::find_bin;
-pub use screen::{agent_gone, box_empty, dialog_on, text_in_box};
-pub use tmux::{open_in_tmux, SCREEN_KEYS, open_in_tmux_tab, session_screen, tmux_bin, tmux_installed, tmux_keys, tmux_kill_pane, tmux_type_line, TMUX_SESSION};
+pub use screen::{agent_gone, box_empty_of, dialog_on, text_in_box};
+#[cfg(test)]
+pub use screen::box_empty;
+pub use tmux::{tmux_bin, tmux_installed, TMUX_SESSION};
 #[cfg(test)]
 pub(crate) use tmux::tmux_screen;
-pub(crate) use tmux::{pane_is_cues, tmux_out};
+pub(crate) use tmux::pane_is_cues;
 pub use typing::{press_enter, press_escape, type_into};
 
 use crate::model::Origin;

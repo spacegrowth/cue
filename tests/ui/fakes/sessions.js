@@ -59,8 +59,6 @@ CueBridge.area("sessions", (w) => {
     },
     new_session: ({ agent, machine }) => started(agent, machine ? machine : "a new iTerm tab"),
     fork_session: ({ sessionId }) => { const name = `${w.session(sessionId)?.project || "session"}-fork`; return { session_id: "", name, detail: `Forked as ${name} in a new iTerm tab` }; },
-    trust_folder: () => null,
-    continue_start: () => null,
     // "! line" in a box: run there, what it printed back.
     run_line: async ({ sessionId, cwd, line }) => {
       await w.wait(200);

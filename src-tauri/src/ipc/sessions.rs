@@ -326,53 +326,6 @@ mod fork_tests {
     }
 }
 
-/// Trust in Cue for a session Claude Code is asking "do you trust this folder?": its cursor moved onto
-/// "Yes, I trust this folder", then Enter. Only from your click, and only where Cue can see the screen
-/// (its tmux pane, here or on a machine): Claude Code lists "No, exit" first, so a blind Enter would end it.
-#[tauri::command]
-pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| {
-        let origin = h.session_origin(&session_id).ok_or("that session is gone")?;
-        if origin.tmux_pane.is_empty() {
-            return Err("Cue can't see its terminal".into());
-        }
-        let screen = || h.keys().screen(&origin).ok().filter(|s| crate::terminal::dialog::setup_on(s) == Some(crate::terminal::dialog::Setup::Trust));
-        let Some((cursor, yes)) = screen().as_deref().and_then(crate::terminal::dialog::trust_choices) else {
-            h.trust_answered(&session_id);
-            return Err("it isn't asking about the folder any more".into());
-        };
-        if cursor != yes {
-            let key = if yes > cursor { "Down" } else { "Up" };
-            h.keys().press_keys(&origin, &vec![key.to_string(); cursor.abs_diff(yes)])?;
-            crate::clock::sleep_ms(250);
-            if !screen().as_deref().and_then(crate::terminal::dialog::trust_choices).is_some_and(|(c, y)| c == y) {
-                return Err("its cursor didn't reach “Yes”".into());
-            }
-        }
-        h.keys().press_keys(&origin, &["Enter".to_string()])?;
-        h.trust_answered(&session_id);
-        Ok(())
-    }).await?
-}
-
-/// Continue in Cue for a session whose terminal waits for Enter before Claude Code starts ("Security
-/// notes … Press Enter to continue…"): Enter, only while that screen is still there. Only from your click.
-#[tauri::command]
-pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| {
-        let origin = h.session_origin(&session_id).ok_or("that session is gone")?;
-        if origin.tmux_pane.is_empty() {
-            return Err("Cue can't see its terminal".into());
-        }
-        let on = h.keys().screen(&origin).ok().and_then(|s| crate::terminal::dialog::setup_on(&s)) == Some(crate::terminal::dialog::Setup::Enter);
-        h.enter_pressed(&session_id);
-        if !on {
-            return Err("it isn't waiting for Enter any more".into());
-        }
-        h.keys().press_keys(&origin, &["Enter".to_string()])
-    }).await?
-}
-
 /// "!" in a box: run the rest of the line in the session's folder (or `cwd`, for the + New session box),
 /// in your shell — on this Mac, or on the machine the session runs on (the folder is there). What it
 /// printed, its exit code and how long it took: shown as a card, never sent to the agent unless you

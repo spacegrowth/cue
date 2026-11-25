@@ -118,7 +118,7 @@ fn the_watchers_tick_asks_ahead_only_where_you_turned_it_on_and_holds_where_it_c
     crate::db::ahead_watch("on", true);
     assert_eq!(w.snapshot().0["ahead_watch"], serde_json::json!(["on"]));
     w.tick(true);
-    assert_eq!(insight_events("on", "ahead"), ["held:unseen"], "no tmux pane: Cue can't see what's typed in its box");
+    assert_eq!(insight_events("on", "ahead"), ["held:unseen"], "its screen can't be read: Cue can't see what's typed in its box");
     assert!(insight_events("off", "ahead").is_empty());
     assert!(w.terminal.typed("on").is_empty() && crate::db::handoff("on").is_none());
     w.tick(true);

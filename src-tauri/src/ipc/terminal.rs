@@ -1,13 +1,10 @@
-//! The built-in terminal, a session's screen and keys, and dictation.
+//! Cue's own shells (the floating terminal), the window's own commands, and dictation.
 
-use super::{blocking, with_hub};
-use crate::model;
+use super::blocking;
 use crate::terminal::shells;
 use crate::terminal::term;
 use crate::terminal::dictation;
-use crate::hub::Hub;
-use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::Manager;
 
 /// The mic button: start or stop dictating (words arrive as "dictation" events). Starting starts a helper.
 #[tauri::command]
@@ -37,33 +34,6 @@ pub(crate) async fn music_hold() -> Result<(), String> {
 #[tauri::command]
 pub(crate) async fn music_release() -> Result<(), String> {
     blocking(crate::terminal::music::release).await
-}
-
-/// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
-#[tauri::command]
-pub(crate) async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    with_hub(&hub, move |h| h.keys().screen(&tmux_origin_of(h, &session_id)?)).await?
-}
-
-/// Keys pressed in that view (↑ ↓ Enter Esc 1 2 3…). Only from your click.
-#[tauri::command]
-pub(crate) async fn session_keys(hub: State<'_, Arc<Hub>>, session_id: String, keys: Vec<String>) -> Result<(), String> {
-    with_hub(&hub, move |h| h.keys().press_keys(&tmux_origin_of(h, &session_id)?, &keys)).await?
-}
-
-/// Where a session is, for the commands that only work in tmux (on this Mac or a machine).
-pub(crate) fn tmux_origin_of(hub: &Hub, session_id: &str) -> Result<model::Origin, String> {
-    let o = hub.session_origin(session_id).ok_or("that session is gone")?;
-    if o.tmux_pane.is_empty() {
-        return Err("that session isn't in tmux".into());
-    }
-    Ok(o)
-}
-
-/// The built-in terminal (sessions in tmux): open it at its size; its output comes as "term" events.
-#[tauri::command]
-pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, cols: u16, rows: u16) -> Result<u64, String> {
-    with_hub(&hub, move |h| term::open(app, &session_id, &tmux_origin_of(h, &session_id)?, cols, rows)).await?
 }
 
 /// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that

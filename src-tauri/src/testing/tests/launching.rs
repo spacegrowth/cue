@@ -4,7 +4,6 @@
 
 use crate::hosted::Start;
 use crate::ipc::{fork, handoff_continue_now, handoff_fresh_now, move_between_turns, launch_moves, move_session_to_cue, park, resume_parked_session, start_session_with, StartOpts};
-use crate::terminal::launch::Place;
 use crate::testing::{AgentProcess, World};
 
 /// Session `sid` at its finished turn in the World's own folder (a real one, as + New needs), its agent
@@ -13,10 +12,6 @@ fn finished(w: &World, sid: &str, agent: &AgentProcess, reply: &str) {
     let a = w.session(sid).in_folder(w.home()).running_as(agent.pid);
     a.transcript().prompt("go").assistant(reply).turn_end();
     a.prompt("go").stop(reply);
-}
-
-fn pane_of(w: &World, sid: &str) -> String {
-    w.hub().session_origin(sid).map(|o| o.tmux_pane).unwrap_or_default()
 }
 
 #[test]

@@ -36,7 +36,6 @@ CueBridge.area("terminal", (w) => {
     },
     term_resize: () => null,
     term_close: () => null,
-    session_keys: () => null,
     shell_open: ({ id, cwd }) => { shellCwd[id] = cwd; setTimeout(() => term(id, prompt(id)), 50 * w.latency); return { gen: 1, host: "mac" }; },
     shell_list: () => ({ shells: [], host: "mac" }),
     shell_name: () => null,

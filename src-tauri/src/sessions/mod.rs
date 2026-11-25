@@ -143,14 +143,6 @@ pub struct Session {
     /// When that compaction finished, so the chat can say so; cleared when the next turn starts.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub compacted_ms: u64,
-    /// Started by Cue in a folder Claude Code doesn't trust yet: since when its terminal has been asking
-    /// "do you trust this folder?". 0 once it's trusted.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub trust_ms: u64,
-    /// Since when its terminal has shown a screen waiting for Enter before Claude Code starts
-    /// ("Security notes … Press Enter to continue…"): no hook reaches Cue until it's past it. 0: it isn't.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub enter_ms: u64,
     /// The folder's git state when this turn started (to tell what the turn changed).
     #[serde(skip)]
     pub turn_base: Option<crate::changes::Base>,
@@ -283,8 +275,6 @@ impl Parked {
         s.doing_ms = 0;
         s.compacting_ms = 0;
         s.compacted_ms = 0;
-        s.trust_ms = 0;
-        s.enter_ms = 0;
         s.stuck_ms = 0;
         s.later_ms = 0;
         s.watch_ms = 0;
@@ -309,12 +299,6 @@ impl Session {
         // A hosted session's comes from Cue itself, always whole.
         if origin.hosted || !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
             self.origin = origin.clone();
-        }
-        // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
-        // question is answered, so it's through it, whatever ~/.claude.json says about the folder.
-        if !origin.transcript_path.is_empty() {
-            self.trust_ms = 0;
-            self.enter_ms = 0;
         }
     }
 

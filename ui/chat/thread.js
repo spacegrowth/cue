@@ -226,7 +226,7 @@ const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000;
 const PULSE_MS = 1400;
 function sweep(sid, s) {
   if (!(s?.state === "working" || s?.compacting_ms)) return "";
-  if ((s.stuck_ms && !s.compacting_ms) || preStart(s)) return `<i class="sweep stalled"></i>`;
+  if (s.stuck_ms && !s.compacting_ms) return `<i class="sweep stalled"></i>`;
   const lastStep = stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1)?.at_ms || 0;
   const calm = now() - Math.max(s.doing_ms || 0, lastStep, s.compacting_ms || 0, s.since_ms || 0) > QUIET_MS;
   return `<i class="sweep ${calm ? "calm" : ""}" style="animation-duration:${calm ? CALM_MS : SWEEP_MS}ms" data-sweep></i>`;

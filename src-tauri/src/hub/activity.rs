@@ -55,8 +55,6 @@ impl Hub {
         self.watch_scripts();
         self.note_task_failures();
         self.watch_compacting(now);
-        self.read_setup_screens(now);
-        self.watch_trust(now);
         self.put_reads(reads, now);
         self.read_about();
     }
@@ -296,53 +294,6 @@ impl Hub {
         for sid in send_kept {
             self.send_held_soon(&sid, 500);
         }
-    }
-
-    /// Before Claude Code starts (no hook from it yet), its terminal can sit on a screen of its own: the
-    /// trust question, or one waiting for Enter. Read off its pane: this Mac's now, a machine's from
-    /// its last listing (machines::listing, no SSH here). Shown as such, not as at work.
-    fn read_setup_screens(&self, now: u64) {
-        let before = self.read(|st| st.sessions.before_start());
-        let mut seen: Vec<(String, Option<crate::dialog::Setup>)> = vec![];
-        for o in before {
-            let setup = if o.machine.is_empty() {
-                match self.keys().screen(&o) {
-                    Ok(screen) => crate::dialog::setup_on(&screen),
-                    Err(_) => continue,
-                }
-            } else if crate::machines::listing::known(&o.machine) {
-                crate::machines::listing::setup(&o.machine, &o.tmux_pane)
-            } else {
-                continue;
-            };
-            seen.push((o.session_id, setup));
-        }
-        if seen.is_empty() {
-            return;
-        }
-        if self.write(|st| seen.iter().fold(false, |any, (sid, setup)| st.sessions.set_setup(sid, *setup, now) || any)) {
-            self.changed();
-        }
-    }
-
-    /// A session Cue started in a folder Claude Code didn't trust yet, in a terminal Cue can't read:
-    /// asking until ~/.claude.json says it's trusted (answered there). Given up after 30 minutes. Only
-    /// on this Mac: a machine's folder is never looked up here.
-    /// ~/.claude.json can be megabytes: read after the store is let go.
-    fn watch_trust(&self, now: u64) {
-        let asking: Vec<(String, String, u64)> = self.read(|st| {
-            st.sessions.asking_trust().into_iter().filter(|(sid, _, _)| st.sessions.origin(sid).is_some_and(|o| o.machine.is_empty() && o.tmux_pane.is_empty())).collect()
-        });
-        let done: Vec<String> = asking.into_iter().filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect();
-        if done.is_empty() {
-            return;
-        }
-        self.write(|st| {
-            for sid in &done {
-                st.sessions.set_trust(sid, 0);
-            }
-        });
-        self.changed();
     }
 
     /// What the logs said as the refresh began, in the store: what each session is doing, its agents, and the

@@ -565,7 +565,7 @@ fn move_to_terminal_closes_it_and_resumes_it_in_a_tab_as_a_terminal_session() {
     assert_eq!(w.hosted.closed(), vec![sid.clone()]);
     let l = w.launcher.last();
     assert!(l.line.contains(&format!("claude --resume '{sid}'")), "{}", l.line);
-    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
+    assert!(l.machine.is_empty(), "a plain tab of your terminal app on this Mac");
     let o = w.hub().session_origin(&sid).unwrap();
     assert!(!o.hosted && o.agent_pid.is_none());
     assert_eq!(w.snapshot().session(&sid)["name"], "trial");
@@ -933,7 +933,7 @@ fn move_to_terminal_resumes_a_hosted_pi_with_pi_not_claude_code() {
     move_to_terminal_now(w.hub(), &pi).unwrap();
     let l = w.launcher.last();
     assert!(l.line.contains(&format!("pi --session '{pi}'")) && !l.line.contains("claude"), "{}", l.line);
-    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
+    assert!(l.machine.is_empty(), "a plain tab of your terminal app on this Mac");
     assert_eq!(w.hub().session_origin(&pi).unwrap().harness, "pi", "still Pi, now in a terminal");
 }
 

@@ -78,22 +78,7 @@ impl Hub {
         self.read(|st| st.sessions.all().into_iter().map(|s| s.name).filter(|n| !n.is_empty()).collect())
     }
 
-    /// A session Cue just started ("+ New session"): known from the start, so it opens in Active and
-    /// takes what you type before it has said anything. With a first message it's already working.
-    /// The trust question was answered (or is gone): its banner goes, and the next look at its screen
-    /// says what's there now.
-    pub fn trust_answered(&self, session_id: &str) {
-        self.write(|st| st.sessions.set_trust(session_id, 0));
-        self.changed();
-    }
-
-    /// Past a screen that waited for Enter before Claude Code started: its banner goes until another shows.
-    pub fn enter_pressed(&self, session_id: &str) {
-        self.write(|st| st.sessions.set_setup(session_id, None, now_ms()));
-        self.changed();
-    }
-
-    pub fn started(&self, origin: Origin, message: &str, images: &[String], asks_trust: bool) {
+    pub fn started(&self, origin: Origin, message: &str, images: &[String]) {
         if origin.machine.is_empty() {
             crate::logs::repos::first_look(&origin.cwd);
         }
@@ -102,9 +87,6 @@ impl Hub {
             let msg = message.trim();
             let sent = !msg.is_empty() || !images.is_empty();
             st.sessions.mark(&origin, if sent { "working" } else { "waiting" }, (!msg.is_empty()).then_some(msg));
-            if asks_trust {
-                st.sessions.set_trust(&sid, now_ms());
-            }
             st.sessions.note_with(&sid, "you", msg, images, crate::config::context_keep());
         });
         self.changed();

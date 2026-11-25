@@ -183,29 +183,6 @@ fn a_session_keeps_its_last_five_restarts() {
     assert_eq!(lines.iter().map(|l| l["secs"].as_u64().unwrap()).collect::<Vec<_>>(), [3, 4, 5, 6, 7], "the latest, each with how long it took");
 }
 
-/// ⋯ → Move to terminal for a session in Cue's own terminal (ipc/move_out.rs): its agent ended as Close does, then
-/// resumed in a tab of your terminal app, with its name and star.
-#[test]
-fn move_to_terminal_takes_a_session_out_of_cues_terminal_into_a_tab_of_yours() {
-    let w = World::new();
-    let agent = AgentProcess::start();
-    w.session("a").running_as(agent.pid).in_tmux("%7").prompt("go").stop("Done.");
-    // Named as + New names it (a rename is typed into its terminal, which this test's terminal echoes as a message).
-    w.hub().name_new("a", "billing");
-    w.hub().set_starred("a", true);
-    let said = move_to_terminal_now(w.hub(), "a").unwrap();
-    assert!(said.starts_with("Moved to"), "{said}");
-    w.settle();
-    assert!(!agent.running(), "its agent in Cue's terminal ended");
-    let l = w.launcher.last();
-    assert!(l.line.contains("claude --resume 'a'"), "{}", l.line);
-    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
-    let s = w.snapshot();
-    assert_eq!(s.session("a")["name"], "billing");
-    assert_ne!(w.hub().session_origin("a").unwrap().tmux_pane, "%7", "not in Cue's terminal any more");
-    assert!(w.hub().session_star("a") > 0, "starred still");
-}
-
 #[test]
 fn move_to_terminal_leaves_a_session_already_in_a_terminal_of_yours_where_it_is() {
     let w = World::new();

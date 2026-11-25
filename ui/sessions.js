@@ -416,7 +416,7 @@ function liveRows() {
   const rows = state.sessions.map((s) => {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
-    const what = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
+    const what = s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
     return { sid: s.session_id, harness: s.harness, name: nameOf(s.session_id, s.project), project: s.project || projOf(s.cwd), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
   });
   for (const q of state.live || []) {

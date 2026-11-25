@@ -189,7 +189,7 @@ src-tauri/src/desk/move_desk.rs                rust desk_move_desk
 src-tauri/src/desk/tell.rs                     rust desk_tell
 
 # ---- other Rust
-src-tauri/src/terminal/**                      rust typing typing_edges typing_failures terminal_screens redraw
+src-tauri/src/terminal/**                      rust typing typing_edges typing_failures redraw
 src-tauri/src/machines/**                      rust machines machine_stream
 src-tauri/src/notify/**                        rust notifications
 src-tauri/src/uploads.rs                       rust uploads

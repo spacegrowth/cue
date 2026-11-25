@@ -61,20 +61,6 @@ fn sessions_without_an_id_are_ignored_and_remove_works() {
 }
 
 #[test]
-fn a_hook_from_the_session_means_its_past_the_trust_question() {
-    let mut s = Sessions::default();
-    let started = Origin { session_id: "a".into(), cwd: "/tmp".into(), ..Default::default() };
-    s.mark(&started, "waiting", None);
-    s.set_trust("a", 5);
-    // Cue's own bookkeeping (no transcript) leaves it asking.
-    s.mark(&started, "waiting", None);
-    assert_eq!(s.asking_trust().len(), 1);
-    let hook = Origin { session_id: "a".into(), cwd: "/private/tmp".into(), transcript_path: "/t/a.jsonl".into(), ..Default::default() };
-    s.mark(&hook, "working", Some("hi"));
-    assert!(s.asking_trust().is_empty());
-}
-
-#[test]
 fn a_failed_background_task_is_told_once_even_when_its_transcript_is_read_again() {
     let mut sessions = Sessions::default();
     sessions.mark(&origin("s1"), "working", None);

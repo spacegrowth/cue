@@ -5,7 +5,6 @@
 
 use super::support::*;
 use super::*;
-use crate::terminal::fake_tmux::FakeTmux;
 use crate::terminal::input::tests::Stalled;
 use std::sync::{Arc, Mutex as M};
 
@@ -235,58 +234,6 @@ fn a_terminal_whose_writer_blocks_is_latched_until_resume_then_takes_typing_agai
     resume(&t).unwrap();
     type_in(&t, "ok").unwrap();
     assert_eq!(String::from_utf8(crate::locking::lock(&got, "got").clone()).unwrap(), "stuckok", "nothing typed while latched goes in");
-    close(&t);
-}
-
-#[test]
-fn the_pane_is_found_through_its_session_group_and_its_window_follows_the_latest_client() {
-    let tmux = FakeTmux::answering("display-message) echo 'work|stuff|@3' ;;");
-    let (chain, view) = pane_chain("%5", None, 7).unwrap();
-    let at = |a: &str, b: &str| chain.windows(2).any(|w| w[0] == a && w[1] == b);
-    assert!(at("-t", "work|stuff"), "a session name may hold a |: split at the last: {chain:?}");
-    assert!(at("-t", &format!("{view}:@3")) && at("-t", "%5") && at("-s", &view), "{chain:?}");
-    assert!(view.ends_with("-7"), "{view}");
-    assert_eq!(tmux.calls_of("set-option"), ["set-option -w -t %5 window-size latest"]);
-}
-
-#[test]
-fn a_pane_tmux_says_nothing_about_is_gone() {
-    let _tmux = FakeTmux::answering("display-message) exit 1 ;;");
-    assert_eq!(pane_chain("%5", None, 1).unwrap_err(), "tmux pane %5 is gone");
-    let _odd = FakeTmux::answering("display-message) echo 'no-window-here' ;;");
-    assert_eq!(pane_chain("%5", None, 1).unwrap_err(), "tmux pane %5 is gone");
-}
-
-#[test]
-fn with_no_tmux_installed_opening_fails_and_leaves_nothing_in_flight() {
-    let t = sid("notmux");
-    let _none = FakeTmux::missing();
-    assert!(open_with(&t, "%5", None, 80, 12, |_| {}).is_err());
-    assert!(attach_local(&t, "cue-shell-1", 80, 12, |_| {}).is_err());
-    let left = crate::locking::lock(open_terms(), "open_terms").opening.contains_key(&t);
-    assert!(!left, "no opening left behind to hold the next one");
-}
-
-#[test]
-fn a_tmux_that_never_answers_the_pane_lookup_fails_the_opening_in_time() {
-    let t = sid("hungtmux");
-    let t2 = t.clone();
-    let r = within(3_000, move || {
-        let _tmux = FakeTmux::answering("display-message) exec sleep 60 ;;");
-        let _cap = crate::terminal::test_tmux::cap_tmux(std::time::Duration::from_millis(200));
-        open_with(&t2, "%5", None, 80, 12, |_| {})
-    });
-    assert!(matches!(r, Some(Err(_))), "an error within its cap, not an opening that never answers: {r:?}");
-    assert!(!crate::locking::lock(open_terms(), "open_terms").opening.contains_key(&t));
-}
-
-#[test]
-fn a_pane_whose_client_exits_at_once_opens_and_then_ends() {
-    let t = sid("client255");
-    let _tmux = FakeTmux::answering("display-message) echo 'work|@3' ;;\n  new-session) echo 'lost connection'; exit 255 ;;");
-    let seen = Seen::default();
-    let gen = open_with(&t, "%5", None, 80, 12, seen.out()).unwrap();
-    assert!(until(|| seen.ended() == Some(gen)), "the window hears it ended: {:?}", seen.text());
     close(&t);
 }
 

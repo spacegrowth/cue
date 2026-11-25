@@ -1,7 +1,4 @@
 // Cue UI core: a message's words (summary, plain lines) and its markdown (md, links, code blocks, DECIDED lines).
-/** Before Claude Code starts, its terminal can sit on a screen of its own (no hook comes until it's past
- *  it): what that is in words (`trust_ms` / `enter_ms`). */
-const preStart = (s) => s?.trust_ms ? "asking whether you trust its folder" : s?.enter_ms ? "waiting for Enter in its terminal" : "";
 const finishedText = (it) => it.message || it.context?.at(-1)?.text || "Finished. Your turn.";
 /** The message as one plain line of prose, for previews (no markdown punctuation). */
 const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/^(\s*(?:[-*•]\s+)?)DECIDED:/gm, "$1Decided:").replace(/[`*#]/g, "").replace(/^\s*(>\s?)+/gm, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();

@@ -300,7 +300,7 @@ function askLnOf(e) {
 }
 /** An agent entry that's its own words, not an ask line the hub noted. */
 const askLnSaid = (e) => e?.role === "agent" && !askLnOf(e);
-/** How the hub words an answer, whole (asks.rs describe, answer_terminal; inbound.rs ask_ended): a message you typed
+/** How the hub words an answer, whole (asks.rs describe; inbound.rs ask_ended): a message you typed
  *  that only starts with one of these words ("allowed the new flow") is no answer. */
 const ASKLN_ANSWERS = [
   /^(?:allowed(?: \(always\))?|denied|answered|replied)(?:: “[^\n]*”)?$/,

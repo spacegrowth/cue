@@ -5,7 +5,7 @@
 
 use super::exec::{run, tmux_cap};
 use super::screen::{at_shell_prompt, is_shell};
-use super::tmux::tmux_word;
+use super::tmux::{session_screen, tmux_out, tmux_word};
 use super::typing::enter_gap;
 use super::*;
 use crate::terminal::fake_tmux::FakeTmux;

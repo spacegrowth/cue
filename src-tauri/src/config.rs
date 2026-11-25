@@ -76,7 +76,7 @@ pub fn effective() -> Value {
     // Login Items as macOS last said (System Settings → Login Items), asked off-thread (mac.rs).
     all["login"] = json!({ "open": mac.login });
     // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
-    all["sessions"] = json!({ "tmux": tmux_wanted(&c) && mac.tmux, "tmux_installed": mac.tmux, "terminal": mac.terminal });
+    all["sessions"] = json!({ "tmux_installed": mac.tmux, "terminal": mac.terminal });
     all
 }
 
@@ -204,17 +204,6 @@ fn idle_compacts_in(settings: Option<&Value>, min_env: Option<&str>, tokens: u64
     }
     let min = min_env.and_then(|v| v.parse::<u64>().ok()).map_or(200_000, |n| n.max(100_000));
     tokens >= min
-}
-
-/// New sessions run in Cue (in tmux, shown in Cue's own terminal) unless Settings says a terminal tab;
-/// only when tmux is installed.
-pub fn tmux_sessions() -> bool {
-    tmux_wanted(&load()) && crate::terminal::focus::tmux_installed()
-}
-
-/// Settings say new sessions run in Cue (on unless turned off).
-fn tmux_wanted(c: &Value) -> bool {
-    c.pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true)
 }
 
 /// What a finished card shows when a Stop hook made the agent continue: "answer" | "last".
@@ -683,10 +672,6 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
         want.push(("PreCompact", json!({ "hooks": [{ "type": "command", "command": cmd("compact"), "timeout": 5 }] })));
         // A permission prompt waiting in its terminal that Cue can't answer (a sandboxed command's network access).
         want.push(("Notification", json!({ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": cmd("notice"), "timeout": 5 }] })));
-        // On this Mac, where the guard is: Cue's tmux guard first on the session's PATH (terminal::tmux_guard).
-        if on_mac {
-            want.push(("SessionStart", json!({ "hooks": [{ "type": "command", "command": cmd("start"), "timeout": 5 }] })));
-        }
     }
     want
 }
@@ -853,11 +838,12 @@ mod tests {
         let stop = v["hooks"]["Stop"].to_string();
         assert!(stop.contains("my-own-check") && stop.contains("/new/bin/cue-hook") && !stop.contains("/old/bin"));
         assert_eq!(v["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "guard");
-        for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure", "SessionStart"] {
+        for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure"] {
             assert!(v["hooks"][e].to_string().contains("/new/bin/cue-hook"), "{e}");
         }
-        // The tmux guard is on this Mac only: a machine's settings get no SessionStart. Ask me before's check is on
-        // both (a machine's for Bash only: an item's copies, whose edits are checked, are on this Mac).
+        // No SessionStart any more: an older Cue's entry is taken out. Ask me before's check is on this Mac and a machine
+        // (a machine's for Bash only: an item's copies, whose edits are checked, are on this Mac).
+        assert!(v["hooks"]["SessionStart"].is_null(), "an older Cue's SessionStart is gone");
         assert!(v["hooks"]["PreToolUse"][1].to_string().contains("guard claude"), "Ask me before's check, after yours");
         let machine = merge_hooks(json!({}), "$HOME/.cue/cue-hook", "claude", false).unwrap();
         assert!(machine["hooks"]["SessionStart"].is_null() && !machine["hooks"]["Stop"].is_null());

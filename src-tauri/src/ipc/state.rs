@@ -1,6 +1,6 @@
 //! What's waiting on you and a session's small flags: the commands that read or change the queue.
 
-use super::{blocking, with_hub};
+use super::with_hub;
 use crate::model;
 use crate::hub::Hub;
 use crate::model::Decision;
@@ -123,12 +123,6 @@ pub(crate) async fn set_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: 
 #[tauri::command]
 pub(crate) async fn set_starred(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
     with_hub(&hub, move |h| h.set_starred(&session_id, on)).await
-}
-
-#[tauri::command]
-pub(crate) async fn answer_terminal(hub: State<'_, Arc<Hub>>, id: String, n: usize) -> Result<String, String> {
-    let hub = hub.inner().clone();
-    blocking(move || hub.answer_terminal(&id, n)).await?
 }
 
 #[tauri::command]

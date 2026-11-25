@@ -26,15 +26,6 @@ pub(super) fn bring_back(hub: &Arc<Hub>) {
 pub(super) fn machines(hub: &Arc<Hub>) {
     let h = hub.clone();
     machines::hooks::on_reached(move |m| move_machine_sessions(&h, m));
-    // A new session there: the machine read now (its setup screens), not at the next poll.
-    let h = hub.clone();
-    machines::hooks::on_new_session(move |m| {
-        if let Some(mach) = machines::get(m) {
-            if machines::listing::refresh(&mach.name, &mach.host).0 {
-                h.redraw();
-            }
-        }
-    });
     machines::hooks::watch_all();
     let known: Vec<(String, String)> = hub.snapshot()["sessions"].as_array().into_iter().flatten()
         .filter_map(|s| Some((s["machine"].as_str().filter(|m| !m.is_empty())?.to_string(), s["transcript_path"].as_str()?.to_string())))

@@ -6,11 +6,11 @@ use super::scripts::watch_script;
 use super::setup::refresh_hook;
 use crate::machines::{self, Machine};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn watchers() -> &'static Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>> {
     static W: OnceLock<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>> = OnceLock::new();
@@ -65,41 +65,6 @@ static ON_REACHED: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
 
 pub fn on_reached(f: impl Fn(&str) + Send + Sync + 'static) {
     let _ = ON_REACHED.set(Box::new(f));
-}
-
-/// What runs when a session Cue hasn't heard from in this run sends its first event from a machine (one
-/// just started there, say): given the machine's name, on a thread of its own, now and once
-/// more a few seconds later (its pane may not be on its first screen yet). At most once per machine every
-/// few seconds, so a machine reached with many sessions asks once.
-static ON_NEW_SESSION: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
-
-pub fn on_new_session(f: impl Fn(&str) + Send + Sync + 'static) {
-    let _ = ON_NEW_SESSION.set(Box::new(f));
-}
-
-pub(super) fn new_session_seen(machine: &str, sid: &str) {
-    static SEEN: Mutex<Option<(HashSet<String>, HashMap<String, Instant>)>> = Mutex::new(None);
-    let due = {
-        let mut g = crate::locking::lock(&SEEN, "seen sessions");
-        let (seen, last) = g.get_or_insert_with(Default::default);
-        if !seen.insert(format!("{machine}|{sid}")) || last.get(machine).is_some_and(|t| t.elapsed() < Duration::from_secs(3)) {
-            false
-        } else {
-            last.insert(machine.to_string(), Instant::now());
-            true
-        }
-    };
-    if due && ON_NEW_SESSION.get().is_some() {
-        let name = machine.to_string();
-        std::thread::spawn(move || {
-            for wait in [0, 4] {
-                std::thread::sleep(Duration::from_secs(wait));
-                if let Some(f) = ON_NEW_SESSION.get() {
-                    f(&name);
-                }
-            }
-        });
-    }
 }
 
 /// One SSH stream: runs until the connection drops or the machine is removed.

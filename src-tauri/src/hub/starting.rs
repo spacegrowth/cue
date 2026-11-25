@@ -125,7 +125,7 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
     }
     let sid = origin.session_id.clone();
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-    h.started(origin, "", &[], false);
+    h.started(origin, "", &[]);
     h.name_new(&sid, name);
     if !message.trim().is_empty() || !paths.is_empty() {
         // Under its typing gate (no lock held here): a reply sent meanwhile waits for this one.

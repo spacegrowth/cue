@@ -106,7 +106,7 @@ impl<'w> Agent<'w> {
 
     /// Cue started it (+ New), with no message yet: waiting for you.
     pub fn started(&self) -> &Self {
-        self.world.hub().started(self.origin.clone(), "", &[], false);
+        self.world.hub().started(self.origin.clone(), "", &[]);
         self.world.settle();
         self
     }
