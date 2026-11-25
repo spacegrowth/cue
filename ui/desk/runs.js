@@ -117,9 +117,21 @@ function dkNoticeQuiet(s, ex, turn, page) {
   if (!said.length) return "";
   return `<div class="dk-quiet">${cueMark()}<b class="mg-who">Cue</b><span class="dk-quiet-w">${said.join(" · ")}</span></div>`;
 }
+/** A reply's plain words with its Desk lines left out (#873), as the lead chat takes them out (deskLineHtml, dkTake):
+ *  DECIDED, ASK, and each line marked the Desk's own; lines meant for you stay. */
+function dkPlainWords(text) {
+  return String(text || "").split("\n").filter((l) => {
+    if (DECIDED_LINE.test(l)) return false;
+    const h = deskLineHtml(l, false);
+    if (!h) return true;
+    if (h === MD_DROP) return false;
+    const k = dkKindOf(h);
+    return !k || DK_FOR_YOU.has(k);
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 /** The lead's reply `e` to a notice-only turn, under its last notice in Activity (#816): its name, then its words, folded. */
 function dkNoticeAnswer(s, e) {
-  const text = addOn.plain(e.text), d = (state.desk?.projects || []).find((x) => deskLead(x)?.sid === s.session_id);
+  const text = dkPlainWords(addOn.plain(e.text)), d = (state.desk?.projects || []).find((x) => deskLead(x)?.sid === s.session_id);
   const who = d ? deskLeadName(d) : nameOf(s.session_id, s.project);
   // One with more than words (#837: lines for you with their buttons, pictures, an add-on's part): drawn in full as the
   // chat would, its Desk lines left out (they're Activity's rows of their own).
