@@ -45,6 +45,9 @@
 .dkn-dn { display: flex; align-items: center; gap: 8px; font-size: var(--type-body); }
 .dkn-side .dk-kic { color: inherit; flex: none; }
 .dkn-dn b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Its gear (#886): quiet beside the name, full strength on hover; opens Desk settings. */
+.dkn-side .dkn-gear { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: -2px; border-radius: var(--radius-btn); color: var(--on-bg-muted); }
+.dkn-side .dkn-gear:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
 .dkn-cnt { font: var(--type-label)/var(--type-label-lh) var(--sans); color: var(--on-bg-muted); font-variant-numeric: tabular-nums; }
 /* The lead at rest is a plain row like the sessions under it (a fill read as selected); its Lead tag sets it apart. */
 .dkn-lead { margin: 0 0 2px; padding: 10px; border-radius: var(--radius-card); display: flex; flex-direction: column; }

@@ -11,6 +11,9 @@ const deskCFolds = (() => { try { return new Set(JSON.parse(localStorage.getItem
 
 const DESK_C_MAC = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>`;
 const DESK_C_CREW = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.5A5 5 0 0 1 21 19"/></svg>`;
+/** The gear after the Desk's name at the top of the sessions column (#886): Cue's gear (window.js GEAR_ICON) at the
+ *  column's icon size, opening the Desk's settings, as Desk settings… in the Desks menu does. */
+const DESK_C_GEAR = GEAR_ICON.replace(/width="17" height="17"/, 'width="13" height="13"').replace('stroke-width="1.8"', 'stroke-width="2"');
 /** Which of Up next and Parked is open ("next", "parked" or "" for neither): one at a time, Up next to begin with. */
 const deskCLowOpen = () => { try { return localStorage.getItem("cue.deskCLow") ?? "next"; } catch { return "next"; } };
 /** Up next or Parked folded or opened as the Board's drawers are (board.js foldDrawer, at its DRAWER_SLIDE pace): one
@@ -150,7 +153,7 @@ function deskCSessions(project) {
   const closedGroup = closed.length ? `<div class="dkn-rule" aria-hidden="true"></div><button class="dkn-mg dkn-cg" data-desk-older="${esc(ckey)}" aria-expanded="${copen}">${DESK_C_ARROW(copen)}<b>CLOSED</b><span>· ${closed.length}</span></button>${copen ? closed.map(row).join("") : ""}` : "";
   // How many are at work, and on how many machines; how many sessions in all is on All N sessions at its foot.
   const count = [`${working} working`, machines.length > 1 ? `${machines.length} machines` : ""].filter(Boolean).join(" · ");
-  return `<nav class="dkn-side" aria-label="Sessions"><div class="dkn-head"><div class="dkn-dn">${deskKindIcon("tray")}<b>${esc(deskName(d))}</b></div><div class="dkn-cnt">${esc(count)}</div></div>${lead}<div class="dkn-rule" aria-hidden="true"></div><div class="dkn-list" data-scroll-key="desk-n-sessions:${esc(project)}">${groups}${closedGroup}</div><div class="dkn-foot"><button class="dkn-alls" data-desk2b-sessions aria-label="All ${mine.length + (leadS ? 1 : 0)} sessions">All<span class="dkn-w"> ${mine.length + (leadS ? 1 : 0)} sessions</span> ›</button></div></nav>`;
+  return `<nav class="dkn-side" aria-label="Sessions"><div class="dkn-head"><div class="dkn-dn">${deskKindIcon("tray")}<b>${esc(deskName(d))}</b><button class="dkn-gear" data-desk-c-gear="${esc(project)}" aria-label="Desk settings for ${esc(deskName(d))}">${DESK_C_GEAR}</button></div><div class="dkn-cnt">${esc(count)}</div></div>${lead}<div class="dkn-rule" aria-hidden="true"></div><div class="dkn-list" data-scroll-key="desk-n-sessions:${esc(project)}">${groups}${closedGroup}</div><div class="dkn-foot"><button class="dkn-alls" data-desk2b-sessions aria-label="All ${mine.length + (leadS ? 1 : 0)} sessions">All<span class="dkn-w"> ${mine.length + (leadS ? 1 : 0)} sessions</span> ›</button></div></nav>`;
 }
 
 // ---------- Items: one white card, then Up next and Done today on the green ----------
@@ -836,6 +839,7 @@ deskClicks({
   // The lead (its block in the sessions column, its ask in Items, the header's count): its chat, whatever was open,
   // All sessions too.
   deskCLead: () => { deskPick = null; deskTab = "lead"; readerView = null; deskShow(null); },
+  deskCGear: (el) => deskSettingsOpen(el.dataset.deskCGear),
   deskCStab: (el) => { deskCSessTabs.set(el.dataset.sid, el.dataset.deskCStab); renderMain(); },
   // How to check at an item's chat's foot (#865): Fold to its line, Open to its steps; kept by item.
   deskCHow: (el) => { const id = el.dataset.deskCHow; deskCHowFold.set(id, !deskCHowFolded(id)); renderMain(); },
