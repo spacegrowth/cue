@@ -27,11 +27,16 @@ CueBridge.area("state", (w) => {
     const cue = it && ["desk_push", "desk_old", "desk_lands"].some((k) => it.tool_input?.[k]);
     const words = decision.behavior !== "deny" && Object.values(decision.answers || {})[0];
     if (!cue || !words || /^(yes|no)$/i.test(String(words).trim())) return false;
+    // As hub's desk_card_words (#880): a plain no is the card's No; a question keeps it open (#651); other words close it.
+    if (/^(no|n|nope|nah|no thanks|no thank you|not now|don'?t|don't do it|leave it|keep it)[.!]*$/i.test(String(words).trim())) return false;
     const at = w.now();
-    (it.tool_input.desk_said ||= []).push({ text: words, at });
+    const open = String(words).includes("?");
     const q = it.tool_input.questions?.[0]?.question || "";
+    if (open) (it.tool_input.desk_said ||= []).push({ text: words, at });
+    else w.answer(id, `answered in your words: ${words}`);
     const s = w.session(it.session_id);
-    if (s) s.thread = [...(s.thread || []), { role: "you", at_ms: at, text: `On Cue's question in your chat ("${q}"), the user wrote: "${words}"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.` }];
+    const tail = open ? "The question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them." : "Cue took that as their answer: the question is closed and nothing changed. Do what their words ask; if it still needs their yes, ask it again.";
+    if (s) s.thread = [...(s.thread || []), { role: "you", at_ms: at, text: `On Cue's question in your chat ("${q}"), the user wrote: "${words}"\n${tail}` }];
     w.changed();
     return true;
   };
@@ -69,7 +74,6 @@ CueBridge.area("state", (w) => {
       if (!w.answer(id, `replied — “${text}”`, { text, images })) throw "That message was already answered";
       return "via tmux pane %1";
     },
-    answer_terminal: ({ id, n }) => { w.answer(id, `answered ${n} in its terminal`); return `Pressed ${n} in its terminal`; },
     forget_session: ({ sessionId }) => {
       w.state.sessions = w.state.sessions.filter((s) => s.session_id !== sessionId);
       w.state.items = w.state.items.filter((i) => i.session_id !== sessionId);
@@ -106,6 +110,8 @@ CueBridge.area("state", (w) => {
     set_later: flag("later_ms"),
     set_watch: flag("watch_ms"),
     set_starred: flag("starred_ms"),
+    // The chats open in the window and whether it's in front (box/end.js chatsOpenTell): for notifications only.
+    chats_open: () => null,
     // Send at… (hub/send_at.rs): the message kept on its session as `send_at`, dropped (its text back), or sent now.
     send_at: ({ sessionId, text, atMs }) => {
       const s = w.session(sessionId);

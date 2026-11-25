@@ -69,36 +69,6 @@ impl Sessions {
         }
     }
 
-    /// Waiting for you to trust its folder in its terminal since `at_ms` (0: it isn't).
-    pub fn set_trust(&mut self, session_id: &str, at_ms: u64) {
-        if let Some(s) = self.0.get_mut(session_id) {
-            s.trust_ms = at_ms;
-        }
-    }
-
-    /// What its terminal shows before Claude Code starts, as last read off its screen (None: neither
-    /// screen). True when that changed.
-    pub fn set_setup(&mut self, session_id: &str, setup: Option<crate::terminal::dialog::Setup>, now: u64) -> bool {
-        use crate::terminal::dialog::Setup;
-        let Some(s) = self.0.get_mut(session_id) else { return false };
-        let was = (s.trust_ms, s.enter_ms);
-        let keep = |since: u64, on: bool| if !on { 0 } else if since > 0 { since } else { now };
-        s.trust_ms = keep(s.trust_ms, setup == Some(Setup::Trust));
-        s.enter_ms = keep(s.enter_ms, setup == Some(Setup::Enter));
-        was != (s.trust_ms, s.enter_ms)
-    }
-
-    /// Claude Code sessions in a tmux pane Cue can read that no hook has come from yet: they may be on a
-    /// screen before it starts (trust, Enter to continue).
-    pub fn before_start(&self) -> Vec<Origin> {
-        self.0.values().filter(|s| s.origin.harness == "claude" && s.origin.transcript_path.is_empty() && !s.origin.tmux_pane.is_empty()).map(|s| s.origin.clone()).collect()
-    }
-
-    /// The sessions waiting on a trust question: (session id, folder, since when).
-    pub fn asking_trust(&self) -> Vec<(String, String, u64)> {
-        self.0.values().filter(|s| s.trust_ms > 0).map(|s| (s.origin.session_id.clone(), s.origin.cwd.clone(), s.trust_ms)).collect()
-    }
-
     /// Since when it's been compacting (0: it isn't).
     pub fn compacting_since(&self, session_id: &str) -> u64 {
         self.0.get(session_id).map_or(0, |s| s.compacting_ms)
@@ -171,10 +141,19 @@ impl Sessions {
     }
 
     /// What its background shell commands still running do (see `running`), as its turn ends at its prompt.
-    pub fn set_running(&mut self, session_id: &str, scripts: &[String]) {
-        if let Some(s) = self.0.get_mut(session_id) {
-            s.running = running_words(scripts);
-        }
+    /// How many run (`scripts`) too. True when either changed.
+    pub fn set_running(&mut self, session_id: &str, scripts: &[String]) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        let (words, n) = (running_words(scripts), scripts.len() as u64);
+        let changed = s.running != words || s.scripts != n;
+        (s.running, s.scripts) = (words, n);
+        changed
+    }
+
+    /// Sessions at their prompt (not at work, not waiting on their background agents) with background tasks still
+    /// running as their turn ended: their counts are followed till those end.
+    pub fn with_scripts(&self) -> Vec<Origin> {
+        self.0.values().filter(|s| s.state != "working" && !(s.state == "agent" && s.helpers > 0) && (s.scripts > 0 || s.background > 0) && !s.origin.transcript_path.is_empty()).map(|s| s.origin.clone()).collect()
     }
 
     /// A background task of its failed after a while (`at_ms`: when): noted on the session. True when new.

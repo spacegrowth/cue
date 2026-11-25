@@ -40,7 +40,7 @@ test("the Desk is in the header after Board, and lists Waiting on you, then a gr
   await expect(page.locator(".dk-chat")).toContainText("host-lead is on it");
   // The lead's box, in its chat card (the sessions list takes that place once open, #666). The lead is at work in this
   // scenario: its box says what a message does now, as a session's box on the Board does (#688).
-  await expect(page.locator(".dk2b-chat .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Message web-lead… Cue keeps it and sends it when this turn ends");
+  await expect(page.locator(".dk2b-chat .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   // The Sessions head (All N sessions, on the right in the list's place, #666): the Desk's name, ✎ only on hover; no
   // "Change" anywhere.
   await openSessions(page);
@@ -85,14 +85,16 @@ test("an item opens in the middle, its row lit in place in the Items list; ‹ I
   // The box starts with who gets it and the item, kept as you type (#132); ready to check, it goes back to its holder,
   // and the prefix follows it. The empty box shows the item's short title.
   const ph = page.locator(".dk-right .foot:not(.held) .composer textarea"), pre = page.locator(".dk-right .foot:not(.held) .composer .field-to");
-  await expect(pre).toHaveText("To web-lead · Bug #d4");
+  await expect(pre.locator(".field-to1")).toHaveText("To web-lead");
+  await expect(pre.locator(".field-to2")).toHaveText("#d4");
   await expect(ph).toHaveAttribute("placeholder", "Rail dot blinks…");
   // A tag filled in the box's own tint (--panel-2), at the left of where you type, in the same row.
   const tint = await pre.evaluate((el) => { const t = document.createElement("i"); t.style.background = "var(--panel-2)"; el.parentElement.append(t); const c = getComputedStyle(t).backgroundColor; t.remove(); return c; });
   expect(tint).not.toBe("rgba(0, 0, 0, 0)");
   await expect(pre).toHaveCSS("background-color", tint);
   await ph.fill("still blinks");
-  await expect(pre).toHaveText("To web-lead · Bug #d4");
+  await expect(pre.locator(".field-to1")).toHaveText("To web-lead");
+  await expect(pre.locator(".field-to2")).toHaveText("#d4");
   const tag = await pre.boundingBox(), input = await ph.boundingBox();
   const row = await page.locator(".dk-right .foot:not(.held) .composer .field-row").boundingBox();
   expect(tag.x + tag.width).toBeLessThanOrEqual(input.x);
@@ -104,7 +106,9 @@ test("an item opens in the middle, its row lit in place in the Items list; ‹ I
   await pre.click();
   await expect(ph).toBeFocused();
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "to_check", holder: { kind: "session", sid: "s-new", name: "cue-117" } }));
-  await expect(pre).toHaveText("To cue-117 · Bug #d4");
+  // Two lines since #803 (9b04c8119a): who gets it, over the item.
+  await expect(pre.locator(".field-to1")).toHaveText("To cue-117");
+  await expect(pre.locator(".field-to2")).toHaveText("#d4");
   await cue.change((st) => Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d4"), { state: "queued", holder: { kind: "lead", sid: "lead", name: "web-lead" } }));
   // Put it before the one it waits on: in its bar's ⋯ (#669).
   const bar = page.locator(".dk-right .dkn-ib");
@@ -258,7 +262,7 @@ test("the lead's own ASK stands in the box's place: its choices, Type answer…;
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "lead").state = "working"; });
   await expect(page.locator(".dk-right .dk-ask")).toHaveCount(0);
   // The lead at work: its box says what a message does now, as a session's box on the Board does (#688).
-  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Message web-lead… Cue keeps it and sends it when this turn ends");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveValue("And the footer too");
 });
 
@@ -299,7 +303,7 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   const pane = page.locator(".dk-right .dk-pg");
   await expect(pane.locator("h1 .dk-tname")).toHaveText("web-lead");
   await expect(pane.locator(".dk-crew .dk-mb")).toHaveCount(2);
-  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Talk to web-lead…");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   await pane.locator('[data-desk-crew="id-search"]').click();
   // Its own page (no panel): its name, whose crew and the item it's on, Chat · Files · Activity tabs.
   const crew = page.locator('.dk-right .dkn-crew[data-desk-page="crew"]');
@@ -329,7 +333,7 @@ test("a lead opens with its crew; a crew member with where it is, and the box go
   await expect(pane.locator("h1 .dk-tname")).toHaveText("web-lead");
 });
 
-test("a crew member's page shows its whole chat, the same as the board's view of it: the ask, its words, its steps folded a run at a time, its answer (#689)", async ({ page, cue }) => {
+test("a crew member's page shows its whole chat, the same as the board's view of it: the ask, its words, its steps a row each between its words, its answer (#689, #897)", async ({ page, cue }) => {
   await cue.open("desk");
   await openDesk(page);
   // The lead's feed has search-centre's log: words, two runs of steps, and its answer once it finished.
@@ -345,25 +349,51 @@ test("a crew member's page shows its whole chat, the same as the board's view of
   await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
   await page.locator('.dk-right .dk-pg [data-desk-crew="id-search"]').click();
   const chat = page.locator('.dk-right .dkn-crew[data-desk-page="crew"] .dk-crewpg .ag-chat');
-  await expect(chat.locator(".stx-fold")).toHaveCount(2);
-  // In order: the lead's ask, its words, a fold line per run of steps, its answer at the end.
+  await expect(chat.locator(".stx-fold")).toHaveCount(0);
+  // In order: the lead's ask, its words, its steps between them, its answer at the end.
   const parts = () => chat.evaluate((el) => [...el.children].map((c) => c.classList.contains("ag-ask") ? "ask" : c.classList.contains("stx-say") ? "says" : c.classList.contains("stx") ? "steps" : c.classList.contains("bg-view-reply") ? "answer" : c.className));
   expect(await parts()).toEqual(["ask", "says", "steps", "says", "steps", "answer"]);
   await expect(chat.locator(".ag-ask")).toContainText("Keep the search field centred");
-  await expect(chat.locator(".stx-fold b")).toHaveText(["3 steps", "2 steps"]);
-  await expect(chat.locator(".stx-line")).toHaveCount(0);
+  await expect(chat.locator(".stx-line")).toHaveCount(5);
   await expect(chat.locator(".bg-view-reply").last()).toContainText("Its answer");
   await expect(chat.locator(".bg-view-reply").last()).toContainText("the search field stays centred");
-  // A fold line opens its run, and closes it again.
-  await chat.locator(".stx-fold").first().click();
-  await expect(chat.locator(".stx-line")).toHaveCount(3);
   await expect(chat.locator(".stx-line").first()).toContainText("ui/header.js");
-  await chat.locator(".stx-fold").first().click();
-  await expect(chat.locator(".stx-line")).toHaveCount(0);
   // The board's view of it (its crew row's Its steps) draws the very same chat.
   const desk = await chat.evaluate((el) => el.outerHTML);
   const board = await page.evaluate(() => { const b = document.createElement("div"); b.innerHTML = helperPane("lead", helpersOf("lead").find((h) => h.id === "id-search")).body; return b.querySelector(".ag-chat").outerHTML; });
   expect(board).toBe(desk);
+});
+
+test("a lead's long brief opens folded to its first sentence; opened, its steps and rules are lists and a long command has a box of its own (#805)", async ({ page, cue }) => {
+  const brief = "You're fixing the search field in the header of the Cue repo copy at /Users/someone/development/cue/.claude/worktrees/search-1. Work only there.\n\n"
+    + "Steps: (1) read `ui/header.js` and its styles (2) keep the field centred unless a button would sit under it (3) run `npx playwright test -c tests/ui/playwright.config.mjs tests/ui/specs/header.spec.mjs` once at the end.\n\n"
+    + "Rules: don't commit; no title= tooltips; touch only ui/header.js and ui/styles/header.css.\n\n"
+    + "Report: what you changed. What you left out.";
+  await cue.open("desk");
+  await openDesk(page);
+  await cue.change((st, b) => { st.sessions.find((s) => s.session_id === "lead").team.find((t) => t.agent_id === "id-search").asked = b; }, brief);
+  await page.evaluate(() => deskShow({ kind: "holder", sid: "lead" }));
+  await page.locator('.dk-right .dk-pg [data-desk-crew="id-search"]').click();
+  const ask = page.locator('.dk-right .dkn-crew[data-desk-page="crew"] .dk-crewpg .ag-ask');
+  // Folded: its first sentence, plain, and Show the full brief.
+  await expect(ask.locator(".ag-brief-line")).toHaveText("You're fixing the search field in the header of the Cue repo copy at /Users/someone/development/cue/.claude/worktrees/search-1.");
+  await expect(ask).not.toContainText("Steps");
+  await expect(ask.locator("[data-agent-brief]")).toHaveText("Show the full brief");
+  await expect(ask.locator("[title]")).toHaveCount(0);
+  await ask.locator("[data-agent-brief]").click();
+  // Opened: the brief whole, its words as they were, set out as a short document.
+  const doc = ask.locator(".ag-brief-md");
+  await expect(doc.locator("h4")).toHaveText(["Steps:", "Rules:", "Report:"]);
+  await expect(doc.locator("ol > li")).toHaveText(["read ui/header.js and its styles", "keep the field centred unless a button would sit under it", "run npx playwright test -c tests/ui/playwright.config.mjs tests/ui/specs/header.spec.mjs once at the end."]);
+  await expect(doc.locator("ul").first().locator("li")).toHaveText(["don't commit", "no title= tooltips", "touch only ui/header.js and ui/styles/header.css."]);
+  await expect(doc.locator("ul").last().locator("li")).toHaveText(["what you changed.", "What you left out."]);
+  await expect(doc.locator("code.brief-long")).toHaveText("npx playwright test -c tests/ui/playwright.config.mjs tests/ui/specs/header.spec.mjs");
+  await expect(doc.locator("code:not(.brief-long)").first()).toHaveText("ui/header.js");
+  // Nothing runs off the side; it folds again.
+  expect(await doc.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await ask.locator("[data-agent-brief]").click();
+  await expect(ask.locator(".ag-brief-line")).toBeVisible();
+  await expect(ask.locator(".ag-brief-md")).toHaveCount(0);
 });
 
 test("a crew member's words show plain, its files without scratch or node_modules, once in its lead's list (#197)", async ({ page, cue }) => {
@@ -476,7 +506,8 @@ test("Decisions (#420): a call on an item you've checked is settled, behind Show
   await right.locator(".dk-showall").click();
   await expect(right).toContainText("The count shows as a tint");
   await right.locator('.dk-tab[data-desk-tab="moves"]').click();
-  await expect(right.locator(".dk-moves .dk-mv").first()).toContainText("Away mode mocks go to web · it made the last ones");
+  // Activity has Ready to check rows too since #789 (22a2d7c9a8): the call is the newest of the lead's own moves.
+  await expect(right.locator(".dk-moves .dk-mv:not(.dk-mv-ln)").first()).toContainText("Away mode mocks go to web · it made the last ones");
 });
 
 test("an item page's back link is one line above its title", async ({ page, cue }) => {
@@ -571,10 +602,10 @@ test("the header's Desk chips: the pinned Desks in a fixed order, the open one l
   await expect(hot).toHaveAttribute("data-hv-desk", "docs");
   await expect(page.locator('.top .hv-chip[data-hv-desk="website"]')).toHaveCount(1);
   expect(await order()).toEqual(["cue", "docs", "website"]);
-  // A Desk waiting on you shows a dot on its chip, and says so to a screen reader.
+  // A Desk waiting on you has no dot on its chip (#848), and says so to a screen reader.
   expect(await page.evaluate(() => hvDeskGoing(deskOf("cue")).waits), "cue waits on you in the scenario").toBeGreaterThan(0);
   const cueChip = page.locator('.top .hv-chip[data-hv-desk="cue"]');
-  await expect(cueChip.locator(".hv-dot.ask")).toHaveCount(1);
+  await expect(cueChip.locator("i")).toHaveCount(0);
   await expect(cueChip).toHaveAttribute("aria-label", /^cue, \d+ waits? on you$/);
   await cueChip.click();
   await expect.poll(() => page.evaluate(() => deskSelection())).toBe("cue");
@@ -661,8 +692,8 @@ test("the header's Desks menu: every Desk with what it has going, ✓ on the ope
   const rows = menu.locator(".hv-row[data-hv-desk]");
   await expect(rows).toHaveCount(2);
   await expect(menu.locator(".hv-row.on")).toHaveAttribute("data-hv-desk", "website");
-  await expect(menu.locator(".hv-row.on .hv-tick")).toHaveText("✓");
-  await expect(menu.locator('.hv-row[data-hv-desk="cue"] .hv-tick')).toHaveText("");
+  await expect(menu.locator(".hv-row.on")).toHaveAttribute("aria-current", "true");
+  await expect(menu.locator(".hv-tick")).toHaveCount(0);
   await expect(find).toBeFocused();
   await expect(menu.locator("[data-hv-desk-home]")).toHaveText("All Desks");
   await expect(menu.locator("[data-hv-new-desk]")).toHaveText("New Desk…");

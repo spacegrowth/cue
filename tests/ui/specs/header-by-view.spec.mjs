@@ -42,7 +42,7 @@ test("Desk: the Desks as chips, no projects pill; a chip switches Desk; the open
   await expect.poll(() => page.evaluate(() => [deskOpen, deskTab, deskSelection()])).toEqual([null, "lead", "cue"]);
 });
 
-test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk with what it has going, New Desk… and Desk settings…", async ({ cue, page }) => {
+test("Desk: no dot on a Desk's chip or row (#848); the Desks menu lists every Desk with what it has going, New Desk… and Desk settings…", async ({ cue, page }) => {
   await cue.open("desk");
   await openDesk(page);
   const going = await page.evaluate(() => deskSorted().map((d) => [d.project, hvGoingText(hvDeskGoing(d))]));
@@ -51,8 +51,8 @@ test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk w
   for (const [p, text] of going) {
     const row = page.locator(`.top .hv-menu [data-hv-desk="${p}"]`);
     await expect(row).toContainText(text);
-    await expect(row.locator(".hv-dot.ask")).toHaveCount(/wait/.test(text) ? 1 : 0);
-    await expect(area(page).locator(`.hv-chip[data-hv-desk="${p}"] .hv-dot.ask`)).toHaveCount(/wait/.test(text) ? 1 : 0);
+    await expect(row.locator("i")).toHaveCount(0);
+    await expect(area(page).locator(`.hv-chip[data-hv-desk="${p}"] i`)).toHaveCount(0);
   }
   expect(going.some(([, t]) => /waits? on you/.test(t)), "a Desk in the scenario waits on you").toBe(true);
   await expect(rows.nth(going.length)).toHaveText("All Desks");
@@ -93,7 +93,7 @@ test("Desk: a dot on a Desk that waits on you; the Desks menu lists every Desk w
   await expect.poll(() => page.evaluate(() => window.__set)).toBe("website");
 });
 
-test("the Desks menu: a long Desk name stops before its count, fades at its end and slides only while its row is lit (#240)", async ({ cue, page }) => {
+test("the Desks menu: a long Desk name stops before its count and ends in “…”, every name at one left edge (#240, #885)", async ({ cue, page }) => {
   await cue.open("desk");
   await openDesk(page);
   await cue.change((st) => { st.desk.projects.find((d) => d.project === "website").name = "Website launch checklist and the whole pricing page redo, start to end"; });
@@ -103,19 +103,15 @@ test("the Desks menu: a long Desk name stops before its count, fades at its end 
   expect((await menu.boundingBox()).width).toBeLessThanOrEqual(360);
   const fit = await long.evaluate((r) => {
     const nm = r.querySelector(".hv-rn"), rs = r.querySelector(".hv-rs");
-    return { right: nm.getBoundingClientRect().right, rs: rs.getBoundingClientRect().left, rsFits: rs.scrollWidth <= rs.clientWidth, over: nm.firstElementChild.scrollWidth > nm.clientWidth, mask: getComputedStyle(nm).maskImage || getComputedStyle(nm).webkitMaskImage };
+    return { right: nm.getBoundingClientRect().right, rs: rs.getBoundingClientRect().left, rsFits: rs.scrollWidth <= rs.clientWidth, over: nm.scrollWidth > nm.clientWidth, ends: getComputedStyle(nm).textOverflow };
   });
   expect(fit.right).toBeLessThanOrEqual(fit.rs);   // never over the count
   expect(fit.rsFits).toBe(true);                   // and the count is never squeezed
   expect(fit.over).toBe(true);
-  expect(fit.mask).toContain("gradient");
-  // (Tests run with animations off: the slide's rule is there, and it takes the name only while its row is lit.)
-  expect(await page.evaluate(() => [...document.styleSheets].some((sh) => { try { return [...sh.cssRules].some((r) => r.cssText?.includes("hv-rn-slide") && r.selectorText?.includes(".at")); } catch { return false; } }))).toBe(true);
-  const slides = () => long.locator(".hv-rn > span").evaluate((el) => el.matches(".hv-row:is(.at, :hover) .hv-rn > span"));
-  await page.mouse.move(0, 0);
-  expect(await slides()).toBe(await long.evaluate((r) => r.classList.contains("at")));
-  await long.hover();
-  expect(await slides()).toBe(true);
+  expect(fit.ends).toBe("ellipsis");               // cut short with "…" (#885)
+  // Every Desk's name starts at the same left edge, the open one's too: no tick before it (#885).
+  const lefts = await menu.locator(".hv-row[data-hv-desk] .hv-rn").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
+  expect(new Set(lefts).size).toBe(1);
   expect(await menu.locator("[title]").count()).toBe(0);
 });
 

@@ -7,6 +7,8 @@
 
 mod bar;
 pub mod crew_log;
+mod cue_said;
+pub use cue_said::{Kind, Said};
 mod delivery;
 mod kept_message;
 pub mod send_at;
@@ -60,6 +62,9 @@ pub struct Session {
     /// (the card counts them; `helpers` alone says what it waits on). 0 = none.
     #[serde(default)]
     pub background: u64,
+    /// How many of `background` are its shell commands (the rest are its agents). 0 = none.
+    #[serde(default)]
+    pub scripts: u64,
     /// What its background shell commands still running as its turn ended do, in plain words ("Running tests…"):
     /// its item on the Desk shows it, still in progress, not stopped (#435). "" when none runs.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -69,7 +74,7 @@ pub struct Session {
     #[serde(default)]
     pub agents: u64,
     /// A background task of its that failed after running a while: when (0 = none), what it was, and its
-    /// output's last line. Said once; cleared when the session's state changes.
+    /// output's last line. Kept while it waits; cleared when its next turn starts (`enter_state`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub task_failed_ms: u64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -138,14 +143,6 @@ pub struct Session {
     /// When that compaction finished, so the chat can say so; cleared when the next turn starts.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub compacted_ms: u64,
-    /// Started by Cue in a folder Claude Code doesn't trust yet: since when its terminal has been asking
-    /// "do you trust this folder?". 0 once it's trusted.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub trust_ms: u64,
-    /// Since when its terminal has shown a screen waiting for Enter before Claude Code starts
-    /// ("Security notes … Press Enter to continue…"): no hook reaches Cue until it's past it. 0: it isn't.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub enter_ms: u64,
     /// The folder's git state when this turn started (to tell what the turn changed).
     #[serde(skip)]
     pub turn_base: Option<crate::changes::Base>,
@@ -278,8 +275,6 @@ impl Parked {
         s.doing_ms = 0;
         s.compacting_ms = 0;
         s.compacted_ms = 0;
-        s.trust_ms = 0;
-        s.enter_ms = 0;
         s.stuck_ms = 0;
         s.later_ms = 0;
         s.watch_ms = 0;
@@ -305,12 +300,6 @@ impl Session {
         if origin.hosted || !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
             self.origin = origin.clone();
         }
-        // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
-        // question is answered, so it's through it, whatever ~/.claude.json says about the folder.
-        if !origin.transcript_path.is_empty() {
-            self.trust_ms = 0;
-            self.enter_ms = 0;
-        }
     }
 
     /// It started working: what belonged to its last turn, and waiting on its background work, are over.
@@ -329,6 +318,7 @@ impl Session {
             self.helpers = 0;
         }
         self.background = 0;
+        self.scripts = 0;
         self.running.clear();
     }
 
@@ -337,6 +327,11 @@ impl Session {
         self.cut_by_restart = false;
         if self.state != state {
             self.stuck_ms = 0;
+        }
+        // A failed background task stays said while it waits, and goes when its next turn starts. Not the turn the
+        // failure itself woke (Claude Code wakes a session as its background command ends): one that ended moments
+        // before the turn began is what it's working on, kept till the turn after.
+        if self.state != state && state == "working" && now.saturating_sub(self.task_failed_ms) > FAILED_WOKE_MS {
             self.task_failed_ms = 0;
             self.task_failed.clear();
             self.task_failed_line.clear();
@@ -372,8 +367,12 @@ impl Session {
     }
 }
 
+/// Every session by id, and Cue's own words sent to them lately (`cue_said`, #836).
 #[derive(Default)]
-pub struct Sessions(HashMap<String, Session>);
+pub struct Sessions(HashMap<String, Session>, cue_said::CueSaid);
+
+/// How long before a turn starts a background task's failure counts as what woke that turn (ms).
+const FAILED_WOKE_MS: u64 = 30_000;
 
 /// "2 background agents" / "1 background agent"; "" for none.
 pub fn helpers_words(n: u64) -> String {

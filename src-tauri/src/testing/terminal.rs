@@ -34,7 +34,6 @@ pub enum Key {
     Typed(String),
     Enter,
     Escape,
-    Keys(Vec<String>),
 }
 
 /// How a session's pane behaves, and what its screen shows.
@@ -44,8 +43,6 @@ pub struct Pane {
     /// Whether a typed message is seen still in its box (None: its screen can't be read).
     pub in_box: Option<bool>,
     pub dialog: Option<Dialog>,
-    /// Its dialog closes with the first key pressed in it (the choice's number answers it).
-    pub dialog_takes_a_key: bool,
     pub gone: Option<bool>,
     /// Esc refused with this (the pane went between two keys).
     pub no_escape: Option<String>,
@@ -174,20 +171,14 @@ impl Keys for FakeTerminal {
         Ok(format!("fake pane {}", o.session_id))
     }
 
-    fn press_keys(&self, o: &Origin, keys: &[String]) -> Result<(), String> {
-        self.lag();
-        self.note(o, Key::Keys(keys.to_vec()));
-        self.pane(&o.session_id, |p| {
-            if p.dialog_takes_a_key {
-                p.dialog = None;
-            }
-        });
-        Ok(())
-    }
-
     fn text_in_box(&self, o: &Origin, _text: &str) -> Option<bool> {
         self.lag();
         self.of(o).in_box
+    }
+
+    fn box_empty(&self, o: &Origin) -> Option<bool> {
+        self.lag();
+        self.of(o).screen.and_then(|s| crate::terminal::focus::box_empty(&s))
     }
 
     fn dialog_on(&self, o: &Origin) -> Option<Dialog> {
@@ -200,10 +191,6 @@ impl Keys for FakeTerminal {
         self.of(o).gone
     }
 
-    fn screen(&self, o: &Origin) -> Result<String, String> {
-        self.lag();
-        self.of(o).screen.ok_or_else(|| format!("fake pane {} is gone", o.session_id))
-    }
 }
 
 impl FakeTerminal {

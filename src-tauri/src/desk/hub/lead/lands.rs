@@ -35,6 +35,8 @@ impl Hub {
                 it.tool_input["desk_lands"] = lands;
             }
         });
+        // The lead's older change still asked is moot now (#880): this newer one replaces it.
+        self.desk_moot_older(&p.lsid, &id, |t| t.get("desk_lands").is_some_and(Value::is_object));
     }
 
     /// Your answer to a proposed change (`lands`: its card's `desk_lands`), the lead's session `lsid`: `yes` saves it,
@@ -100,7 +102,7 @@ impl Hub {
     fn desk_lands_tell(&self, lsid: &str, words: String) {
         let sid = lsid.to_string();
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&sid, &words) {
+            if let Err(e) = h.tell(&sid, &words, crate::sessions::Kind::Answer) {
                 eprintln!("cue: desk: couldn't tell the lead about how work lands: {e}");
             }
         });

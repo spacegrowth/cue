@@ -163,7 +163,7 @@ pub(crate) fn names_item(text: &str, id: &str) -> bool {
     text.match_indices(&at).any(|(i, _)| !text[i + at.len()..].starts_with(|c: char| c.is_ascii_alphanumeric()))
 }
 
-/// Your own check's `steps` run on `commit` of `repo` (main plus the item, the tree Cue's own check reads): in a
+/// Your own check's `steps` run on `commit` of `repo` (main plus the item): in a
 /// detached copy of it in Cue's folder, removed after; `seen` told each step as it begins. Err says which step and what
 /// it said. No lock is held here.
 pub(crate) fn check_steps_on(repo: &str, commit: &str, steps: &[String], seen: &dyn Fn(&str)) -> Result<(), String> {
@@ -181,6 +181,8 @@ pub(crate) fn check_steps_on(repo: &str, commit: &str, steps: &[String], seen: &
         .map_err(|e| crate::desk::hub::landing::git::because("git couldn't make a copy of main plus the item to check".into(), &e))?;
     if crate::desk::hub::lead::checks::builds_this_cue(repo) {
         link_shared(repo, &path);
+        // The window as the running app has it (its check, lands.rs APP_CHECK): with the add-on's part when it's there.
+        link_addon(repo, &path);
     }
     let ran = crate::desk::lands::run_steps_seen(&path, steps, seen).map_err(|e| format!("\"{}\" {}\n{}", e.step, e.why, e.said).trim_end().to_string());
     remove(&ItemTree { repo: repo.to_string(), path, branch: String::new(), ..Default::default() });
@@ -243,9 +245,21 @@ pub(crate) fn clear_build_leftovers(target: &std::path::Path) {
     }
 }
 
+/// The app's optional add-on (`src-tauri/ext`, a link git ignores) linked into check copy `path` of `repo`, when `repo`
+/// has it. Only a check's copy: an item's copy never gets it.
+fn link_addon(repo: &str, path: &str) {
+    let (Ok(from), at) = (std::fs::canonicalize(std::path::Path::new(repo).join("src-tauri/ext")), std::path::Path::new(path).join("src-tauri/ext")) else { return };
+    #[cfg(unix)]
+    if std::fs::symlink_metadata(&at).is_err() {
+        if let Err(e) = std::os::unix::fs::symlink(&from, &at) {
+            eprintln!("cue: desk: couldn't link {}: {e}", at.display());
+        }
+    }
+}
+
 /// The shared links taken out of copy `path` (only links: what they point at stays).
 pub(crate) fn unlink_shared(path: &str) {
-    for rel in ["node_modules", "src-tauri/target"] {
+    for rel in ["node_modules", "src-tauri/target", "src-tauri/ext"] {
         let at = std::path::Path::new(path).join(rel);
         if std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink()) {
             let _ = std::fs::remove_file(&at);

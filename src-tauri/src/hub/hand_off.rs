@@ -22,12 +22,10 @@ impl Hub {
         if !crate::db::draft_text(&format!("s:{sid}")).trim().is_empty() {
             return held("draft");
         }
-        // A hosted session has no terminal box to land on: Cue's box (the draft) is all there is.
+        // A hosted session has no terminal box to land on: Cue's box (the draft) is all there is. One in a terminal:
+        // its box read off its screen (tmux, iTerm, Terminal.app), held when it can't be read.
         if !o.hosted {
-            if o.tmux_pane.is_empty() {
-                return held("unseen");
-            }
-            match self.keys().screen(o).ok().as_deref().and_then(crate::focus::box_empty) {
+            match self.keys().box_empty(o) {
                 Some(true) => {}
                 Some(false) => return held("typed"),
                 None => return held("unseen"),

@@ -1,17 +1,29 @@
 //! What's waiting on you and a session's small flags: the commands that read or change the queue.
 
-use super::{blocking, with_hub};
+use super::with_hub;
 use crate::model;
 use crate::hub::Hub;
 use crate::model::Decision;
 use std::sync::Arc;
 use tauri::State;
 
-/// The window's state as last built (hub/shown.rs): never waits for the store, and not for the blocking
-/// pool either (busy hub calls can fill it). Only the first ask, before anything is built, builds it there.
+/// The window's state as last built (hub/shown.rs), or as last sent when the store changed since (a draw follows
+/// that tells the pages again, hub/redraw.rs): what a page fetches when it's told the state changed. Never waits for
+/// the store, and not for the blocking pool either (busy hub calls can fill it). Only the first ask, before anything
+/// is built, builds it there.
+///
+/// `since` (the windows' own fetch, ui/core/state_since.js): only what changed since the state number `have`, the one
+/// Cue gave this window last, or the whole state numbered when it has none (hub/state_since.rs, #877).
 #[tauri::command]
-pub(crate) async fn get_state(hub: State<'_, Arc<Hub>>) -> Result<serde_json::Value, String> {
-    match hub.kept_state() {
+pub(crate) async fn get_state(window: tauri::WebviewWindow, hub: State<'_, Arc<Hub>>, since: Option<bool>, have: Option<u64>) -> Result<serde_json::Value, String> {
+    if since.unwrap_or(false) {
+        let snap = match hub.current_snapshot() {
+            Some(s) => s,
+            None => with_hub(&hub, |h| h.snapshot()).await?,
+        };
+        return Ok(hub.state_since(window.label(), have, snap));
+    }
+    match hub.kept_state().or_else(|| hub.sent_state()) {
         Some(v) => Ok(v),
         None => with_hub(&hub, |h| h.state()).await,
     }
@@ -111,12 +123,6 @@ pub(crate) async fn set_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: 
 #[tauri::command]
 pub(crate) async fn set_starred(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
     with_hub(&hub, move |h| h.set_starred(&session_id, on)).await
-}
-
-#[tauri::command]
-pub(crate) async fn answer_terminal(hub: State<'_, Arc<Hub>>, id: String, n: usize) -> Result<String, String> {
-    let hub = hub.inner().clone();
-    blocking(move || hub.answer_terminal(&id, n)).await?
 }
 
 #[tauri::command]

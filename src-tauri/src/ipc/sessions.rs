@@ -9,7 +9,6 @@ use crate::logs::live;
 use crate::logs::archive;
 use crate::terminal::focus;
 use crate::terminal::shell;
-use crate::terminal::launch::{Place, Started};
 use crate::hub::Hub;
 // Kept at this path for the add-on.
 #[allow(unused_imports)]
@@ -18,27 +17,27 @@ use std::sync::Arc;
 use tauri::State;
 use crate::show_main;
 
-/// Resume an older Claude Code session: `claude --resume` in a terminal tab opened behind Cue, in its
-/// folder. Cue knows it at once (name and last few messages from its transcript), so it opens in Active.
+/// Resume an older Claude Code session, hosted by Cue in its folder. Cue knows it at once (name and last few
+/// messages from its transcript), so it opens in Active.
 #[tauri::command]
 pub(crate) async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let res = with_hub(&hub, move |h| resume_older(&h, &session_id)).await?;
-    // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
         show_main(&app, None);
     }
     res
 }
 
-/// The work behind Resume (the window's search). Blocking: it opens a terminal tab.
+/// The work behind Resume (the window's search). Blocking: it waits for its agent to start.
 pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
-    let line = focus::resume_line_local(&cwd, session_id, &path)?;
-    let name = model::folder_of(&cwd);
-    let tab = h.launcher().here(&line, &cwd, &name, Place::chosen(None))?;
-    let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
-    h.resumed(origin, &title, &transcript::recent_context(&path, 6), false);
-    Ok(serde_json::json!({ "session_id": session_id, "detail": format!("Resumed in {}", tab.what) }))
+    if h.session_origin(session_id).is_some() || live::claude().iter().any(|q| q.session_id == session_id) {
+        return Err("it's running already".into());
+    }
+    let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), hosted: true, ..Default::default() };
+    let woken = h.resume_hosted_as(&origin)?;
+    h.resumed(woken, &title, &transcript::recent_context(&path, 6), false);
+    Ok(serde_json::json!({ "session_id": session_id, "detail": "Resumed, hosted in Cue" }))
 }
 
 /// Park: stop a session (its agent ended as Close ends it, its tab closed) and keep it under Parked,
@@ -230,7 +229,7 @@ fn delete_transcript(o: &crate::model::Origin) -> Result<(), String> {
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
 pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>, hosted: Option<bool>, trust: Option<bool>) -> Result<serde_json::Value, String> {
-    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false), desk_lead: String::new() };
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false), ..Default::default() };
     let res = with_hub(&hub, move |h| start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await?;
     // Cue stays in front: the terminal tab opened behind it.
@@ -261,38 +260,23 @@ pub(crate) fn fork(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<serd
     let own = h.session_name(session_id);
     let base = if own.trim().is_empty() { model::folder_of(&from.cwd) } else { own };
     let name = fork_name(&base, &h.session_names());
-    let sid = focus::new_session_id();
-    let (origin, what) = if from.machine.is_empty() {
-        // Its model and its MCP selection, as the session runs now; the fork keeps a copy of the selection.
-        let mut args = vec![];
-        if let Some(m) = (!from.transcript_path.is_empty()).then(|| crate::logs::steps::model_of(&from.transcript_path)).flatten() {
-            args.extend(["--model".to_string(), m]);
-        }
-        let (was, now) = (crate::logs::mcp::selection_path(session_id), crate::logs::mcp::selection_path(&sid));
-        if was.exists() && std::fs::copy(&was, &now).is_ok() {
-            args.extend(crate::logs::mcp::flags_for(&now));
-        }
-        let line = focus::fork_line(&from.cwd, session_id, &sid, &name, &args, message)?;
-        let tab = h.launcher().here(&line, &from.cwd, &name, Place::chosen(None))?;
-        let o = model::Origin { session_id: sid.clone(), harness: "claude".into(), cwd: from.cwd.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
-        (o, tab.what)
-    } else {
-        // On a machine: there, in tmux, as + New starts one (its transcript is there, so no model from it).
-        let m = machines::get(&from.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", from.machine))?;
-        let line = focus::fork_line(".", session_id, &sid, &name, &[], message)?;
-        let Started { pane, tty, dir } = h.launcher().there(&m, &line, &from.cwd, &name)?;
-        let o = model::Origin { session_id: sid.clone(), harness: "claude".into(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
-        (o, m.name)
-    };
+    // Hosted, here or on its machine (cue-host there), on the model it runs on now (its transcript is read here
+    // only on this Mac). Trusted: the session it forks from already works in that folder.
+    let model = (from.machine.is_empty() && !from.transcript_path.is_empty()).then(|| crate::logs::steps::model_of(&from.transcript_path)).flatten();
+    let opts = StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: from.machine.clone(), trust: true, fork_of: session_id.to_string(), ..Default::default() };
+    let agent = crate::hosted::Agent::Claude;
+    let started = crate::hub::start_hosted(h, agent, &from.cwd, "", &name, &opts, &[])?;
+    let sid = started.get("session_id").and_then(|v| v.as_str()).ok_or("the fork started without a session id")?.to_string();
+    let origin = h.session_origin(&sid).ok_or("the fork ended as it started")?;
     // Active shows where it forked from, then what you asked it (if anything).
     let recent = if from.transcript_path.is_empty() || !from.machine.is_empty() { vec![] } else { transcript::recent_context(&from.transcript_path, 6) };
-    h.resumed(origin.clone(), &name, &recent, false);
+    h.resumed(origin, &name, &recent, false);
     if !message.trim().is_empty() {
-        h.started(origin, message, &[], false);
+        h.send_to_hosted(&sid, message, &[], false)?;
     }
-    h.name_new(&sid, &name);
     crate::config::carry_move(session_id, &sid);
-    Ok(serde_json::json!({ "session_id": sid, "name": name, "detail": format!("Forked as {name} in {what}") }))
+    let what = if from.machine.is_empty() { "Cue".to_string() } else { crate::machines::display_name(&from.machine) };
+    Ok(serde_json::json!({ "session_id": sid, "name": name, "detail": format!("Forked as {name}, hosted in {what}") }))
 }
 
 /// A fork's name: "<name>-fork", then "-fork-2", "-fork-3"…, the first no session has. A fork of a fork
@@ -342,53 +326,6 @@ mod fork_tests {
     }
 }
 
-/// Trust in Cue for a session Claude Code is asking "do you trust this folder?": its cursor moved onto
-/// "Yes, I trust this folder", then Enter. Only from your click, and only where Cue can see the screen
-/// (its tmux pane, here or on a machine): Claude Code lists "No, exit" first, so a blind Enter would end it.
-#[tauri::command]
-pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| {
-        let origin = h.session_origin(&session_id).ok_or("that session is gone")?;
-        if origin.tmux_pane.is_empty() {
-            return Err("Cue can't see its terminal".into());
-        }
-        let screen = || h.keys().screen(&origin).ok().filter(|s| crate::terminal::dialog::setup_on(s) == Some(crate::terminal::dialog::Setup::Trust));
-        let Some((cursor, yes)) = screen().as_deref().and_then(crate::terminal::dialog::trust_choices) else {
-            h.trust_answered(&session_id);
-            return Err("it isn't asking about the folder any more".into());
-        };
-        if cursor != yes {
-            let key = if yes > cursor { "Down" } else { "Up" };
-            h.keys().press_keys(&origin, &vec![key.to_string(); cursor.abs_diff(yes)])?;
-            crate::clock::sleep_ms(250);
-            if !screen().as_deref().and_then(crate::terminal::dialog::trust_choices).is_some_and(|(c, y)| c == y) {
-                return Err("its cursor didn't reach “Yes”".into());
-            }
-        }
-        h.keys().press_keys(&origin, &["Enter".to_string()])?;
-        h.trust_answered(&session_id);
-        Ok(())
-    }).await?
-}
-
-/// Continue in Cue for a session whose terminal waits for Enter before Claude Code starts ("Security
-/// notes … Press Enter to continue…"): Enter, only while that screen is still there. Only from your click.
-#[tauri::command]
-pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    with_hub(&hub, move |h| {
-        let origin = h.session_origin(&session_id).ok_or("that session is gone")?;
-        if origin.tmux_pane.is_empty() {
-            return Err("Cue can't see its terminal".into());
-        }
-        let on = h.keys().screen(&origin).ok().and_then(|s| crate::terminal::dialog::setup_on(&s)) == Some(crate::terminal::dialog::Setup::Enter);
-        h.enter_pressed(&session_id);
-        if !on {
-            return Err("it isn't waiting for Enter any more".into());
-        }
-        h.keys().press_keys(&origin, &["Enter".to_string()])
-    }).await?
-}
-
 /// "!" in a box: run the rest of the line in the session's folder (or `cwd`, for the + New session box),
 /// in your shell — on this Mac, or on the machine the session runs on (the folder is there). What it
 /// printed, its exit code and how long it took: shown as a card, never sent to the agent unless you
@@ -429,97 +366,29 @@ pub(crate) async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String
     }).await?
 }
 
-/// "Move to Cue": a Claude Code session in a terminal tab, ended (its tab closed with it) and resumed in
-/// Cue's tmux session, where its terminal shows in Cue; with Settings → Cue-hosted sessions on, resumed hosted
-/// instead, which a session in Cue's own terminal can be too. Idle sessions only: the conversation comes back
-/// whole (claude --resume), but anything mid-turn would be cut off. Shell state in the old tab is gone.
+/// "Move to Cue": a Claude Code session in a terminal tab (or Cue's own terminal), ended (its tab closed with it)
+/// and resumed hosted by Cue, with no terminal. Idle sessions only: the conversation comes back whole, but anything
+/// mid-turn would be cut off. Shell state in the old tab is gone.
 #[tauri::command]
 pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     with_hub(&hub, move |h| move_session_to_cue(&h, &session_id)).await?
 }
 
 pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
-    // Settings → Cue-hosted sessions on: it comes back hosted, with no terminal (hub/resuming.rs).
-    if crate::config::hosted_on() {
-        let origin = movable_origin(h, session_id, MoveTo::Hosted)?;
-        return super::move_into_hosted(h, origin, || end_session(h, session_id));
-    }
-    let origin = movable_origin(h, session_id, MoveTo::Tmux)?;
-    let cwd = origin.cwd.clone();
-    let name = h.session_name(session_id);
-    let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
-    let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
-    let label = if name.is_empty() { model::folder_of(&cwd) } else { name };
-    let line = focus::resume_line_local(&cwd, session_id, &path)?;
-    // Its window in Cue first, empty: only once that's there does the old one end, so a tmux that won't
-    // cooperate never leaves the session ended and nowhere.
-    let mut tab = h.launcher().here("", &cwd, &label, Place::Tmux)?;
-    // Ended as Close does (SIGTERM, its tab closed).
-    if let Err(e) = end_session(h, session_id) {
-        ask_to_exit(h, &origin, session_id, &tab.tmux_pane, e)?;
-    }
-    // Its SessionEnd hook drops Cue's record of it as it exits: let that land before the new one is made.
-    for _ in 0..20 {
-        if h.session_origin(session_id).is_none() {
-            break;
-        }
-        crate::clock::sleep_ms(100);
-    }
-    // It has ended: from here it always comes back somewhere. In Cue's window if it can be typed into,
-    // else in a terminal tab, as Resume would.
-    let mut fell_back = None;
-    if let Err(e) = h.launcher().type_line(&tab.tmux_pane, &line) {
-        h.launcher().close_pane(&tab.tmux_pane);
-        tab = h.launcher().here(&line, &cwd, &label, Place::Tab)?;
-        fell_back = Some(e);
-    }
-    let recent = if path.is_empty() { Vec::new() } else { transcript::recent_context(&path, 6) };
-    let moved = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane.clone(), ..Default::default() };
-    // In the window at once, as working (loading), so its screen can be watched while it comes up.
-    h.resumed(moved.clone(), &label, &recent, true);
-    if star > 0 {
-        h.restore_star(session_id, star);
-    }
-    if let Some(e) = fell_back {
-        return Ok(format!("Couldn't open it in Cue ({e}), so it was resumed in {} instead", tab.what));
-    }
-    // Until Claude Code is up in it with the conversation loaded: its prompt (or a question of its own)
-    // on the screen. Up to 60 s (a long conversation takes a while); then it's left to finish on its own.
-    for _ in 0..300 {
-        crate::clock::sleep_ms(200);
-        if h.keys().screen(&moved).is_ok_and(|sc| sc.contains('❯')) {
-            break;
-        }
-    }
-    h.mark_state(&moved, "waiting");
-    Ok("Moved to Cue: resumed in its terminal here".into())
+    let origin = movable_origin(h, session_id)?;
+    let old = origin.clone();
+    // Ended as Close does (SIGTERM, its tab closed); one that won't take the signal is asked to /exit.
+    super::move_into_hosted(h, origin, || end_session(h, session_id).or_else(|e| ask_to_exit(h, &old, session_id, e).map(|_| "Ended it".into())))
 }
 
-/// The session, when it can be moved to Cue: an idle Claude Code session here, outside Cue's tmux and not
-/// hosted already, in a folder Cue knows. `tmux`: it's moving into Cue's tmux.
-/// Where Move to Cue resumes a session.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MoveTo {
-    /// In Cue's terminal.
-    Tmux,
-    /// Hosted, with no terminal (from a terminal tab or from Cue's own terminal).
-    Hosted,
-}
-
-fn movable_origin(h: &Arc<Hub>, session_id: &str, to: MoveTo) -> Result<model::Origin, String> {
-    if to == MoveTo::Tmux && !focus::tmux_installed() {
-        return Err("tmux isn't installed".into());
-    }
+/// The session, when it can be moved to Cue: a live Claude Code session not hosted already, in a folder Cue knows.
+fn movable_origin(h: &Arc<Hub>, session_id: &str) -> Result<model::Origin, String> {
     let origin = h.live_origin(session_id).ok_or("that session is gone")?;
     if origin.harness != "claude" {
         return Err("only a Claude Code session can be resumed in Cue".into());
     }
     if origin.hosted {
         return Err("it's already hosted in Cue".into());
-    }
-    match to {
-        MoveTo::Tmux if !origin.tmux_pane.is_empty() => return Err("it already runs in Cue".into()),
-        _ => {}
     }
     if origin.cwd.is_empty() {
         return Err("Cue doesn't know which folder it runs in".into());
@@ -528,18 +397,13 @@ fn movable_origin(h: &Arc<Hub>, session_id: &str, to: MoveTo) -> Result<model::O
 }
 
 /// A session that didn't take the signal within 3 s (`ended`, why ending it failed) is asked to leave the way
-/// you would, with /exit typed into it, and given a few seconds more; then its tab is closed. When it still
-/// won't go, Cue's new window for it (`pane`) is taken down again.
-fn ask_to_exit(h: &Arc<Hub>, origin: &model::Origin, session_id: &str, pane: &str, ended: String) -> Result<(), String> {
+/// you would, with /exit typed into it, and given a few seconds more; then its tab is closed.
+fn ask_to_exit(h: &Arc<Hub>, origin: &model::Origin, session_id: &str, ended: String) -> Result<(), String> {
     if !ended.contains("didn't quit") {
-        h.launcher().close_pane(pane);
         return Err(ended);
     }
     let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-    if let Err(e) = h.type_command(origin, "/exit") {
-        h.launcher().close_pane(pane);
-        return Err(e);
-    }
+    h.type_command(origin, "/exit")?;
     let alive = || pid > 0 && unsafe { libc::kill(pid, 0) == 0 };
     for _ in 0..60 {
         if !alive() {
@@ -548,7 +412,6 @@ fn ask_to_exit(h: &Arc<Hub>, origin: &model::Origin, session_id: &str, pane: &st
         crate::clock::sleep_ms(100);
     }
     if alive() {
-        h.launcher().close_pane(pane);
         return Err("it didn't quit, even to /exit: close it in its tab, then Resume it here".into());
     }
     let _ = focus::close_tab(origin);

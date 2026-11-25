@@ -25,7 +25,13 @@ function deskTaskApprovals(d) {
 
 /** The same live request and response handler used by the session's full chat. */
 function deskSessionRequestFoot(d, open) {
+  // The permission you just answered in this chat folds shut over what comes next (#793).
   const sid = open?.kind === "crew" ? open.lead : open?.sid;
+  const f = sid && deskAskFolding("foot").find((x) => x.it?.session_id === sid);
+  const was = f ? `<div class="dk-ask${deskAskLeave(f, "foot")}" aria-hidden="true">${askFoot(f.it, sid, f.it.harness || "claude", `fold:${f.id}`, "No")}</div>` : "";
+  return was + deskSessionRequestFootNow(d, open, sid);
+}
+function deskSessionRequestFootNow(d, open, sid) {
   if (!sid) return deskBox(d);
   const request = deskSessionRequests(sid, open.kind === "crew" ? open.agent : "")[0];
   if (!request) return deskBox(d);

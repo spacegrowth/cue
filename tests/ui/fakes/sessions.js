@@ -59,8 +59,6 @@ CueBridge.area("sessions", (w) => {
     },
     new_session: ({ agent, machine }) => started(agent, machine ? machine : "a new iTerm tab"),
     fork_session: ({ sessionId }) => { const name = `${w.session(sessionId)?.project || "session"}-fork`; return { session_id: "", name, detail: `Forked as ${name} in a new iTerm tab` }; },
-    trust_folder: () => null,
-    continue_start: () => null,
     // "! line" in a box: run there, what it printed back.
     run_line: async ({ sessionId, cwd, line }) => {
       await w.wait(200);
@@ -68,7 +66,7 @@ CueBridge.area("sessions", (w) => {
       if (!dir) throw "Cue doesn't know that session's folder";
       return { output: line.includes("git status") ? "On branch main\nnothing to commit, working tree clean" : "", code: 0, ms: 42, cwd: dir, timed_out: false };
     },
-    move_to_cue: ({ sessionId }) => { const s = w.session(sessionId); if (s) s.tmux_pane = "%1"; w.changed(); return "Moved to Cue"; },
+    move_to_cue: ({ sessionId }) => { const s = w.session(sessionId); if (s) s.hosted = true; w.changed(); return "Moved to Cue"; },
     move_to_terminal: ({ sessionId }) => { const s = w.session(sessionId); if (s) { s.hosted = false; s.term_program = "iTerm.app"; } w.changed(); return "Moved to iTerm"; },
     // A folder's project: one you put it in, its repository's, or (scratch, Downloads) its own name.
     project_for_folder: ({ folder }) => {

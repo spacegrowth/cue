@@ -4,6 +4,7 @@
 //! A pick again makes none.
 
 use super::desk::{desk, ends, holder, item, new_lead, sent_to};
+use super::team::lead;
 use crate::hub::{NewAsk, Reply};
 use crate::model::Decision;
 use crate::testing::World;
@@ -364,6 +365,11 @@ fn a_build_item_the_lead_files_for_your_pick_links_both_ways() {
     assert_eq!(b["done_when"], "it's in the app", "the from: and picked: parts aren't its title or check: {b}");
     let mk = item(&desk(&w, &project), "Mocks: working items").clone();
     assert_eq!((mk["picked"].as_str(), mk["built_as"].as_str()), (Some("B"), Some(n.as_str())), "{mk}");
+    // #917: its brief says where it came from, though the lead gave no why, so its chat opens with that line.
+    w.advance(1000);
+    ends(&w, &l, &format!("ROUTE: #{n} -> {h}"));
+    let brief = sent_to(&w, &h).into_iter().find(|t| t.starts_with(&format!("Desk item #{n} "))).expect("its brief");
+    assert!(brief.contains(&format!("\nYou picked option B on #{m}.\n")), "{brief}");
 
     // A follow-on that isn't a pick: linked, no option. One naming an item that isn't there is refused, in words.
     w.advance(1000);
@@ -469,4 +475,79 @@ fn the_leads_done_on_mocks_its_holder_still_has_closes_it_once_its_back() {
         w.tick(false);
     }
     assert_eq!(crate::db::desk_get_item(&m).unwrap().state, "done", "closed once its DONE brought it to your check");
+}
+
+#[test]
+fn picked_lines_are_read() {
+    use crate::desk::parse::{lines, Line};
+    let got = lines("PICKED: #12 | option b\nPICKED: #12 | C | add: a search box | at the top\n**PICKED:** #ab3 | M2 | with: no border\nPICKED: #12 | maybe B or C\nPICKED: <#id> | B");
+    let picks: Vec<_> = got.into_iter().filter_map(|l| if let Line::Picked { id, option, extras } = l { Some((id, option, extras)) } else { None }).collect();
+    let want = [("12", "B", ""), ("12", "C", "a search box | at the top"), ("ab3", "M2", "no border")];
+    assert_eq!(picks.iter().map(|(i, o, e)| (i.as_str(), o.as_str(), e.as_str())).collect::<Vec<_>>(), want, "an unclear option or an example isn't a pick");
+}
+
+#[test]
+fn a_pick_typed_in_the_holders_chat_does_what_the_pick_button_does() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    ends(&w, &l, "ITEM: task | Which search box to keep | done when: you picked one\nROUTE: #new -> cue-teams | why: it knows search");
+    let id = item(&desk(&w, &project), "Which search box to keep")["id"].as_str().unwrap().to_string();
+    ends(&w, &h, &format!("A keeps the top box, B the side one. Pick one: A or B.\n\
+        IF PICKED: #{id} | B | feature | Move search to the side | you'll see: one search box, at the side | done when: the top box is gone | by: me\n\
+        IF PICKED: #{id} | A | bug | Fix the top box's focus | by: me"));
+    let told_lead = sent_to(&w, &l).len();
+
+    // You answer in its chat, "B might be best, but keep a shortcut"; it reports your pick.
+    ends(&w, &h, &format!("Going with B, with the shortcut.\nPICKED: #{id} | B | add: keep a keyboard shortcut to it"));
+    w.settle();
+    let d = desk(&w, &project);
+    let it = item(&d, "Which search box to keep").clone();
+    let side = item(&d, "Move search to the side").clone();
+    assert_eq!((it["state"].as_str(), it["picked"].as_str(), it["built_as"].as_str()), (Some("done"), Some("B"), side["id"].as_str()), "{it}");
+    assert!(d["items"].as_array().unwrap().iter().all(|i| i["title"] != "Fix the top box's focus"), "option A's isn't filed: {d}");
+    assert_eq!(side["builds"].as_str(), Some(id.as_str()));
+    assert_eq!(side["see"].as_str(), Some("one search box, at the side Also, as you asked: keep a keyboard shortcut to it"), "{side}");
+    assert_eq!(side["holder"]["name"], "cue-teams", "routed at once, as the Pick does: {side}");
+    let n = side["id"].as_str().unwrap();
+    // Its brief carries what you asked for besides.
+    assert!(sent_to(&w, &h).iter().any(|t| t.starts_with(&format!("Desk item #{n} (feature): Move search to the side")) && t.contains("You also asked: keep a keyboard shortcut to it")), "{:?}", sent_to(&w, &h));
+    w.advance(2000);
+    assert_eq!(sent_to(&w, &l).len(), told_lead, "no lead step: {:?}", &sent_to(&w, &l)[told_lead..]);
+}
+
+#[test]
+fn a_typed_pick_on_mocks_files_the_build_and_answers_its_question() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let m = mocks(&w, &h, &project);
+    let (_ask, mut rx) = asks_which(&w, &h);
+    ends(&w, &h, &format!("You said C.\nPICKED: #{m} | C"));
+    w.settle();
+    let d = desk(&w, &project);
+    let it = item(&d, "Mocks: working items").clone();
+    assert_eq!((it["state"].as_str(), it["picked"].as_str()), (Some("done"), Some("C")), "{it}");
+    let b = builds(&w, &project);
+    assert_eq!(b.len(), 1, "{b:?}");
+    assert_eq!(b[0]["title"], "Build: working items (option C)");
+    assert_eq!(answer(&mut rx), "C");
+}
+
+#[test]
+fn a_typed_pick_on_an_item_it_doesnt_hold_or_picked_already_is_refused_and_it_is_told() {
+    let w = World::new();
+    let (h, project) = holder(&w);
+    let m = mocks(&w, &h, &project);
+    let other = lead(&w, "hi");
+    ends(&w, &other, &format!("PICKED: #{m} | B"));
+    w.settle();
+    assert_eq!(item(&desk(&w, &project), "Mocks: working items")["picked"].as_str().unwrap_or(""), "", "not its item");
+    assert!(sent_to(&w, &other).iter().any(|t| t.contains(&format!("PICKED: not done: #{m} isn't yours"))), "{:?}", sent_to(&w, &other));
+
+    ends(&w, &h, &format!("PICKED: #{m} | B"));
+    ends(&w, &h, &format!("PICKED: #{m} | C"));
+    w.settle();
+    assert_eq!(item(&desk(&w, &project), "Mocks: working items")["picked"], "B");
+    assert_eq!(builds(&w, &project).len(), 1);
+    assert!(sent_to(&w, &h).iter().any(|t| t.contains(&format!("PICKED: not done on #{m}: Option B is picked already"))), "{:?}", sent_to(&w, &h));
 }

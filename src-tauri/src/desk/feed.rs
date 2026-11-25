@@ -43,6 +43,8 @@ pub enum ChangeKind {
     FullRunPassed,
     /// The full run of Cue's own main line failed, or couldn't be made (no item).
     FullRunFailed,
+    /// Cue is being installed from a main line no full run passed on (no item): never wakes the lead (#820).
+    Installed,
 }
 
 /// How a row reaches the lead.
@@ -66,7 +68,7 @@ pub const GROUPED_ALONE_MS: u64 = 5 * 60_000;
 pub const LANDING_STUCK_MS: u64 = 15 * 60_000;
 
 impl ChangeKind {
-    pub const ALL: [ChangeKind; 16] = [
+    pub const ALL: [ChangeKind; 17] = [
         ChangeKind::NewItem,
         ChangeKind::Stopped,
         ChangeKind::StuckLanding,
@@ -83,6 +85,7 @@ impl ChangeKind {
         ChangeKind::Machine,
         ChangeKind::FullRunPassed,
         ChangeKind::FullRunFailed,
+        ChangeKind::Installed,
     ];
 
     pub fn wake(self) -> Wake {
@@ -97,8 +100,10 @@ impl ChangeKind {
             | ChangeKind::WordsWait
             | ChangeKind::Machine
             | ChangeKind::FullRunFailed => Wake::AtOnce,
-            ChangeKind::NeedsYou | ChangeKind::Clash | ChangeKind::Finished | ChangeKind::Away => Wake::Grouped,
-            ChangeKind::YouDid | ChangeKind::FullRunPassed => Wake::Silent,
+            ChangeKind::NeedsYou | ChangeKind::Clash | ChangeKind::Away => Wake::Grouped,
+            // Finished, landed, installed: nothing for the lead to do, so no turn of its own (#820). They go with
+            // its next message; a stuck or failed one raises its own row, which wakes it.
+            ChangeKind::YouDid | ChangeKind::FullRunPassed | ChangeKind::Finished | ChangeKind::Installed => Wake::Silent,
         }
     }
 
@@ -126,6 +131,7 @@ impl ChangeKind {
             ChangeKind::Machine => "machine",
             ChangeKind::FullRunPassed => "full_run_passed",
             ChangeKind::FullRunFailed => "full_run_failed",
+            ChangeKind::Installed => "installed",
         }
     }
 
@@ -322,11 +328,13 @@ mod tests {
     fn grouped_rows_wait_for_a_wake_or_five_minutes() {
         let r = Change { desk: "d".into(), n: 1, item: "a".into(), kind: ChangeKind::NewItem, words: String::new(), key: String::new(), created_ms: 0 };
         assert!(wakes(&[&r], 0, false));
-        let g = Change { kind: ChangeKind::Finished, created_ms: 1_000, ..r.clone() };
+        let g = Change { kind: ChangeKind::Clash, created_ms: 1_000, ..r.clone() };
         assert!(!wakes(&[&g], 1_000 + GROUPED_ALONE_MS - 1, false), "a grouped row alone waits");
         assert!(wakes(&[&g], 1_000 + GROUPED_ALONE_MS, false), "then goes on its own");
-        let s = Change { kind: ChangeKind::YouDid, ..r.clone() };
-        assert!(!wakes(&[&s], u64::MAX, false), "a silent row never wakes");
+        for kind in [ChangeKind::YouDid, ChangeKind::Finished, ChangeKind::Installed] {
+            let s = Change { kind, ..r.clone() };
+            assert!(!wakes(&[&s], u64::MAX, false), "a silent row never wakes: {kind:?}");
+        }
         let ask = Change { kind: ChangeKind::NeedsYou, ..g.clone() };
         assert!(!wakes(&[&ask], 1_000, false) && wakes(&[&ask], 1_000, true), "a holder's ask wakes at once under Away");
         assert!(ChangeKind::ALL.iter().all(|k| ChangeKind::parse(k.as_str()) == Some(*k)));

@@ -10,12 +10,6 @@ const BTW_CLICKS = [
 ];
 
 const TERM_CLICKS = [
-  rule("[data-act=term], [data-act=term-open], [data-act=term-card]", (tm) => {
-    if (tm.dataset.act === "term") return termSid === tm.dataset.sid ? closeTerm() : openTerm(tm.dataset.sid);
-    // From a Waiting card: open its session, then its terminal.
-    if (tm.dataset.act === "term-card") { const it = findItem(tm.dataset.id); setActive(tm.dataset.id); return it && openTerm(it.session_id); }
-    return termSid === tm.dataset.sid ? termObj?.focus() : openTerm(tm.dataset.sid);
-  }),
   rule("[data-act=btw], [data-act=btw-close]", (bw) => { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) { tipUsed("btw"); return openBtw(bw.dataset.sid); } btwFor = null; renderMain(); }),
 ];
 
@@ -82,8 +76,8 @@ const THREAD_CLICKS = [
   rule("[data-turn-fold]", (tf) => { const k = tf.dataset.turnFold; turnFold.set(k, tf.dataset.open !== "1"); renderMain(); wantDetails(k.split("|")[0]); }),
   rule("[data-copy-code]", (cc) => copyCode(cc)),
   rule("[data-run-code]", (rc) => runCode(rc)),
-  // A card's "N agents": open its session (its item, on a waiting card) on its Agents tab.
-  rule("[data-bg-open]", (bo) => { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; bgTabOn.set(sid, "agents"); return it ? setActive(it) : openSession(sid); }),
+  // A card's "N agents" / "1 script" / "1 failed": open its session (its item, on a waiting card) on that tab.
+  rule("[data-bg-open]", (bo) => { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; bgTabOn.set(sid, bo.dataset.bgOpenTab || "agents"); return it ? setActive(it) : openSession(sid); }),
   // A stuck agent's Resume / Stop, before its row's own click (agents.js).
   rule("[data-ag-wake]", (b) => agentWake(b.dataset)),
   rule("[data-helper]", (hb) => { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; renderMain(); }),
@@ -120,7 +114,6 @@ const READER_CLICKS = [
   rule("[data-read]", (rd) => { const k = rd.dataset.read; openReader(k.slice(0, k.lastIndexOf(":")), k); }),
   rule("[data-reader-back]", () => closeReader()),
   rule("[data-reader-open]", (ro) => invoke("open_link", { url: ro.dataset.readerOpen }).catch((err) => toast(`Couldn't open: ${err}`))),
-  rule("[data-reader-term]", (rt) => { closeReader(); openTerm(rt.dataset.readerTerm); }),
   rule("[data-reader-reply]", () => replyFromReader()),
   rule("[data-reader-copy]", () => copyReader()),
   rule("[data-reader-step]", (rs) => stepReader(+rs.dataset.readerStep)),
@@ -172,6 +165,10 @@ const MESSAGE_CLICKS = [
   rule("[data-fwd-to]", (el) => { forward.to = el.dataset.fwdTo; renderMain(); document.querySelector(".fwd-note")?.focus(); }, () => !!forward),
   rule("[data-act='send-forward']", () => sendForward()),
   rule("[data-act='cancel-forward']", () => { sheet = forward = null; renderMain(); }),
+  // An item number or a session's name in a reply (desk/lead.js deskRefs), outside the Desk (the Desk takes its own
+  // clicks first): the item opens on its project's Desk, the session as its card.
+  rule("a[data-desk-chk-item]", (a, e) => { e.preventDefault(); openInDesk(a.dataset.deskProject || "", a.dataset.deskChkItem); }),
+  rule("a[data-desk-session]", (a, e) => { e.preventDefault(); openSession(a.dataset.deskSession); }),
   rule("a[data-path]", openPath),
   rule("a[data-href]", (link, e) => { e.preventDefault(); openPathOrDoc(link.dataset.href); }),
   rule("[data-local-lb]", openLocalImages),
@@ -181,8 +178,8 @@ const MESSAGE_CLICKS = [
 ];
 
 const CHAT_FOOT_CLICKS = [
-  rule("[data-run-fold]", (rf) => { flipIn(runOpen, rf.dataset.runFold); renderMain(); }),
-  rule("[data-agent-run]", (ar) => { flipIn(agentRunOpen, ar.dataset.agentRun); renderMain(); }),
+  rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); renderMain(); wantDetails(k.split("|")[0]); }),
+  rule("[data-agent-brief]", (ab) => { flipIn(agentBriefOpen, ab.dataset.agentBrief); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),
   rule("[data-follow]", (fo) => { flipIn(openFollow, fo.dataset.follow); renderMain(); }),
   rule("[data-act=interrupt]", (stop) => interrupt(stop.dataset.sid)),

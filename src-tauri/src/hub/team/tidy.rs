@@ -245,7 +245,7 @@ impl Hub {
     /// waits on you.
     fn send_commit_asks(&self, lead: &str, mates: &[Teammate]) -> Result<String, String> {
         let text = mates.iter().map(|t| commit_words(&t.name)).collect::<Vec<_>>().join("\n\n");
-        let sent = self.tell(lead, &text);
+        let sent = self.tell(lead, &text, crate::sessions::Kind::Crew);
         self.write(|st| {
             st.review_last.insert(lead.to_string(), now_ms());
             if let Err(e) = &sent {

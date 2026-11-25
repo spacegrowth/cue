@@ -14,15 +14,17 @@ mod typing;
 
 pub use agents::{agents_installed, end_agent, end_machine_agent, AGENT_PATH};
 pub use apps::{open_tab_with, terminal_name, NewTab};
-pub use lines::{claude_trusts, fork_line, model_args, new_session_id, permission_flags, resume_line_for, resume_line_for_with, resume_line_local, resume_line_with, shq, start_line_args, start_line_with};
+pub use lines::{claude_trusts, model_args, new_session_id, permission_flags, resume_line_for, resume_line_for_with, resume_line_local, shq};
 pub(crate) use exec::{capped, capped_group};
 #[cfg(test)]
 pub(crate) use exec::find_bin;
-pub use screen::{agent_gone, box_empty, dialog_on, text_in_box};
-pub use tmux::{open_in_tmux, SCREEN_KEYS, open_in_tmux_tab, session_screen, tmux_bin, tmux_installed, tmux_keys, tmux_kill_pane, tmux_type_line, TMUX_SESSION};
+pub use screen::{agent_gone, box_empty_of, dialog_on, text_in_box};
+#[cfg(test)]
+pub use screen::box_empty;
+pub use tmux::{tmux_bin, tmux_installed, TMUX_SESSION};
 #[cfg(test)]
 pub(crate) use tmux::tmux_screen;
-pub(crate) use tmux::{pane_in_its_session, tmux_out};
+pub(crate) use tmux::pane_is_cues;
 pub use typing::{press_enter, press_escape, type_into};
 
 use crate::model::Origin;
@@ -41,7 +43,7 @@ pub fn close_tab(o: &Origin) -> Result<String, String> {
 /// its iTerm session or Terminal.app tab, its WezTerm pane or kitty window, else just its app.
 pub fn focus(o: &Origin) -> Result<String, String> {
     if !o.machine.is_empty() {
-        return Err(format!("It runs on {}: open its terminal in Cue (Runs in Cue, over the reply box)", o.machine));
+        return Err(format!("It runs on {}: Move to terminal (in ⋯) resumes it in a terminal of yours", o.machine));
     }
     if o.hosted {
         return Err("it's hosted in Cue, with no terminal: Move to terminal (over its reply box) gives it one".into());
@@ -75,15 +77,10 @@ fn focus_tmux(pane: &str) -> Result<String, String> {
     if !client.is_empty() {
         return apps::by_tty(&client).map(|d| format!("tmux pane {pane} via {d}"));
     }
-    // No window shows this tmux session (it's detached): open one attached to it. Not for a "Runs in Cue"
-    // session: its terminal is the one in Cue's window, and attaching iTerm to that session would mirror
-    // every such session into iTerm tabs.
+    // No window shows this tmux session (it's detached): open one attached to it.
     let name = ask("#{session_name}");
     if name.is_empty() {
         return Err(format!("tmux pane {pane} is gone"));
-    }
-    if tmux::tmux_is_cues(&name) {
-        return Err("it runs in Cue: its terminal is here, the Terminal strip above the reply box".into());
     }
     apps::attach_in_new_window(&name).map(|app| format!("tmux session \"{name}\" (wasn't open in any window; opened it in {app})"))
 }

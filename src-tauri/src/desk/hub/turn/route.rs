@@ -6,8 +6,25 @@ use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::desk::hub::core::members::{ask_first, join, may_route, UseAsk};
 use crate::desk::hub::core::desk::{Effects, NewStart, ask_of, at_work, holder_of, resolve, rule_of, secs};
 
+/// When items waiting on item `it` start (#808): "landed" or "checked", by its Desk's setting (desk/lands.rs "waits").
+pub(crate) fn waits_point(st: &Store, it: &DeskItem) -> &'static str {
+    crate::desk::lands::lands_of(&it.project, &crate::desk::hub::core::view::holder_folder(st, it)).waits
+}
+
+/// Whether item `id` has landed: to check after its landing, its steps after landing done (#808).
+pub(crate) fn landed(it: &DeskItem) -> bool {
+    it.state == "to_check" && it.finish.as_ref().is_some_and(|f| f.step == "checked")
+}
+
+/// Whether what waits on item `id` may start: it's gone or done, or it has landed on a Desk whose waiting items start
+/// once the one before lands (#808).
+pub(crate) fn let_go(st: &Store, id: &str) -> bool {
+    st.desk.item(id).is_none_or(|it| it.state == "done" || (landed(it) && waits_point(st, it) == "landed"))
+}
+
 /// Items queued after `id` start now, with no reason (why it was queued isn't why it starts): called once `id` is done
-/// (Looks right, #576: a session keeps its item till then), or leaves the queue (`hand_on`). One next for a session
+/// (Looks right, #576: a session keeps its item till then), or has landed where its Desk starts them then (#808,
+/// act.rs `release_landed`), or leaves the queue (`hand_on`). One next for a session
 /// waits for it from now (desk/hub/turn/queue.rs). While its Desk is paused (#366), nothing starts: they stay queued,
 /// and Resume starts them.
 pub(crate) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
@@ -20,11 +37,37 @@ pub(crate) fn release(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
         }
         let rule = rule_of(st, &project);
         let lead = st.desk.lead.get(&project).cloned();
+        // At once (#798): with no free slot where its session is, it waits there for one.
+        let room = crate::desk::hub::turn::slots::free(st, &project, &wid);
         let Some(it) = st.desk.item_mut(&wid) else { continue };
         it.after = None;
         it.updated = secs(now);
-        start_released(it, &rule, lead.as_ref(), now, fx);
+        if !crate::desk::hub::turn::slots::hold_released(it, room, now) {
+            start_released(it, &rule, lead.as_ref(), now, fx);
+        }
         fx.items.push(it.id.clone());
+    }
+}
+
+/// `release` for an item that's done or has landed: what it lets go kept on it (`released`), so Undo can hold back
+/// those not started yet and a Send back can tell those at work (act.rs, #808).
+pub(crate) fn release_kept(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    let ids: Vec<String> = st.desk.items.iter().filter(|i| i.after.as_deref() == Some(id) && i.state == "queued" && !crate::desk::hub::away::pause::is_paused(&i.project)).map(|i| i.id.clone()).collect();
+    if let Some(it) = st.desk.item_mut(id).filter(|_| !ids.is_empty()) {
+        for w in ids {
+            if !it.released.contains(&w) {
+                it.released.push(w);
+            }
+        }
+        fx.items.push(id.to_string());
+    }
+    release(st, id, now, fx);
+}
+
+/// Item `id` has landed (`landed`): on a Desk whose waiting items start then (#808), what waits on it starts now.
+pub(crate) fn release_landed(st: &mut Store, id: &str, now: u64, fx: &mut Effects) {
+    if st.desk.item(id).is_some_and(landed) && let_go(st, id) {
+        release_kept(st, id, now, fx);
     }
 }
 
@@ -50,7 +93,7 @@ pub(crate) fn start_released(it: &mut DeskItem, rule: &str, lead: Option<&crate:
         (it.state, it.queued_at) = ("queued".into(), now);
     } else if let Some(h) = &it.holder {
         it.state = "working".into();
-        fx.sends.push((h.to().to_string(), crate::desk::handed_words(it, "", rule)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), crate::desk::handed_words(it, "", rule)), crate::sessions::Kind::Brief));
     } else {
         it.state = "new".into();
         let (by, by_sid) = lead.map_or(("Desk", ""), |l| (l.name.as_str(), l.sid.as_str()));
@@ -76,7 +119,7 @@ pub(crate) fn waits_on(st: &Store, from: &str, id: &str) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decide(st: &mut Store, project: &str, item: Option<String>, by: &str, sid: &str, text: &str, why: &str, now: u64, fx: &mut Effects) {
     let id = st.desk.decision_id(now);
-    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), call: false, minor: false, delivery: None, act: String::new(), asked: String::new(), draft: None });
+    st.desk.decisions.push(DeskDecision { id: id.clone(), project: project.into(), item_id: item, by: by.into(), sid: sid.into(), text: text.into(), why: why.into(), at: secs(now), undo: "can".into(), kept: false, call: false, minor: false, delivery: None, act: String::new(), asked: String::new(), draft: None });
     fx.decisions.push(id);
 }
 
@@ -174,18 +217,39 @@ pub(crate) fn route(st: &mut Store, project: &str, by: &By, id: &str, to: &str, 
         }
         return start_fresh(st, project, by, id, after, why, now, fx);
     }
+    if let Some(h) = holder.as_ref() {
+        if let Some(waits) = waits_instead(st, project, by, id, h, after.clone(), unfinished, why, now, fx) {
+            return waits;
+        }
+    }
+    route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)
+}
+
+/// Routed to holder `h`, item `id` waits instead of going to it now: in the queue behind its work (#576), or for a
+/// free slot on its machine (#798). What the lead is told then; none when it goes on to `h` now.
+#[allow(clippy::too_many_arguments)]
+fn waits_instead(st: &mut Store, project: &str, by: &By, id: &str, h: &Holder, after: Option<String>, unfinished: bool, why: &str, now: u64, fx: &mut Effects) -> Option<Option<String>> {
     // One item per session (#576), at work or waiting for your check: to a session busy with another, or after another
     // item, or behind items already waiting for it (a paused Desk's), it waits in the queue with no holder, next for
     // that session. One it holds already stays as it is.
-    if let Some(h) = holder.as_ref().filter(|h| queues(st, h, id)) {
+    if queues(st, h, id) {
         let refused = after.as_deref().and_then(|a| after_refused(st, a, id)).unwrap_or_default();
         let waits = after.clone().filter(|_| refused.is_empty());
         let q = crate::desk::hub::turn::queue::busy_with(st, h, id).is_some() || crate::desk::hub::turn::queue::ahead_for(st, h, id);
         if waits.is_some() || q {
-            return crate::desk::hub::turn::queue::queue_for(st, project, by, id, h, waits, refused, why, now, fx);
+            return Some(crate::desk::hub::turn::queue::queue_for(st, project, by, id, h, waits, refused, why, now, fx));
         }
     }
-    route_to_holder(st, project, by, id, to, holder, after, unfinished, &rule, why, now, fx)
+    // At once (#798): an item not begun yet, routed while every slot on its session's machine is taken, waits for
+    // one with that session (not sent yet). One already at work, finishing or with you to check goes as it did.
+    if after.is_none() && !unfinished {
+        let begins = st.desk.item(id).is_some_and(|i| matches!(i.state.as_str(), "new" | "queued") && !crate::desk::hub::turn::slots::takes(st, i));
+        let m = crate::desk::hub::turn::slots::holder_machine(st, h);
+        if begins && !crate::desk::hub::turn::slots::free_on(st, project, &m, id) && may_route(st, project, h, id) {
+            return Some(crate::desk::hub::turn::slots::hold_for(st, project, (by.name, by.sid), id, h, why, now, fx));
+        }
+    }
+    None
 }
 
 /// Item `id`'s holder, when `to` names it (by name, or the start of its id: six characters or more) and no session on
@@ -304,7 +368,7 @@ fn route_to_holder(st: &mut Store, project: &str, by: &By, id: &str, to: &str, h
     let was_working = it.state == "working" && !unfinished;
     // Moved from a holder at work on it: that one stops.
     if let Some(b) = before.filter(|_| !same && it.state == "working") {
-        fx.sends.push(moved_words(&b, it, &h));
+        fx.sends.push(crate::desk::hub::core::desk::kinded(moved_words(&b, it, &h), crate::sessions::Kind::Route));
     }
     fx.items.push(it.id.clone());
     held_by(it, &h, refused, waits.clone(), why, now);
@@ -335,7 +399,7 @@ fn routed_out(st: &mut Store, id: &str, to: &str, words: Option<String>, back: O
     }
     match words {
         Some(w) if back.is_some_and(|why| !why.trim().is_empty()) => send_step(st, id, to, w, now, fx),
-        Some(w) => fx.sends.push((to.to_string(), w)),
+        Some(w) => fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), w), crate::sessions::Kind::Brief)),
         None => {}
     }
 }
@@ -357,6 +421,9 @@ fn queues(st: &Store, h: &Holder, id: &str) -> bool {
 /// Err: what the lead is told when there's no one to send it to.
 pub(crate) fn note(st: &mut Store, from: &str, by: &By, id: &str, words: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let words = words.trim();
+    // Answered: its holder's words on it may come again (#868, heard.rs to_lead_said).
+    let answered = format!("|{id}");
+    st.desk.run.relayed.retain(|k, _| !k.ends_with(&answered));
     let it = st.desk.item(id).ok_or_else(|| format!("#{id} note not sent: no Desk has an item #{id}"))?;
     let project = it.project.clone();
     let h = it.holder.clone().ok_or_else(|| format!("#{id} note not sent: nobody holds it yet; route it first"))?;
@@ -395,7 +462,7 @@ pub(crate) fn send_step(st: &mut Store, id: &str, to: &str, message: String, now
         step.delivery = Some(crate::desk::model::DeskDelivery { session_id: to.to_string(), text: message.clone(), at_ms: now, went: "sending".into() });
         fx.went.push((step.id.clone(), to.to_string(), id.to_string()));
     }
-    fx.sends.push((to.to_string(), message));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((to.to_string(), message), crate::sessions::Kind::Note));
 }
 
 /// "Taken: #12 to web." (after `waits`, when it's queued): what the lead is told of a route made (#248).
@@ -480,7 +547,7 @@ fn move_off(st: &mut Store, by: &By, id: &str, why: &str, now: u64, fx: &mut Eff
     }
     if it.state == "working" {
         let to = Holder { kind: "session".into(), sid: String::new(), name: "a new session".into(), lead_sid: String::new() };
-        fx.sends.push(moved_words(&b, it, &to));
+        fx.sends.push(crate::desk::hub::core::desk::kinded(moved_words(&b, it, &to), crate::sessions::Kind::Route));
     }
     it.remember_holder();
     it.moved_from = Some(b);
@@ -623,7 +690,7 @@ pub(crate) fn give_by(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str
 /// `handoff`: the hand-off of the holder it moved off (#364, `handoff_words`), sent with it ("" for none).
 pub(crate) fn give_started(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), handoff: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     give_to(st, id, sid, by, true, now, fx)?;
-    if let Some(sent) = fx.sends.iter_mut().rev().find(|(to, _)| to == sid).filter(|_| !handoff.trim().is_empty()) {
+    if let Some(sent) = fx.sends.iter_mut().rev().find(|(to, _, _)| to == sid).filter(|_| !handoff.trim().is_empty()) {
         sent.1.push_str("\n\n");
         sent.1.push_str(handoff.trim());
     }
@@ -674,7 +741,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     }
     (it.held, it.asks) = (None, None);
     if let Some(b) = it.holder.clone().filter(|b| it.state == "working" && !(b.sid == h.sid && b.lead_sid.is_empty())) {
-        fx.sends.push(moved_words(&b, it, &h));
+        fx.sends.push(crate::desk::hub::core::desk::kinded(moved_words(&b, it, &h), crate::sessions::Kind::Route));
     }
     if it.holder.as_ref().is_some_and(|old| old.to() != h.to()) {
         it.remember_holder();
@@ -698,7 +765,7 @@ fn give_to(st: &mut Store, id: &str, sid: &str, by: (&str, &str, &str), started:
     it.done_at = None;
     it.updated = secs(now);
     it.after_why = by.2.to_string();
-    fx.sends.push((sid.to_string(), crate::desk::handed_words(it, by.2, &rule)));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), crate::desk::handed_words(it, by.2, &rule)), crate::sessions::Kind::Brief));
     fx.items.push(id.to_string());
     let text = if by.1.is_empty() { format!("Gave #{id} to {}", h.name) } else { format!("Started {} for #{id}", h.name) };
     // Given an item, by you or as a new session for it: on the Desk from now.

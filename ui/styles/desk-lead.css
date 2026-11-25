@@ -32,7 +32,17 @@
 .dk-box:has(> .dk-pre) .dk-box-row { flex-wrap: wrap; justify-content: flex-end; }
 .dk-box:has(> .dk-pre) .dk-box-row > :is(.ta-wrap, textarea) { flex: 1 0 100%; min-width: 0; }
 .dk-box .chips { margin: 0; }
-.dk-ask { flex: none; max-height: 55%; overflow-y: auto; padding: 0 20px 14px; }
+/* A card under a chat (#795): as tall as it needs, up to what leaves the chat above it a share of the window (a % had only
+   the foot it sits in to be a share of, so the card was always cut to about half of itself). Its question and choices
+   scroll inside it; the box held under it while you answer (chat/pane.js askFoot) stays put, so the cursor in that box
+   never scrolls the question out of view. */
+.dk-ask { flex: none; display: flex; flex-direction: column; max-height: max(200px, 100vh - 340px); overflow: hidden; padding: 0 20px 14px; }
+.dk-ask > .foot.held { flex: none; }
+/* A short window: the held box gives the card its room, no quick phrases and two lines at most (it scrolls past them). */
+@media (max-height: 760px) {
+  .dk-ask > .foot.held .quick { display: none; }
+  .dk-ask > .foot.held textarea { max-height: calc(2lh + 10px); }
+}
 .dk-request { margin: 0 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-tray); background: var(--panel); }
 .dk-request-who { font: inherit; font-weight: 600; text-align: left; color: var(--ink); }
 .dk-request pre:not(.slab) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: var(--type-small); line-height: var(--type-small-lh); margin: 10px 0; }
@@ -41,7 +51,7 @@
 .dk-request .row-btns > .btn.flex, .dk-ask .row-btns > .btn.flex { flex: 0 0 auto; min-width: 76px; }
 /* The lead's ASK: a bordered panel card in the chat's column, not a tinted
    band; its choices on the panel too, the accent only on the one you point at or picked. */
-.dk-ask .act-card { max-height: none; overflow: visible; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-tray); padding: 12px 14px; }
+.dk-ask .act-card { flex: 0 1 auto; min-height: 0; max-height: none; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-tray); padding: 12px 14px; }
 .dk-ask .act-card .opt { background: var(--panel); }
 .dk-box textarea { flex: 1; min-height: 28px; max-height: 160px; padding: 5px 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--type-body)/1.4 var(--sans); field-sizing: content; }
 
@@ -168,6 +178,8 @@
   align-self: stretch; margin: 2px -20px; padding: 10px 20px 11px; display: flex; flex-direction: column; gap: 6px;
   background: color-mix(in oklch, var(--pc) 16%, var(--panel)); color: var(--ink); user-select: text; -webkit-user-select: text;
 }
+/* In Activity (#837: another Desk's message to the lead is Activity's): inside its row, not across the chat. */
+.dk-moves .dk-band { margin: 2px 0; padding: 10px 12px 11px; border-radius: var(--radius-qp); }
 .dk-band-h { display: flex; align-items: center; gap: 7px; min-width: 0; font: var(--mg-meta); color: var(--ink); }
 .dk-band-tile { flex: none; width: 22px; height: 22px; border-radius: var(--radius-qp); display: grid; place-items: center; background: var(--pc); color: var(--panel); }
 .dk-band-desk { flex: none; font-weight: 700; color: color-mix(in oklch, var(--pc) 45%, var(--ink)); white-space: nowrap; }
@@ -199,12 +211,30 @@
 
 /* A run of the Desk's lines between your turns, as one plain count line (#688, desk/runs.js): how many, what they were,
    and Activity ›, which the click opens. No fill, no rule; the newest has a small dot. */
-.dk-cnt { margin: 2px 0; }
-.dk-cnt-b { all: unset; user-select: none; -webkit-user-select: none; box-sizing: border-box; display: flex; align-items: baseline; gap: 0; max-width: 100%; padding: 3px 0; cursor: pointer; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); min-width: 0; }
-.dk-cnt-b b { font-weight: 600; white-space: nowrap; }
-.dk-cnt-s { overflow: hidden; text-overflow: ellipsis; white-space: pre; min-width: 0; }
-.dk-cnt-a { flex: none; white-space: pre; }
-.dk-cnt-b:hover { color: var(--ink); }
-.dk-cnt-b:hover .dk-cnt-a { text-decoration: underline; }
-.dk-cnt-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-tag); }
-.dk-cnt-dot { flex: none; align-self: center; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--accent); }
+/* Earlier leads in the lead's chat (#792): the moss band where the Desk passed to the next lead, edge to edge across
+   the chat, and Show earlier over it (desk/earlier.js). */
+.dk-hoff { flex: none; display: flex; align-items: center; gap: 10px; margin: 4px -20px; padding: 7px 20px; background: var(--bg); color: var(--on-bg); }
+.dk-hoff > svg { flex: none; width: 18px; height: 18px; color: var(--sel); }
+.dk-hoff-w { display: flex; flex-direction: column; gap: 0; min-width: 0; flex: 1; }
+.dk-hoff-a { font-size: var(--type-body); line-height: var(--type-body-lh); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-hoff-a span { color: var(--sel); margin: 0 6px; }
+.dk-hoff-b { font-size: var(--type-small); line-height: 18px; color: var(--on-bg-muted); }
+.dk-hoff-note { all: unset; flex: none; cursor: pointer; font-size: var(--type-small); color: var(--on-bg-muted); text-decoration: underline; text-underline-offset: 2px; }
+.dk-hoff-note:hover { color: var(--on-bg); }
+.dk-hoff-note:focus-visible, .dk-earl:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-tag); }
+.dk-earl { all: unset; box-sizing: border-box; align-self: center; flex: none; display: flex; align-items: center; gap: 8px; max-width: 100%; cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 16px; font-size: var(--type-small); color: var(--muted); box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
+.dk-earl b { color: var(--ink); font-weight: 600; }
+.dk-earl svg { flex: none; width: 14px; height: 14px; color: var(--accent); }
+.dk-earl:hover:not(:disabled) { background: var(--panel-2); }
+.dk-earl:disabled { cursor: default; }
+.dk-earlier { display: flex; flex-direction: column; gap: 14px; }
+/* The earlier lead's last exchanges over the band (#841): muted, nothing in them to click. */
+.dk-tail { opacity: .55; }
+/* The lead's box held while the Desk hands off to a new lead (#841): the same box, quieter; it opens in place. */
+.composer.held .field { opacity: .6; }
+.composer.held textarea::placeholder { color: var(--ink); }
+/* A permission card you answered on the Desk (its item's page, a held step, an ask under Blocked on you) folds shut
+   as the rows do (desk-c.css dkn-leave, desk/view.js deskAskFold), what's under it sliding up; your answer has gone
+   already. At once with reduced motion. */
+:is(.dk-ask, .dk-request, .dk-prows).dk-leave { box-sizing: border-box; overflow: hidden; pointer-events: none; animation: dkn-leave 0.3s cubic-bezier(0.2, 0, 0, 1) forwards; }
+@media (prefers-reduced-motion: reduce) { :is(.dk-ask, .dk-request, .dk-prows).dk-leave { animation: none; display: none; } }

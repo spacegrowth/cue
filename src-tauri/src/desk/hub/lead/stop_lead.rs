@@ -78,7 +78,7 @@ impl Hub {
             if let Some(f) = st.desk.item_mut(id).and_then(|i| i.finish.as_mut()) {
                 f.lead = true;
             }
-            fx.sends.push((lead, words));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((lead, words), crate::sessions::Kind::Question));
             fx.items.push(id.to_string());
             fx
         });

@@ -98,12 +98,13 @@ fn a_done_whose_commit_cue_cant_land_goes_back_to_its_session_not_to_check() {
 }
 
 #[test]
-fn a_done_with_nothing_changed_anywhere_still_goes_to_check() {
+fn a_done_with_nothing_changed_anywhere_goes_back_once_then_to_check() {
     let w = World::new();
     let (dir, project, id, h) = started_without_a_copy(&w);
     let before = git(&dir, &["rev-parse", "HEAD"]);
     works_in(&w, &h, &dir);
     ends(&w, &h, &format!("Nothing needed changing: here is why.\nDONE: #{id}"));
+    super::desk_commit::sent_back_then_done_again(&w, &project, &id, &h);
     assert_eq!(git(&dir, &["rev-parse", "HEAD"]), before);
     let it = item(&w, &project, "Header jumps");
     assert_eq!(it["state"], "to_check", "{it}");
@@ -134,11 +135,15 @@ fn a_holder_that_looked_in_another_items_copy_never_gets_that_items_clash() {
     works_in(&w, &h, &copy);
     works_in(&w, &h, &dir);
     let before = git(&dir, &["rev-parse", "HEAD"]);
+    // Nothing of it on main: back to its holder once for that (#830), never for the other item's work.
+    ends(&w, &h, &format!("Built.\nDONE: #{id}"));
+    super::desk_commit::sent_back_then_done_again(&w, &project, &id, &h);
+    let sent = w.hosted.sent().len();
     for round in 1..=4 {
         ends(&w, &h, &format!("Built.\nDONE: #{id}"));
         let it = item(&w, &project, "Header jumps");
         assert_ne!(it["state"], "working", "round {round}: never sent back over another item's copy: {it}");
-        assert!(!w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("isn't done")), "round {round}: {:?}", w.hosted.sent());
+        assert!(!w.hosted.sent()[sent..].iter().any(|(s, t)| *s == h && t.contains("isn't done")), "round {round}: {:?}", w.hosted.sent());
     }
     assert_eq!(git(&dir, &["rev-parse", "HEAD"]), before, "the other item's work stays on its own branch");
     assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "ours\n");

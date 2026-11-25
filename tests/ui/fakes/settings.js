@@ -34,20 +34,20 @@ CueBridge.area("settings", (w) => {
   const LANDS_PARTS = [
     ["where", "Where an item works", [["shared", "Shared folder", "Every session works in the project's own folder."], ["copy", "Own copy", "Each item gets its own copy of the project."], ["branch", "A branch"]]],
     ["how", "How it lands", [["squash", "One commit per item", "The Desk puts each item on main as one commit, named after the item. One at a time."], ["merge", "Merge", "The Desk puts each item on main as a merge commit, named after the item, with the item's own commits kept under it. One at a time."], ["pr", "Pull request", "The Desk checks each item, pushes its branch and opens a pull request."], ["owner", "You commit", "The Desk commits nothing."]]],
-    ["check", "Check before landing", [["none", "None", "Nothing is run."], ["cue", "Cue's own check", "Run in a clean copy of main plus the item, in order."], ["command", "Your own steps", "Your steps run in order in a clean copy of main plus the item. The first that fails stops the rest, and nothing reaches main. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first."]]],
-    ["after", "After landing", [["nothing", "Nothing", "Landed is the last step."], ["install", "Install or serve Cue", "Window-only changes are served in place, after the check."], ["command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder. The first that fails stops the rest, and the item waits for you. They run as in your terminal. Each step gets up to 15 minutes and all of them 30 minutes together; anything a step leaves running in the background counts toward that time. Steps can't push: a push always asks you first."]]],
+    ["check", "Check before landing", [["none", "None", "Nothing is run."], ["command", "Your own steps", "Your steps run in order in a clean copy of main plus the item, as in your terminal. The first that fails stops the rest, and nothing reaches main. Up to 15 minutes a step and 30 in all, counting anything a step leaves running in the background."]]],
+    ["after", "After landing", [["nothing", "Nothing", "Landed is the last step."], ["command", "Your own steps", "Once the item is on main, your steps run in order in the project's main folder, as in your terminal. Start a line with [Name] to name its step. The first that fails stops the rest, and the item waits for you. Up to 15 minutes a step and 30 in all, counting anything a step leaves running in the background."]]],
     ["push", "Send finished work to GitHub", [["after", "Right away", "Each finished item goes to GitHub as soon as it lands, without asking, so GitHub and your other computers stay current. Nothing there is ever overwritten."], ["ask", "Ask me first", "You're asked first. Sending keeps GitHub and your other computers current."], ["never", "Never", "Nothing is sent. GitHub and your other computers get the work only when you push it yourself."]]],
-    ["tests", "Tests", [["all", "All tests", ""], ["changed", "Only what changed", ""], ["changed_full", "Changed, full run at landing", ""]]],
+    ["tests", "Tests", [["all", "All tests", ""], ["changed", "Only what changed", ""], ["changed_full", "Changed, all before done", ""]]],
+    ["waits", "Items waiting on another start", [["landed", "When it lands", ""], ["checked", "When you've checked it", ""]]],
   ];
   const LANDS_DEFAULT = {
-    cue: { where: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", at_once: 3, check_steps: [], after_steps: [] },
-    repo: { where: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: [], after_steps: [] },
-    folder: { where: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: [], after_steps: [] },
+    cue: { where: "copy", how: "squash", check: "command", after: "command", push: "ask", tests: "changed", waits: "landed", at_once: 3, check_steps: ["[Window loads] test ! -e scripts/check-window.mjs || node scripts/check-window.mjs ."], after_steps: ["[Build] app:build", "[Install] app:install", "[Restart] app:restart"], after_names: { building: "Build", installing: "Install", starting: "Restart" } },
+    repo: { where: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: [], after_steps: [] },
+    folder: { where: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", waits: "landed", at_once: 3, check_steps: [], after_steps: [] },
   };
   const landsWhy = (part, key, place) => {
     const hint = LANDS_PARTS.find((p) => p[0] === part)[2].find((c) => c[0] === key);
     if (hint[2] == null) return "not yet";
-    if ((part === "check" && key === "cue") || (part === "after" && key === "install")) return place === "cue" ? "" : "only for Cue's own project";
     if (place === "folder" && ((part === "where" && key === "copy") || (part === "how" && (key === "squash" || key === "merge" || key === "pr")))) return "needs a git repository";
     return "";
   };
@@ -58,7 +58,6 @@ CueBridge.area("settings", (w) => {
       project, place, set, summary: `${short[set.where]}, ${set.check === "none" ? "not checked" : "checked"}, ${short[set.how]}`,
       parts: LANDS_PARTS.map(([key, label, cs]) => ({ key, label, now: set[key], choices: cs.map(([k, l, hint]) => { const why = landsWhy(key, k, place); return { key: k, label: l, hint: hint || "", ok: !why, why }; }) })),
       at_once: { min: 1, max: 9 },
-      steps: [{ label: "Build", hint: "the app built from a clean copy" }, { label: "Rust tests", hint: "the hub's own tests" }, { label: "Window loads", hint: "from the clean copy, failing on a name missing or declared twice" }],
       why: place === "folder" ? "This folder isn't a git repository, so items work in it directly, nothing is checked, and you commit their work yourself." : "",
     };
   };

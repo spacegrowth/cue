@@ -59,7 +59,7 @@ function historyView() {
   const row = (i, nested) => {
     const open = histOpen === i.id;
     return `<div class="hrow ${open ? "open" : ""} ${nested ? "nested" : ""}" data-hrow="${esc(i.id)}">
-      <span class="hwho">${nested ? "" : `${projDot(i.project)}${badge(i.harness)}${nameSpan(i.session_id, i.project)}`}</span>
+      <span class="hwho">${nested ? "" : `${badge(i.harness)}${nameSpan(i.session_id, i.project)}`}</span>
       <span class="hwhat ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</span>
       <span class="hout ${outcomeClass(i)}">${esc(outcomeText(i))}</span>
       <span class="age">${clock(at(i))}</span></div>${open ? `<div class="hexpand">${histDetail(fullItem(i))}${/^replied: “/.test(outcomeText(i)) ? "" : resultLine(i)}</div>` : ""}`;
@@ -78,7 +78,7 @@ function historyView() {
     if (g.items.length === 1) { html += row(g.items[0], false); continue; }
     const key = `${g.day}|${g.sid}`, open = histSession || histOpenGroups.has(key), top = g.items[0];
     html += `<div class="hrow hsrow ${open ? "open" : ""}" data-hgroup="${esc(key)}">
-      <span class="hwho"><span class="hfold">${open ? "▾" : "▸"}</span>${projDot(top.project)}${badge(top.harness)}${nameSpan(g.sid, top.project)}<span class="hcount">${g.items.length}</span></span>
+      <span class="hwho"><span class="hfold">${open ? "▾" : "▸"}</span>${badge(top.harness)}${nameSpan(g.sid, top.project)}<span class="hcount">${g.items.length}</span></span>
       <span class="hwhat">${esc(plain(summary(top)))}</span>
       <span class="hout ${outcomeClass(top)}">${esc(outcomeText(top))}</span>
       <span class="age">${clock(at(g.items[g.items.length - 1]))}–${clock(at(top))}</span></div>`;

@@ -21,7 +21,8 @@ and the times before and after.
   (falls back to the two reads on a git older than 2.26), and not at all for ref lookups
   (`rev-parse`, `merge-base`, `rev-list`, `for-each-ref`, `worktree list`…), which never run a filter.
 - `scripts/test-runner.sh`: a full run (no test filter) waits for any other full run of the same
-  repository, in any of its copies, to end (a lock in the shared git folder). Filtered runs don't wait.
+  repository, in any of its copies, to end (a lock in the shared git folder). Filtered runs don't wait. The wait
+  asks for the lock every few seconds and sleeps in between: `lockf` waiting on a descriptor spins a whole core.
 - Updater tests fail after 5–10 s when the test server doesn't answer, instead of waiting 20–30 s.
 - A failure the speed-up showed, fixed: a reopened item's own earlier landing commit, made in the same
   second as the reopen, was counted as new work (`unlanded.rs`; `git log --since` counts whole seconds).
@@ -100,7 +101,9 @@ machine or another machine from inside any clone or checkout of the repository.
 It keeps one clean copy of the repository in its work folder (`cue-full-run` in your cache folder unless `--dir` or
 `CUE_FULL_RUN_DIR` says otherwise): a detached git worktree moved to each commit, its build folder and `node_modules`
 kept between runs (`npm ci` only when `package-lock.json` changed). One run at a time per work folder; a second call
-waits (`lockf`, or `flock` where there is none). The checkout it is started from is left alone.
+waits (`lockf`, or `flock` where there is none), asking every few seconds and using no processor in between. A call
+waiting for an older commit than another waiting call gives up (exit 2): the later run covers it. The checkout it is
+started from is left alone.
 
 A run is not made twice. If the result file already holds a finished result for the same `--at` and `--since`, the
 script prints its path and exits as that run did. A second call for a run still going waits for it, then answers with

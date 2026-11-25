@@ -5,13 +5,14 @@
 mod send;
 pub(crate) mod feed;
 pub(crate) mod run;
+pub(crate) mod block;
 pub(crate) mod handoff;
 pub(crate) mod cleanup;
 pub(crate) mod checks;
 pub(crate) mod lands;
 pub(crate) mod stop_lead;
 
-pub(crate) use send::{desk_send_cue, desk_send_images, desk_send_now, desk_send_with, DeskStart};
+pub(crate) use send::{desk_send_cue, desk_send_images, desk_send_now, desk_send_with, held_yours_first, take_back_yours, DeskStart};
 use send::desk_message;
 use crate::hub::{Hub, StartOpts};
 use std::sync::Arc;
@@ -20,9 +21,9 @@ use std::sync::Arc;
 /// from now, and is sent it with how a lead works (kept in Cue while it reads the note).
 pub(crate) fn lead_carried_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
-    let (summary, failed) = h.desk_summary(project, sid, true);
     let words = h.desk_handoff_words(project, sid, name);
-    h.tell(sid, &desk_message(&summary, &words))?;
+    let (summary, failed) = h.desk_block(project, sid, &words, true, true);
+    h.tell(sid, &desk_message(&summary, &words), crate::sessions::Kind::HandOff)?;
     h.desk_told(&failed);
     Ok(())
 }
@@ -109,7 +110,7 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
     // The lead it replaces keeps what it holds, and is told it no longer runs the Desk.
     if let Some(old) = before.map(|l| l.sid).filter(|old| *old != sid && h.session_origin(old).is_some()) {
         let words = format!("You no longer run {}'s Desk: {name} does now. Keep on with the items you hold.", h.desk_name(project));
-        if let Err(e) = h.tell(&old, &words) {
+        if let Err(e) = h.tell(&old, &words, crate::sessions::Kind::Desk) {
             eprintln!("cue: desk: {project}'s last lead wasn't told it was replaced: {e}");
         }
     }
@@ -120,11 +121,14 @@ fn set_lead(h: &Arc<Hub>, project: &str, sid: Option<&str>, trust: bool, dir: Op
 /// works; a parked or ended one is resumed with it.
 fn take_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str, state: &str) -> Result<(), String> {
     h.desk_put_lead(project, sid, name);
-    let (summary, failed) = h.desk_summary(project, sid, true);
-    let message = desk_message(&summary, &hello(&h.desk_name(project)));
+    let hi = hello(&h.desk_name(project));
+    let (summary, failed) = h.desk_block(project, sid, &hi, true, true);
+    let message = desk_message(&summary, &hi);
+    // Cue's hello, not your words (#836).
+    h.cue_says(&message, crate::sessions::Kind::HandOff);
     match state {
         "live" => {
-            h.tell(sid, &message)?;
+            h.tell(sid, &message, crate::sessions::Kind::HandOff)?;
         }
         "parked" => {
             resume(h, sid, &message)?;
@@ -142,7 +146,7 @@ fn take_on(h: &Arc<Hub>, project: &str, sid: &str, name: &str, state: &str) -> R
 /// takes it off Parked). Its id.
 pub(super) fn resume(h: &Arc<Hub>, sid: &str, message: &str) -> Result<String, String> {
     match crate::hub::resume_parked_session(h, sid, message) {
-        Ok(r) if r == crate::hub::ALREADY_RUNNING => h.tell(sid, message).map(|_| sid.to_string()),
+        Ok(r) if r == crate::hub::ALREADY_RUNNING => h.tell(sid, message, crate::sessions::Kind::HandOff).map(|_| sid.to_string()),
         Ok(_) => Ok(sid.to_string()),
         Err(e) => Err(e),
     }
@@ -156,6 +160,7 @@ fn start(h: &Arc<Hub>, project: &str, name: &str, trust: bool, dir: Option<Strin
     let (summary, _) = h.desk_summary(project, "", agent != crate::hosted::Agent::Claude);
     let message = desk_message(&summary, &hello(&h.desk_name(project)));
     let opts = StartOpts { trust, desk_lead: project.to_string(), ..Default::default() };
+    h.cue_says(&message, crate::sessions::Kind::HandOff);
     let started = crate::hub::start_hosted(h, agent, &dir, &message, name, &opts, &[])?;
     started["session_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).ok_or_else(|| "it started without a session id".into())
 }

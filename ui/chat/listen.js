@@ -71,8 +71,7 @@ function listenSents(root) {
     if (el.matches("tr") && listenPlain) continue;
     if (el.matches("tr")) { const say = [...el.cells].map((c) => c.textContent.trim()).filter(Boolean).join(", "); if (/\w/.test(say)) out.push({ say, el }); continue; }
     // This block's own text (not a nested list's or a code block's), as one string over its text nodes.
-    // A reply's "· N steps" (.stx-cnt) is a button, not its words.
-    const nodes = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest(LISTEN_BLOCKS) === el && !n.parentElement.closest(".stx-cnt") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    const nodes = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest(LISTEN_BLOCKS) === el ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
     let text = "";
     for (let n; (n = walk.nextNode());) { nodes.push({ n, at: text.length }); text += n.data; }
     const keep = listenPlain ? listenPlainOf(el, text, nodes) : null;

@@ -20,7 +20,7 @@ mod tests;
 pub(crate) use events::log_raw;
 pub(crate) use scripts::hostname;
 pub use setup::setup;
-pub use watch::{on_new_session, on_reached, unwatch, watch, watch_all};
+pub use watch::{on_reached, unwatch, watch, watch_all};
 /// The tests' World runs a machine's stream itself.
 #[cfg(test)]
 pub(crate) use watch::stream;

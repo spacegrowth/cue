@@ -27,10 +27,9 @@ function many(s) {
   return s;
 }
 
-/** agent-relay runs in tmux, so its terminal opens in Cue. */
-function inTmux(s) {
-  relayOf(s).tmux_pane = "%1";
-  s.settings.sessions = { tmux: true, tmux_installed: true, terminal: "iTerm" };
+/** agent-relay hosted by Cue: no terminal, its chat is Cue's. */
+function hostedRelay(s) {
+  Object.assign(relayOf(s), { hosted: true, tmux_pane: null, term_program: null });
   return s;
 }
 
@@ -38,7 +37,7 @@ const SCENARIOS = {
   "board-empty": () => Object.assign(world(), { sessions: [], items: [], history: [], parked: [], ended: [] }),
   "board-waiting": () => world(),
   "many-sessions": () => many(world()),
-  "terminal": () => inTmux(world()),
+  "hosted-relay": () => hostedRelay(world()),
   "parked-ended": () => world("park=1&live=1"),
 };
 

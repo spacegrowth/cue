@@ -43,9 +43,9 @@ mod events;
 mod guard;
 mod hand_off;
 mod hand_off_note;
-pub(crate) use hand_off_note::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_keep_now, local_log, notice_handoff, notice_handoff_in, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
+pub(crate) use hand_off_note::{handoff_continue_now, handoff_cue_ahead, handoff_cue_now, handoff_fresh_now, handoff_fresh_with, handoff_keep_now, local_log, notice_handoff, notice_handoff_in, record_insight, AHEAD_ALL, AHEAD_DESK, AHEAD_FULL, AHEAD_SESSION, AHEAD_YOU, CUE_HANDOFF};
 mod history;
-mod hosted;
+pub(crate) mod hosted;
 mod kept_history;
 mod live_writes;
 mod log_paths;
@@ -67,6 +67,7 @@ mod send_at;
 pub(crate) use send_at::probe as send_at_probe;
 mod sessions;
 mod shown;
+mod state_since;
 mod starting;
 pub(crate) use starting::{start_hosted, start_session, start_session_with, StartOpts, UNTRUSTED};
 pub(crate) mod team;
@@ -123,6 +124,9 @@ pub(crate) struct Store {
     /// A hosted turn's reply that was an API error (its kind, its words), until that turn's end comes back: the
     /// end is then that error (a usage limit: stopped on the limit, with Cue's carry-on), not a reply.
     hosted_api_error: HashMap<String, (String, String)>,
+    /// A paused hosted session Cue started again for a message (`wake_hosted`), until it takes it: the process it
+    /// started. It ending, or not taking the message within `hosted::WAKE_LIMIT_MS`, means it didn't wake (#857).
+    hosted_waking: HashMap<String, i32>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     pub(crate) sessions: crate::sessions::Sessions,
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to
@@ -645,7 +649,21 @@ impl Hub {
 
     /// `notify_about` for session `sid`: a click opens that session's item or chat.
     pub(super) fn notify_about_session(&self, key: &str, sid: &str, title: &str, body: &str) {
+        // Its chat open at its newest: you're reading it already (#799).
+        if crate::notify::is_read(sid) {
+            return;
+        }
+        crate::notify::note_about(key, sid);
         self.ports.notes.show(crate::notify::Note { id: key.to_string(), session_id: sid.to_string(), title: title.to_string(), body: body.to_string(), category: String::new(), watched: false });
+    }
+
+    /// You opened the chats of sessions `sids` (notify::open_chats): what's about them, waiting out its minute or
+    /// up in Notification Center already, is taken back (#799).
+    pub(crate) fn chats_seen(&self, sids: &[String]) {
+        let ids: Vec<String> = sids.iter().flat_map(|s| crate::notify::about(s)).collect();
+        if !ids.is_empty() {
+            self.ports.notes.take_back(ids);
+        }
     }
 
     /// Notification Center's part (is Cue in front, the post itself) runs on its own thread (notify::show):
@@ -657,11 +675,12 @@ impl Hub {
         if mutable && !watched && category.starts_with("turn") && sid.as_deref().is_some_and(crate::notify::is_quiet) {
             return;
         }
-        // Its chat open in a mini window: you're reading it already.
+        // Its chat open in a mini window, or in Cue's window in front of you at its newest: you're reading it already.
         if sid.as_deref().is_some_and(crate::notify::is_read) {
             return;
         }
         let note = crate::notify::Note { id: id.to_string(), session_id: sid.clone().unwrap_or_default(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
+        crate::notify::note_about(&note.id, &note.session_id);
         // Noted as notified with the post handed in, under one lock: a draw either sees neither, or sees it
         // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
         self.write(|st| {

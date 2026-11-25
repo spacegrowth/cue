@@ -116,7 +116,7 @@ test("with no holder, the card shows on its page in place of What's holding it u
   await expect(page.locator(SP)).toHaveCount(0);
   const card = pane.locator(".dk-ns");
   await expect(card.locator(".dk-ns-t")).toHaveText("It waits for Search stays centred in the header.");
-  await expect(card.locator("button")).toHaveText("Start now in a new session");
+  await expect(card.locator("button")).toHaveText("Start now");
   await expect(pane.locator(".dk-chain")).toHaveCount(0);
   await expect(pane).not.toContainText("What's holding it up");
 });

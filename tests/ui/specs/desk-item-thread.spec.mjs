@@ -60,8 +60,9 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await cue.open("desk");
   await cue.change((st) => { Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: "working", now_on: true, said: [] }); st.sessions.find((x) => x.session_id === "host").state = "working"; });
   await openItem(page, cue, "d5");
-  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to")).toHaveText("To host-lead, who has this item · sent as #d5");
-  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Write to it here…");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to1")).toHaveText("To host-lead");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer .field-to2")).toHaveText("#d5");
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", "Reply to Claude Code… Cue keeps it and sends it when this turn ends");
   await page.locator(".dk-right .foot:not(.held) .composer textarea").fill("Check the narrow window too");
   await page.locator(".dk-right [data-desk-send]").click();
   await cue.called("desk_item_act", { id: "d5", act: "note", text: "Check the narrow window too" });
@@ -92,7 +93,7 @@ test("the box on an item at work goes straight to its holder, sent as the item, 
   await expect(mine).toHaveClass(/msg-delivered/);
 });
 
-test("while its holder works on it, the item's chat shows the turn it's writing, whole, with its steps folded", async ({ page, cue }) => {
+test("while its holder works on it, the item's chat shows the turn it's writing, whole, each step its own row as it runs", async ({ page, cue }) => {
   await cue.open("desk");
   // The turn's time fixed once: a turn that starts at another time each fetch is a new turn, folded again.
   await cue.override("session_steps", ({ sessionId }, at) => (sessionId !== "host" ? { version: 1, turns: [] } : { version: 1, turns: [{ at_ms: at - 30000, prompt: "About #d5 (x): go on", more: 0, items: [
@@ -109,10 +110,10 @@ test("while its holder works on it, the item's chat shows the turn it's writing,
   await expect(live.locator(".stx-fold")).toContainText("Working · 2 steps");
   await expect(live.locator(".stx-fold .dot-live")).toHaveCount(1);
   await expect(live.locator(".stx-say")).toContainText("Found it: the header centres on the wrong box.");
-  // Folded: no step drawn while it works (the line under the chat is its running line); the chip opens every step in place.
-  await expect(live.locator(".stx-line")).toHaveCount(0);
-  await live.locator(".stx-fold").click();
+  // Open as it works (#897): every step a row in place, the running one last with its live dot; no step counts.
   await expect(live.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
+  await expect(live.locator(".stx-line").last().locator(".stx-res .dot-live")).toHaveCount(1);
+  await expect(live.locator(".stx-cnt")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: theme });   // as the Mac switches it: a redraw puts Settings → Appearance (system) back over a data-theme set by hand
     if (process.env.SHOT_DIR) await page.locator(".dk-right").screenshot({ path: `${process.env.SHOT_DIR}/cue-desk-276-${theme}.png` });

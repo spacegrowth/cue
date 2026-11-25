@@ -65,6 +65,12 @@ impl<'w> Agent<'w> {
         self
     }
 
+    /// On terminal `tty` ("/dev/ttys010"): its tmux pane's, as Cue recorded it.
+    pub fn on_tty(mut self, tty: &str) -> Self {
+        self.origin.tty = tty.into();
+        self
+    }
+
     /// On machine `name` (+ New → Machine): Cue reaches it over SSH.
     pub fn on_machine(mut self, name: &str) -> Self {
         self.origin.machine = name.into();
@@ -106,7 +112,7 @@ impl<'w> Agent<'w> {
 
     /// Cue started it (+ New), with no message yet: waiting for you.
     pub fn started(&self) -> &Self {
-        self.world.hub().started(self.origin.clone(), "", &[], false);
+        self.world.hub().started(self.origin.clone(), "", &[]);
         self.world.settle();
         self
     }

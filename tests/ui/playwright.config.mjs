@@ -1,7 +1,7 @@
 // The UI tests (tests/ui/specs): the real UI in headless Chromium on the fake bridge, served from the repo.
 // Run with tests/run.sh ui. The browser is Playwright's own build, pinned by its package version, so a
 // Chrome update can't move the screenshots; the page's clock, time zone, locale, colors and size are fixed too.
-import { defineConfig } from "@playwright/test";
+import { defineConfig, webkit } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,10 @@ process.env.CUE_UI_SPECS = fileURLToPath(new URL("specs/", import.meta.url));
 
 export default defineConfig({
   testMatch: "*.spec.mjs",
-  projects: [{ name: "cue", testDir: "specs" }, ...(existsSync(addon) ? [{ name: "addon", testDir: realpathSync(addon) }] : [])],
+  projects: [{ name: "cue", testDir: "specs" }, ...(existsSync(addon) ? [{ name: "addon", testDir: realpathSync(addon) }] : []),
+    // A chat keeping to its end in WebKit too, Cue's window's engine (#855): it tells a scroll a frame later than Chromium,
+    // which is what left a chat short of its end, and Chromium never showed it. When Playwright's WebKit is installed.
+    ...(existsSync(webkit.executablePath()) ? [{ name: "webkit", testDir: "specs", testMatch: /chat-(stays-at|follows)-end\.spec\.mjs$/, use: { browserName: "webkit" } }] : [])],
   fullyParallel: true,
   // Two browsers at a time, not one per core: each browser that opens makes macOS check the permissions of the app
   // that started the run, and many at once (above all next to a build) can stall the Mac's window server.

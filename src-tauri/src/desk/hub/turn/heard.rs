@@ -16,7 +16,7 @@ pub(crate) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     let scopes = st.desk.scopes(sid, &project);
     if scopes.len() != 1 {
         if parse::lines(text).iter().any(|line| matches!(line, Line::Item { .. })) {
-            fx.sends.push((sid.to_string(), "Several Desks could receive this item. Add it through the intended Desk so it reaches the right lead.".into()));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), "Several Desks could receive this item. Add it through the intended Desk so it reaches the right lead.".into()), crate::sessions::Kind::Answer));
         }
         return;
     }
@@ -43,7 +43,7 @@ pub(crate) fn session_items(st: &mut Store, sid: &str, text: &str, now: u64, fx:
     }
     if !kept.is_empty() {
         kept.push(SEPARATE_ITEM_WORDS.into());
-        fx.sends.push((sid.to_string(), kept.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), kept.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 
@@ -67,6 +67,33 @@ pub(crate) fn next_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effects)
         }
         it.next = said.iter().filter(|(i, _)| *i == id).map(|(_, n)| n.clone()).collect();
         fx.items.push(id);
+    }
+}
+
+/// Session `sid` reported your pick, made in words in its chat (PICKED: lines, #864): each item it holds (or leads the
+/// Desk of) is picked as that option's Pick would, what you asked for besides going with what follows. Read after
+/// this turn's IF PICKED: lines, so those count. One it can't pick (picked already, dropped) comes back to it saying why.
+pub(crate) fn picked_said(st: &mut Store, sid: &str, text: &str, now: u64, fx: &mut Effects) {
+    let lead = st.desk.lead_of(sid);
+    let mut back = Vec::new();
+    for line in parse::lines(text) {
+        let Line::Picked { id, option, extras } = line else { continue };
+        let id = st.desk.canon(&id);
+        let Some(it) = st.desk.item(&id) else {
+            back.push(format!("PICKED: not done: #{id} isn't an item on any Desk."));
+            continue;
+        };
+        let mine = it.holder.as_ref().is_some_and(|h| h.is(sid)) || lead.as_ref() == Some(&it.project);
+        if !mine {
+            back.push(format!("PICKED: not done: #{id} isn't yours. Only its holder or its Desk lead reports a pick on it."));
+            continue;
+        }
+        if let Err(why) = crate::desk::hub::turn::pick::pick_into(st, &id, &option, &extras, now, fx) {
+            back.push(format!("PICKED: not done on #{id}: {why}."));
+        }
+    }
+    if !back.is_empty() {
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), back.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 
@@ -104,22 +131,28 @@ pub(crate) fn to_lead_said(st: &mut Store, sid: &str, text: &str, fx: &mut Effec
             // An item on any Desk (#714): to that Desk's lead.
             (Some(_), Some(it)) => (
                 it.project.clone(),
-                format!("From {name} on #{} ({}):\n{words}\nAnswer it with NOTE: #{} | <your words>.", it.id, it.title, it.id),
+                crate::desk::relay_words(&name, Some((&it.id, &it.title)), &words),
             ),
             (Some(i), _) => {
                 back.push(format!("TO LEAD: not sent: #{i} isn't an item on any Desk. Name one you're on, or leave the # out."));
                 continue;
             }
-            (None, _) if scopes.len() == 1 => (scopes[0].clone(), format!("From {name}:\n{words}\nIt holds no item here, so a NOTE can't reach it.")),
+            (None, _) if scopes.len() == 1 => (scopes[0].clone(), crate::desk::relay_words(&name, None, &words)),
             (None, _) => {
                 back.push("TO LEAD: not sent: you hold no item and aren't on one Desk. Add #<id> for the item it's about.".into());
                 continue;
             }
         };
+        // The same words on the same item again, not answered since (#868): already with the lead.
+        let key = format!("{sid}|{}", id.as_deref().unwrap_or(""));
+        if st.desk.run.relayed.get(&key).is_some_and(|w| w.trim() == words.trim()) {
+            continue;
+        }
+        st.desk.run.relayed.insert(key, words.clone());
         fx.to_lead.push((message.0, sid.to_string(), message.1, words));
     }
     if !back.is_empty() {
-        fx.sends.push((sid.to_string(), back.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), back.join("\n")), crate::sessions::Kind::Answer));
     }
 }
 
@@ -251,7 +284,7 @@ fn check_back(st: &mut Store, sid: &str, id: &str, fx: &mut Effects) {
     let Some(words) = crate::desk::check_back_words(id, it.check.as_ref()) else { return };
     it.check_back = true;
     fx.items.push(id.to_string());
-    fx.sends.push((sid.to_string(), words));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), words), crate::sessions::Kind::FollowUp));
 }
 
 /// Holder `sid`'s CHECK lines in `text` (#526): what you check on an item it said DONE for, in this turn or before,
@@ -316,5 +349,5 @@ pub(crate) fn desk_line_start(line: &str) -> bool {
     let l = parse::unmarked(line.trim().trim_start_matches('`')).trim_start_matches('`');
     let Some((word, _)) = l.split_once(':') else { return false };
     let word = word.trim_end_matches(['*', '`']).trim();
-    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "NOT DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "COPY FIRST" | "START" | "PARK" | "HOLD" | "UNHOLD" | "TELL DESK" | "TELL DESKS" | "DISAGREE" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY" | "LOOP" | "MOVE") || word.eq_ignore_ascii_case("DECIDED")
+    matches!(word, "ITEM" | "ROUTE" | "ASK" | "DONE" | "NOT DONE" | "CHECK" | "CONTEXT" | "DESIGNS" | "IF PICKED" | "PICKED" | "TITLE" | "SEE" | "SPLIT" | "CUT" | "MERGE" | "NOTE" | "FEATURE" | "CLOSE" | "TAKE COPY" | "LAND FIRST" | "COPY FIRST" | "START" | "PARK" | "HOLD" | "UNHOLD" | "TELL DESK" | "TELL DESKS" | "DISAGREE" | "UNPARK" | "DROP" | "PAUSE" | "RESUME" | "ANSWER" | "PASS" | "LANDS" | "TO LEAD" | "COPY" | "LOOP" | "MOVE" | "SHOW" | "INSTALL") || word.eq_ignore_ascii_case("DECIDED")
 }

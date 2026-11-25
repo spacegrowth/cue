@@ -109,10 +109,231 @@ function bgRow(sid, h, times = false) {
   const when = !times
     ? (running ? span : `${endWord} · ${span}`)
     : `started ${bgClock(h.started_ms)} · ${running ? `running ${span}` : `${endWord} ${bgClock(h.finished_ms || h.last_ms || h.started_ms)} · took ${span}`}`;
-  return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times ? "" : "· script "}· ${when}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
+  return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times || end === "failed" ? "" : "· script "}· ${when}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
 }
-/** The runs of an agent's steps opened from their fold line (agentChatHtml), each "sid|agent|its first step". */
-const agentRunOpen = new Set();
+
+// ---------- what still runs once a session's turn is over (#867): its scripts, its agents, Cue's own update ----------
+/** A session's background work as its card and Desk row count it: `scripts` running, `agents` running (the
+ *  backend's `background`, every running helper in its feed, teammates too (steps running_background), less its
+ *  scripts and its crew at work, who have their own rows), and `failed`: a script of
+ *  it that failed since its turn ended (`task_failed_ms`, kept by Cue till its next turn starts). */
+function bgCounts(s) {
+  if (!s) return { scripts: 0, agents: 0, failed: false };
+  const scripts = +s.scripts || 0;
+  const crew = (s.team || []).filter((t) => t.agent_id && (t.state === "working" || t.state === "reviewing")).length;
+  const agents = s.background != null ? Math.max(0, (+s.background || 0) - scripts - crew) : s.state === "agent" ? Math.max(0, (+s.helpers || 0) - crew) : 0;
+  const failed = !!s.task_failed_ms && s.state !== "working" && (!s.since_ms || s.task_failed_ms >= s.since_ms);
+  return { scripts, agents, failed };
+}
+/** Session `sid`'s scripts that failed since its turn ended (its chat's full rows): they stay in its tray, red, and
+ *  the Scripts tab counts them, till its next turn starts. */
+function bgFailedScripts(sid) {
+  const s = sessionOf(sid);
+  if (!s || s.state === "working") return [];
+  const since = s.since_ms || 0;
+  return helpersOf(sid).filter((h) => h.script && !helperRunning(h) && h.failed && !h.stopped && (h.finished_ms || h.last_ms || h.started_ms || 0) >= since);
+}
+/** Its pills, on a Board card and a Desk row: red "1 failed", "1 script" / "N scripts", "2 agents" (running only: they
+ *  go when they're done). Never Cue's update: that's the Desk's own row (#891). `button`: each opens
+ *  its session on that tab (a card); a Desk row is a button itself, so there they're plain. "" when it has none. */
+function bgPills(s, button = true) {
+  if (!s?.session_id) return "";
+  const sid = s.session_id, c = bgCounts(s), out = [];
+  const pill = (text, tab, bad = false) => button && tab
+    ? `<button class="bg-pill${bad ? " bad" : ""}" data-bg-open="${esc(sid)}" data-bg-open-tab="${tab}">${text}</button>`
+    : `<span class="bg-pill${bad ? " bad" : ""}">${text}</span>`;
+  // Cue updating itself is no session's background work: it shows only in the Desk's own update row (#891).
+  if (c.failed) out.push(pill("1 failed", "scripts", true));
+  if (c.scripts) out.push(pill(`${c.scripts} script${c.scripts === 1 ? "" : "s"}`, "scripts"));
+  if (c.agents) out.push(pill(`${c.agents} agent${c.agents === 1 ? "" : "s"}`, "agents"));
+  return out.join("");
+}
+/** "2 failed · 410 passed" said short, for the status line: "2 of 412"; any other line cut to a few words. */
+function bgFailShort(line) {
+  const t = String(line || "").trim(), f = t.match(/(\d+)\s+failed/i), p = t.match(/(\d+)\s+passed/i);
+  if (f && p) return `${f[1]} of ${+f[1] + +p[1]}`;
+  return t.length > 40 ? t.slice(0, 40).replace(/\s+\S*$/, "") + "…" : t;
+}
+/** The status line of a session whose turn is over while its own work runs on (#867), "" otherwise: "Your turn ·
+ *  npm test runs on · 4m" (live, from the script's start). Failed since its turn ended, nothing running: "Your turn · npm test failed · 2 of 412 ·
+ *  2:08pm", red, with the waiting stripe. Its background agents keep their own line ("Waiting on …"). */
+function bgWaitLine(it, s) {
+  // Only for a turn that's simply over: a question or a permission it waits on keeps its own line.
+  if (s?.state !== "waiting" || !s.session_id || waitingFor(it, s) !== "your reply") return "";
+  const sid = s.session_id, tip = tipFor(it, s, "waiting");
+  const live = (what, n, from) => `<div class="mg-status cv-status"><span class="dot-live"></span><span class="cv-what">Your turn · ${esc(what)} ${n > 1 ? "run" : "runs"} on</span>${from ? `<span class="dim"> · <span data-ago="${from}">${ago(from)}</span></span>` : ""}${tip}</div>`;
+  const failed = (what, tail, at) => `<div class="mg-status cv-status"><i class="sw z live"></i><span class="cv-what">Your turn · <span class="bg-bad">${esc(what)} failed</span></span><span class="dim">${tail ? ` · ${esc(tail)}` : ""}${at ? ` · ${clockAt(at)}` : ""}</span>${tip}</div>`;
+  const run = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms);
+  const n = Math.max(run.length, +s.scripts || 0);
+  if (n) return live(run[0] ? `${bgName(run[0])}${n > 1 ? ` and ${n - 1} more` : ""}` : `${n} script${n === 1 ? "" : "s"}`, n, run[0]?.started_ms || s.since_ms);
+  if (bgCounts(s).failed) return failed(s.task_failed || bgFailedScripts(sid)[0]?.desc || "A script", bgFailShort(s.task_failed_line), s.task_failed_ms);
+  return "";
+}
+
+/** Cue updating itself (`state.desk.install`: built from main, swapped in, restarted), while it builds, installs or
+ *  restarts (`run`). Null otherwise: how it ended is in the Desk's Activity. */
+const CUE_INSTALL_STEPS = { building: "Building", installing: "Installing", starting: "Restarting" };
+function cueInstallNow() {
+  const x = state.desk?.install;
+  if (!x?.step) return null;
+  // Only while it runs: once it's installed or failed it's a row of the Desk's Activity instead (#867).
+  return x.step in CUE_INSTALL_STEPS ? { ...x, run: true } : null;
+}
+/** The update as session `sid` shows it: only a Desk lead's (its pill, its tray, its status line). */
+function cueInstallFor(sid) {
+  const x = sid && cueInstallNow();
+  if (!x) return null;
+  return (state.desk?.projects || []).some((d) => d.lead?.sid === sid && (!x.project || x.project === d.project)) ? x : null;
+}
+/** The step it failed at, in a word ("build"); a rolled-back one failed at its restart. */
+const cueInstallFailStep = (x) => ({ building: "build", installing: "install", starting: "restart" })[x.failed_step] || (x.step === "rolled_back" ? "restart" : "");
+/** Its row in the lead's tray: the C mark, "Updating Cue", what it carries and where it is ("· #805, #807 · build ·
+ *  3m"), the live dot, its newest log line; installed: "· installed · 6m", "Cue restarted on #807"; failed: red,
+ *  "· failed at build · 7m", its last log line, Show why. "" when it's not this session's to show. */
+function cueInstallRow(sid) {
+  const x = cueInstallFor(sid);
+  if (!x) return "";
+  const items = (x.items || []).map((i) => `#${i}`).join(", ");
+  const took = tookText(Math.max(0, (x.at || now()) - (x.began || x.at || now())));
+  let meta, tail, live = "", why = "";
+  if (x.run) {
+    const from = x.began || x.at;
+    meta = `${items ? `· ${esc(items)} ` : ""}· ${CUE_INSTALL_STEPS[x.step]} · <span data-ago="${from}">${ago(from)}</span>`;
+    live = `<span class="dot-live"></span>`;
+    tail = x.line || "";
+  } else if (x.ok) {
+    meta = `· installed · ${took}`;
+    tail = x.items?.length ? `Cue restarted on #${x.items.at(-1)}` : x.commit ? `Cue restarted on ${String(x.commit).slice(0, 7)}` : "Cue restarted";
+  } else {
+    const at = cueInstallFailStep(x);
+    meta = `· <span class="bad">failed</span>${at ? ` at ${at}` : ""} · ${took}`;
+    tail = String(x.log || x.line || "").trimEnd().split("\n").at(-1) || "";
+    why = `<button class="bg-go" data-cue-install-why>Show why</button>`;
+  }
+  return `<div class="stx-line bg-row cu-row ${x.bad ? "bad" : ""}" data-key="cue-install"><i class="stx-ic k-cue">C</i>${live}<span class="bg-name">Updating Cue</span><span class="bg-meta">${meta}</span><span class="bg-tail">${esc(tail)}</span>${why}</div>`;
+}
+/** The lead's tray where no other tray is drawn (the Desk's own chat of its lead): just the update's row. */
+const cueInstallTray = (sid) => { const r = cueInstallRow(sid); return r ? `<div class="bg-rows" data-key="bg-rows">${r}</div>` : ""; };
+/** The Desk's top line chip while Cue updates: "● Updating Cue · build · 3m"; failed: red "Cue update failed · Show
+ *  why". Either opens the update's sheet (cueInstallSheet). "" on other views, and once it's installed. */
+function cueInstallChip() {
+  const x = view === "desk" ? cueInstallNow() : null;
+  if (!x || x.ok) return "";
+  if (x.bad) return `<button class="hchip cu-chip bad" data-cue-install-why>Cue update failed<span class="hsub"> · Show why</span></button>`;
+  const from = x.began || x.at;
+  return `<button class="hchip cu-chip" data-cue-install-why><span class="dot-live"></span>Updating Cue<span class="hsub"> · ${CUE_INSTALL_STEPS[x.step]} · <span data-ago="${from}">${ago(from)}</span></span></button>`;
+}
+/** Show why: the update's log in a plain sheet (as Settings' are), its newest lines in view. Esc, a click on Esc or
+ *  outside closes it. */
+let cueInstallWhy = false;
+function cueInstallSheet() {
+  const x = cueInstallWhy ? cueInstallNow() : null;
+  if (!x) { cueInstallWhy = false; return ""; }
+  const at = x.bad ? cueInstallFailStep(x) : "";
+  const title = x.run ? `Updating Cue · ${CUE_INSTALL_STEPS[x.step]}` : x.ok ? "Cue updated" : `Cue update failed${at ? ` at ${at}` : ""}`;
+  const meta = [(x.items || []).map((i) => `#${i}`).join(", "), x.commit ? String(x.commit).slice(0, 7) : "", x.began ? `started ${clockAt(x.began)}` : "", !x.run && x.at ? `${x.bad ? "ended" : "done"} ${clockAt(x.at)}` : ""].filter(Boolean).join(" · ");
+  const log = String(x.log || x.line || "").trimEnd();
+  return `<div class="scrim cu-scrim" data-cue-install-scrim><div class="sheet cu-sheet" role="dialog" aria-labelledby="cu-title">
+    <div class="sheet-head"><h3 class="move-title" id="cu-title">${esc(title)}</h3><span class="grow"></span><kbd class="ld-esc" data-cue-install-close role="button" aria-label="Close">Esc</kbd></div>
+    <div class="sheet-body">${meta ? `<div class="dim cu-meta">${esc(meta)}</div>` : ""}${log ? `<pre class="dk-flog open cu-log">${esc(log)}</pre>` : `<div class="dim">No log yet.</div>`}</div></div></div>`;
+}
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t.closest?.("[data-cue-install-why]")) {
+    e.stopPropagation(); e.preventDefault();
+    cueInstallWhy = true;
+    renderMain();
+    requestAnimationFrame(() => { const l = document.querySelector(".cu-log"); if (l) l.scrollTop = l.scrollHeight; });
+    return;
+  }
+  if (cueInstallWhy && (t.closest?.("[data-cue-install-close]") || t.matches?.("[data-cue-install-scrim]"))) {
+    e.stopPropagation(); e.preventDefault();
+    cueInstallWhy = false;
+    renderMain();
+  }
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !cueInstallWhy) return;
+  e.stopPropagation(); e.preventDefault();
+  cueInstallWhy = false;
+  renderMain();
+}, true);
+/** The leads' briefs opened in full (agentChatHtml), each "sid|agent". */
+const agentBriefOpen = new Set();
+/** A brief's first sentence, as one plain line: where it starts, what it's asked to do (a first sentence of a word or
+ *  two, "Read-only task.", takes the next one with it). A dot inside a path or "e.g." doesn't end it. */
+function briefLine(text) {
+  const p = plain(text), END = /[.!?](?=\s+["'(`A-Z0-9]|\s*$)/g;
+  let m, cut = p.length;
+  while ((m = END.exec(p))) {
+    if (/\b(?:e\.g|i\.e|etc|vs|cf)\.$/i.test(p.slice(0, m.index + 1))) continue;
+    if (m.index + 1 < 24) continue;
+    cut = m.index + 1;
+    break;
+  }
+  return p.slice(0, cut).trim();
+}
+/** A lead's brief as markdown that reads like a short document, its words unchanged: a run of "(1) … (2) …" steps in
+ *  a line becomes a numbered list; a paragraph that starts with a label ("Steps:", "Rules:", "Your files (only
+ *  these):") gets the label as its head, and under Steps / Rules / Report its "; "-parted or sentence-parted body
+ *  becomes a list. Fenced code stays as it is. */
+const BRIEF_LIST = /^(steps?|rules?|report|reporting|don'?t|do not|done when|constraints?|requirements?|checks?|notes?)$/i;
+function briefMd(text) {
+  // Split outside `code` only: a "; " or ". " inside a command isn't a break between items.
+  const parts = (s, re) => {
+    const out = [];
+    let at = 0, code = false;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "`") code = !code;
+      if (code) continue;
+      re.lastIndex = i;
+      const m = re.exec(s);
+      if (m && m.index === i && !/\b(?:e\.g|i\.e|etc|vs|cf)$/i.test(s.slice(at, i))) { out.push(s.slice(at, i + (m[1] || "").length).trim()); at = i + m[0].length; i = at - 1; }
+    }
+    out.push(s.slice(at).trim());
+    return out.filter(Boolean);
+  };
+  const steps = (l) => {
+    // "(1) a (2) b (3) c": numbered in order from 1, at least two, else it's a plain line.
+    const at = [...l.matchAll(/(^|\s)\((\d{1,2})\)\s+/g)];
+    if (at.length < 2 || at.some((m, n) => +m[2] !== n + 1)) return null;
+    const lead = l.slice(0, at[0].index).trim();
+    const items = at.map((m, n) => l.slice(m.index + m[0].length, n + 1 < at.length ? at[n + 1].index : l.length).trim());
+    return [...(lead ? [lead] : []), ...items.map((x, n) => `${n + 1}. ${x}`)];
+  };
+  const para = (p) => {
+    const lines = p.split("\n"), first = lines[0];
+    const lab = /^\s*([A-Za-z][A-Za-z' ]{0,28}?)(\s*\([^)]{1,40}\))?:(?:\s+(.*))?$/.exec(first);
+    const words = lab ? lab[1].trim().split(/\s+/).length : 0;
+    const out = [];
+    let body = lines;
+    if (lab && words <= 4 && !/^(https?|file)$/i.test(lab[1])) {
+      out.push(`**${lab[1].trim()}${lab[2] || ""}:**`);
+      body = [lab[3] || "", ...lines.slice(1)].filter((l) => l.trim());
+      // Under a list label, one line of items parted by "; " or by sentences becomes a list.
+      if (BRIEF_LIST.test(lab[1].trim()) && body.length === 1 && !steps(body[0]) && !/^\s*([-*•]|\d+[.)])\s/.test(body[0])) {
+        const semi = parts(body[0], /;\s+/g), sent = parts(body[0], /([.!?])\s+(?=["'(`A-Z])/g);
+        const items = semi.length > 1 ? semi : sent.length > 1 ? sent : null;
+        if (items) return [...out, ...items.map((x) => `- ${x}`)].join("\n");
+      }
+    }
+    for (const l of body) out.push(...(steps(l) || [l]));
+    return out.join("\n");
+  };
+  return String(text ?? "").replace(/\r/g, "").split(/```/).map((chunk, i) => (i % 2 ? chunk : chunk.split(/(\n\s*\n)/).map((p, n) => (n % 2 ? p : para(p))).join(""))).join("```");
+}
+/** A brief drawn whole (md over briefMd): a long run of code (a command, a path) set apart in a box of its own
+ *  instead of running on in the sentence. */
+const briefHtml = (text, runIn = null) => md(briefMd(text), { pathsOf: runIn }).replace(/<code>([\s\S]*?)<\/code>/g, (all, c) => (c.replace(/<[^>]+>/g, "").length > 48 ? `<code class="brief-long">${c}</code>` : all));
+/** What a lead asked its crew member, at the head of its chat: folded to its first sentence with Show the full brief
+ *  under it; opened, the whole brief (briefHtml). A brief of one sentence shows whole, with no button. */
+function agentBriefHtml(sid, key, ask, by) {
+  const k = `${sid}|${key}`, open = agentBriefOpen.has(k), line = briefLine(ask);
+  const whole = line.length >= plain(ask).length;
+  const body = whole || open ? `<div class="msg ag-brief-md">${briefHtml(ask, sid)}</div>` : `<p class="ag-brief-line">${esc(line)}</p>`;
+  const btn = whole ? "" : `<button class="mt-lk ag-brief-tg" data-agent-brief="${esc(k)}" aria-expanded="${open}">${open ? "Show less" : "Show the full brief"}</button>`;
+  return `<div class="bg-view-reply ag-ask ag-brief${open ? " open" : ""}" data-key="ask:${open ? 1 : 0}"><span class="bg-view-k">${esc(by || "Its lead")} asked it</span>${body}${btn}</div>`;
+}
 /** A crew member of lead `sid` by its agent id, if the agent is one. */
 const crewMateById = (sid, id) => (sessionOf(sid)?.team || []).find((t) => t.agent_id === id) || null;
 /** An agent's chat: the one chat both the board's view of it (helperPane) and the Desk's crew page (desk/thread.js
@@ -124,26 +345,42 @@ const crewMateById = (sid, id) => (sessionOf(sid)?.team || []).find((t) => t.age
 function agentChatHtml(sid, h, { ask = "", by = "", answer = "", steps = [], key = h?.id || "" } = {}) {
   const running = h ? helperRunning(h) : false, items = h?.items || [];
   const end = h && !running ? helperTail(h) : items.length;
-  const reply = h ? items.slice(end).map((x) => x.text).join("\n\n").trim() || answer : answer;
+  // Its answer is only its own words (chat/who.js): anything else in its last run is drawn among its runs below.
+  const own = (x) => chatPlace({ role: "agent", ...x }, "crew") === "reply";
+  const tail = h ? items.slice(end) : [], words = tail.filter(own);
+  const reply = h ? words.map((x) => x.text).join("\n\n").trim() || answer : answer;
+  // Anything else in that last run, by its time: what came before its answer among its runs, what came after it under
+  // it (`later`), as every chat places a row.
+  const replyAt = words.length ? words[0].at_ms : Infinity;
+  const others = tail.filter((x) => !own(x)), sooner = others.filter((x) => !(x.at_ms >= replyAt)), later = others.filter((x) => x.at_ms >= replyAt);
   const out = [];
-  if (ask) out.push(`<div class="bg-view-reply ag-ask" data-key="ask"><span class="bg-view-k">${esc(by || "Its lead")} asked it</span><div class="msg">${md(ask)}</div></div>`);
+  // Send to… under its words and its answer (render.js fwdBtn), keyed under its lead's id so it lasts as the lead does.
+  const from = sessionOf(sid)?.project || by || "crew member";
+  const fwd = (id, text) => `<div class="mg-f cv-acts ag-acts">${fwdBtn(`${sid}:${`ag-${key}-${id}`.replace(/:/g, "-")}`, text, from, sid)}</div>`;
+  if (ask) out.push(agentBriefHtml(sid, key, ask, by));
   // Its steps and words, a run of steps at a time between its words.
   const runs = [];
-  if (h) items.slice(0, end).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
+  if (h) items.slice(0, end).concat(sooner).forEach((x) => (x.t === "step" ? (runs.at(-1)?.steps || runs[runs.push({ steps: [] }) - 1].steps).push(x) : runs.push({ say: x })));
   else if (steps.length) runs.push({ lines: steps });
+  // Who said it, from its tags (chat/who.js, #837): its own words (no role: the agent's), yours as your bubble, Cue's
+  // as Cue's quiet line, never your bubble. "" for its own words.
+  const notOwn = (x) => {
+    const place = chatPlace({ role: "agent", ...x }, "crew");
+    if (place === "bubble") return `<div class="cv-you mg-you" data-key="${esc(x.id || `y:${x.at_ms}`)}">${yourBubble(x, `${sid}:ag:${key}:${x.at_ms}`)}</div>`;
+    return place !== "reply" && typeof cueQuietHtml === "function" ? keyed(cueQuietHtml(x, sessionOf(sid), `${sid}:ag:${key}:${x.at_ms}:cueq`), x.id || `c:${x.at_ms}`) : "";
+  };
   runs.forEach((r, n) => {
-    if (r.say) { out.push(`<div class="stx-say msg" data-key="${esc(r.say.id || `s:${r.say.at_ms}`)}">${md(r.say.text)}</div>`); return; }
-    const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`, k = `${sid}|${key}|${first}`, open = agentRunOpen.has(k);
-    const live = running && n === runs.length - 1;
-    const count = `${list.length}${!n && h?.more ? "+" : ""} step${list.length === 1 ? "" : "s"}`, sum = r.steps ? turnSummary(r.steps) : "";
-    const head = `<div class="stx-head"><button class="stx-fold" data-agent-run="${esc(k)}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : ""}<b>${live ? `Working · ${count}` : count}</b>${sum ? `<span class="stx-sum"> · ${esc(sum)}</span>` : ""}<span class="stx-tri">${open ? "▾" : "▸"}</span></button></div>`;
-    const line = (x) => (r.steps ? stepLine(sid, x, true) : `<div class="stx-line ${x.ask ? "bad" : ""}"><span class="stx-what">${x.html}</span></div>`);
-    // Folded, the run it's on now still says what it's doing: its newest step under the fold.
-    const body = open ? list.map(line).join("") : live ? line(list.at(-1)) : "";
-    out.push(`<div class="stx" data-key="run:${esc(first)}">${head}${body ? `<div class="stx-steps">${body}</div>` : ""}</div>`);
+    const theirs = r.say && notOwn(r.say);
+    if (theirs) { out.push(theirs); return; }
+    if (r.say) { const id = r.say.id || `s:${r.say.at_ms}`; out.push(`<div class="stx-say msg" data-key="${esc(id)}">${md(r.say.text)}${fwd(id, r.say.text)}</div>`); return; }
+    // Its steps as 0.1.86 listed an agent's (#897): one row each, in place between its words.
+    const list = r.steps || r.lines, first = r.steps ? r.steps[0].id : `l${n}`;
+    const line = (x) => (r.steps ? stepLine(sid, x, false, true) : `<div class="stx-line ${x.ask ? "bad" : ""}"><span class="stx-what">${x.html}</span></div>`);
+    out.push(`<div class="stx" data-key="run:${esc(first)}"><div class="stx-steps">${list.map(line).join("")}</div></div>`);
   });
   if (!runs.length && !reply) out.push(`<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`);
-  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div></div>`);
+  if (reply) out.push(`<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its answer</span><div class="msg">${md(reply)}</div>${fwd("reply", reply)}</div>`);
+  for (const x of later) if (x.t !== "step") out.push(notOwn(x));
   return `<div class="ag-chat">${out.join("")}</div>`;
 }
 /** One agent in full, in place of the chat: who it is, and its chat (agentChatHtml: what it was asked, what it did,

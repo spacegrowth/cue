@@ -81,13 +81,17 @@ pub(crate) fn spread_pick(st: &Store, project: &str, list: &[String]) -> String 
     from.into_iter().min_by_key(|m| machine_load(st, project, m)).cloned().unwrap_or_default()
 }
 
-/// How many of Desk `project`'s slots on `machine` ("" for this Mac) are taken now (#661, #711). On another machine:
-/// its items held by a session there and not done or waiting for your check, or starting there. On this Mac, when
+/// How many of Desk `project`'s slots on `machine` ("" for this Mac) are taken now (#661, #711). On this Mac, when
 /// its items work in folders of their own: those folders held (an item keeps its own until it lands), the items
-/// waiting in line for one, and those starting here.
+/// waiting in line for one, and those starting here. Anywhere else (another machine, or this Mac with its items in the
+/// shared folder or on a branch, #798): its items at work there, not paused, finishing or with you to check, and those
+/// starting there (desk/hub/turn/slots.rs).
 pub(crate) fn machine_load(st: &Store, project: &str, machine: &str) -> usize {
+    if !machine.is_empty() || !copies_here(st, project) {
+        return crate::desk::hub::turn::slots::load(st, project, machine, "");
+    }
     let starting = st.desk.run.start_machine.iter().filter(|(id, m)| m.as_str() == machine && st.desk.item(id).is_some_and(|i| i.project == project && i.holder.is_none())).count();
-    if machine.is_empty() {
+    {
         // The folders are its repository's, shared with any other Desk on it: those of every Desk count.
         // Its folder as git names it (`/private/var/…` for `/var/…`): a repository is the Desk's when it holds it.
         let folder = crate::desk::hub::core::view::desk_folder(st, project);
@@ -103,26 +107,25 @@ pub(crate) fn machine_load(st: &Store, project: &str, machine: &str) -> usize {
         let open = |i: &&DeskItem| !matches!(i.state.as_str(), "done" | "dropped");
         let held = st.desk.items.iter().filter(open).filter(|i| i.remote.is_none() && i.tree.as_ref().is_some_and(|t| !t.in_place && ours(&t.repo))).count();
         let waiting = st.desk.items.iter().filter(open).filter(|i| i.tree.is_none() && crate::desk::hub::landing::trees::in_line(i) && ours(&i.tree_wait_repo)).count();
-        return starting + held + waiting;
+        starting + held + waiting
     }
-    let held = st.desk.items.iter()
-        .filter(|i| i.project == project && !matches!(i.state.as_str(), "done" | "dropped" | "to_check" | "held"))
-        .filter_map(|i| i.holder.as_ref())
-        .filter(|h| st.sessions.get(h.to()).is_some_and(|s| s.origin.machine == machine))
-        .count();
-    starting + held
+}
+
+/// Whether Desk `project`'s items work in folders of their own on this Mac (How work lands: Own copy).
+pub(crate) fn copies_here(st: &Store, project: &str) -> bool {
+    let folder = crate::desk::hub::core::view::desk_folder(st, project);
+    crate::desk::lands::lands_known(project, &folder).at == "copy"
 }
 
 /// The most of Desk `project`'s items at work on `machine` at once (#711): another machine's number in Desk settings;
-/// this Mac's is its Items at once, the folders of their own its items work in. None: no limit (this Mac, when its
-/// items work in the shared folder or on a branch there).
+/// this Mac's is its Items at once, however its items work there (#798: in the shared folder and on a branch too; in
+/// copies of their own it's also the most copies held). Always a number now; kept an Option for its callers.
 pub(crate) fn machine_cap(st: &Store, project: &str, machine: &str) -> Option<usize> {
     if !machine.is_empty() {
         return Some(crate::desk::machine_pref::of(project).at_once(machine) as usize);
     }
     let folder = crate::desk::hub::core::view::desk_folder(st, project);
-    let l = crate::desk::lands::lands_known(project, &folder);
-    (l.at == "copy").then_some(l.at_once.max(1) as usize)
+    Some(crate::desk::lands::lands_known(project, &folder).at_once.max(1) as usize)
 }
 
 /// This Mac, as a place an item waits for room on is named.
@@ -173,7 +176,12 @@ pub(crate) fn start_full(st: &Store, it: &DeskItem) -> Option<crate::desk::Start
     if it.state != "queued" {
         return None;
     }
-    let machine = if it.tree_wait && it.holder.is_some() {
+    use crate::desk::hub::turn::slots;
+    // Waiting for a free slot where it goes (#798): your Start now asks first, as for a folder or a machine.
+    let slot = slots::waits(st, it);
+    let machine = if slot {
+        slots::machine_of(st, it)
+    } else if it.tree_wait && it.holder.is_some() {
         String::new()
     } else if it.holder.is_none() && it.room_wait {
         // Where it would start now (#776): a place with room if any has, else the least busy.
@@ -182,12 +190,14 @@ pub(crate) fn start_full(st: &Store, it: &DeskItem) -> Option<crate::desk::Start
         return None;
     };
     let n = machine_cap(st, &it.project, &machine)?;
-    let full = if it.tree_wait && !it.tree_wait_repo.is_empty() {
+    let full = if slot {
+        !slots::free_on(st, &it.project, &machine, &it.id)
+    } else if it.tree_wait && !it.tree_wait_repo.is_empty() {
         // Its slots as the copies count them (desk/hub/landing/trees.rs `claim_tree`): every one of them taken.
         let used: Vec<u32> = st.desk.items.iter().filter_map(|i| i.tree.as_ref()).filter(|t| t.repo == it.tree_wait_repo && !t.in_place).map(|t| t.slot).collect();
         (1..=n as u32).all(|k| used.contains(&k))
     } else {
-        !has_room(st, &it.project, &machine)
+        !has_room(st, &it.project, &machine) || !slots::free_on(st, &it.project, &machine, &it.id)
     };
     let on = if machine.is_empty() { THIS_MAC.to_string() } else { crate::machines::display_name(&machine) };
     let max = if machine.is_empty() { crate::desk::lands::AT_ONCE.1 } else { crate::desk::machine_pref::AT_ONCE.1 };
@@ -441,12 +451,12 @@ impl Hub {
                 self.later(0, move |h| h.desk_remote_start_checked(s));
                 continue;
             }
-            match fx.sends.iter_mut().find(|(s, text)| *s == to && names_item(text, &id)) {
-                Some((_, text)) => {
+            match fx.sends.iter_mut().find(|(s, text, _)| *s == to && names_item(text, &id)) {
+                Some((_, text, _)) => {
                     text.push('\n');
                     text.push_str(&line);
                 }
-                None => fx.sends.push((to, format!("Desk item #{id}: {line}"))),
+                None => fx.sends.push(crate::desk::hub::core::desk::kinded((to, format!("Desk item #{id}: {line}")), crate::sessions::Kind::Route)),
             }
         }
     }
@@ -732,7 +742,7 @@ impl Hub {
         self.remote_stuck(&it.id, &format!("{NO_BRANCH}: {}", what.split(". ").next().unwrap_or(what)));
         let Some(h) = it.holder.clone().filter(|_| !told) else { return };
         let mut fx = Effects::default();
-        fx.sends.push((h.to().to_string(), format!("Desk item #{} ({}) waits for its branch: {what}. Cue tries again each minute.", it.id, it.title)));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{} ({}) waits for its branch: {what}. Cue tries again each minute.", it.id, it.title)), crate::sessions::Kind::Route));
         self.desk_done(fx);
     }
 
@@ -965,8 +975,8 @@ fn remote_starts_of(st: &Store, ids: &[String]) -> Vec<(String, String, String, 
 /// Holder `to`'s messages naming item `id`, taken out of `fx` to be held, with `line` (where to work) added to the
 /// last; just that line when there were none.
 fn held_start_text(fx: &mut Effects, to: &str, id: &str, line: &str) -> String {
-    let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text)| *s == to && names_item(text, id)).map(|(_, t)| t.clone()).collect();
-    fx.sends.retain(|(s, text)| !(*s == to && names_item(text, id)));
+    let mut texts: Vec<String> = fx.sends.iter().filter(|(s, text, _)| *s == to && names_item(text, id)).map(|(_, t, _)| t.clone()).collect();
+    fx.sends.retain(|(s, text, _)| !(*s == to && names_item(text, id)));
     if texts.is_empty() {
         texts.push(format!("Desk item #{id}: {line}"));
     } else {

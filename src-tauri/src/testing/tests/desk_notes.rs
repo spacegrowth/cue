@@ -137,3 +137,33 @@ fn a_note_with_no_holder_is_refused_for_the_lead() {
     let it = w.hub().desk_add(&project, "bug", "Spacing", "", None).unwrap();
     assert!(w.hub().desk_item_act(&it.id, "note", "Use 8px").is_err());
 }
+
+/// #861: ⌘↵ in an item's box. With its holder at work, a plain note is kept in Cue for its turn's end; one sent now
+/// ("note_now") goes at once and stops the turn it's on, so it reads it next.
+#[test]
+fn a_note_sent_now_to_a_holder_at_work_goes_at_once() {
+    let w = World::new();
+    let (sid, project) = holder(&w);
+    let it = w.hub().desk_add(&project, "bug", "Spacing", "", Some(&sid)).unwrap();
+    w.hub().desk_set_state(&it.id, "working");
+    // It takes your message and is at work on it.
+    w.send_to(&sid, "go on");
+    w.hosted_says(&sid, HostedEvent::Taken { text: "go on".into() });
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    w.settle();
+    assert_eq!(w.snapshot().state(&sid), "working");
+    let before = sent_to(&w, &sid).len();
+    w.hub().desk_item_act(&it.id, "note", "Use 8px, not 6").unwrap();
+    w.settle();
+    assert_eq!(sent_to(&w, &sid).len(), before, "kept for its turn's end");
+    assert!(w.hosted.interrupted().is_empty());
+    w.hub().unhold(&sid);
+    w.hub().desk_item_act(&it.id, "note_now", "Stop, 6px is right").unwrap();
+    w.settle();
+    let sent = sent_to(&w, &sid);
+    assert_eq!(sent.len(), before + 1, "handed over now: {sent:?}");
+    assert!(sent.last().unwrap().starts_with(&format!("About #{} (Spacing): Stop, 6px is right", it.id)), "{sent:?}");
+    assert_eq!(w.hosted.interrupted(), [sid.clone()], "the turn it was on is stopped");
+    // On its Thread as a note of yours, as any other.
+    assert_eq!(step(&w, &project, &it.id, "to ")["text"], "Stop, 6px is right");
+}

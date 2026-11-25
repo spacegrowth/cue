@@ -24,7 +24,7 @@ function tellItem(sid, s) {
   return `<button data-act="watch" data-sid="${esc(sid)}" data-on="${on ? 0 : 1}">${on ? "Don't tell me" : "Tell me when this is done"}<span>${on ? "No notification when this turn ends" : "A notification and the tada sound when this turn ends, even with Cue in front · ⌘D"}</span></button>`;
 }
 /** Where the project's dot is, while you're waiting to be told: the tada, in the project's color. */
-const watchMark = (project) => `<span class="watch-mark" style="${projStyle(project)}" role="img" aria-label="Telling you when this turn is done">${tadaIcon(14, true)}</span>`;
+const watchMark = (project) => `<span class="watch-mark" role="img" aria-label="Telling you when this turn is done">${tadaIcon(14, true)}</span>`;
 
 /** The Active pane when nothing is open: Connect Claude Code until it is, then "Nothing waiting". */
 function emptyPane() {
@@ -47,7 +47,7 @@ function askFoot(it, sid, harness, key = `s:${sid}`, denyLabel = "Deny") {
   // A question names who asks and how long ago (option C, #450: the Desk lead's too), not which agent it runs on.
   const head = it.kind === "question" && !inTerminal(it) ? `<span class="act-who">${esc(nameOf(sid, it.project))}</span> asks you · ${esc(ago(it.created_ms))}${machTag(it.machine)}`
     : (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`) + machTag(it.machine);
-  let foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it, denyLabel)}</div>`;
+  let foot = `<div class="act-card">${askHead(it, "act-head", head, denyLabel)}${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it, denyLabel)}</div>`;
   if (document.activeElement?.dataset?.text === key || draft(key).text.trim() || draft(key).images.length) {
     foot += `<div class="foot held">${box_(key, "Answer above first; your message waits here…", "Answer first", `data-held="1" disabled`)}</div>`;
   }
@@ -73,11 +73,10 @@ function activeFoot(it, s, pending, harness, project, sid, quick = true) {
     if (own !== it) return askFoot(own, sid, harness);
   } else if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
   // A hosted session has no terminal: the reply goes straight to it.
-  if (pending && !crewAsk) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send", "", quick)}</div>`;
+  if (pending && !crewAsk) return `<div class="foot">${field(it, boxPlaceholder(sid, s?.hosted ? "" : "(typed into its terminal)"), "Send", "", quick)}</div>`;
   if (!s) return "";
   const busy = s.state === "working";
-  const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", "", quick)}</div>`;
+  return `<div class="foot">${box_(`s:${sid}`, boxPlaceholder(sid), busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", "", quick)}</div>`;
 }
 /** What fills the chat area instead of the chat: a background agent opened in full (helperPane), or a reply open
  *  in the reader (readerPane, read-only, the box and insight bar out of the way). */
@@ -92,7 +91,8 @@ function fullView(sid, it, s, harness) {
 function activeHead(a) {
   const { it, s, sid, harness, project, pending, ch } = a;
   const closable = sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" });
-  return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+  // Its state's dot first (#865, the headers' option B): the working green while it works, else ink.
+  return `<div class="ap-head">${s ? `<i class="ap-dot${s.state === "working" ? " w" : ""}" aria-hidden="true"></i>` : ""}${s?.watch_ms ? watchMark(project) : ""}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, closable) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
@@ -104,12 +104,13 @@ function chatBody(it, s, harness, sid, page = null) {
   return chatHtml(it, s, harness, true, page) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status");
 }
 /** The chat area: the full view in its place, or the chat's body (with `crew.extra`, the crew's page's rows placed in
- *  it by time: chatHtml's `page`). */
+ *  it by time: chatHtml's `page`). Drawn as the Desk draws it (desk/page.js deskChatPage, #872): what you and the AI
+ *  wrote; Cue's messages are in the Activity tab beside Chat (background.js). */
 function activeChat(a, full, crew = null) {
   const { it, s, sid, harness } = a;
   // The add-on's page on the crew page's left (team_page.js crewLeftOf): in the chat's place, scrolling inside itself.
   if (crew?.page) return `<div class="ap-chat cp-addon-left" data-scroll-key="cpx:${esc(crew.page.key)}">${crew.page.html}</div>`;
-  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid, crew ? { extra: crew.extra } : null));
+  return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatBody(it, s, harness, sid, { ...(sid ? deskChatPage(sid) : { refs: deskRefs }), ...(crew ? { extra: crew.extra } : {}) }));
 }
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs
@@ -127,7 +128,7 @@ function openPane(a, full, crew = null) {
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
     ${activeChat(a, full, crew)}${extSlot(sid)}${diffSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${paneFoot(a, full, crew)}${sid ? continueCover(sid) : ""}</div>`;
+    ${paneFoot(a, full, crew)}${sid ? continueCover(sid) : ""}</div>`;
 }
 /** Under the chat: the full view's own foot, or the reply being read out, the crew's tray and the box (or the ask's
  *  card). On the crew's page (`crew`), its Needs you (`crew.needs`) in the tray's place: the list beside it has the
@@ -168,7 +169,7 @@ function activePane(crew = null) {
   // Restarting (after an MCP change): covered until it's back, with nothing to press meanwhile.
   const rs = sid && state.restarting?.[sid];
   if (rs) return `<div class="active-pane restarting">
-    <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
+    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
     ${subHead(s?.cwd || it?.cwd, sid)}
     ${chatBox(`m|${sid}`, chatHtml(it, s, harness, true))}${foot}${restartCover(rs, nameOf(sid, project))}</div>`;
   // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.

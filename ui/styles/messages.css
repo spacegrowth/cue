@@ -13,6 +13,7 @@
   /* The family's two sizes, by name, so a screen never picks its own. */
   --mg-body: 400 var(--type-body) / var(--type-body-lh) var(--sans);   /* Slack's size and spacing (#703) */
   --mg-meta: 400 var(--type-meta) / var(--type-small-lh) var(--sans);   /* a whole-pixel line, like the body's: rows of them add up to whole pixels */
+  --mg-mask: #000;   /* a mask's paint: only its alpha counts (the queued outline's ring) */
 }
 
 /* ---------- the card: Cue's message, a note, an item line set, another Desk's message, Ready to check ---------- */
@@ -84,9 +85,9 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mg-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 /* Listen and Read under a reply keep their pill look from before #501 (#732): rounder, taller, the accent's ink on the
    second panel; the icons at their own sizes. Same text size as every other action. */
-.mg-btn:is(.ls-pill, .rd-pill) { height: 28px; padding: 0 12px; gap: 6px; border-radius: var(--radius-pill); background: var(--panel-2); color: var(--accent); }
-.mg-btn:is(.ls-pill, .rd-pill) svg { width: auto; height: auto; }
-.mg-btn:is(.ls-pill, .rd-pill):hover, .mg-btn:is(.ls-pill, .rd-pill).on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.mg-btn:is(.ls-pill, .rd-pill, .fwd-pill) { height: 28px; padding: 0 12px; gap: 6px; border-radius: var(--radius-pill); background: var(--panel-2); color: var(--accent); }
+.mg-btn:is(.ls-pill, .rd-pill, .fwd-pill) svg { width: auto; height: auto; }
+.mg-btn:is(.ls-pill, .rd-pill, .fwd-pill):hover, .mg-btn:is(.ls-pill, .rd-pill, .fwd-pill).on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 
 /* ---------- an ask: the same card, outlined all round ---------- */
 .mg.ask { background: var(--panel); border: 1px solid var(--deny); }
@@ -123,9 +124,24 @@ button.mg-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
   box-sizing: border-box; max-width: 100%; padding: 8px 12px; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text;
   border-radius: var(--radius-pane) var(--radius-pane) var(--radius-tag) var(--radius-pane); background: var(--panel-2);
 }
-/* Not with them yet (sending, kept in Cue, queued): the bubble dashed on the panel, sending also faint; couldn't send:
-   outlined deny (#422, chat/thread.js msgLine). */
-.mg-you:is(.msg-sending, .msg-held, .msg-queued) .mg-text { background: var(--panel); border: 1.5px dashed var(--muted); padding: 6.5px 10.5px; }
+/* Not with them yet (sending, kept in Cue, queued): no fill, a dim accent outline with a short brighter arc drifting
+   round it until it goes (as before #501), sending also faint; couldn't send: outlined deny (#422, chat/thread.js
+   msgLine). --qd (chat/thread.js msgRow) keeps the arc where it was when the chat is drawn again. */
+@property --qa { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes qtrace { to { --qa: 360deg; } }
+.mg-you:is(.msg-sending, .msg-held, .msg-queued) .mg-text {
+  position: relative; background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.mg-you:is(.msg-sending, .msg-held, .msg-queued) .mg-text::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from var(--qa), transparent 0 78%, var(--accent) 95%, transparent 100%);
+  -webkit-mask: linear-gradient(var(--mg-mask) 0 0) content-box, linear-gradient(var(--mg-mask) 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: qtrace 4s linear infinite; animation-delay: var(--qd, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-you:is(.msg-sending, .msg-held, .msg-queued) .mg-text::after { display: none; }
+  .mg-you:is(.msg-sending, .msg-held, .msg-queued) .mg-text { box-shadow: inset 0 0 0 1px var(--accent); }
+}
 .mg-you.msg-sending .mg-text, .mg-you.msg-sending .thumbs { opacity: .65; }
 .mg-you.msg-failed .mg-text { background: var(--panel); border: 1.5px solid var(--deny); padding: 6.5px 10.5px; }
 .mg-you > .mg-f { justify-content: flex-end; font-weight: 400; }

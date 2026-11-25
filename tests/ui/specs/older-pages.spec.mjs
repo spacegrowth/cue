@@ -4,7 +4,7 @@
 import { test, expect } from "./cue.mjs";
 
 test("Earlier messages shows an older page, then another, until the start", async ({ cue, page }) => {
-  await cue.open("terminal");
+  await cue.open("hosted-relay");
   await page.locator('.nrow[data-big="n1"]').click();
   const chat = page.locator("[data-chat]");
   const older = chat.locator('[data-act="load-older"]');
@@ -30,7 +30,7 @@ test("Earlier messages shows an older page, then another, until the start", asyn
 // view jumped down); then the press's own page put it back at the top and loaded another. One press: one page, and the
 // view goes to its top without going anywhere else first.
 test("One press of Earlier messages loads one page, and the view goes straight to it", async ({ cue, page }) => {
-  await cue.open("terminal");
+  await cue.open("hosted-relay");
   await page.locator('.nrow[data-big="n1"]').click();
   const chat = page.locator("[data-chat]");
   const older = chat.locator('[data-act="load-older"]');

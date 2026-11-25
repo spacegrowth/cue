@@ -461,7 +461,6 @@ fn compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committ
     git(&["commit", "-q", "-m", "start"]);
     let message = "fix the typo in a.txt and add a line to b.txt";
     // The hub's lead: the same folder, its stream the real one's.
-    crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = crate::ipc::StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = crate::ipc::start_session_with(w.hub(), "claude", &dir.to_string_lossy(), message, "live-team", &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();

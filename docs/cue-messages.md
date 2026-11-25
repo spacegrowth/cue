@@ -61,7 +61,7 @@ teammate's "not done" after a failed finish is the same line as above.
 | Copy taken back | The lead's TAKE COPY | desk_unstick.rs | Told X · #id copy taken back: stop work on it |
 | Closed | CLOSE: its work is already on a branch | desk_unstick.rs | Told X · #id closed: already on main |
 | Dropped | You drop the item | desk_act.rs | Told X · #id dropped: stop work on it |
-| Option picked | You pick a mock (on its page, its card, or in the lead's chat) | pick.rs | Told X · #id You picked B; #n builds it |
+| Option picked | You pick a mock (on its page, its card, or in the lead's chat) | pick.rs | Stays in its chat as one line (#917): You picked B — #n builds it, #n opening that item. The build item's hand-off goes to Activity, and its chat opens with From your pick of B on #id |
 | Folded into | Another item was merged into one it has | desk_said.rs | Told X · #a folded into #b: “…” |
 | Done? | A turn on its item ended with no DONE | desk_stall.rs | Asked X · #id done? or what's left · 1 more item |
 | Desk paused | The Desk is paused | desk_pause.rs `PAUSE_WORDS` | Asked X · the Desk is paused: stop at a safe point |
@@ -88,10 +88,19 @@ one quiet line at the left, "+ ◔ Cue · Desk changes · #id · 3m" with what i
 click on it opens Cue's full text under it, as + on a voice message does (#616, desk/lead.js `deskCueLine`). The lead
 still gets the full text. The cards under "Kinds that keep their own design" stay cards there.
 
+Since #789 none of them is in the lead's chat: each is in Activity, under Cue, for its item. The lead's answer to a turn
+of only Cue's messages goes there too, under the message (#816, desk/runs.js `dkNoticeReply`). An answer that acts on
+it (a ROUTE, NOTE, START…, or a line for you) stays in the chat, the messages one quiet line over it ("◔ Cue Stuck #d2:
+…"). A message that holds your words too stays in the chat as yours (#812).
+
 | Kind | Sent when | Hub | The line |
 | --- | --- | --- | --- |
 | Desk changes | Items finished, were sent back or asked, got stuck finishing, clashed, lost their holder… since the lead last heard | desk/hub/lead/feed.rs (ends "(Desk changes 4–6)") | Told lead · #d5 finished · #d3 sent back (one item: “you sent it back: “…””) |
-| Queued | Its ROUTE with after: is kept till the item before is checked | desk route replies (“Queued: #id is next for X, after #y…”) | Told lead · #id next for X, after #y · 1 more queued |
+| Queued | Its ROUTE with after: is kept till the item before is checked, or its session is busy with another | desk route replies (“Queued: #id is next for X, after #y…”, “Queued: #id is next for X (busy with #y)…”) | Told lead · #id next for X, after #y (or busy with #y) · 1 more queued |
+| Stuck | An item's holder has shown no new output for a while | desk/hub/stall/stuck.rs `silent_words` | Told lead · #id looks stuck: X quiet for 33 min |
+| Stopped while landing | An item couldn't land (not merged, not committed…) | desk/hub/lead/stop_lead.rs | Told lead · #id stopped while landing: “why” |
+| Landed without files | An item landed while its session left files in the main folder | desk/hub/landing/own_work.rs | Told lead · #id landed without these files |
+| New lead | A new lead takes over the Desk | desk/hub/lead/run.rs `desk_handoff_words` | Told lead · X now runs Y's Desk |
 | Your answer for several leads | Cue asked you on behalf of more than one Desk | desk/escalate.rs | Told lead · your answer: “…” |
 | Landing clean-up question | A session asks how to clear the way for its landing | desk_cleanup.rs `lead_words` | Asked lead · #id X's landing question: “…” · 2 choices |
 | Wait circle | Items wait on each other in a circle | desk_waits.rs `circle_note` | Asked lead · cut a wait circle: #a waits on #b waits on #a |
@@ -107,7 +116,7 @@ and `route_answers` sends them as one message. With any reply before it, the lin
 first sentence · N more lines”), and the open ASKs are only in the fold.
 | Away sweep | You're about to go away | desk_away.rs `sweep_words` | Asked lead · settle what you can before Away |
 | Away on, off, paused | Away turned on, off, changed or ran out | desk_away.rs `tell_lead_away` | Told lead · Away is on, until 18:00 (or is off, or paused: …) |
-| Replies to its commands | Refused:, Noted:, "#id not cut / split / closed / paused / …", "note not sent", "Couldn't read this line as a route", "No question from #id…", FEATURE, "Cue couldn't route / queue…", "Cue didn't reopen…" | desk_said.rs, desk_route.rs, desk_unstick.rs, desk_features.rs | Told lead · its first sentence · N more lines |
+| Replies to its commands | Refused:, Noted:, Told: (TELL DESK), "#id got no copy…", "#id not cut / split / closed / paused / …", "note not sent", "Couldn't read this line as a route", "No question from #id…", FEATURE, "Cue couldn't route / queue…", "Cue didn't reopen…" | desk_said.rs, desk_route.rs, desk_unstick.rs, desk_features.rs | Told lead · its first sentence · N more lines |
 
 ## Kinds that keep their own design
 
@@ -118,7 +127,7 @@ These already showed as short cards or lines before #478 and are unchanged:
 | Hand-off of an item ("Desk item #id (kind): title …") | the family's card tagged HAND-OFF (#174), at the right of the session's chat |
 | New items from you | a card tagged NEW ITEMS from you, at the right of the lead's chat, one row per item |
 | A session stopped without DONE ("#id (title) stopped…") | a card from Cue tagged STOPPED, with Open #id |
-| A session's TO LEAD: line | a card from the session tagged TO LEAD |
+| A session's TO LEAD: line | a card from the session tagged TO LEAD, in Activity with the lead's answer under it; never in the lead's chat, never joined to your words (kept while the lead works, yours go first and it goes next, a message of its own, #831) |
 | Items done | a card tagged DONE, one row per item |
 | Cue couldn't start a new session for #id | a card from Cue tagged COULDN'T START |
 | A new lead's hello ("You run cue's Desk now…") and hand-off ("X now runs cue's Desk. Please route …") | already one short line: its bubble, the `<desk …>` block dropped |
@@ -127,18 +136,35 @@ These already showed as short cards or lines before #478 and are unchanged:
 | From another Desk's session | a card with that Desk's chip in its head (#472's band is now a card) |
 | What Cue sent a crew lead for its crew | a card tagged CREW with "+ What Cue sent" (team.js `CUE_SAID`, below) |
 
-## Not a short line yet
+## Any other message of Cue's (#836)
 
-The hub (or the window) sends these too, but no pattern in `CUE_MSGS` knows them, so today they show as a raw bubble
-on the right with Cue's full text, as if you had typed it:
+Cue knows its own words when it sends them (`sessions/cue_said.rs`): whatever sends them says so first (`Hub::tell`,
+`tell_now`, the Desk's messages, a lead's hello, a hand-off's first message, a background agent's Resume or Stop), and
+the copy of it in the session's thread is marked `cue` (saved with it, so an older page of the chat has it too). The
+same words typed by you are never Cue's: nothing is guessed from the text. Your words wrapped by Cue (your note or
+question from an item's page, your Send back) stay yours.
 
-| Kind | Sent when | Hub | How it shows today |
-| --- | --- | --- | --- |
-| Carry on after the usage limit | A turn stopped on the usage limit, and it reset (Carry on is on) | sessions/send_at.rs `CARRY_ON` | your bubble: “Carry on where you stopped: your usage limit reset.” |
-| Resume with the hand-off skill | The next session after a hand-off, when the skill takes `resume` | hub/hand_off_note.rs | your bubble: “/handoff resume” |
-| Background agent quiet, or stop it | You wake or stop a session's background agent | ui/agents.js (the window) | your bubble: “Your background agent “X” has gone quiet…”, or “Stop your background agent “X” now…” |
-| Cut refused | The lead's CUT: names a wait that isn't there | desk_said.rs | the lead's chat, your bubble: “Not cut: #a doesn't wait on #b” |
-| CLOSE commit not on main | The lead's CLOSE: names a commit that isn't on main | desk_unstick.rs | the lead's chat, your bubble: “Desk item #id not closed: … isn't on main…” |
+Each also says what kind it is, set where it's sent (#837): `tell(sid, text, kind)`, `tell_now`, `cue_says`,
+`desk_send_cue` and every Desk send take a `Kind`; `send_saved` takes `Said::You` or `Said::Cue(kind)`;
+`send_to_session` is yours alone. The thread's copy carries `kind` beside `cue` (saved as `cue_kind`): brief (an item
+handed over), route (moved, copy given or taken back, parked, paused, resumed, closed, dropped, open again), note (the
+lead's NOTE, an option picked, folded into), nudge (done?, stuck, a quiet teammate, Carry on after a usage limit, a background
+agent's Resume or Stop), followup (DONE and CHECK follow-ups), desk (Desk changes and feed, paused or resumed, Away), question (TO LEAD,
+cleanup, ASK passed on, a wait circle), answer (Cue's answers to the lead's own lines, SHOW, refusals), crew (a crew's
+reviews, fixes, hand outs), handoff (a hand-off note asked for, a fresh session's start from it, a new lead's hello), peer (TELL DESK), notice (anything
+else). A test (`testing/tests/send_rules.rs`) reads the source: text goes into a session only through `deliver`, and
+every one of Cue's sends names its kind.
+
+A marked message with a card of its own above keeps it. Any other is one quiet line at the left, as Cue's lines in a
+lead's chat are: "+ ◔ Cue → cue-383 · #832 · 3m", what it says in short under it ("Asked it to redo its check line",
+else its first sentence), a click opening the full text (`ui/desk/cue_said.js` `cueQuietHtml`). These used to show as
+your bubble: the check line to redo, Carry on after the usage limit, /handoff resume, a background agent's Resume or
+Stop, the lead's Cut refused and CLOSE not on main, and any kind added later.
+
+Kept while the session works, Cue's words and yours are one kept message, Cue's parts known (`cue_parts`): your kept
+bubble shows only yours, Cue's are their quiet line ("goes when its turn ends"), and when the turn ends yours go first,
+alone, Cue's at its next turn, a message of their own (as a session's words for a Desk lead do, #831). Esc or Cancel
+takes back the whole kept message, Cue's words too, as before.
 
 A Cue message waiting to go (queued or held) shows as the card in the chat, dashed; the session's card on the board
 (“Queued: …”) and its Inbox row (“Queued for X: …”) give its plain line, not Cue's raw text.

@@ -145,9 +145,46 @@ fn running_helper(dir: &Path) -> Option<i32> {
     (pid > 0 && crate::server::alive(pid)).then_some(pid)
 }
 
-/// What the helper last said, from install/status.json; None before the first install.
+/// What the helper last said, from install/status.json; None before the first install. An install.sh run that
+/// stopped without saying how it ended reads as failed (`over_if_stale`).
 pub fn status() -> Option<Status> {
-    status_in(&install_dir())
+    let dir = install_dir();
+    status_in(&dir).map(|s| over_if_stale(s, log_written_ms(&dir), crate::clock::now_ms()))
+}
+
+/// The tag ./install.sh writes in status.json when it installs the app (run by you, or a session, not Cue).
+pub const BY_HAND: &str = "install.sh";
+
+/// How long an install.sh run may say nothing (status.json and its log untouched) before it's taken as over (ms).
+const BY_HAND_QUIET_MS: u64 = 30 * 60_000;
+
+/// `s`, or, when it's install.sh's still building, installing or starting with nothing written for `BY_HAND_QUIET_MS`
+/// (`log_ms`: when its log was last written), failed: it was stopped (a closed terminal, a kill) before it could say
+/// so, and must not hold the Desk's installs back for good.
+pub fn over_if_stale(mut s: Status, log_ms: u64, now: u64) -> Status {
+    if s.tag == BY_HAND && matches!(s.step.as_str(), "building" | "installing" | "starting") && now.saturating_sub(s.at.max(log_ms)) > BY_HAND_QUIET_MS {
+        s.step = "failed".into();
+        if s.log.is_empty() {
+            s.log = "install.sh stopped without saying how it ended".into();
+        }
+    }
+    s
+}
+
+/// When install/log was last written (ms; 0 when there's none).
+fn log_written_ms(dir: &Path) -> u64 {
+    std::fs::metadata(dir.join("log")).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64)
+}
+
+/// The end of install/log (its last 64 KB), the latest install's output; "" when there's none.
+pub fn log_end() -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(install_dir().join("log")) else { return String::new() };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let _ = f.seek(SeekFrom::Start(len.saturating_sub(64 * 1024)));
+    let mut buf = Vec::new();
+    let _ = f.read_to_end(&mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
 }
 
 fn status_in(dir: &Path) -> Option<Status> {

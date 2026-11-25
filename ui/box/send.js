@@ -21,6 +21,33 @@ const boxOwner = (key, el) => (key && BOX_OWNERS.find((o) => o.owns(key, el))) |
 /** The entry that keeps view `v`'s chat, or null (the Board's: none). */
 const boxViewOwner = (v) => BOX_OWNERS.find((o) => o.view === v) || null;
 
+// ---------- ⌘↵ in every chat's box (#861): the one key handling and the one hint ----------
+/** Enter `e` in box `key`, which writes to session `sid` (null: none known): ↵ sends what's typed; ⌘↵ (or Ctrl+↵)
+ *  sends it now, stopping the session's turn if it's at work, and with nothing typed sends the message already waiting
+ *  for it (queued, or kept in Cue) now. `send(now)` sends what's typed. Every chat's box comes here: a session's on the
+ *  Board and in the mini window (app/keys.js enterInSessionBox) and the Desk's (desk/act.js: the lead's, an item's, a
+ *  session's, a crew member's). */
+function boxEnter(e, key, sid, send) {
+  const now = !!(e && (e.metaKey || e.ctrlKey));
+  const typed = draft(key).text.trim() || draft(key).images.length;
+  if (now && !typed && sid && sendWaitingNow(sid)) return;
+  return send(now);
+}
+/** Every chat's empty box text, from here only (#881): "Reply to <the AI that chat talks to>…" (Claude Code, Codex,
+ *  Pi), and what happens to it while that session is at work, or `more` when the box says something of its own (a
+ *  parked session's "sending resumes it first"). `sid`: the session the box writes to ("" when none is known). */
+function boxPlaceholder(sid, more = "") {
+  const s = sid ? sessionOf(sid) : null, h = s?.harness || (sid && parkedOf(sid)?.harness) || "";
+  const after = s?.state === "working" ? (h === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends") : "";
+  const add = more || after;
+  return `Reply to ${h ? agentName(h) : "it"}…${add ? ` ${add}` : ""}`;
+}
+/** The quiet "⌘↵ send now" beside a box's Send, while session `sid` is at work or has a message waiting: then ⌘↵ does
+ *  something ↵ doesn't. "" otherwise. Not read out: it says what a key does, which the box already does. */
+function boxNowHint(sid) {
+  const s = sid ? sessionOf(sid) : null;
+  return s && (s.state === "working" || s.queued || s.held) ? '<span class="now-hint" aria-hidden="true"><kbd>⌘↵</kbd> send now</span>' : "";
+}
 /** Why nothing can go to session `sid` now ("" when it can): it's restarting, or it's asking you something first. */
 function boxHeld(sid) {
   if (!sid) return "";

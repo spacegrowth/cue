@@ -1,15 +1,7 @@
-// Fakes for src-tauri/src/ipc/terminal.rs: a session's terminal (tmux, attached), Cue's own shells, full screen,
+// Fakes for src-tauri/src/ipc/terminal.rs: Cue's own shells, full screen,
 // dictation and the natural voices (cue-speak).
 CueBridge.area("terminal", (w) => {
   const term = (sid, text, gen = 1) => w.emit("term", { sid, gen, data: w.b64(text) });
-  // ?stalled=1: every session's terminal has a client that stopped reading: what's typed isn't taken until
-  // Resume (term_resume), as term::write refuses it.
-  const stalled = new Set();
-  const stallAll = w.q.has("stalled");
-  let gen = 0;
-  /** What a session's terminal shows when it's attached: Claude Code's permission menu. */
-  const screen = (sid) => ["╭──────────────────────────────────────────────────────────╮", "│ \x1b[33mBash command\x1b[0m", "│   rm -rf build && make release", "│", "│ \x1b[1mDo you want to proceed?\x1b[0m", "│ \x1b[32m❯ 1. Yes\x1b[0m", "│   2. Yes, and don't ask again for rm commands here", "│   3. No, and tell Claude what to do differently (esc)", "╰──────────────────────────────────────────────────────────╯"]
-      .map((l) => /^[╭│╰]/.test(l) ? `\x1b[2m${l[0]}\x1b[0m${l.slice(1)}` : l).join("\r\n") + "\r\n";
   // Cue's own shells: a prompt that echoes what's typed, Enter a new prompt, Backspace rubs out.
   const shellCwd = {};
   const prompt = (id) => `\x1b[32mme@mac\x1b[0m \x1b[1;34m${(shellCwd[id] || "~").replace(/^\/Users\/[^/]+/, "~")}\x1b[0m % `;
@@ -38,23 +30,12 @@ CueBridge.area("terminal", (w) => {
   let fullscreen = false;
 
   return {
-    term_open: ({ sessionId }) => {
-      if (stallAll) stalled.add(sessionId);
-      gen += 1;
-      const g = gen;
-      setTimeout(() => term(sessionId, screen(sessionId), g), 150 * w.latency);
-      return g;
-    },
     term_write: ({ sessionId, data }) => {
       if (sessionId.startsWith("shell:")) return setTimeout(() => echo(sessionId, data), 10 * w.latency), null;
-      if (stalled.has(sessionId)) throw "its terminal isn't responding: what you type isn't being sent until you resume it";
       return null;
     },
-    term_resume: ({ sessionId }) => { stalled.delete(sessionId); return null; },
     term_resize: () => null,
     term_close: () => null,
-    session_screen: () => "  Do you want to proceed?\n  ❯ 1. Yes\n    2. Yes, and don't ask again\n    3. No (esc)",
-    session_keys: () => null,
     shell_open: ({ id, cwd }) => { shellCwd[id] = cwd; setTimeout(() => term(id, prompt(id)), 50 * w.latency); return { gen: 1, host: "mac" }; },
     shell_list: () => ({ shells: [], host: "mac" }),
     shell_name: () => null,

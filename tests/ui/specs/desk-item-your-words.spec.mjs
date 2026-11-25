@@ -12,10 +12,10 @@ const chatOf = (page, sid = "host") => page.locator(`.dk-right .dkn-sp[data-desk
 const TITLE = "Hosted sessions can't open the canvas";
 /** Bubble `b`'s words, its item head (the kind, number and title over them) left out. */
 const wordsOf = (b) => b.evaluate((el) => { const c = el.cloneNode(true); c.querySelector(".dk-about")?.remove(); return c.innerText.trim(); });
-/** The session's own chat, outside the Desk: its card under Sessions opened. */
+/** The session's own chat, outside the Desk, opened on the Board (a Desk's session has no card there, #825). */
 const openSession = async (page, sid) => {
   await page.locator('.switch-view [data-view="board"]').click();
-  await page.locator(`.working[data-session="${sid}"]`).first().click();
+  await page.evaluate((sid) => openSession(sid), sid);
   return page.locator(".active-pane");
 };
 const host = (cue, patch) => cue.change((st, patch) => Object.assign(st.sessions.find((x) => x.session_id === "host"), patch), patch);

@@ -44,12 +44,51 @@ struct Told {
     reopen: Option<(String, String, String)>,
     /// An item already open: what its holder is told, and where (to, words).
     note: Option<(String, String)>,
+    /// The same failure the lead was told of last: not told again (#820).
+    quiet: bool,
 }
 
 impl Told {
     fn line(kind: ChangeKind, words: String) -> Told {
-        Told { kind, words, reopen: None, note: None }
+        Told { kind, words, reopen: None, note: None, quiet: false }
     }
+}
+
+/// How many of a failed run's last lines its row for the lead carries (#820): the rest is in its log.
+const ROW_TAIL_LINES: usize = 6;
+
+/// What a failed run's row for the lead ends with: its output's last few lines, each cut short, and where its log is
+/// (on the machine it ran on). The holder of an item it's traced to reads the longer tail (`tail_words`).
+fn row_tail(res: &FullRunResult, r: &Running) -> String {
+    let mut out = String::new();
+    if let Some(t) = res.tail.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        let lines: Vec<&str> = t.lines().collect();
+        let last: Vec<String> = lines[lines.len().saturating_sub(ROW_TAIL_LINES)..].iter().map(|l| cut(l, 200)).collect();
+        out.push_str(&format!("\nThe end of its output:\n{}", last.join("\n")));
+    }
+    let log = res.failed_log();
+    if !log.is_empty() {
+        let on = if r.on.is_empty() { String::new() } else { format!(" on {}", crate::machines::display_name(&r.on)) };
+        out.push_str(&format!("\nThe whole log: {log}{on}"));
+    }
+    out
+}
+
+/// `line` cut to `n` characters at most, with "…" when cut.
+fn cut(line: &str, n: usize) -> String {
+    let mut c = line.chars();
+    let mut s: String = c.by_ref().take(n).collect();
+    if c.next().is_some() {
+        s.push('…');
+    }
+    s
+}
+
+/// What makes two failed runs the same failure for the lead: what failed, and the commit blamed.
+fn failure_key(res: &FullRunResult) -> String {
+    let mut failed = res.failed.clone();
+    failed.sort();
+    format!("{}\n{}", res.culprit.as_ref().map_or("", |c| c.commit.as_str()), failed.join("\n"))
 }
 
 /// Run `r` failed with no item to blame (no commit found, or one that is no item's landed commit): nothing holds the
@@ -63,7 +102,7 @@ fn failed_on_nobody(s: &mut FullRunState, r: &Running, res: &FullRunResult, docs
         Some(c) => format!("commit {} ({}) broke it, which is no item's landed commit on this Desk", short(&c.commit), c.subject),
         None => res.culprit_note.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or("the commit that broke it wasn't found").to_string(),
     };
-    let words = format!("Full run failed on main, on tests no item in this batch caused: {}. Why: {why}. No item was reopened and the app still updates.{}{}", kit::failed_words(&res.failed), instead_words(r), tail_words(res));
+    let words = format!("Full run failed on main, on tests no item in this batch caused: {}. Why: {why}. No item was reopened and the app still updates.{}{}", kit::failed_words(&res.failed), instead_words(r), row_tail(res, r));
     Told::line(ChangeKind::FullRunFailed, words)
 }
 
@@ -195,39 +234,36 @@ impl Hub {
             self.desk_open_again(id, what, "Fix it", more);
         }
         if let Some(note) = t.note.clone() {
-            self.desk_done(crate::desk::hub::core::desk::Effects { sends: vec![note], ..Default::default() });
+            self.desk_done(crate::desk::hub::core::desk::Effects { sends: vec![crate::desk::hub::core::desk::kinded(note, crate::sessions::Kind::FollowUp)], ..Default::default() });
         }
-        self.desk_feed_line(desk, t.kind, &t.words, &t.words);
+        if !t.quiet {
+            self.desk_feed_line(desk, t.kind, &t.words, &t.words);
+        }
         running
     }
 
-    /// What the Desk's top line says of `repo`'s full runs (now_line.rs), kept for the window: the window drawn again
-    /// when it changed. The run's items are asked of git once per run.
+    /// The full run of `repo` going, kept for the items it carries (now_line.rs, each says it's being tested): the
+    /// window drawn again when it changed. The run's items are asked of git once per run.
     fn full_run_shown(&self, desk: &str, repo: &str, s: &FullRunState, runner: &dyn FullRunner) {
-        let head = crate::desk::hub::landing::in_place::main_head(repo).unwrap_or_default();
-        let (from, to) = match &s.running {
-            Some(r) => (r.since.clone(), r.at.clone()),
-            None => (s.good().to_string(), head.clone()),
-        };
-        let items = {
+        let line = s.running.as_ref().map(|r| {
             static ITEMS: std::sync::Mutex<Vec<(String, Vec<String>)>> = std::sync::Mutex::new(Vec::new());
-            let key = format!("{repo}\n{from}..{to}");
+            let key = format!("{repo}\n{}..{}", r.since, r.at);
             let known = crate::locking::lock(&ITEMS, "full run items").iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone());
-            match known {
+            let items = match known {
                 Some(v) => v,
-                None if to.is_empty() => Vec::new(),
                 None => {
-                    let v = batch(repo, &Running { at: to, since: from, ..Default::default() });
+                    let v = batch(repo, r);
                     let mut all = crate::locking::lock(&ITEMS, "full run items");
                     all.retain(|(k, _)| !k.starts_with(&format!("{repo}\n")));
                     all.push((key, v.clone()));
                     v
                 }
-            }
-        };
-        let on = s.running.as_ref().filter(|r| !r.on.is_empty()).map(|r| crate::machines::display_name(&r.on)).unwrap_or_default();
-        let step = if s.running.is_some() && on.is_empty() { runner.step(repo) } else { String::new() };
-        let line = crate::desk::hub::landing::now_line::full_line(s, &head, &step, &on, items);
+            };
+            let on = if r.on.is_empty() { String::new() } else { crate::machines::display_name(&r.on) };
+            let step = if on.is_empty() { runner.step(repo) } else { String::new() };
+            (step, on, items)
+        });
+        let line = line.and_then(|(step, on, items)| crate::desk::hub::landing::now_line::full_line(s, &step, &on, items));
         if crate::desk::hub::landing::now_line::set_full(desk, line) {
             self.redraw();
         }
@@ -251,10 +287,8 @@ impl Hub {
         // build (it passed, or failed on no item): a failure traced to an item leaves that clock alone, so failing
         // runs one after another can't keep both it and the four hours from ever being up.
         s.judged = r.at.clone();
-        // What the Desk's top line says of it (now_line.rs).
-        (s.judged_ms, s.judged_items) = (now, batch(repo, r));
-        s.failed_names = if res.passed { Vec::new() } else { res.failed.iter().take(8).cloned().collect() };
         if res.passed {
+            s.told_failure.clear();
             (s.passed, s.good, s.failing, s.unrun_since) = (r.at.clone(), r.at.clone(), String::new(), 0);
             (s.held_since, s.held_item) = (0, String::new());
             return Some(Told::line(ChangeKind::FullRunPassed, format!("Full run passed on main{}.{}", kit::ids_words(&batch(repo, r)), instead_words(r))));
@@ -262,10 +296,15 @@ impl Hub {
         let culprit = res.culprit.as_ref().filter(|c| !c.commit.is_empty());
         // A commit that changed only documents broke nothing (the script says so too; one on another machine may be older).
         let docs_only = culprit.is_some_and(|c| only_documents(repo, &c.commit));
-        match culprit.filter(|_| !docs_only).and_then(|c| self.full_run_blamed(desk, c).map(|it| (c, it))) {
-            Some((c, it)) => Some(failed_on_item(s, r, &res, c, &it, now)),
-            None => Some(failed_on_nobody(s, r, &res, docs_only)),
-        }
+        let mut told = match culprit.filter(|_| !docs_only).and_then(|c| self.full_run_blamed(desk, c).map(|it| (c, it))) {
+            Some((c, it)) => failed_on_item(s, r, &res, c, &it, now),
+            None => failed_on_nobody(s, r, &res, docs_only),
+        };
+        // The same failure as the last the lead heard of (a run on the next commit failing the same way): said once.
+        let key = failure_key(&res);
+        told.quiet = s.told_failure == key;
+        s.told_failure = key;
+        Some(told)
     }
 
     /// The item of Desk `desk` that commit `c` is: the one its subject names, when that item's own landed commit is

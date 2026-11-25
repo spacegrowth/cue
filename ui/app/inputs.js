@@ -5,6 +5,8 @@
  *  every text box's draft, with what each box does as you type. */
 function onInput(e) {
   if (e.target.matches?.("[data-hsession]")) { histSession = e.target.value; histOpen = null; return renderMain(); }
+  if (e.target.matches?.("[data-dk-act-f]")) return deskActFilterSet(e.target);
+  if (e.target.matches?.("[data-dk-awf-f]")) return deskAwfSet(e.target);
   if (e.target.matches?.("[data-owner-names]")) { ownerNamesEdit = e.target.value; return; }
   if (e.target.matches?.("[data-quick-edit]")) { qpEdit = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value); clearTimeout(qpSaveAt); qpSaveAt = setTimeout(saveQuickPhrases, 500); return; }
   if (e.target.matches?.("[data-send-at-time]")) { sendAtTime = e.target.value || sendAtTime; const go = e.target.parentElement?.querySelector("[data-send-at-go]"); if (go) go.textContent = `Send ${sendAtWhen(sendAtTime).words}`; return; }
@@ -14,6 +16,10 @@ function onInput(e) {
   if (id === "find-live") { liveSel = 0; return runSearch(e.target.value); }
   if (id === "find-sessions") return renderMain();
   if (id === "hv-desk-find") { hvAt = 0; return renderMain(); }
+  // The Desk's Activity search (#789): the list drawn again as you type, from its top.
+  if (id.startsWith("dk-act-find:")) { deskMovesShown.delete(id.slice(12)); return renderMain(); }
+  // The Away tab's search (#863): the times away that match, as you type.
+  if (id.startsWith("dk-away-find:")) return renderMain();
   if (id === "new-cwd") { nfFolderOpen = true; nfFolderQ = e.target.value; nfFolderSel = -1; saveDrafts(); return renderMain(); }
   if (id === "new-model-id") { newModel = e.target.value.replace(/\s+/g, ""); remember("newModel", newModel); remember("newModelOther", newModel); return; }
   saveDrafts();

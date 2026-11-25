@@ -11,7 +11,7 @@ function deskShow(what) {
     deskTab = "lead";
     // "This turn in …" on the lead: its chat goes to that turn (desk/view.js deskSettle), not to its end.
     deskTurnLead = !!deskTurnAt;
-    if (!deskTurnAt) deskChatEnd = true;
+    if (!deskTurnAt) { deskChatEnd = true; deskChatSent = true; }
     return renderMain();
   }
   if (what?.kind === "item") deskSeeItem(what.id);
@@ -21,6 +21,9 @@ function deskShow(what) {
   deskDropArm = null;
   deskGiveFor = null;
   if (!what) deskChatEnd = true;
+  // A chat opened (a session's, a crew member's, the lead's): at its end, and again a frame and a moment later, so what
+  // draws late (its steps, a picture) doesn't leave it short of the end.
+  if (!what || ["chat", "crew", "holder"].includes(what.kind)) { deskChatEnd = true; deskChatSent = true; }
   renderMain();
 }
 /** Send what's in box `key`: to the lead (naming the open item), or to the lead (naming its crew member). Only what's
@@ -35,14 +38,15 @@ async function deskSendBox(key, sendNow = false) {
   deskAwayNoteSent(to);
   // From the lead's own box, however it goes (words, a "/" command, a "!" line): its chat goes to its end, to show
   // what you sent and follow the answer (#704).
-  if (deskLeadBoxTo(to)) { deskChatEnd = true; deskChatSent = true; }
+  // From the open chat's own box (a session's, a crew member's, an item's page) too.
+  if (deskLeadBoxTo(to) || document.querySelector(`.dk-right textarea[data-text="${CSS.escape(key)}"]`)) { deskChatEnd = true; deskChatSent = true; }
   // About an item, from its page or its row: where it goes is read now, from where the item stands, not from when the
   // box was drawn (#437).
-  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text);
+  if (to.item && !/^[/!]/.test(text)) return deskSendItem(to, key, text, sendNow);
   if (to.sid) {
     // To a crew member: through its lead, named (the guards, "It's restarting" and the rest, look at the lead).
     if (!to.mate) await sendTo(to.sid, sendNow, key);
-    else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid)(`About ${to.mate}: ${typed}`, images), true);
+    else await deliver(to.sid, key, (typed, images) => boxToSession(to.sid, { now: sendNow })(`About ${to.mate}: ${typed}`, images), true);
     return;
   }
   // A "/" command or a "!" line in the lead's own box (the Board's composer, #688): sent as a session's box sends it,
@@ -58,16 +62,18 @@ async function deskSendBox(key, sendNow = false) {
  *  it goes back with your words, unless they ask a question (to check or done: a note it answers). Held by no one,
  *  or done: to the lead. Your words stay in the box until the hub has
  *  them, so a restart or a change of state can't lose them. `text`: what's in the box, trimmed. */
-async function deskSendItem(to, key, text) {
+async function deskSendItem(to, key, text, sendNow = false) {
   const project = to.project || deskSelection(), it = deskItem(project, to.item);
   if (!it) return toast("That item isn't on this Desk any more.");
+  // Its How to check folds to its line and stays while it's to check, whatever its session does with your words (#883).
+  if (it.state === "to_check" || deskCHowKeep.has(it.id)) { deskCHowKeep.add(it.id); deskCHowFold.set(it.id, true); }
   // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
   // answer changes its code (the hub's desk/hub/turn/asked.rs).
   // A quick phrase on an item to check (#488, "Go ahead"): a note to its holder too, never a Send back.
   const phrase = phraseSending && it.state === "to_check";
   const asks = phrase || (["to_check", "done"].includes(it.state) && /\?\s*$/.test(text || ""));
   const hs = deskHolderSid(it), live = hs && (sessionOf(hs) || it.state === "to_check" || asks);
-  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text);
+  if (!it.holder || !live || (!asks && ["done", "dropped"].includes(it.state))) return deskSendLead({ project, item: it.id }, key, text, sendNow);
   if (it.state === "to_check" && !asks) {
     await deskSendBack(it.id, key);
     return renderMain();
@@ -78,7 +84,8 @@ async function deskSendItem(to, key, text) {
     guardSid: hs, save: true,
     // An answer: the page says what you answered (deskChain).
     before: (t) => { if (it.state === "needs_you") deskAnswers.set(it.id, { q: deskQuestion(it), a: t || "a picture", ask: it.ask?.item_id || "", at: now() }); },
-    pending: (t, images) => deskPend(it.id, t || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : "note" }),
+    // ⌘↵ (#861): "note_now", so it reaches a holder at work at once, mid-turn.
+    pending: (t, images) => deskPend(it.id, t || "(a picture)", "note", images.length, { key, images, act: phrase ? "phrase" : sendNow ? "note_now" : "note" }),
     call: (t, images, p) => invoke("desk_item_act", { id: it.id, act: p.act, text: p.text, images: p.images }),
     sent: () => renderMain(),
     // Didn't go: red on its Thread with why, Retry and Edit (#422). The saved draft keeps it till then, so a restart
@@ -143,6 +150,7 @@ const deskDone = (id) => (state.desk?.projects || []).some((p) => (p.items || []
 /** Item `id` sent back to its holder with what's in box `key`: the box emptied once it went (kept when it didn't).
  *  Whether it went. */
 async function deskSendBack(id, key) {
+  deskCHowKeep.delete(id);
   // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it isn't emptied, whether it goes or not.
   const phrase = phraseSending, reopen = deskDone(id);
   let pend = null;
@@ -262,7 +270,7 @@ function openInDesk(project, itemId = "") {
 }
 async function deskAct(id, act, el = null) {
   // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk/commit.js).
-  if (act === "looks_right") return deskLooksRight(id);
+  if (act === "looks_right") { deskCHowKeep.delete(id); return deskLooksRight(id); }
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
   if (act === "msg_retry") return el?.dataset.step ? deskRetry(id, el.dataset.step) : deskMsgRetry(id, el?.dataset.at);
@@ -285,7 +293,11 @@ async function deskAct(id, act, el = null) {
   if (act === "back_go") {
     const key = `back:${id}`;
     if (!draft(key).text.trim() && !draft(key).images.length) { toast("Say why it goes back first", 4000); focusComposer(key, { end: false }); return; }
+    // Its row stays where it was till you open something else (#791), from before it goes: its new state can come in
+    // before the answer does.
+    deskCStay.set(id, deskLooksPlace());
     if (await deskSendBack(id, key)) deskBackFor = null;
+    else deskCStay.delete(id);
     return renderMain();
   }
   // Start now at the limit on items at once (#712): asked first, never past it unless you raise it.
@@ -392,10 +404,14 @@ deskClicks({
   deskCrew: (el) => deskShow({ kind: "crew", lead: el.dataset.lead, agent: el.dataset.deskCrew, ...(deskOpen?.kind === "sessions" ? { from: { kind: "sessions", crew: [el.dataset.lead, el.dataset.deskCrew] } } : {}) }),
   deskBack: (el) => deskShow(el.dataset.deskBack ? { kind: "holder", sid: el.dataset.deskBack } : null),
   deskTab: (el) => { deskTab = el.dataset.deskTab; deskChatEnd = true; renderMain(); },
+  // The lead chat's Show earlier and Hand-off note (#792, desk/earlier.js).
+  deskEarlier: (el) => deskEarlierShow(el.closest("[data-desk-chat]")?.dataset.deskChat || deskSelection(), el.dataset.deskEarlier),
+  deskEarlierNote: (el) => deskEarlierNote(el.closest("[data-desk-chat]")?.dataset.deskChat || deskSelection(), el.dataset.deskEarlierNote),
   deskMovesClear: (el) => deskMovesClear(el.dataset.deskMovesClear),
   deskMovesKeep: () => { deskMovesClearing = null; renderMain(); },
   deskSend: (el) => deskSendBox(el.dataset.deskSend),
-  deskAct: (el) => { deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
+  // A choice shuts its ⋯ menu, but Drop's first press (it arms) keeps it open, for its second (#847).
+  deskAct: (el) => { if (!(el.dataset.deskAct === "drop" && deskDropArm !== el.dataset.id && el.closest(".dk-moremenu"))) deskGiveFor = null; deskAct(el.dataset.id, el.dataset.deskAct, el); },
   deskUndo: (el) => deskUndo(el.dataset.deskUndo),
   deskTick: (el) => { const id = el.dataset.deskTick; if (!deskTicked.delete(id)) deskTicked.add(id); if (!deskTicked.size) deskGoBackOpen = null; renderMain(); },
   deskShowAll: (el) => { const k = el.dataset.deskShowAll; if (!deskShowAll.delete(k)) deskShowAll.add(k); renderMain(); },
@@ -460,6 +476,9 @@ deskClicks({
     const key = el.dataset.deskOlder;
     if (!deskOlderOpen.delete(key)) deskOlderOpen.add(key);
     renderMain();
+    // Closed opened at the foot of the column (#834): its rows land below the fold, so the column glides up till the
+    // heading sits near its top, only when the opened rows would be out of view.
+    if (key.startsWith("closed:") && deskOlderOpen.has(key)) requestAnimationFrame(() => deskShowOpened(key));
   },
   deskGroup: (el) => deskGroupFold(el.dataset.deskGroup),
   deskDoneFold: (el) => {
@@ -523,7 +542,7 @@ function deskClick(e) {
   // A crew member's ⋯ menu closes on a click outside it.
   if (deskCrewMenu && !e.target.closest?.(".dk-cmore")) { deskCrewMenu = ""; queueMicrotask(renderMain); }
   // An item's ⋯ menu (#669) closes on a click outside it too.
-  if (deskGiveFor?.at === "more" && !e.target.closest?.(".dk-morewrap")) { deskGiveFor = null; queueMicrotask(renderMain); }
+  if (deskMoreAt(deskGiveFor?.at) && !e.target.closest?.(".dk-morewrap")) { deskGiveFor = null; queueMicrotask(renderMain); }
   // The header's Desks menu (app/head_view.js) too: a Desk click stops here, before the window's own clicks see it.
   if (hvMenu && !e.target.closest?.(".hv-wrap")) { hvMenu = ""; delete drafts["hv-desk-find"]; queueMicrotask(renderMain); }
   // In a session's name box (✎ on its row): the click stays in the box, it doesn't open the row.
@@ -539,25 +558,27 @@ function deskKeptBox(sid) {
   const lead = (to) => !to.sid && !to.item && deskLead(deskOf(to.project))?.sid === sid;
   return [...deskBoxes].filter(([, to]) => (to.sid === sid && !to.mate && !to.item) || lead(to)).map(([k]) => k).find(shown) || "";
 }
-/** The session Desk box `key` writes to itself: a session's or holder's page's, or the lead's chat's (its lead); null
- *  for one that goes about an item or a crew member. */
+/** The session Desk box `key` writes to: a session's or holder's page's, an item's live holder, a crew member's lead,
+ *  else the Desk's lead (the lead's own chat, an item nobody is at work on). Its ⌘↵ and "⌘↵ send now" are that
+ *  session's (#861). */
 function deskBoxSid(key) {
   const to = deskBoxes.get(key);
-  if (!to || to.item || to.mate) return null;
-  return to.sid || deskLead(deskOf(to.project))?.sid || null;
+  if (!to) return null;
+  // An item ready to check goes back to its holder (deskSendItem): that session's.
+  const it = to.item && !to.sid ? deskItem(to.project || deskSelection(), to.item) : null;
+  if (it?.state === "to_check" && it.holder && sessionOf(deskHolderSid(it))) return deskHolderSid(it);
+  return to.sid || deskLead(deskOf(to.project || deskSelection()))?.sid || null;
 }
 // The Desk's boxes, on the window's shared box (box/send.js BOX_OWNERS): Enter and a quick phrase send them, ↑ ↓ bring
 // back what went to their session, an item page's suggested reply, and the Desk's chat end for the reader.
 BOX_OWNERS.push({
   owns: (key) => key.startsWith("back:") || deskBoxes.has(key),
   send: (key) => (key.startsWith("back:") ? deskAct(key.slice(5), "back_go") : deskSendBox(key)),
-  // ↵ sends; ⌘↵ as in a session's box (app/keys.js enterInSessionBox, #630): what's typed goes now, and with nothing
+  // ↵ sends; ⌘↵ as in every chat's box (box/send.js boxEnter, #630, #861): what's typed goes now, and with nothing
   // typed, the message Cue kept for the session this box writes to goes now.
   enter(e, key) {
-    if (key.startsWith("back:") || !(e.metaKey || e.ctrlKey)) return this.send(key);
-    const typed = draft(key).text.trim() || draft(key).images.length, sid = deskBoxSid(key);
-    if (!typed && sid && sendWaitingNow(sid)) return;
-    return deskSendBox(key, true);
+    if (key.startsWith("back:")) return this.send(key);
+    return boxEnter(e, key, deskBoxSid(key), (now) => deskSendBox(key, now));
   },
   recall: (key) => deskRecall(key),
   view: "desk",
@@ -603,7 +624,7 @@ function deskKey(e) {
   if (e.key === "Escape" && key.startsWith("back:")) { deskAct(key.slice(5), "back_cancel"); return true; }
   // Esc: only when nothing over the Desk wants it (the crew page, a sheet, search and the live list, the projects
   // list, a menu, a rename, a dialog: How work lands, Ask me before, quitting, trusting a folder).
-  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || deskFullAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || colorFor || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
+  const over = sheet || lightbox || liveOpen || deleteAsk || quitAsk || trustAsk || deskFullAsk || (typeof lands !== "undefined" && lands) || (typeof askBefore !== "undefined" && askBefore) || renaming || pjRenaming || pjOpen || pjNewOpen || newProjFor || btwFor || menuFor || redirectFor || (typeof moreFor !== "undefined" && moreFor) || (crewPageSid && document.querySelector(".crew-page"));
   if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !over) {
     if (deskAddingSession && deskAddingSession === deskSelection()) {
       deskAddingSession = null;
@@ -648,7 +669,7 @@ if (typeof document !== "undefined") {
   document.addEventListener("scroll", (e) => {
     const c = e.target;
     if (!c?.matches?.(".dk-chat")) return;
-    const at = Date.now(), end = boxAtEnd(c);
+    const at = Date.now(), end = boxEndAfterScroll(c);
     if (!end && at - (c._pinAt || 0) < 400 && at - (c._youAt || 0) > 800) return;
     deskChatEnd = end;
   }, true);
@@ -662,4 +683,16 @@ if (typeof document !== "undefined") {
     deskSwitchAt = rows.indexOf(row);
     for (const r of rows) r.classList.toggle("at", r === row);
   });
+}
+/** Brings an opened group's heading (data-desk-older=`key`) near the top of the list that scrolls it, smoothly, when
+ *  the rows it opened end below what's in view (#834). */
+function deskShowOpened(key) {
+  const head = document.querySelector(`[data-desk-older="${CSS.escape(key)}"]`), box = head?.closest(".dkn-list, .dk-scroll");
+  if (!box) return;
+  let last = head;
+  while (last.nextElementSibling) last = last.nextElementSibling;
+  const view = box.getBoundingClientRect();
+  if (last.getBoundingClientRect().bottom <= view.bottom) return;
+  const top = box.scrollTop + head.getBoundingClientRect().top - view.top - 8;
+  box.scrollTo({ top, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 }

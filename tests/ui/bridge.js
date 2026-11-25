@@ -26,7 +26,12 @@
     /** The window's state as get_state returns it: a copy, its clock read now (hub/mod.rs stamped). */
     snapshot: () => ({ ...structuredClone(w.state), now_ms: Date.now() }),
     /** Send event `name` to the window, as the app's emit does. */
-    emit: (name, payload) => { for (const f of listeners[name] || []) f({ event: name, payload }); },
+    // A "state" is sent as the app sends it: whole to its own listeners, and "state-changed" to the window, which
+    // fetches it (get_state answers the world's: emit a state after changing the world, as `changed` does).
+    emit: (name, payload) => {
+      for (const f of listeners[name] || []) f({ event: name, payload });
+      if (name === "state") for (const f of listeners["state-changed"] || []) f({ event: "state-changed", payload: null });
+    },
     /** The state changed: the window hears it shortly after, as it does from the hub. */
     changed: (ms = 30) => setTimeout(() => w.emit("state", w.snapshot()), ms * w.latency),
     session: (sid) => w.state.sessions.find((s) => s.session_id === sid),

@@ -20,6 +20,10 @@ pub trait Installer: Send + Sync {
     fn start(&self, repo: &str, commit: &str, tag: &str) -> Result<(), String>;
     /// The latest install's status, if there's been one.
     fn status(&self) -> Option<InstallStatus>;
+    /// The end of the latest install's whole output, as it's written ("" when there's none).
+    fn log(&self) -> String {
+        String::new()
+    }
     /// The check `commit` of `repo` has to pass before it lands on the main line: None when the repository has no
     /// check, else what it said (an error with the end of its output when it failed).
     fn check(&self, _repo: &str, _commit: &str) -> Option<Result<(), String>> {

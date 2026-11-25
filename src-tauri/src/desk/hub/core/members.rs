@@ -81,7 +81,9 @@ impl Hub {
                     }
                     st.desk.lead.remove(project);
                 }
-                let changed = if on { st.desk.join(project, sid) } else { st.desk.leave(project, sid) };
+                // You took it off: no longer the Desk's at all, so the Board shows it again (#921).
+                let forgot = !on && st.desk.worked.get_mut(project).is_some_and(|w| w.remove(sid));
+                let changed = if on { st.desk.join(project, sid) } else { st.desk.leave(project, sid) || forgot };
                 Ok((changed, removed_lead))
             })?;
             if removed_lead {
@@ -96,7 +98,7 @@ impl Hub {
         })?;
         if removed_lead && self.session_origin(sid).is_some() {
             let words = format!("You no longer run {}'s Desk. Keep on with the items you hold.", self.desk_name(project));
-            if let Err(e) = self.tell(sid, &words) {
+            if let Err(e) = self.tell(sid, &words, crate::sessions::Kind::Desk) {
                 eprintln!("cue: desk: {project}'s last lead wasn't told it was removed: {e}");
             }
         }
@@ -205,8 +207,9 @@ impl Hub {
         if gone.is_empty() {
             return;
         }
+        // Off the list its lead routes to, still the Desk's: the Board keeps it off (#921).
         for (project, sid) in &gone {
-            crate::db::desk_drop_member(project, sid);
+            crate::db::desk_retire_member(project, sid);
         }
         self.changed();
     }

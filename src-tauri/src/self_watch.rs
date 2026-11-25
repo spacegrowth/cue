@@ -93,9 +93,19 @@ pub(crate) fn used_mb() -> Option<u64> {
 /// quiet test instance) and `quit` runs; if Cue is still here a few seconds later, the process ends at once.
 pub(crate) fn start(quit: impl Fn() + Send + 'static) {
     let watch = Watch::from_env();
+    let mut ticks = 0u64;
     let run = move || loop {
         std::thread::sleep(EVERY);
-        let Some(stop) = watch.check(used_mb()) else { continue };
+        let mut used = used_mb();
+        // Freed memory the allocator still holds counts in the footprint until it's handed back: big buffers let go
+        // (each state built for the window is megabytes) stayed there by the gigabyte (#876). Handed back before
+        // Cue is judged too big, and every so often once it's past HAND_BACK_FROM_MB.
+        ticks += 1;
+        if used.is_some_and(|mb| mb >= watch.limit_mb || (mb >= HAND_BACK_FROM_MB && ticks % HAND_BACK_EVERY == 0)) {
+            hand_back_freed();
+            used = used_mb();
+        }
+        let Some(stop) = watch.check(used) else { continue };
         let said = stop.said();
         eprintln!("cue: {said}");
         log(&said);
@@ -111,6 +121,22 @@ pub(crate) fn start(quit: impl Fn() + Send + 'static) {
         std::process::exit(1);
     };
     let _ = std::thread::Builder::new().name("cue-self-watch".into()).spawn(run);
+}
+
+/// Past this footprint (MB), freed memory is handed back to macOS every HAND_BACK_EVERY checks.
+const HAND_BACK_FROM_MB: u64 = 768;
+const HAND_BACK_EVERY: u64 = 6;
+
+/// Hands the memory Cue freed, that the allocator still holds, back to macOS: the footprint is then what Cue uses.
+fn hand_back_freed() {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn malloc_zone_pressure_relief(zone: *mut libc::c_void, goal: libc::size_t) -> libc::size_t;
+        }
+        // SAFETY: every zone (null), with no goal (0): as much as it can. It only returns free pages.
+        unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) };
+    }
 }
 
 /// One line in memory.log in Cue's folder.

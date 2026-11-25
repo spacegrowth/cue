@@ -96,6 +96,8 @@ tests/release/**                     run tests/release/debug_only.test.sh
 scripts/release.sh                   run tests/release/gates.test.sh
 scripts/full-run.sh                  run tests/release/full_run.test.sh
 tests/release/full_run.test.sh       run tests/release/full_run.test.sh
+scripts/test-runner.sh               run tests/release/test_runner_lock.test.sh
+tests/release/test_runner_lock.test.sh run tests/release/test_runner_lock.test.sh
 
 # ---- the window, by area
 set desk-window = desk-* screens
@@ -114,7 +116,6 @@ ui/styles/diff.css                   window diff-colours screens
 tests/ui/specs/fits.mjs              window fits
 tests/ui/specs/shots.mjs             window screens
 tests/ui/baseline/**                 window screens
-tests/ui/specs/term.mjs              window terminal*
 
 # ---- the Desk's Rust, by what it does (src-tauri/src/testing/tests/desk_*.rs)
 set land    = desk_land desk_land_moved desk_lands desk_finish desk_commit desk_spec_landing desk_clear_land desk_on_main desk_main_left desk_full_run
@@ -188,7 +189,7 @@ src-tauri/src/desk/move_desk.rs                rust desk_move_desk
 src-tauri/src/desk/tell.rs                     rust desk_tell
 
 # ---- other Rust
-src-tauri/src/terminal/**                      rust typing typing_edges typing_failures terminal_screens redraw
+src-tauri/src/terminal/**                      rust typing typing_edges typing_failures redraw
 src-tauri/src/machines/**                      rust machines machine_stream
 src-tauri/src/notify/**                        rust notifications
 src-tauri/src/uploads.rs                       rust uploads

@@ -78,10 +78,6 @@ pub(super) fn remote_reads(hub: &Arc<Hub>) {
 fn read_due_machines(a: &Arc<Hub>, s: &Arc<Mutex<Schedule>>) {
     let busy: std::collections::HashSet<String> = a.saved_sessions().into_iter().map(|s| s.origin.machine).filter(|m| !m.is_empty()).collect();
     let list = machines::list();
-    let names: Vec<String> = list.iter().map(|m| m.name.clone()).collect();
-    if machines::listing::retain(&names) {
-        a.redraw();
-    }
     let marks: Vec<(String, bool)> = list.iter().map(|m| (m.name.clone(), busy.contains(&m.name))).collect();
     let due = crate::locking::lock(s, "remote poll schedule").due(&marks, std::time::Instant::now());
     for m in list.into_iter().filter(|m| due.contains(&m.name)) {
@@ -93,7 +89,7 @@ fn read_due_machines(a: &Arc<Hub>, s: &Arc<Mutex<Schedule>>) {
 /// One machine read, its schedule told whether it answered, and (where Cue has sessions there)
 /// the ones that ended while Cue wasn't looking swept.
 fn read_machine(a: &Arc<Hub>, s: &Mutex<Schedule>, m: &Machine, has_sessions: bool) {
-    let (changed, live) = machines::listing::refresh(&m.name, &m.host);
+    let live = machines::listing::refresh(&m.host);
     let change = crate::locking::lock(s, "remote poll schedule").done(&m.name, live.is_some());
     match change {
         Some(false) => eprintln!("cue: can't reach {}; trying less often until it answers", m.name),
@@ -103,9 +99,6 @@ fn read_machine(a: &Arc<Hub>, s: &Mutex<Schedule>, m: &Machine, has_sessions: bo
     // ...and its sessions that ended there while Cue wasn't looking.
     if has_sessions {
         a.sweep(&m.name, live.as_ref());
-    }
-    if changed {
-        a.redraw();
     }
 }
 

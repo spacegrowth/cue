@@ -224,7 +224,7 @@ impl Hub {
         let Some(lead) = self.read(|st| st.desk.lead_sid(desk).map(str::to_string)) else { return };
         let n = found.copies.len();
         let q = format!(
-            "{n} old working {} ({}) {} work that's already in the app, and nothing is using {}. Remove {}? Any that gets new work or comes into use first stays. You can do this later in How work lands.",
+            "{n} old working {} ({}) {} work that's already on main, and nothing is using {}. Remove {}? Any that gets new work or comes into use first stays. You can do this later in How work lands.",
             if n == 1 { "folder" } else { "folders" },
             size_words(found.kb),
             if n == 1 { "has" } else { "have" },
@@ -317,7 +317,7 @@ impl Hub {
                 continue;
             }
             if !work_on_main(&repo, &c.path) {
-                kept.push(serde_json::json!({ "path": c.path, "why": "it has work not in the app yet" }));
+                kept.push(serde_json::json!({ "path": c.path, "why": "it has work not on main yet" }));
                 continue;
             }
             remove_copy(&repo, &c.path);

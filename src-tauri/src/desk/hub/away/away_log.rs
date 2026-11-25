@@ -1,6 +1,6 @@
 //! What happened during each past Away stretch (#416), for the dispatcher's Away tab. Kept in config.json:
-//! - `desk.away_log`: one record a stretch, written as Away turns off: { id, desk, since, end, until, budget, spent,
-//!   ended ("" when you turned it off, "until" | "budget" when it ran out first), items: [{ id, kind, title, from, to }]
+//! - `desk.away_log`: one record a stretch, written as Away turns off: { id, desk, since, end, budget, spent,
+//!   ended ("" when you turned it off, "budget" when it ran out first; "until" in stretches from before #790), items: [{ id, kind, title, from, to }]
 //!   (each item that moved: its state as Away went on, "" for one added while away, and as it went off), calls: the
 //!   lead's DECIDED lines made while away, as they read then }.
 //! - `desk.held_log`: every step held while away, from the moment it's held, with your answer once given ("allow" |
@@ -113,10 +113,60 @@ pub(crate) fn log_view(st: &Store, desk: &str) -> Value {
         if let Some(calls) = r.get_mut("calls").and_then(Value::as_array_mut) {
             for c in calls {
                 let id = str_of(c, "id").to_string();
-                let undo = st.desk.decisions.iter().find(|d| d.id == id).map(|d| d.undo.clone()).unwrap_or_else(|| "none".into());
-                c["undo"] = json!(undo);
+                let live = st.desk.decisions.iter().find(|d| d.id == id);
+                c["undo"] = json!(live.map(|d| d.undo.clone()).unwrap_or_else(|| "none".into()));
+                // Closed (#863): kept by you, or gone from the Desk's decisions (too old to undo or keep).
+                c["kept"] = json!(live.is_none_or(|d| d.kept));
             }
         }
     }
     Value::Array(out)
+}
+
+/// The ids of the calls in Desk `desk`'s past Away stretches.
+fn logged_calls(desk: &str) -> Vec<String> {
+    let cfg = crate::config::load();
+    let log = cfg.pointer("/desk/away_log").and_then(Value::as_array).cloned().unwrap_or_default();
+    log.iter()
+        .filter(|r| str_of(r, "desk") == desk)
+        .flat_map(|r| r.get("calls").and_then(Value::as_array).cloned().unwrap_or_default())
+        .map(|c| str_of(&c, "id").to_string())
+        .filter(|id| !id.is_empty())
+        .collect()
+}
+
+impl Hub {
+    /// Your Keep (Got it, Keep all) on calls `ids` made while you were away (#863): closed, they leave what's still
+    /// open in the lead chat's card and the Away tab. Nothing is sent: the call stands as it was made.
+    pub(crate) fn desk_calls_keep(&self, ids: &[String]) -> Result<(), String> {
+        let kept: Vec<String> = self.write(|st| {
+            st.desk
+                .decisions
+                .iter_mut()
+                .filter(|d| d.call && !d.kept && ids.contains(&d.id))
+                .map(|d| {
+                    d.kept = true;
+                    d.id.clone()
+                })
+                .collect()
+        });
+        if !kept.is_empty() {
+            self.desk_done(crate::desk::hub::core::desk::Effects { decisions: kept, ..Default::default() });
+            self.changed();
+        }
+        Ok(())
+    }
+
+    /// You wrote to Desk `desk`'s lead (#863): the calls made while you were away that you left open (neither kept
+    /// nor undone) are kept, as you've moved on. They stay in the Away tab.
+    pub(crate) fn desk_calls_keep_left(&self, desk: &str) {
+        let ids = logged_calls(desk);
+        if ids.is_empty() {
+            return;
+        }
+        let open: Vec<String> = self.read(|st| st.desk.decisions.iter().filter(|d| d.project == desk && !d.kept && d.undo != "asked" && ids.contains(&d.id)).map(|d| d.id.clone()).collect());
+        if !open.is_empty() {
+            let _ = self.desk_calls_keep(&open);
+        }
+    }
 }

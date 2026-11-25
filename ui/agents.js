@@ -99,15 +99,17 @@ function agentWake(d) {
   const text = d.agWake === "stop"
     ? `Stop your background agent “${d.agName}” now (TaskStop, task id ${d.agId}), and say so.`
     : `Your background agent “${d.agName}” has gone quiet. Ask it where it is and to carry on, with SendMessage (to: "${d.agId}").`;
-  return invoke("send_to_session", { sessionId: d.agSid, text, images: [], now: true }).then(() => toast(d.agWake === "stop" ? `Asked its session to stop ${d.agName}` : `Asked its session to wake ${d.agName}`), (e) => toast(`Couldn't ask its session: ${e}`));
+  return invoke("send_to_session", { sessionId: d.agSid, text, images: [], now: true, kind: "nudge" }).then(() => toast(d.agWake === "stop" ? `Asked its session to stop ${d.agName}` : `Asked its session to wake ${d.agName}`), (e) => toast(`Couldn't ask its session: ${e}`));
 }
 /** Above the message box: the session's agents that need you or are at work, any kind, at most AGENT_ROWS (then
- *  "N more · Agents ›"); then its scripts still running. "" when nothing is. */
+ *  "N more · Agents ›"); then its scripts still running, and one that failed since its turn ended (red, till its next
+ *  turn starts; one that finished well leaves); on a Desk lead, Cue's own update (#867). "" when nothing is. */
 function agentTray(sid) {
   // A hosted lead's teammates have their rows in its team (team.js), not here too.
   const mates = new Set(mateList(sid).map((t) => t.agent_id));
   const { rows, more } = agentTrayRows(agentsOf(sid).filter((a) => !mates.has(a.id)));
-  const scripts = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms).map((h) => bgRow(sid, h)).join("");
+  const run = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms);
+  const scripts = [...run, ...bgFailedScripts(sid)].map((h) => bgRow(sid, h)).join("") + cueInstallRow(sid);
   if (!rows.length && !scripts) return "";
   const head = rows.length ? `<div class="ag-head" data-key="ag-head"><span>AGENTS</span><span class="grow"></span>${more ? `<button class="ag-more" data-bg-tab="agents" data-sid="${esc(sid)}">${more} more · Agents ›</button>` : ""}</div>` : "";
   return `<div class="bg-rows" data-key="bg-rows">${head}${rows.map((a) => agentRow(a)).join("")}${scripts}</div>`;
@@ -130,12 +132,13 @@ function agentChips(sid) {
   const on = bgTabOn.get(sid) === "agents";
   return `<span class="tm-chips">${need}<button class="tm-chip ${on ? "on" : ""}" data-bg-tab="agents" data-sid="${esc(sid)}">${n} agent${n === 1 ? "" : "s"} <span class="tm-sub">›</span></button></span>`;
 }
-/** A card's count, any kind: "N agents" (opens its session on the Agents tab), or an agent that needs you by name. */
+/** A card's pills: an agent that needs you by name; else what runs on in the background (chat/helpers.js bgPills, #867:
+ *  "1 script", "2 agents" running, red "1 failed", a Desk lead's "updating Cue"), each opening its session on that tab. */
 function agentPill(sid) {
   if (!sid) return "";
   const c = agentCount(sid);
   if (c.needs.length) return `<span class="tm-chip need small"><span class="tm-n">${esc(c.needs[0])}</span> <span class="tm-sub">needs you</span></span>`;
-  return c.n ? `<button class="bg-pill" data-bg-open="${esc(sid)}">${c.n} agent${c.n === 1 ? "" : "s"}</button>` : "";
+  return bgPills(sessionOf(sid));
 }
 /** The top of an agent's own view, any kind: ‹ Back, its mark, its name, its kind tag, its state, and the session
  *  it works for. */

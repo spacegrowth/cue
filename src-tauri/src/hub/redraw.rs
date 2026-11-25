@@ -26,6 +26,9 @@ const DRAW_EVERY: std::time::Duration = std::time::Duration::from_millis(200);
 /// (hidden, closed, an old page) isn't waited for again until it does.
 const DRAWN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// What the pages hear when the state changed (no state with it: they fetch it, see `Hub::draw`).
+pub(crate) const STATE_CHANGED: &str = "state-changed";
+
 #[derive(Default)]
 pub(super) struct Redraws {
     /// A change not drawn yet.
@@ -40,6 +43,10 @@ pub(super) struct Redraws {
     /// The windows that say when they've drawn a state, and which of them haven't drawn the last one sent.
     drawn: Mutex<Drawn>,
     drawn_now: Condvar,
+    /// The state last sent: what a page that's told it changed fetches, when the store changed again since.
+    sent: Mutex<Option<Arc<Value>>>,
+    /// The states handed to each window, to send the next as only what changed (state_since.rs).
+    pub(super) given: Mutex<super::state_since::Given>,
 }
 
 #[derive(Default)]
@@ -161,6 +168,13 @@ impl Hub {
             Some(app) => {
                 let snapshot = self.snapshot();
                 self.redraws.sending();
+                *crate::locking::lock(&self.redraws.sent, "state sent") = Some(snapshot.clone());
+                // The pages are only told it changed, and each fetches it (get_state) once it's drawn the last
+                // (ui/app.js, ui/mini.js): a whole state sent to a page still drawing the one before waits in line
+                // to its web view, held by Cue until it's read. A page slower than DRAW_EVERY (or one not waited
+                // for, DRAWN_WAIT) took them in line all day, and Cue grew past 4 GB and quit (#794).
+                drop(app.emit(STATE_CHANGED, ()));
+                // In full to Cue's own listeners (an add-on's): no page listens for it, so none is sent it.
                 drop(app.emit("state", &*snapshot));
             }
             None => self.unshown(),
@@ -180,6 +194,18 @@ impl Hub {
         if let Some(w) = self.app.as_ref().and_then(|a| a.get_webview_window("main")) {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
         }
+    }
+
+    /// The state as last sent to the windows, its clock read now (`Hub::kept_state`'s, for when the store changed
+    /// since: the draw that follows tells them again).
+    pub(crate) fn sent_state(&self) -> Option<Value> {
+        crate::locking::lock(&self.redraws.sent, "state sent").clone().map(|s| Self::stamped(&s))
+    }
+
+    /// The state as last built, or as last sent when the store changed since (`kept_state` and `sent_state`, not
+    /// stamped): what a window that's told it changed fetches, as only what changed (state_since.rs).
+    pub(crate) fn current_snapshot(&self) -> Option<Arc<Value>> {
+        self.shown.get().or_else(|| crate::locking::lock(&self.redraws.sent, "state sent").clone())
     }
 
     /// Window `label` drew the last state it was sent (its `state` listener, ui/app.js and ui/mini.js): the next

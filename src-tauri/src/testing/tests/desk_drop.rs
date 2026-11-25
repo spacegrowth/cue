@@ -135,7 +135,9 @@ fn a_finishing_item_is_dropped() {
 #[test]
 fn an_item_to_check_is_dropped() {
     let w = World::new();
-    let (_, project, id) = done_with(&w, |_, _, _| {}, |_, _, _| {});
+    let (_, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    super::desk_commit::sent_back_then_done_again(&w, &project, &id, &h);
     assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
     drops(&w, &project, &id, "not needed after all");
 }

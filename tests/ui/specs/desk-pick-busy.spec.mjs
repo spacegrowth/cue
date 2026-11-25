@@ -16,7 +16,7 @@ for (const scheme of ["light", "dark"]) {
       await cue.open("desk");
       await openDesk(page);
       const text = "Three on the canvas.\nPick one for working items: B1, B2 or B3.";
-      await patchItem(cue, "d5", { state, title: "Mocks: working items", designs: "https://claude.ai/artifact/MOCKS", said: [{ at: Date.now(), by: "host-lead", text }], ...(state === "finishing" ? { finish: { step: "commit", at: Date.now() } } : {}) });
+      await patchItem(cue, "d5", { state, title: "Mocks: working items", designs: "https://claude.ai/artifact/MOCKS", next: [{ option: "any", kind: "feature", title: "Build: working items", see: "", done_when: "", by: "new" }], said: [{ at: Date.now(), by: "host-lead", text }], ...(state === "finishing" ? { finish: { step: "commit", at: Date.now() } } : {}) });
       await page.locator('.dkn-items [data-desk-item="d5"] .dkn-tt').click();
       const head = page.locator(".dk-right .dkn-ib");
       await expect(head.locator(".dkn-ibopts .dk-optk")).toHaveText(["B1", "B2", "B3"]);

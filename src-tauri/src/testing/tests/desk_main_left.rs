@@ -190,7 +190,8 @@ fn an_item_in_this_cues_own_source_is_told_what_its_desks_tests_setting_says() {
     assert!(brief.contains("\nTests: run the tests for what you change as you work, and the full suite before you say done.\n"), "{brief}");
     assert!(brief.ends_with(" Cue stops an edit or git command outside it. Before you say done, run the full suite: CUE_FULL_RUN=1 tests/run.sh."), "{brief}");
     assert_eq!(item(&w, &project, "Header jumps")["tree"]["card_tests"], true);
-    // Only what changed, then a full run just before DONE.
+    // Only what changed, then a full run just before DONE. The first World let go first: a second one waits on its turn.
+    drop(w);
     let w = World::new();
     let (_, _, id, h) = routed_with(&w, set("changed_full"), |_, _, _| {});
     let words = told(&w, &h, 0);

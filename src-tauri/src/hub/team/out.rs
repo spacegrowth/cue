@@ -221,7 +221,7 @@ impl Hub {
             return Err("nothing to hand out".into());
         }
         self.read(|st| st.sessions.origin(sid)).filter(|o| o.hosted && o.harness == "claude").ok_or("only a hosted Claude Code lead takes a teammate")?;
-        self.tell(sid, &hand_out_text(task))?;
+        self.tell(sid, &hand_out_text(task), crate::sessions::Kind::Crew)?;
         Ok(format!("Handed to {}'s crew", self.session_name(sid)))
     }
 
@@ -233,7 +233,7 @@ impl Hub {
             return;
         }
         self.changed();
-        if let Err(e) = self.tell(to, &carried_note(&took)) {
+        if let Err(e) = self.tell(to, &carried_note(&took), crate::sessions::Kind::Crew) {
             eprintln!("cue: couldn't tell {to} about the team it carries on with: {e}");
         }
     }

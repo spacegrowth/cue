@@ -61,6 +61,17 @@ pub(super) fn routed_with(w: &World, before: impl Fn(&World, &str, &std::path::P
     (dir, project, id, h)
 }
 
+/// Item `id`'s DONE with nothing of it on main sent it back to holder `h` (#830): it's at work again, told so, and
+/// `h`'s DONE again (it needed no change in the repository) sends it on as it is.
+pub(super) fn sent_back_then_done_again(w: &World, project: &str, id: &str, h: &str) {
+    let it = desk(w, project)["items"].as_array().unwrap().iter().find(|i| i["id"] == id).cloned().unwrap();
+    assert_eq!(it["state"], "working", "nothing of it on main: back to its holder, not to check: {it}");
+    let told = w.hosted.sent().into_iter().any(|(s, t)| s == h && t.contains(&format!("Desk item #{id}")) && t.contains(crate::desk::hub::landing::committed::NO_COMMIT));
+    assert!(told, "its holder is told nothing of it is committed: {:?}", w.hosted.sent());
+    w.advance(1000);
+    ends(w, h, &format!("Looked again: nothing in the repository needed changing.\nDONE: #{id}"));
+}
+
 /// `done_with`, the item to check after it.
 fn ready_with(w: &World, before: impl Fn(&World, &str, &std::path::Path), work: impl Fn(&World, &str, &std::path::Path)) -> (std::path::PathBuf, String, String) {
     let r = done_with(w, before, work);
@@ -213,7 +224,10 @@ fn a_word_never_committed_stops_the_commit_goes_to_the_lead_and_the_next_done_tr
 #[test]
 fn an_item_with_no_changed_files_goes_to_check_with_no_commit_and_looks_right_closes_it() {
     let w = World::new();
-    let (dir, project, id) = ready_with(&w, |_, _, _| {}, |_, _, _| {});
+    let (dir, project, id, h) = routed_with(&w, |_, _, _| {}, |_, _, _| {});
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    sent_back_then_done_again(&w, &project, &id, &h);
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
     assert_eq!(item(&w, &project, "Header jumps")["commit"].as_str().unwrap_or(""), "");
     let r = looks_right(&w, &id);
     assert_eq!((r["commit"].as_str(), r["files"].as_u64()), (Some(""), Some(0)));
@@ -380,7 +394,7 @@ fn files_changed_is_its_commit_once_its_done_and_after_a_restart() {
 #[test]
 fn a_holders_words_at_each_turn_end_are_kept_on_its_item() {
     let w = World::new();
-    let (_dir, project, id) = ready_with(&w, |_, _, _| {}, |w, h, _| ends(w, h, "Looking at **header.js** now."));
+    let (_dir, project, id) = done_with(&w, |_, _, _| {}, |w, h, _| ends(w, h, "Looking at **header.js** now."));
     let said = item(&w, &project, "Header jumps")["said"].as_array().cloned().unwrap_or_default();
     let got: Vec<(String, bool)> = said.iter().map(|r| (r["text"].as_str().unwrap().to_string(), r["done"].as_bool().unwrap_or(false))).collect();
     assert_eq!(got, vec![("Looking at **header.js** now.".to_string(), false), ("Fixed.".to_string(), true)], "{said:?} on #{id}");

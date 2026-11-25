@@ -66,11 +66,12 @@ pub(crate) fn build() -> tauri::App {
 
 /// The window's commands.
 fn commands() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
-    tauri::generate_handler![move_to_cue, move_to_terminal, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, send_at, send_at_drop, send_at_now, term_open, hide_window, set_fullscreen, is_fullscreen, term_write, term_resume, term_resize, term_close, shell_open, shell_list, shell_name, shell_clear, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_watch, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, session_bg_history, session_bg_helper, insight_state, insight_log, insight_counts, insights_summary, insight_delegate, insight_host_skills, handoff_sent, handoff_cue, handoff_continue, handoff_fresh, handoff_keep, ahead_watch, mcp_for, mcp_set, mcp_restart, restart_session, mcp_apply, mcp_apply_clear, mcp_live, mcp_act, mcp_signed_in, mcp_for_folder, mcp_set_folder, folders_under, send_queued_now, ext_settings, ext_set, push_words_found, team_action, team_diff_stat, team_diff, team_mode, crew_commit, crew_review, crew_go_back, desk_send, desk_set_lead, desk_start, desk_rename, desk_delete, ask_before_set, desk_lands_set, desk_look, desk_look_rows, desk_model_set, desk_old_copies, desk_old_copies_list, desk_away_set, desk_away_sweep, desk_held_answer, desk_pause, desk_give, desk_member, desk_add, desk_item_act, desk_looks_right, desk_commit_undo, desk_item_diff, desk_done, desk_moves, desk_moves_clear, desk_undo, team_hand_out_preview, team_hand_out, focus_live, close_session, delete_session, new_session, fork_session, trust_folder, continue_start, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, speak_send, quit_check, quit_now, host_status, host_restart, music_hold, music_release, interrupt_session, open_link, read_doc, peek_file, recent_docs, image_data, get_state, state_drawn, history_item, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, clipboard_has_picture, copy_text, page_look_said, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git, extensions::diff_git, extensions::ext_program, project_for_folder, crate::mini::mini_shape, crate::mini::mini_key, crate::mini::mini_drag, crate::mini::mini_open_in_cue, crate::mini::mini_reading]
+    tauri::generate_handler![move_to_cue, move_to_terminal, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, send_at, send_at_drop, send_at_now, hide_window, set_fullscreen, is_fullscreen, term_write, term_resume, term_resize, term_close, shell_open, shell_list, shell_name, shell_clear, adopt_session, session_command, session_commands, models_list, set_later, set_watch, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, session_bg_history, session_bg_helper, insight_state, insight_log, insight_counts, insights_summary, insight_delegate, insight_host_skills, handoff_sent, handoff_cue, handoff_continue, handoff_fresh, handoff_keep, ahead_watch, mcp_for, mcp_set, mcp_restart, restart_session, mcp_apply, mcp_apply_clear, mcp_live, mcp_act, mcp_signed_in, mcp_for_folder, mcp_set_folder, folders_under, send_queued_now, ext_settings, ext_set, push_words_found, team_action, team_diff_stat, team_diff, team_mode, crew_commit, crew_review, crew_go_back, desk_send, desk_set_lead, desk_lead_before, desk_start, desk_rename, desk_delete, ask_before_set, desk_lands_set, desk_look, desk_look_rows, desk_model_set, desk_old_copies, desk_old_copies_list, desk_away_set, desk_away_sweep, desk_held_answer, desk_pause, desk_give, desk_member, desk_add, desk_item_act, desk_install_now, desk_looks_right, desk_commit_undo, desk_item_diff, desk_done, desk_moves, desk_moves_clear, desk_calls_keep, desk_undo, team_hand_out_preview, team_hand_out, focus_live, close_session, delete_session, new_session, fork_session, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, speak_send, quit_check, quit_now, host_status, host_restart, music_hold, music_release, interrupt_session, open_link, read_doc, peek_file, recent_docs, image_data, get_state, state_drawn, history_item, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, clipboard_image, clipboard_has_picture, copy_text, page_look_said, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git, extensions::diff_git, extensions::ext_program, project_for_folder, crate::mini::mini_shape, crate::mini::mini_key, crate::mini::mini_drag, crate::mini::mini_open_in_cue, crate::mini::mini_reading, chats_open]
 }
 
 /// Everything that runs once the window exists, in the order it starts.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    quit_if_another_cue_runs();
     window::prepare(app);
     settle_folder_and_hooks();
     // The soak's chaos knobs that run on their own (debug builds, when set).
@@ -84,23 +85,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Past its memory limit, or with the test run that started it gone, Cue quits itself (self_watch.rs).
     let quitting = app.handle().clone();
     crate::self_watch::start(move || quitting.exit(0));
-    // Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them
-    // (a send meanwhile waits), on a thread of their own: with many it takes seconds, and the window takes no
-    // click or key while this thread waits (#456). What came after them still does, in the same order.
-    let handle = app.handle().clone();
-    hub.reattach_hosted_then(move |hub| {
-        #[cfg(feature = "ext")]
-        hub.ext_hub_up();
-        watchers::bring_back(hub);
-        // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
-        // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
-        if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
-            watchers::machines(hub);
-        }
-        tickers::serve_socket(hub, &handle);
-        tickers::local_reads(hub);
-        tickers::remote_reads(hub);
-    });
+    reattach_then_watch(&hub, app.handle().clone());
     talk::start(app, hub.clone());
     #[cfg(feature = "ext")]
     crate::ext::start(app, hub.clone());
@@ -124,6 +109,37 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         window::hide(app);
     }
     Ok(())
+}
+
+/// Another Cue already runs on this folder (a dev build started without a CUE_HOME of its own): this one goes
+/// before it touches anything there, its hooks, sessions or chats (#812).
+fn quit_if_another_cue_runs() {
+    if server::another_cue_runs(5_000) {
+        eprintln!(
+            "cue: another Cue already runs on {}; this one quits so it can't overwrite that Cue's chats and sessions. Quit the other first, or give this one its own folder with CUE_HOME.",
+            server::cue_dir().display()
+        );
+        std::process::exit(1);
+    }
+}
+
+/// Hosted sessions cue-host kept running while Cue was away: picked up before anything can be sent to them
+/// (a send meanwhile waits), on a thread of their own: with many it takes seconds, and the window takes no
+/// click or key while this thread waits (#456). What came after them still does, in the same order.
+fn reattach_then_watch(hub: &Arc<Hub>, handle: tauri::AppHandle) {
+    hub.reattach_hosted_then(move |hub| {
+        #[cfg(feature = "ext")]
+        hub.ext_hub_up();
+        watchers::bring_back(hub);
+        // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
+        // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
+        if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
+            watchers::machines(hub);
+        }
+        tickers::serve_socket(hub, &handle);
+        tickers::local_reads(hub);
+        tickers::remote_reads(hub);
+    });
 }
 
 /// Cue's folder where it belongs and the agents' hooks pointing at this copy of Cue.

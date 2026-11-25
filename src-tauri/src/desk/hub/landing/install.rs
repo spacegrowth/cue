@@ -28,6 +28,10 @@ impl Installer for AppInstaller {
         crate::install::self_install::is_ancestor(repo, commit, of)
     }
 
+    fn log(&self) -> String {
+        crate::install::self_install::log_end()
+    }
+
     fn has_addon(&self, repo: &str, commit: &str) -> bool {
         crate::install::self_install::has_addon(repo, commit)
     }
@@ -323,7 +327,7 @@ impl Hub {
             }
             let crew = if h.kind == "crew" { format!("For your teammate {}: ", h.name) } else { String::new() };
             let log = if log.is_empty() { String::new() } else { format!("\nThe end of its log:\n{log}") };
-            fx.sends.push((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {question}.{log}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}", i.title, crate::desk::check_words(&id))));
+            fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("{crew}Desk item #{id} ({}) isn't done: {question}.{log}\nIts fixes stay in #{id}; don't add new items for them. Say DONE: #{id} when it is.\n{}", i.title, crate::desk::check_words(&id))), crate::sessions::Kind::FollowUp));
             let project = i.project.clone();
             crate::desk::hub::core::desk::decide(st, &project, Some(id.clone()), "Cue", "", question, &format!("sent back to {}", h.name), now, &mut fx);
             if let Some(d) = st.desk.decisions.last_mut() {
@@ -361,7 +365,7 @@ impl Hub {
 
     /// Install now's start: everything waiting goes into an install under way that has its commit, or into one
     /// started now; when one without it runs, each says it starts the moment that one ends.
-    fn install_now_start(&self, now: u64) {
+    pub(crate) fn install_now_start(&self, now: u64) {
         let inst = self.installer();
         let status = inst.status();
         let ours = self.read(|st| st.desk.items.iter().any(|i| i.state == "finishing" && i.finish.as_ref().is_some_and(|f| installing(&f.step))));

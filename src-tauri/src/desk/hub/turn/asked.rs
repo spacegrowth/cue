@@ -8,6 +8,9 @@ use crate::desk::hub::turn::act::you_wrote;
 use crate::desk::hub::turn::route::send_step;
 use crate::desk::parse;
 
+/// How far back a message the Desk saved for a session still counts as one it sent (#811): its queue can hold one a while.
+const SENT_LATELY_MS: u64 = 6 * 60 * 60 * 1000;
+
 /// Your words on an item's page ask something, rather than say what isn't right: they end on a question mark (the
 /// pictures listed after them left out).
 pub(crate) fn is_question(text: &str) -> bool {
@@ -110,6 +113,11 @@ impl Hub {
         }
         let m = crate::sessions::unwrap_pasted(prompt);
         let desks = self.read(|st| st.desk.run.sent.get(sid).is_some_and(|sent| sent.iter().any(|t| is_message(&m, t))));
+        // Not one this Cue sent since it started: one saved with the Desk's steps still counts (#811: #790 reopened by
+        // the lead's note, sent by another Cue on the same data). Looked up only when the prompt could reopen
+        // or answer something.
+        let desks = desks || (self.read(|st| st.desk.items.iter().any(|i| i.holder.as_ref().is_some_and(|h| h.to() == sid) && (i.state == "to_check" || i.asks.is_some())))
+            && crate::db::desk_sent_to(sid, now_ms().saturating_sub(SENT_LATELY_MS)).iter().any(|t| is_message(&m, &crate::desk::hub::core::desk::as_delivered(t))));
         // Only words typed into it yourself put an item to check back at work. The Desk's own messages don't (#584):
         // a Send back or a route back reopened it as it was sent, and a note (yours from its page, the lead's) is
         // only a note: "ok testing now" isn't a send-back.

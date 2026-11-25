@@ -1,7 +1,6 @@
 //! Handing a machine's event to Cue as the Mac's hook would, its log line, and a permission question's
 //! answer sent back to the machine.
 
-use super::watch::new_session_seen;
 use crate::machines::{self, Machine};
 use serde_json::{json, Map, Value};
 use std::io::{BufRead, BufReader, Write};
@@ -105,9 +104,6 @@ pub(crate) fn log_raw(machine: &str, line: &str) {
 pub(super) fn handle(m: &Machine, id: &str, ev: Value) {
     log(&m.name, id, &ev);
     let Some(mut msg) = to_cue(&m.name, &ev) else { return };
-    if let Some(sid) = msg["session_id"].as_str().filter(|s| !s.is_empty()) {
-        new_session_seen(&m.name, sid);
-    }
     // The session reads its log from a live copy on this Mac (machine_logs); the hooks carry on as well.
     if let Some(remote) = msg["transcript_path"].as_str().filter(|p| !p.is_empty()).map(str::to_string) {
         // Never the machine's own path: Cue would read it on this Mac (a stat on /home can stall). No copy (it

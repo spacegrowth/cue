@@ -201,12 +201,17 @@ pub fn sees(team: &mut Vec<Teammate>, cwd: &str, e: &HostedEvent, now: u64) -> b
                     add_files(t, [rel], false);
                 }
             }
-            t.step = "Thinking…".into();
+            // A stopped one's last call still comes back (it was cut off mid-call): its row keeps how it ended.
+            if t.working() {
+                t.step = "Thinking…".into();
+            }
             heard(t, "result", now);
         }).is_some(),
         HostedEvent::Said { text, agent: Some(call) } => team.iter_mut().find(|t| t.call == *call).filter(|_| !text.trim().is_empty()).map(|t| {
             t.summary = first_line(text);
-            t.step = "Writing…".into();
+            if t.working() {
+                t.step = "Writing…".into();
+            }
             heard(t, "said", now);
         }).is_some(),
         _ => false,
@@ -628,7 +633,24 @@ impl Sessions {
 
 #[cfg(test)]
 mod tests {
-    use super::{answer_in, relative};
+    use super::{answer_in, relative, sees, Teammate};
+    use crate::hosted::HostedEvent;
+    use serde_json::json;
+
+    #[test]
+    fn a_stopped_teammates_cut_off_call_coming_back_leaves_it_stopped_with_no_step() {
+        let mut team = vec![Teammate { name: "tests".into(), call: "toolu_A".into(), agent_id: "agentA".into(), state: "working".into(), step: "Running: npx playwright test".into(), ..Default::default() }];
+        sees(&mut team, "/w", &HostedEvent::Task { what: "task_notification".into(), detail: json!({ "task_id": "agentA", "status": "killed", "summary": "Fix the tests" }) }, 1);
+        assert_eq!((team[0].state.as_str(), team[0].step.as_str()), ("stopped", ""));
+        // Its call in flight comes back after the stop, then a last word: still stopped, no live step on its row.
+        sees(&mut team, "/w", &HostedEvent::ToolResult { id: "toolu_B".into(), output: json!("interrupted"), failed: true, agent: Some("toolu_A".into()) }, 2);
+        sees(&mut team, "/w", &HostedEvent::Said { text: "Now re-record baselines.".into(), agent: Some("toolu_A".into()) }, 3);
+        assert_eq!((team[0].state.as_str(), team[0].step.as_str()), ("stopped", ""), "no Thinking… or Writing… on a stopped teammate");
+        // One at work still shows what it does.
+        let mut team = vec![Teammate { call: "toolu_A".into(), state: "working".into(), ..Default::default() }];
+        sees(&mut team, "/w", &HostedEvent::ToolResult { id: "toolu_B".into(), output: json!("ok"), failed: false, agent: Some("toolu_A".into()) }, 2);
+        assert_eq!(team[0].step, "Thinking…");
+    }
 
     #[test]
     fn cues_answer_is_the_last_reply_of_the_turn_that_answers_an_ask_not_a_hooks_audit_after_it() {

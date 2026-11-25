@@ -221,14 +221,14 @@ fn a_message_while_the_lead_resumes_waits_for_it() {
     let (_, project) = holder(&w);
     let d = new_lead(&w, &project);
     w.hub().add_parked(w.hub().session_record(&d).unwrap());
-    let first = w.hub().desk_claim(&project, "one");
+    let first = w.hub().desk_claim(&project, "one", crate::sessions::Said::You);
     assert!(matches!(first, Ok(crate::hub::DeskClaim::Resume(_))));
-    let second = w.hub().desk_claim(&project, "two");
+    let second = w.hub().desk_claim(&project, "two", crate::sessions::Said::You);
     assert!(matches!(second, Ok(crate::hub::DeskClaim::Wait(_))));
     assert!(w.hub().desk_claim_start(&project).is_err(), "a lead is coming up already");
     let held = w.hub().desk_claim_done(&project);
     assert_eq!(held.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), vec!["two"]);
-    assert!(matches!(w.hub().desk_claim(&project, "three"), Ok(crate::hub::DeskClaim::Resume(_))));
+    assert!(matches!(w.hub().desk_claim(&project, "three", crate::sessions::Said::You), Ok(crate::hub::DeskClaim::Resume(_))));
     drop(w.hub().desk_claim_done(&project));
 }
 
@@ -456,4 +456,37 @@ fn a_message_sent_now_to_a_lead_at_work_goes_at_once() {
     assert!(sent.last().unwrap().starts_with("<desk") && sent.last().unwrap().ends_with("stop, the footer is fine"), "{sent:?}");
     assert_eq!(w.hosted.interrupted(), [l.clone()], "the turn it was on is stopped");
     assert!(w.snapshot().session(&l)["held"].is_null());
+}
+
+#[test]
+fn the_lead_before_is_kept_for_show_earlier_and_a_failed_change_leaves_no_trace() {
+    let w = World::new();
+    let (_, project) = holder(&w);
+    let l = new_lead(&w, &project);
+    assert!(w.hub().desk_lead_before(&project, &l).is_null());
+    // It hands off: its note kept, the one carrying on runs the Desk.
+    crate::db::handoff_noted(&l, "cue", "HANDOFF-lead.md", 5, true);
+    crate::db::handoff_continued(&l, "next-lead");
+    w.hub().desk_put_lead(&project, "next-lead", "desk-lead-14");
+    let m = w.hub().desk_lead_before(&project, "next-lead");
+    assert_eq!((m["sid"].as_str(), m["name"].as_str(), m["handoff"].as_bool(), m["note"].as_str()), (Some(l.as_str()), Some(format!("{project}-lead").as_str()), Some(true), Some("HANDOFF-lead.md")));
+    assert!(m["at_ms"].as_u64().unwrap() > 0 && m["count"].as_u64().is_some(), "{m}");
+    // A change to a lead that never came up, put back: the lead put back still has the same one before it.
+    let before = w.hub().desk_lead(&project);
+    w.hub().desk_put_lead(&project, "never-up", "ghost");
+    w.hub().desk_put_back_lead(&project, before);
+    assert_eq!(w.hub().desk_lead_before(&project, "next-lead")["sid"], l.as_str());
+    // A lead picked by hand (no hand-off) is an earlier one all the same, said so.
+    w.hub().desk_put_lead(&project, "picked", "desk-lead-15");
+    let m = w.hub().desk_lead_before(&project, "picked");
+    assert_eq!((m["sid"].as_str(), m["name"].as_str(), m["handoff"].as_bool()), (Some("next-lead"), Some("desk-lead-14"), Some(false)));
+}
+
+#[test]
+fn a_lead_from_before_cue_kept_earlier_leads_is_found_by_its_hand_off() {
+    let _w = World::new();
+    crate::db::handoff_sent("old-lead", "cue", false, 0);
+    crate::db::handoff_continued("old-lead", "now-lead");
+    let (sid, name, _, handoff) = crate::db::desk_lead_before("some-desk", "now-lead").unwrap();
+    assert_eq!((sid.as_str(), name.as_str(), handoff), ("old-lead", "", true));
 }

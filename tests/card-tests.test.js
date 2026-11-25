@@ -45,7 +45,7 @@ assert.ok(fs.readFileSync(path.join(ROOT, "tests/run.sh"), "utf8").includes('dif
   const all = fs.readdirSync(path.join(ROOT, "tests/ui/specs")).filter((f) => f.endsWith(".spec.mjs"));
   for (const s of all.filter((f) => f.startsWith("desk-"))) assert.ok(specs.includes(s), `${s} picked`);
   assert.ok(specs.includes("fits.spec.mjs"), "fits always");
-  assert.ok(!specs.includes("terminal.spec.mjs") && specs.length < all.length, "not every spec");
+  assert.ok(specs.length < all.length, "not every spec");
   assert.ok(r.would.includes("node tests/box.test.js") && r.would.includes("node tests/ui/commands.test.js"), r.out);
   assert.ok(r.would.includes("node scripts/check-window.mjs ."), r.out);
   assert.ok(!r.would.some((w) => w.includes("cargo")), "no Rust for a window file");

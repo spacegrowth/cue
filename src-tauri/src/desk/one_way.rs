@@ -25,7 +25,7 @@ pub struct Kind {
 pub const KINDS: &[Kind] = &[
     Kind { key: "main", label: "Pushing to main", ask: "a push to main or master", offered: true, why: "" },
     Kind { key: "push", label: "Pushing any branch", ask: "a push of any branch", offered: true, why: "" },
-    Kind { key: "release", label: "Releasing", ask: "a release (scripts/release.sh, a tag, a package publish)", offered: true, why: "" },
+    Kind { key: "release", label: "Releasing", ask: "a release (a release script, a tag, a package publish)", offered: true, why: "" },
     Kind { key: "deploy", label: "Deploying", ask: "a deploy", offered: false, why: "a deploy can be any command, so Cue can't tell one apart" },
     Kind { key: "data", label: "Deleting files", ask: "deleting files or data (rm, git rm, git clean, a dropped table)", offered: true, why: "" },
     Kind { key: "outside", label: "Files outside the project", ask: "changing files outside this project's folder", offered: false, why: "a command can write anywhere, so Cue can't see which files it changes" },

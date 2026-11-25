@@ -122,9 +122,8 @@ function trimCaches() {
   const near = new Set([...open, ...live, ...recentSids]);
   for (const m of [stepFeeds, cmdLists, cmdMissed]) for (const k of [...m.keys()]) if (!near.has(sidOf(k))) m.delete(k);
   for (const k of [...btwLog.keys()]) if (!near.has(k)) btwLog.delete(k);
-  // Per-session bits of this window's: a terminal's last line, "!" lines (the + New box's stay), forwardable messages
+  // Per-session bits of this window's: "!" lines (the + New box's stay), forwardable messages
   // (keyed by session or card id, then ":" and the time).
-  for (const k of [...termLast.keys()]) if (!near.has(k)) termLast.delete(k);
   for (const k of [...ranLog.keys()]) if (k !== "new" && !near.has(k)) ranLog.delete(k);
   const cards = new Set(state.items.map((i) => i.id));
   const rows = new Set(state.history.map((i) => i.id));
@@ -198,7 +197,6 @@ function setActive(id, sid, exact = false) {
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
   followProject(active.sid, id);
   seenSession(active.sid);
-  if (termSid && termSid !== active.sid) closeTerm(true);
   loadSteps(active.sid);   // now, not on the next tick
   sheet = menuFor = redirectFor = btwFor = null;
   renderMain();
@@ -246,7 +244,6 @@ function shownWhereItLives(sid) {
  *  terminal open closes with what was there. */
 function openTopWaiting() {
   active = quietOpen = null;
-  if (termSid) closeTerm(true);
   current();
 }
 /** The next thing waiting on you that isn't on screen. */
@@ -303,7 +300,7 @@ function askLnOf(e) {
 }
 /** An agent entry that's its own words, not an ask line the hub noted. */
 const askLnSaid = (e) => e?.role === "agent" && !askLnOf(e);
-/** How the hub words an answer, whole (asks.rs describe, answer_terminal; inbound.rs ask_ended): a message you typed
+/** How the hub words an answer, whole (asks.rs describe; inbound.rs ask_ended): a message you typed
  *  that only starts with one of these words ("allowed the new flow") is no answer. */
 const ASKLN_ANSWERS = [
   /^(?:allowed(?: \(always\))?|denied|answered|replied)(?:: “[^\n]*”)?$/,

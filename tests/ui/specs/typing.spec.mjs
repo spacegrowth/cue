@@ -41,16 +41,16 @@ test("Claude's suggestion in the empty box: its line over the box, Tab types it 
 
 test("A finished turn's box says where the reply goes: typed into its terminal, or straight to a hosted session", async ({ cue, page }) => {
   await openCard(page, "n1");
-  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay (typed into its terminal)…");
+  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to Claude Code… (typed into its terminal)");
   await cue.change((st) => { st.sessions.find((s) => s.session_id === "relay").hosted = true; });
-  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
+  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to Claude Code…");
 });
 
 test("A hosted Claude lead's crew settings are on its crew's tray, never in the head or the reply box; no crew, no tray", async ({ cue, page }) => {
   await openCard(page, "n1");
   await expect(page.locator(".active-pane [data-crew-menu]")).toHaveCount(0);
   await cue.change((st) => { Object.assign(st.sessions.find((s) => s.session_id === "relay"), { hosted: true, harness: "claude" }); });
-  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
+  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to Claude Code…");
   await expect(page.locator(".crew-tray"), "no crew yet: no tray").toHaveCount(0);
   // No crew yet: ⋯ → Cue Crew: Handle it opens the same settings.
   await page.locator('.ap-head [data-more="relay"]').click();

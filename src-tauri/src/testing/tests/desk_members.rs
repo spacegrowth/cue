@@ -28,6 +28,11 @@ fn members(w: &World, project: &str) -> Vec<String> {
     desk(w, project)["members"].as_array().unwrap().iter().map(|m| m.as_str().unwrap().to_string()).collect()
 }
 
+/// The Desk's sessions of any age (#921): the ones the Board leaves to it.
+fn worked(w: &World, project: &str) -> Vec<String> {
+    desk(w, project)["worked"].as_array().unwrap().iter().map(|m| m.as_str().unwrap().to_string()).collect()
+}
+
 fn header(w: &World, project: &str) -> Value {
     desk(w, project)["items"].as_array().unwrap().iter().find(|i| i["title"] == "Header jumps").cloned().unwrap()
 }
@@ -136,7 +141,7 @@ fn the_lead_sees_only_the_desks_sessions_as_routes() {
     let block = w.hub().desk_summary(&project, &d, false).0;
     // On the Desk with no item: on the one Older line (#363).
     let (_, on) = block.split_once("Desk routes (or use ROUTE: #<id> -> new):\n").unwrap();
-    assert!(on.contains(&format!("Older, idle with no recent item: cue-teams (sid:{id}, idle)")), "{on}");
+    assert!(on.contains(&format!("Older, idle with no recent item:\n- cue-teams (sid:{id}, idle)")), "{on}");
     assert!(!block.contains("Off the Desk"), "{block}");
 }
 
@@ -151,6 +156,9 @@ fn you_add_and_remove_sessions_and_one_you_give_an_item_joins() {
     w.hub().desk_set_member(&project, &h, false).unwrap();
     assert_eq!(members(&w, &project), vec![d.clone()]);
     assert!(!crate::db::desk_members().contains(&(project.clone(), h.clone())), "dropped from the saved list too");
+    // Taken off by you: not the Desk's at all, so it's back on the Board (#921).
+    assert!(!worked(&w, &project).contains(&h), "{:?}", worked(&w, &project));
+    assert!(!crate::db::desk_worked().contains(&(project.clone(), h.clone())), "nor saved as the Desk's");
 
     // Given an item ("Give to…"), it's on the Desk from then.
     let it = w.hub().desk_add(&project, "bug", "Header jumps", "", None).unwrap();
@@ -193,8 +201,8 @@ fn a_desk_shows_sessions_with_work_and_takes_off_one_closed_a_day() {
     w.hub().desk_set_member(&project, &h, true).unwrap();
     assert_eq!(with_work(&w, &project), vec![d.clone()], "cue-teams has no item: older");
     let routes = w.hub().desk_summary(&project, &d, false).0;
-    assert!(routes.contains("Older, idle with no recent item: cue-teams (sid:"), "{routes}");
-    assert!(!routes.contains("- cue-teams (sid:"), "{routes}");
+    assert!(routes.contains("Older, idle with no recent item:\n- cue-teams (sid:"), "{routes}");
+    assert!(!routes.split("Older, idle").next().unwrap().contains("- cue-teams (sid:"), "only under Older: {routes}");
 
     // Idle under a day: it stays on the Desk.
     w.advance(23 * 60 * 60_000);
@@ -226,6 +234,9 @@ fn a_desk_shows_sessions_with_work_and_takes_off_one_closed_a_day() {
     w.hub().desk_retire_idle();
     assert!(!members(&w, &project).contains(&h), "closed over a day, no item");
     assert!(!crate::db::desk_members().contains(&(project.clone(), h.clone())), "saved");
+    // Still the Desk's session (#921): the Board leaves it to the Desk, now and after a restart.
+    assert!(worked(&w, &project).contains(&h), "it worked for the Desk");
+    assert!(crate::db::desk_worked().contains(&(project.clone(), h.clone())), "kept saved");
     assert!(members(&w, &project).contains(&d), "the lead stays");
     assert!(!asks(&w, &d).iter().any(|(_, q)| q.contains("cue-teams")), "no card asks about it: {:?}", asks(&w, &d));
 }

@@ -12,6 +12,7 @@ function applyTheme() {
   else if (root.dataset.theme !== mode) root.dataset.theme = mode;
   root.classList.toggle("away-on", away);
   retheme();
+  refont();
 }
 /** The chat and color the window last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
@@ -166,7 +167,7 @@ function beforeDraw() {
 
 /** The header: + New, the waiting count and the area that follows the view (app/head_view.js); usage, search, the terminal, Extensions, Insights and Settings; then the views (Board, Desk, the add-on's, Read) at the right edge. */
 function topBarHtml(counts) {
-  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${headViewHtml()}</span><span class="grow" data-tauri-drag-region></span>${awayHead()}
+  return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${newChip()}${counts}${headViewHtml()}</span><span class="grow" data-tauri-drag-region></span>${awayHead()}${cueInstallChip()}
       ${updateCard()}${usageChip()}<button class="top-btn icon top-find" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>${shellsBtn()}${extPanelBtn()}<button class="top-btn icon insights-btn" data-view="insights" aria-pressed="${view === "insights"}" aria-label="Insights">${INSIGHTS_ICON}</button><button class="top-btn icon" data-act="open-settings" aria-label="Settings">${GEAR_ICON}</button>
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "desk" ? "on" : ""}" data-view="desk">Desk</button>${addOn.views.map((v) => `<button class="${view === v.id ? "on" : ""}" data-view="${v.id}">${v.label()}</button>`).join("")}<button class="${view === "read" ? "on" : ""}" data-view="read">Read</button></div></div>`;
 }
@@ -178,7 +179,7 @@ const viewHtml = () => (typeof crewPageShown === "function" && crewPageShown()) 
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window. */
 function overlaysHtml() {
-  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}${typeof deskFullHtml === "function" ? deskFullHtml() : ""}${askBeforeHtml()}${typeof landsHtml === "function" ? landsHtml() : ""}`;
+  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${trustAsk ? trustDialog() : ""}${typeof deskFullHtml === "function" ? deskFullHtml() : ""}${askBeforeHtml()}${typeof landsHtml === "function" ? landsHtml() : ""}${cueInstallSheet()}`;
 }
 // Each text box with its words kept through a redraw, not built afresh: its undo stays with it (chat/patch.js moveTo,
 // morphAttrs). Matched by its draft key, so another draft's undo never carries over.
@@ -290,7 +291,7 @@ function replayMotion(was, kept) {
   // A Desk chat kept in place (chat/patch.js drawAround): a dot it had already is left as it runs; a new one is set once.
   const inPlace = (el) => el._phased && keptInPlace.some((c) => c.contains(el));
   // Each looping animation a redraw would restart, and its length (as its CSS has it).
-  for (const [sel, ms] of [[".dot-live, .pdot.live, .lv-chip .hdot", PULSE_MS]]) {
+  for (const [sel, ms] of [[".dot-live, .lv-chip .hdot", PULSE_MS]]) {
     const phase = `-${Date.now() % ms}ms`;
     document.querySelectorAll(sel).forEach((el) => { if (!liveChat?.contains(el) && !inPlace(el)) { el.style.animationDelay = phase; el._phased = true; } });
   }
@@ -390,10 +391,8 @@ function fitAfterDraw(focused) {
   fitTips();
   const bp = document.querySelector(".btw-pop"), ah = document.querySelector(".ap-head");
   if (bp && ah) bp.style.top = `${ah.offsetTop + ah.offsetHeight + 2}px`;
-  placeTerm(!!termHost && termHost.contains(focused));
   showCopied();
   fitTop();
-  placeColors();
 }
 // A draw that throws must not leave the window empty: what went wrong is shown where the board would be, so a bad
 // build is seen as an error and not as "Cue didn't start".

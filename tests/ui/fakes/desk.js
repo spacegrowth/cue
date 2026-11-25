@@ -18,6 +18,8 @@ CueBridge.area("desk", (w) => {
   /** A project's folder: where a session of it runs (the fake knows none for a project with no session). */
   const folderOf = (p) => deskOf(p).folder || w.state.sessions.find((s) => s.project === (deskOf(p).workspace_project || p) && s.cwd)?.cwd || "";
   return {
+    // Who led a Desk before session `sid` (#792): none, unless a test says so.
+    desk_lead_before: () => null,
     desk_set_lead: ({ project, sid }) => {
       const d = deskOf(project);
       if (sid) {
@@ -28,7 +30,7 @@ CueBridge.area("desk", (w) => {
         const cwd = folderOf(project);
         if (!cwd) throw `no folder known for ${project}: start a session in it first`;
         const name = `${project}-lead`, id = `lead-${project}-${++n}`;
-        w.state.sessions.push({ session_id: id, name, project, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
+        w.state.sessions.push({ session_id: id, name, project, cwd, harness: "claude", hosted: true, agent_pid: 9000002, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
         d.lead = { sid: id, name, state: "live" };
       }
       w.changed();
@@ -63,10 +65,75 @@ CueBridge.area("desk", (w) => {
       const d = deskOf(project);
       d.id = project; d.independent = true; d.name = name || workspace; d.workspace_project = workspace; d.folder = cwd;
       const leadName = `${d.name}-lead`;
-      w.state.sessions.push({ session_id: sid, name: leadName, project: workspace, cwd, harness: "claude", hosted: true, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
+      w.state.sessions.push({ session_id: sid, name: leadName, project: workspace, cwd, harness: "claude", hosted: true, agent_pid: 9000002, state: "idle", since_ms: w.now(), thread: [], team: [], segments: [], queued: null, prompt: "" });
       d.lead = { sid, name: leadName, state: "live" }; join(project, sid);
       w.changed();
       return { id: project, project, sid };
+    },
+    // New Desk's look at a folder (#927, ipc/desk.rs desk_look): one part a call, each answering after a pause. A spec
+    // steers it through `w.lookFake`: `wait` (real ms per part, e.g. { github: 800 }, the preview's own pauses
+    // otherwise), `fail` (a part's error, e.g. { sessions: "transcripts unreadable" }), `rowsFail` (desk_look_rows'
+    // error) and `plain` (folders that aren't repositories). A folder ending in /cue is Cue's own source.
+    desk_look: async ({ folder, part }) => {
+      const f = w.lookFake || {}, dir = String(folder || "").replace(/\/+$/, "");
+      if (f.wait?.[part] != null) await new Promise((r) => setTimeout(r, f.wait[part]));
+      else await w.wait({ files: 300, github: 1400, history: 600, sessions: 1000 }[part] || 300);
+      if (!dir) throw "No folder at ";
+      if (f.fail?.[part]) throw f.fail[part];
+      const repo = !(f.plain || []).includes(dir);
+      if (part === "files") return {
+        part,
+        lines: [{ text: "Read package.json · build, test, lint scripts", file: "package.json" }, { text: "No Makefile", file: "Makefile" },
+          ...(repo ? [{ text: "Read .github/workflows/ci.yml · runs lint and test", file: ".github/workflows/ci.yml" }] : []), { text: "Read scripts/ · deploy.sh", file: "scripts/" }],
+        found: { scripts: { build: "npm run build", test: "npm test", lint: "npm run lint" }, ci: repo ? { file: ".github/workflows/ci.yml", run: ["npm run lint", "npm test"] } : null, deploy: "scripts/deploy.sh" },
+      };
+      if (part === "github") return repo
+        ? { part, lines: [{ text: "GitHub: main needs a pull request with 1 review" }], found: { reached: true, needs_pr: true, reviews: 1, branch: "main" } }
+        : { part, lines: [{ text: "Not a git repository: nothing to ask GitHub" }], found: { reached: false } };
+      if (part === "history") return repo
+        ? { part, lines: [{ text: "Last 30 changes on main: 28 pull requests, 2 direct" }], found: { count: 30, prs: 28, merges: 0, direct: 2 } }
+        : { part, lines: [{ text: "Not a git repository: no changes to count" }], found: { count: 0 } };
+      return { part, lines: [{ text: "12 past sessions here: 9 ran tests, 4 pushed" }], found: { count: 12, tests: { cmd: "npm test", names: ["fix-cart", "api-tests", "checkout-flow", "lint-pass", "search-box", "cart-badge", "price-fix", "login-copy", "img-sizes"] }, pushed: 4 } };
+    },
+    // What the look found as rows (ipc/desk.rs desk_look_rows): files win over sessions; a part missing counts as nothing.
+    desk_look_rows: async ({ folder, found = {} }) => {
+      const f = w.lookFake || {}, dir = String(folder || "").replace(/\/+$/, "");
+      await w.wait(100);
+      if (f.rowsFail) throw f.rowsFail;
+      const place = /\/cue$/.test(dir) ? "cue" : (f.plain || []).includes(dir) ? "folder" : "repo";
+      const lands = {
+        cue: { where: "copy", how: "squash", check: "cue", after: "install", push: "ask", tests: "changed", at_once: 3, check_steps: [], after_steps: [] },
+        repo: { where: "copy", how: "squash", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: [], after_steps: [] },
+        folder: { where: "shared", how: "owner", check: "none", after: "nothing", push: "ask", tests: "all", at_once: 3, check_steps: [], after_steps: [] },
+      }[place];
+      const fi = found.files, gh = found.github, hi = found.history, se = found.sessions;
+      const rows = [];
+      const build = fi?.scripts?.build;
+      rows.push(build ? { part: "build", label: "Builds with", tag: "found", steps: [`[Build] ${build}`], sources: [{ kind: "file", file: "package.json" }], why: "From package.json, its build script." }
+        : { part: "build", label: "Builds with", tag: "usual", steps: [], sources: [], why: "" });
+      if (place === "cue") rows.push({ part: "check", label: "Check first", tag: "usual", choice: "cue", steps: [], sources: [], why: "Cue's own check, as on Cue's own source." });
+      else if (fi?.ci) rows.push({ part: "check", label: "Check first", tag: "found", choice: "command", steps: ["[Lint] npm run lint", "[Test] npm test"], sources: [{ kind: "file", file: fi.ci.file }], why: `The same steps your GitHub checks run, from ${fi.ci.file}.` });
+      else if (se?.tests) rows.push({ part: "check", label: "Check first", tag: "found", choice: "command", steps: [`[Test] ${se.tests.cmd}`], sources: [{ kind: "sessions", names: se.tests.names, count: se.tests.names.length }], why: "" });
+      else rows.push({ part: "check", label: "Check first", tag: "unsure", choice: "none", steps: [], sources: [], why: "Nothing says how it's checked. Until you pick, nothing is run." });
+      let how = "squash";
+      if (place === "repo") {
+        if (gh?.needs_pr || (hi?.prs || 0) * 2 > (hi?.count || 0) && hi?.count) {
+          how = "pr";
+          rows.push({ part: "how", label: "Lands on main as", tag: "found", choice: "pr", steps: [], sources: [...(gh?.reached ? [{ kind: "github" }] : []), ...(hi ? [{ kind: "history" }] : [])], why: gh?.needs_pr ? "main on GitHub needs a pull request with one review, and your last 30 changes came in as pull requests." : "Your last 30 changes came in as pull requests." });
+        } else rows.push({ part: "how", label: "Lands on main as", tag: "unsure", choice: "squash", steps: [], sources: [], why: "Nothing says how changes reach main. Until you pick, each lands as one commit." });
+      } else if (place === "cue") rows.push({ part: "how", label: "Lands on main as", tag: "usual", choice: "squash", steps: [], sources: [], why: "As Cue's own source always lands." });
+      if (place === "cue") rows.push({ part: "after", label: "Then runs", tag: "usual", choice: "install", steps: [], sources: [], why: "Installs or serves Cue, as on Cue's own source." });
+      else if (fi?.deploy) rows.push({ part: "after", label: "Then runs", tag: "unsure", choice: "nothing", steps: [], sources: [{ kind: "file", file: fi.deploy }], why: `Found ${fi.deploy}, but nothing says it runs after each change. Until you pick, nothing runs.` });
+      else rows.push({ part: "after", label: "Then runs", tag: "usual", choice: "nothing", steps: [], sources: [], why: "" });
+      if (place !== "folder") rows.push(how === "pr"
+        ? { part: "push", label: "Send to GitHub", tag: "follows", choice: "after", steps: [], sources: [], why: "A pull request needs the item's work on GitHub, so it's sent as each item finishes." }
+        : { part: "push", label: "Send to GitHub", tag: "usual", choice: "ask", steps: [], sources: [], why: "You're asked first." });
+      for (const r of rows) if (r.part !== "build") lands[r.part] = r.choice;
+      const plainSteps = (r) => (r?.steps || []).map((s) => s.replace(/^\[[^\]]*\]\s*/, ""));
+      const chk = rows.find((r) => r.part === "check");
+      if (chk.choice !== "cue") { lands.check_steps = [...plainSteps(rows[0]), ...(chk.choice === "command" ? plainSteps(chk) : [])]; lands.check = lands.check_steps.length ? "command" : "none"; }
+      const unsure = rows.filter((r) => r.tag === "unsure").length, known = rows.filter((r) => r.tag === "found" || r.tag === "follows").length;
+      return { place, summary: `${known} found${unsure ? ` · ${unsure} to pick` : ""}`, rows, lands };
     },
     desk_send: ({ project, text }) => {
       const d = deskOf(project);
@@ -254,6 +321,16 @@ CueBridge.area("desk", (w) => {
       const on = it.state === "to_check" || (it.state === "done" && (it.commit || it.commit_wait)) || (it.state !== "done" && !it.unchanged);
       const diff = on ? (it.files || []).map((f) => `diff --git a/${f} b/${f}\n--- a/${f}\n+++ b/${f}\n@@ -1,2 +1,3 @@\n-old ${f}\n+new ${f}\n+more\n same\n`).join("") : "";
       return { diff, machine: "" };
+    },
+    // Install now on a Desk's group waiting for its update after landing (#911): what waits goes now (the hub's
+    // INSTALL: main); with an install under way, nothing starts.
+    desk_install_now: ({ project }) => {
+      const d = deskOf(project);
+      if (!d) throw "no such Desk";
+      if (desk().install?.step) throw "An install is already under way: the Desk shows it. Nothing else started.";
+      for (const i of d.items || []) if (i.state === "finishing" && i.finish?.step === "queued") i.finish.now = true;
+      w.changed();
+      return "Installing now: the Desk shows it.";
     },
     desk_commit_undo: ({ id }) => {
       const it = itemOf(id);

@@ -113,7 +113,7 @@ fn landing_stuck(it: &DeskItem, now: u64) -> Option<(String, String)> {
     Some((format!("{}:{}", f.step, f.at), words))
 }
 
-/// Item `it` at work with a holder of its own (not crew, not a lead) that ended or hit its usage limit: (its key
+/// Item `it` at work with a holder of its own (not crew, not a lead) that ended, hit its usage limit or didn't wake: (its key
 /// "sid:why:updated", the row's words).
 fn holder_gone(st: &Store, it: &DeskItem) -> Option<(String, String)> {
     let h = it.holder.as_ref().filter(|h| it.state == "working" && crate::desk::hub::core::desk::crew_parts(h).is_none() && h.lead_sid.is_empty())?;
@@ -123,6 +123,8 @@ fn holder_gone(st: &Store, it: &DeskItem) -> Option<(String, String)> {
     let (why, words) = match st.sessions.get(&h.sid) {
         Some(s) if s.state == "limited" => ("limited", "hit its usage limit with it at work. It carries on once the limit resets; ROUTE it to another session if it can't wait."),
         None if st.ended.iter().any(|(_, s)| s.origin.session_id == h.sid) => ("ended", "ended with it at work. ROUTE it to a session, or to new."),
+        // Woken for a message and it didn't wake (#857): the message is kept on its chat, not taken.
+        Some(_) if st.sessions.last_no_wake(&h.sid) => ("no_wake", "didn't wake for the last message sent to it (Cue started it again and it ended, or took nothing within a minute). ROUTE it to another session, or to new."),
         _ => return None,
     };
     Some((format!("{}:{why}:{}", h.sid, it.updated), format!("#{} ({})'s holder {} {words}", it.id, it.title, h.name)))
@@ -145,7 +147,7 @@ pub(crate) fn unsaved(st: &mut Store) -> Vec<Change> {
 fn applies(st: &Store, r: &Change) -> bool {
     // Said once and true still: what you did, Away turned on or off (a later one folds it), your pick (its mocks item
     // may have left memory since: it's done), how a full run of the main line ended.
-    if matches!(r.kind, ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed) {
+    if matches!(r.kind, ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed | ChangeKind::Installed) {
         return true;
     }
     let Some(it) = st.desk.item(&r.item) else { return false };
@@ -173,7 +175,7 @@ fn applies(st: &Store, r: &Change) -> bool {
         ChangeKind::Machine => it.remote.is_some() && matches!(it.state.as_str(), "working" | "finishing"),
         // Not sent back to work since.
         ChangeKind::Finished => matches!(it.state.as_str(), "finishing" | "to_check" | "done"),
-        ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed => true,
+        ChangeKind::YouDid | ChangeKind::Away | ChangeKind::Picked | ChangeKind::FullRunPassed | ChangeKind::FullRunFailed | ChangeKind::Installed => true,
     }
 }
 
@@ -283,18 +285,18 @@ impl Hub {
     fn desk_feed_tell(self: &Arc<Self>, desk: &str, go: &Go) -> Result<String, String> {
         if go.parked {
             // Resumed with the Desk's summary, then its rows.
-            return super::send::desk_send_cue(self, desk, &go.text);
+            return super::send::desk_send_cue(self, desk, &go.text, crate::sessions::Kind::Desk);
         }
         // A lead that took over from one the feed went to hears the Desk's summary first, then the rows that still
         // apply. A Desk's first lead was given the summary as it started.
         let text = if go.summary {
-            let (summary, failed) = self.desk_summary(desk, &go.lead, false);
+            let (summary, failed) = self.desk_block(desk, &go.lead, &go.text, false, false);
             self.desk_told(&failed);
             super::send::desk_message(&summary, &go.text)
         } else {
             go.text.clone()
         };
-        self.tell(&go.lead, &text)
+        self.tell(&go.lead, &text, crate::sessions::Kind::Desk)
     }
 
     fn desk_feed_save(&self, desk: &str, items: &[DeskItem], (sent, heard): &(Mark, Mark)) {
@@ -406,7 +408,7 @@ fn feed_go(st: &mut Store, desk: &str, now: u64) -> Option<Go> {
         }
         return Some(Go { lead, parked, summary: false, text: String::new(), told: Vec::new(), marks: (f.sent.clone(), f.heard.clone()) });
     }
-    let away = crate::desk::hub::away::away::away_in_force(st, desk, now);
+    let away = crate::desk::hub::away::away::away_in_force(st, desk);
     if !feed::wakes(&live, now, away) || (parked && !live.iter().any(|r| r.kind.wake_in(away) == Wake::AtOnce)) {
         return None;
     }

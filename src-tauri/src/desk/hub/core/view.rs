@@ -25,6 +25,8 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
     }
     // Waiting for room (#776): where it may start, in words; the machine is picked as it starts.
     out.machine_wait = if it.room_wait && it.holder.is_none() && it.state == "queued" { crate::desk::hub::landing::remote_item::room_words(st, it) } else { String::new() };
+    // Waiting for a free slot (#798): the row says so first, not when a fresh session takes it.
+    out.slot_wait = crate::desk::hub::turn::slots::waits(st, it);
     // Start now would go past the limit on items at once (#712): the window warns first.
     out.start_full = crate::desk::hub::landing::remote_item::start_full(st, it);
     // Next for a busy session (#576): its name as shown now, and when it goes to a fresh session.
@@ -32,7 +34,7 @@ pub(crate) fn shown(st: &Store, it: &DeskItem) -> DeskItem {
         if let Some(s) = st.sessions.get(&n.sid).filter(|_| n.lead_sid.is_empty()) {
             n.name = shown_name(s);
         }
-        out.fresh_at = crate::desk::hub::turn::queue::fresh_at(it);
+        out.fresh_at = crate::desk::hub::turn::queue::fresh_at(it).filter(|_| !out.slot_wait);
     }
     // The machine its holder is on (#500), and how long one with its work has been quiet.
     crate::desk::hub::landing::remote_item::shown_machine(st, &mut out);
@@ -440,13 +442,16 @@ impl Hub {
                 let older: Vec<&DeskDecision> = st.desk.decisions.iter().filter(|d| &d.project == p && d.at < from && d.item_id.as_ref().is_some_and(|i| items.iter().any(|it| &it.id == i))).collect();
                 let members = st.desk.members.get(p).cloned().unwrap_or_default();
                 let work_history = crate::desk::hub::core::members::work_history(st, p);
+                // Its sessions of any age still in Cue (#921): the Board leaves them to the Desk.
+                let mut worked: Vec<&String> = st.desk.worked.get(p).into_iter().flatten().filter(|sid| st.sessions.get(sid.as_str()).is_some()).collect();
+                worked.sort();
                 // The sessions its lists show (#363); the rest fold into one "older" line. Its bands with other Desks
                 // (sent or got, the last day's) go too: its lead's chat says whether each was answered (#640).
                 let with_work = crate::desk::hub::core::members::with_work(st, p, now);
-                json!({ "with_work": with_work, "work_history": work_history, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": crate::desk::hub::lead::checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": crate::desk::hub::core::waits::waits_view(st, p), "circles": crate::desk::hub::core::waits::circles_view(st, p), "ask_before": crate::desk::one_way::desk_view(st.desk.project_of(p)), "away": crate::desk::hub::away::away::away_view(st, p, now), "held": crate::desk::hub::away::away_holds::held_view(st, p), "away_log": crate::desk::hub::away::away_log::log_view(st, p), "paused": crate::desk::hub::away::pause::pause_view(p), "lands": crate::desk::lands::desk_view(p, &desk_folder(st, p)), "landing_now": crate::desk::hub::landing::now_line::view(st, p, &crate::desk::lands::lands_known(p, &desk_folder(st, p))), "machines": crate::desk::machine_pref::desk_view(p, &st.desk.spaces.get(p).map(|d| d.machine_folders.clone()).unwrap_or_default()), "model": crate::desk::model_pick::default_of(p), "holds": crate::desk::holds::holds_view(st, p), "bands": st.desk.bands.iter().filter(|b| &b.from == p || &b.to == p).collect::<Vec<_>>() })
+                json!({ "with_work": with_work, "work_history": work_history, "worked": worked, "id": p, "project": p, "name": st.desk.spaces.get(p).map(|d| &d.name), "independent": st.desk.spaces.contains_key(p), "workspace_project": st.desk.project_of(p), "folder": st.desk.spaces.get(p).map(|d| &d.folder), "lead": Self::desk_lead_view(st, p), "items": items, "decisions": decisions, "older": older, "moves_cleared": st.desk.moves_cleared.get(p).copied().unwrap_or(0), "members": members, "checks": crate::desk::hub::lead::checks::checks_view(st, p), "kept": st.desk.kept.iter().filter(|k| &k.project == p).collect::<Vec<_>>(), "waits": crate::desk::hub::core::waits::waits_view(st, p), "circles": crate::desk::hub::core::waits::circles_view(st, p), "ask_before": crate::desk::one_way::desk_view(st.desk.project_of(p)), "away": crate::desk::hub::away::away::away_view(st, p), "held": crate::desk::hub::away::away_holds::held_view(st, p), "away_log": crate::desk::hub::away::away_log::log_view(st, p), "paused": crate::desk::hub::away::pause::pause_view(p), "lands": crate::desk::lands::desk_view(p, &desk_folder(st, p)), "landing_now": crate::desk::hub::landing::now_line::view(p), "machines": crate::desk::machine_pref::desk_view(p, &st.desk.spaces.get(p).map(|d| d.machine_folders.clone()).unwrap_or_default()), "model": crate::desk::model_pick::default_of(p), "holds": crate::desk::holds::holds_view(st, p), "bands": st.desk.bands.iter().filter(|b| &b.from == p || &b.to == p).collect::<Vec<_>>() })
             })
             .collect();
-        json!({ "projects": list, "installed_ms": crate::desk::hub::lead::checks::installed_ms(), "install_at": crate::desk::hub::landing::install::install_at(st) })
+        json!({ "projects": list, "installed_ms": crate::desk::hub::lead::checks::installed_ms(), "install_at": crate::desk::hub::landing::install::install_at(st), "install": st.desk.run.install_shown })
     }
 }
 

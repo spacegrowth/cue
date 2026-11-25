@@ -63,12 +63,14 @@ fn put_session(tx: &Connection, s: &Session, now: i64) -> rusqlite::Result<()> {
         put_exchange(tx, &s.origin.session_id, e)?;
     }
     // A message that moved (one you queued, put below the reply it waited behind) leaves its
-    // old row: within the thread's span, the log keeps only what the thread has.
+    // old row: within the thread's span, a row with the words of one of the thread's messages at another moment.
+    // Only those: a record that doesn't have a message (a save from an older copy of it) never deletes it (#812).
     let Some(first) = s.thread.first() else { return Ok(()) };
-    let mut q = tx.prepare("SELECT at_ms, role FROM exchanges WHERE session_id = ?1 AND at_ms >= ?2")?;
-    let rows: Vec<(i64, String)> = q.query_map(params![s.origin.session_id, first.at_ms as i64], |r| Ok((r.get(0)?, r.get(1)?)))?.filter_map(|r| r.ok()).collect();
+    let mut q = tx.prepare("SELECT at_ms, role, text FROM exchanges WHERE session_id = ?1 AND at_ms >= ?2")?;
+    let rows: Vec<(i64, String, String)> = q.query_map(params![s.origin.session_id, first.at_ms as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.filter_map(|r| r.ok()).collect();
     drop(q);
-    for (at, role) in rows.iter().filter(|(at, role)| !s.thread.iter().any(|e| e.at_ms as i64 == *at && e.role == *role)) {
+    let moved = |at: i64, role: &str, text: &str| !s.thread.iter().any(|e| e.at_ms as i64 == at && e.role == role) && s.thread.iter().any(|e| e.role == role && e.text == text);
+    for (at, role, _) in rows.iter().filter(|(at, role, text)| moved(*at, role, text)) {
         tx.execute("DELETE FROM exchanges WHERE session_id = ?1 AND at_ms = ?2 AND role = ?3", params![s.origin.session_id, at, role])?;
     }
     Ok(())
@@ -115,10 +117,10 @@ pub fn save_ended(ended: &[(u64, Session)]) {
 pub(super) fn put_exchange(c: &Connection, session_id: &str, e: &Exchange) -> rusqlite::Result<()> {
     // Same moment, same speaker: the same exchange (its images may have been filled in since).
     c.execute(
-        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask, from_name, from_sid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
          ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images, voice = excluded.voice, status_ask = excluded.status_ask,
-           from_name = excluded.from_name, from_sid = excluded.from_sid",
-        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice, e.status_ask.as_deref().unwrap_or(""), e.from, e.from_sid],
+           from_name = excluded.from_name, from_sid = excluded.from_sid, by_cue = excluded.by_cue, cue_kind = excluded.cue_kind",
+        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice, e.status_ask.as_deref().unwrap_or(""), e.from, e.from_sid, e.cue, e.kind],
     )?;
     Ok(())
 }

@@ -100,18 +100,18 @@ function parkedPane(p) {
   const K = keyer();
   const rows = shown.map((e) => keyed(e.role === "you"
     ? `<div class="cv-you mg-you"><div class="cv-you-text mg-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="mg-f"><span class="mg-st">You · ${ago(e.at_ms)} ago</span></div></div>`
-    : `<div class="cv-agent mg-agent"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}</span>${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg mg-text cv-text">${md(addOn.plain(e.text))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
+    : `<div class="cv-agent mg-agent"><div class="mg-h"><span class="mg-who">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}</span>${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg mg-text cv-text">${md(addOn.plain(e.text))}</div><div class="mg-f cv-acts">${fwdBtn(`${sid}:${e.at_ms}`, e.text, name, sid)}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
   const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
   const line = w
     ? `<div class="mg-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`
     : `<div class="park-line" data-key="line">${closed ? "" : P_SIGN}${closed ? "Closed" : "Parked"} ${parkedAgo(p)} · ${esc(agentName(harness))} stopped${where} · Resume picks up right here</div>`;
   return `<div class="active-pane parked">
-    <div class="ap-head">${projBtn(p.project, "ap")}${badge(harness)}<span class="proj">${esc(name)}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>
+    <div class="ap-head">${badge(harness)}<span class="proj">${esc(name)}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>
       ${closed ? `<button class="btn" data-park-closed="${esc(sid)}" ${w ? "disabled" : ""}>Park</button>` : `<button class="btn" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button>`}
       <button class="btn primary" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>${w ? "Resuming…" : "Resume"}</button></div>
     ${subHead(p.cwd, "", "")}
     ${chatBox(`p|${sid}`, `${more}${rows || `<div class="dim cv-empty" data-key="empty">Cue kept no messages from it.</div>`}${line}${w ? "" : resumeCost(sid)}`)}
-    <div class="foot">${box(`s:${sid}`, `Message ${name}… sending resumes it first`, w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
+    <div class="foot">${box(`s:${sid}`, boxPlaceholder(sid, "sending resumes it first"), w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
 }
 
 /** Over a restarting session's chat and box: its steps (stop, start, load; hub/mod.rs Restart), the one it's on. */

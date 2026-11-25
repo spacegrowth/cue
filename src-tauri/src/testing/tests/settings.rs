@@ -19,7 +19,6 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("appearance.mode", json!("dark")),
         same("mini.mode", json!("rail")),
         same("appearance.zoom", json!(1.15)),
-        same("appearance.project", json!(true)),
         ("context.keep", json!(99), json!(50)),
         same("hosted.rest_min", json!(15)),
         ("hosted.rest_min", json!(100000), json!(1440)),
@@ -32,7 +31,6 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("usage.claude", json!(false)),
         same("usage.codex", json!(false)),
         same("sessions.tmux", json!(false)),
-        same("project.colors", json!({"web": 3})),
         same("project.all", json!(4)),
         same("project.hue", json!({"h": 200, "k": 0.5})),
         ("project.pins", json!(["a", "a", "", "b"]), json!(["a", "b"])),
@@ -52,7 +50,6 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("insights.snooze", json!(1_800_000_000_000u64)),
         same("insights.skills", json!({"|claude": "handoff"})),
         same("tips.on", json!(false)),
-        same("hosted.on", json!(true)),
         same("updates.beta", json!(true)),
         same("voice.pick", json!("af_heart")),
     ]
@@ -100,12 +97,13 @@ fn a_wrong_value_is_refused_and_nothing_is_written() {
     for (key, bad) in [
         ("history.keep", json!("lots")), ("pi.gate", json!("sometimes")), ("appearance.mode", json!(1)), ("mini.mode", json!("left")),
         ("appearance.zoom", json!(2.0)), ("notify.sound", json!("klaxon")), ("context.keep", json!(-1)),
-        ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 12})),
+        ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 3})), ("appearance.project", json!(true)),
         ("project.hue", json!({"h": 400, "k": 0.5})), ("project.folders", json!({"relative/dir": "x"})),
         ("insights.skills", json!({"no-bar": "handoff"})),
         ("voice.pick", json!("Not A Voice")), ("tips.on", json!("yes")), ("updates.beta", json!("yes")),
         ("made.up", json!(true)),
     ] {
+        // project.colors and appearance.project: projects have no color of their own any more (#848).
         assert!(crate::config::set(key, bad.clone()).is_err(), "{key} = {bad} was taken");
     }
     assert_eq!(std::fs::read_to_string(w.home().join("config.json")).unwrap(), before);
@@ -146,7 +144,8 @@ fn hand_written_values_of_the_wrong_kind_read_as_their_defaults() {
     assert_eq!(all["notify"]["finished"], true);
     assert_eq!((all["appearance"]["zoom"].clone(), all["appearance"]["mode"].clone()), (json!(1.0), json!("system")));
     assert_eq!(all["quick"]["phrases"], json!(["Commit", "Go ahead", "Think hard"]));
-    assert_eq!((all["project"]["pins"].clone(), all["project"]["colors"].clone()), (json!([]), json!({})));
+    assert_eq!(all["project"]["pins"], json!([]));
+    assert!(all["project"].get("colors").is_none(), "a project.colors left from before is never shown (#848)");
     assert_eq!(all["context"]["keep"], crate::config::context_keep());
     assert_eq!(all["tips"]["on"], false, "what was written right is read");
     assert!(kept_aside(&w).is_empty(), "the file is settings: nothing to keep aside");

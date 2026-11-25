@@ -22,7 +22,8 @@ test("START, CLOSE, PARK, UNPARK and a whole-Desk PAUSE show as short lines, no 
   await expect(chat).toContainText("Moving things along.");
   for (const raw of ["START:", "CLOSE:", "PARK:", "UNPARK:", "TAKE COPY:", "PAUSE:", "**"]) await expect(chat).not.toContainText(raw);
   await expect(chat.locator(".dk-ln")).toHaveCount(0);
-  await chat.locator(".dk-cnt-b").last().click();
+  await expect(chat.locator(".dk-cnt")).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
   const act = page.locator(".dk-moves");
   for (const raw of ["START:", "CLOSE:", "PARK:", "UNPARK:", "TAKE COPY:", "PAUSE:", "**"]) await expect(act).not.toContainText(raw);
   const lines = act.locator(".dk-ln .mg-lh");
@@ -51,7 +52,8 @@ test("a START Cue already acted on isn't drawn twice: its own line says it", asy
   await expect(chat).not.toContainText("START:");
   await expect(chat.locator(".dk-ln")).toHaveCount(0);
   // In Activity, once: Cue's own record of the move, no second line from the reply.
-  await chat.locator(".dk-cnt-b").last().click();
+  await expect(chat.locator(".dk-cnt")).toHaveCount(0);
+  await page.evaluate(() => deskOpenActivity());
   const act = page.locator(".dk-moves");
   await expect(act.locator(".dk-mv:not(.dk-mv-ln)", { hasText: "Started" })).toContainText("Started #d2 now");
   await expect(act.locator(".dk-mv", { hasText: "Started" })).toHaveCount(1);

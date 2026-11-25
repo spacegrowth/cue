@@ -61,28 +61,16 @@ fn sessions_without_an_id_are_ignored_and_remove_works() {
 }
 
 #[test]
-fn a_hook_from_the_session_means_its_past_the_trust_question() {
-    let mut s = Sessions::default();
-    let started = Origin { session_id: "a".into(), cwd: "/tmp".into(), ..Default::default() };
-    s.mark(&started, "waiting", None);
-    s.set_trust("a", 5);
-    // Cue's own bookkeeping (no transcript) leaves it asking.
-    s.mark(&started, "waiting", None);
-    assert_eq!(s.asking_trust().len(), 1);
-    let hook = Origin { session_id: "a".into(), cwd: "/private/tmp".into(), transcript_path: "/t/a.jsonl".into(), ..Default::default() };
-    s.mark(&hook, "working", Some("hi"));
-    assert!(s.asking_trust().is_empty());
-}
-
-#[test]
 fn a_failed_background_task_is_told_once_even_when_its_transcript_is_read_again() {
     let mut sessions = Sessions::default();
     sessions.mark(&origin("s1"), "working", None);
     assert!(sessions.set_task_failed("s1", 100, "tests", "exit 1"));
     assert!(!sessions.set_task_failed("s1", 100, "tests", "exit 1"));
-    // Its state changes (the line goes), then Cue reads the transcript again from the top (a restart): the same
-    // failure, and an older one before it, are no news.
+    // Kept while it waits; its next turn starts (the line goes), then Cue reads the transcript again from the top (a
+    // restart): the same failure, and an older one before it, are no news.
     sessions.mark(&origin("s1"), "waiting", None);
+    assert_eq!(get(&sessions, "s1").task_failed_ms, 100);
+    sessions.mark(&origin("s1"), "working", None);
     assert_eq!(get(&sessions, "s1").task_failed_ms, 0);
     assert!(!sessions.set_task_failed("s1", 50, "build", "exit 2"));
     assert!(!sessions.set_task_failed("s1", 100, "tests", "exit 1"));

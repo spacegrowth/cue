@@ -54,10 +54,12 @@ function usageChip() {
   if (!windows.length) return claude;
   const claudeRates = state.settings?.usage?.claude !== false ? state.usage : null;
   if (claudeHasUsage(claudeRates) && !limitedSessions().length) {
-    const claudeFive = claudeRates.five_hour;
+    // A plan with no 5-hour limit (Ultra) still has its weekly one: Claude shows that, named "wk".
+    const claudeWeekly = noLimit(claudeRates, "five_hour");
+    const claudeW = claudeWeekly ? claudeRates.seven_day : claudeRates.five_hour;
     const codexFive = windows.find((w) => w.minutes === 300);
-    const provider = (name, w, none = false) => `<span class="uc-one"><span class="usage-provider">${name}</span>${none ? '<span class="up">no limit</span>' : w ? `<span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : '<span class="up">—</span>'}</span>`;
-    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}">${provider("Claude", claudeFive, noLimit(claudeRates, "five_hour"))}${provider("Codex", codexFive)}<span class="usage-window">5h</span></button>${usagePop()}</span>`;
+    const provider = (name, w, label = "") => `<span class="uc-one"><span class="usage-provider">${name}</span>${label ? `<span class="usage-window">${label}</span>` : ""}${w ? `<span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : '<span class="up">—</span>'}</span>`;
+    return `<span class="usage-wrap"><button class="usage-chip usage-combined" data-usage="meter" aria-label="Usage" aria-expanded="${usageOpen === "claude"}">${provider("Claude", claudeW, claudeWeekly ? "wk" : "")}${provider("Codex", codexFive)}<span class="usage-window">5h</span></button>${usagePop()}</span>`;
   }
   const label = claude ? '<span class="usage-provider">Codex</span>' : "";
   const headerWindows = claude ? windows.filter((w) => w.minutes === 300) : windows;
@@ -108,11 +110,12 @@ function claudeUsageChip() {
   const broken = uf.error ? `<span class="ul uf-bad" title="${esc(uf.error)}">usage file ⚠</span>` : "";
   return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" aria-label="${claude ? "Claude Code usage" : "Your usage"}" aria-expanded="${usageOpen === "claude"}">${claude && codexUsageWindows().length ? '<span class="usage-provider">Claude</span>' : ""}${claude ? claudeMeters(u, !codexUsageWindows().length) : ""}${mine}${broken}</button>${more}${usagePop()}</span>`;
 }
-/** Claude Code's windows in the header: each one's bar, or "no limit" for one the plan doesn't have.
- *  `weekly`: the weekly one too (left out beside Codex, whose 5-hour one sits next to it). */
+/** Claude Code's windows in the header: each one the plan has, with its bar. A window the plan doesn't have
+ *  (Ultra's 5-hour one) is left out; the weekly one then shows even beside Codex. `weekly`: the weekly one too. */
 function claudeMeters(u, weekly) {
-  const one = (label, k) => noLimit(u, k) ? `<span class="ul">${label}</span><span class="up">no limit</span>` : usageMeter(label, u[k]);
-  return one("5h", "five_hour") + (weekly ? one("wk", "seven_day") : "");
+  const five = noLimit(u, "five_hour") ? "" : usageMeter("5h", u.five_hour);
+  const wk = weekly || !five ? usageMeter("wk", u.seven_day) : "";
+  return five + wk || '<span class="up">—</span>';
 }
 /** "$12.40/$50", "48/200 credits", "$3.10": an amount from your usage file, in its unit. */
 function spendText(m, long = false) {

@@ -1,15 +1,15 @@
 // Cue UI sheets — Settings, Search, the conversation sheet, the setup sheet, Forward and the move dialog.
 // "Move to Cue" in progress: a dialog over the window says what's happening, step by step, and the screen
 // behind it stays as it is (the session vanishes from the lists while it's ended and resumed). When it's
-// done the moved session is the selected one; its terminal stays closed until you open it.
-let moving = null;   // { sid, name, harness, project, step, err, at, last, hosted }
+// done the moved session is the selected one, hosted.
+let moving = null;   // { sid, name, harness, project, step, err, at }
 function movingDialog() {
   const m = moving;
-  const steps = m.hosted ? ["Ending it in its terminal", "Resuming it hosted: loading the conversation", "Ready"] : ["Ending it in its tab", "Resuming it in Cue: loading the conversation", "Ready"];
+  const steps = ["Ending it in its tab", "Resuming it hosted: loading the conversation", "Ready"];
   const secs = Math.round((now() - m.at) / 1000);
   return `<div class="move-scrim"><div class="move-dialog" role="dialog" aria-live="polite">${m.err
     ? `<div class="move-title">Couldn't move ${esc(m.name || m.project)} to Cue</div><div class="move-err">${esc(m.err)}</div><div class="row-btns"><span class="grow"></span><button class="btn primary" data-act="move-dismiss">OK</button></div>`
-    : `<div class="move-title"><span class="dot-live"></span>Moving ${esc(m.name || m.project)} to Cue…<span class="grow"></span><span class="move-secs">${secs}s</span></div><ol class="move-steps">${steps.map((t, n) => `<li class="${n < m.step ? "done" : n === m.step ? "now" : ""}">${t}</li>`).join("")}</ol>${m.step === 1 && m.last ? `<div class="move-screen">${esc(m.last)}</div>` : ""}<div class="dim">${m.step === 1 ? "A long conversation takes a while to load." : "Its conversation comes back whole."}</div>`}
+    : `<div class="move-title"><span class="dot-live"></span>Moving ${esc(m.name || m.project)} to Cue…<span class="grow"></span><span class="move-secs">${secs}s</span></div><ol class="move-steps">${steps.map((t, n) => `<li class="${n < m.step ? "done" : n === m.step ? "now" : ""}">${t}</li>`).join("")}</ol><div class="dim">${m.step === 1 ? "A long conversation takes a while to load." : "Its conversation comes back whole."}</div>`}
   </div></div>`;
 }
 async function moveToCue(sid) {
@@ -18,18 +18,13 @@ async function moveToCue(sid) {
   const s = sessionOf(sid) || (q && { name: q.name || baseName(q.cwd), harness: q.harness, project: q.project || projOf(q.cwd) });
   if (!s || moving) return;
   if (quietOpen === sid) quietOpen = null;   // it opens in Active as it moves
-  // With hosting on it comes back hosted (from a terminal app's tab or from Cue's own terminal), with no screen to watch.
-  const hosted = !!state.settings?.hosted?.on;
-  const arrived = () => hosted ? !!sessionOf(sid)?.hosted : inTmux(sid);
-  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "", hosted };
+  // It comes back hosted, with no screen to watch.
+  const arrived = () => !!sessionOf(sid)?.hosted;
+  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now() };
   renderMain();
-  // Every second: the clock, and once it's in its new window, that window's last line.
-  const watch = setInterval(async () => {
+  // Every second: the clock.
+  const watch = setInterval(() => {
     if (!moving || moving.sid !== sid) return clearInterval(watch);
-    if (!hosted && inTmux(sid)) {
-      moving.step = Math.max(moving.step, 1);
-      try { const sc = await invoke("session_screen", { sessionId: sid }); moving.last = (sc.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 120); } catch {}
-    }
     renderMain();
   }, 1000);
   try {
@@ -202,7 +197,7 @@ async function openFound(sid, act = "open") {
   if (!here) return svAct(act, sid);
   const live = (state.live || []).find((x) => x.session_id === sid);
   if (act === "quiet" && !sessionOf(sid) && live?.harness === "claude") {
-    try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); }
+    try { await invoke("adopt_session", { sessionId: sid }); setState(await fetchState()); }
     catch (e) { toast(`Couldn't open it here: ${e}`); }
   }
   if (sessionOf(sid) && here(sid)) return;
@@ -218,7 +213,7 @@ async function resumeOlder(r) {
     const res = await invoke("resume_session", { sessionId: r.session_id });
     toast(`${res.detail}: ${r.name || r.project}`);
     if (view === "board") return setActive(null, res.session_id);
-    setState(await invoke("get_state"));
+    setState(await fetchState());
     openFound(res.session_id);
   } catch (e) { toast(`Couldn't resume it: ${e}`); }
 }
@@ -294,12 +289,10 @@ const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glas
 const seg = (key, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${JSON.stringify(v) === JSON.stringify(cur) ? "on" : ""}" data-set="${key}" data-val='${esc(JSON.stringify(v))}'>${esc(l)}</button>`).join("")}</div>`;
 const toggle = (key, on) => `<button class="toggle ${on ? "on" : ""}" data-set="${key}" data-val="${!on}" role="switch" aria-checked="${on}" aria-label="${esc(key)}"><span></span></button>`;
 const setRow = (title, sub, control) => `<div class="set-row"><div class="set-text"><div class="set-title">${title}</div>${sub ? `<div class="set-sub">${sub}</div>` : ""}</div>${control}</div>`;
-/** Settings → Agents' New sessions: where they run, and the hosted trial. */
+/** Settings → Agents' sessions Cue runs: when an idle one's memory is freed, and cue-host. */
 const newSessionRows = (st) => `
-    ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
-    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is an item in Waiting, and a message goes to it directly. Move to Cue brings a terminal app's session in this way, and Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}
     ${setRow("Free an idle session's memory after", "A session Cue runs keeps its agent in memory while it waits. Idle this long, Cue ends the agent and keeps the session and its whole chat; your next message starts it again where it left off, a moment slower. Never one at work, asking you something, or with anything still running.", seg("hosted.rest_min", st.hosted?.rest_min ?? 30, [[15, "15 min"], [30, "30 min"], [60, "1 hour"], [0, "Never"]]))}
-    ${st.hosted?.on ? hostRow() : ""}`;
+    ${hostRow()}`;
 /** Settings → Agents' cue-host row: what it's doing, and Restart cue-host (twice: it ends every hosted agent). Asked
  *  again every few seconds while Settings shows it. */
 let hostInfo = null, hostArm = false, hostAsked = 0;
@@ -328,8 +321,8 @@ function hostRestart() {
   renderMain();
   invoke("host_restart").then(toast, (e) => toast(`Couldn't restart cue-host: ${e}`)).finally(() => { hostAsked = 0; renderMain(); });
 }
-/** Settings → General's Color: All projects' swatches (core/colors.js projBtn's), so the window's color can be picked here too. */
-const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
+/** Settings → General → Color: the window's one color (core/colors.js swatchPicker). */
+const themeSwatches = () => `<div class="set-sw">${swatchPicker()}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a
  *  tab of its own; the others show under Agents. */
 let extSections = null;
@@ -595,8 +588,7 @@ function setGeneralPane(st) {
     ${updateRow()}
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
-    ${setRow("Color", st.appearance?.project === true ? "The window's color, the same as All projects' dot. A project picked at the top wears its own. Moss is Cue's own." : "The window's color, the same as All projects' dot. Moss is Cue's own.", themeSwatches())}
-    ${setRow("Project colors", "Each project gets a color of its own: its dot, and the window while it's picked at the top. Off, every project's dot is in the window's Color.", toggle("appearance.project", st.appearance?.project === true))}
+    ${setRow("Color", "The window's color, the same for every project. Moss is Cue's own.", themeSwatches())}
     ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
     ${setRow("Test", "Cue waits a minute: still waiting then, the notification comes (never while you're looking at it, here or in the mini window). This sends one now: if nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
@@ -618,7 +610,7 @@ function setChatPane(st, keep) {
     <div class="set-group">Quick phrases</div>
     ${setRow("Above the text box", `Click one to send it as its own message; anything you've typed stays in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
     <div class="set-group">Steps</div>
-    ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. Folded: one line per turn, what it said left in view, its newest step shown on one line while it works; click the line or a message's step count to list every step, one line each, and click a step to open it.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "Folded"], ["all", "Open"], ["hidden", "Hidden"]]))}
+    ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. One line each: click a step for its output or diff.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "One line each"], ["all", "Everything"], ["hidden", "Hidden"]]))}
     <div class="set-group">Context</div>
     ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each item keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
     ${setRow("When a Stop hook makes the agent continue, the item shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
@@ -638,10 +630,10 @@ function settingsSheet() {
     <div class="set-group">Connected agents</div>
     ${agentRows()}
     ${extRows()}
-    <div class="set-group">New sessions</div>
+    <div class="set-group">Sessions</div>
     ${newSessionRows(st)}
-    <div class="set-group">Pi</div>
-    ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
+    ${c.pi?.present === false ? "" : `<div class="set-group">Pi</div>
+    ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}`}
     <div class="set-group">Agents driving agents</div>
     ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no item or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}`,
     chat: setChatPane(st, keep),

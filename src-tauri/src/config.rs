@@ -76,7 +76,7 @@ pub fn effective() -> Value {
     // Login Items as macOS last said (System Settings → Login Items), asked off-thread (mac.rs).
     all["login"] = json!({ "open": mac.login });
     // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
-    all["sessions"] = json!({ "tmux": tmux_wanted(&c) && mac.tmux, "tmux_installed": mac.tmux, "terminal": mac.terminal });
+    all["sessions"] = json!({ "tmux_installed": mac.tmux, "terminal": mac.terminal });
     all
 }
 
@@ -100,22 +100,22 @@ fn from_config(c: &Value) -> Value {
         "insights": { "on": ins, "handoff": ins, "cache": ins, "queue": ins && b("/insights/queue", true), "ahead": ins && snooze <= now_ms, "snooze": snooze, "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // Tips (ui/tips.js): a key or command now and then on the line under the chat; on until turned off.
         "tips": { "on": b("/tips/on", true) },
-        // Cue-hosted sessions (hub/hosted.rs): a trial, off until you turn it on.
-        "hosted": { "on": b("/hosted/on", false), "rest_min": rest_minutes_in(c) },
+        // Sessions Cue runs (hub/hosted.rs): every session is hosted; `on` stays for the window until it stops asking.
+        "hosted": { "on": true, "rest_min": rest_minutes_in(c) },
         // Updates (ipc/updates.rs): from the beta channel when `beta` is on; off until you turn it on.
         "updates": { "beta": beta_updates_in(c) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true), "codex": b("/usage/codex", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
-        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
+        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom() },
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         "owner": { "names": c.pointer("/owner/names").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])) },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "oneway": crate::desk::one_way::view(c), "never": c.pointer("/project/never").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -204,22 +204,6 @@ fn idle_compacts_in(settings: Option<&Value>, min_env: Option<&str>, tokens: u64
     }
     let min = min_env.and_then(|v| v.parse::<u64>().ok()).map_or(200_000, |n| n.max(100_000));
     tokens >= min
-}
-
-/// New sessions run in Cue (in tmux, shown in Cue's own terminal) unless Settings says a terminal tab;
-/// only when tmux is installed.
-pub fn tmux_sessions() -> bool {
-    tmux_wanted(&load()) && crate::terminal::focus::tmux_installed()
-}
-/// Settings → Cue-hosted sessions: + New and Move to Cue can start Claude Code hosted by Cue, with no terminal
-/// (docs/dev/cue-hosted-sessions.md). A trial: off until you turn it on.
-pub fn hosted_on() -> bool {
-    load().pointer("/hosted/on").and_then(Value::as_bool).unwrap_or(false)
-}
-
-/// Settings say new sessions run in Cue (on unless turned off).
-fn tmux_wanted(c: &Value) -> bool {
-    c.pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true)
 }
 
 /// What a finished card shows when a Stop hook made the agent continue: "answer" | "last".
@@ -342,7 +326,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.on", "hosted.rest_min"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "usage.codex", "sessions.tmux", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "project.oneway", "project.lands", "project.machine", "project.model", "project.asked", "project.never", "owner.names", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "voice.pick", "mini.mode", "hosted.rest_min"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -373,7 +357,7 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     }
     match key {
         "pi.gate" | "appearance.mode" | "mini.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
-        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.machine" | "project.model" | "project.asked" | "project.never" => checked_project(key, value),
+        "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" | "project.oneway" | "project.lands" | "project.machine" | "project.model" | "project.asked" | "project.never" => checked_project(key, value),
         "insights.skills" | "quick.phrases" | "owner.names" => checked_list(key, value),
         _ => checked_plain(key, value),
     }
@@ -416,16 +400,9 @@ fn checked_choice(key: &str, value: &Value) -> Result<Value, String> {
     })
 }
 
-/// A project setting: colors, pins, names, moves, folders and what's one-way there.
+/// A project setting: the window's Color, pins, names, moves, folders and what's one-way there.
 fn checked_project(key: &str, value: Value) -> Result<Value, String> {
     Ok(match key {
-        "project.colors" => {
-            let map = value.as_object().ok_or("colors must be folder: swatch")?;
-            if !map.values().all(|v| v.as_u64().is_some_and(|n| n < 10)) {
-                return Err("a swatch is 0 to 9".into());
-            }
-            value
-        }
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
         // Your own Color, past the ten: a hue and a strength (null: one of the ten, project.all).
         "project.hue" if value.is_null() || own_hue(&value) => value,
@@ -695,10 +672,6 @@ fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)>
         want.push(("PreCompact", json!({ "hooks": [{ "type": "command", "command": cmd("compact"), "timeout": 5 }] })));
         // A permission prompt waiting in its terminal that Cue can't answer (a sandboxed command's network access).
         want.push(("Notification", json!({ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": cmd("notice"), "timeout": 5 }] })));
-        // On this Mac, where the guard is: Cue's tmux guard first on the session's PATH (terminal::tmux_guard).
-        if on_mac {
-            want.push(("SessionStart", json!({ "hooks": [{ "type": "command", "command": cmd("start"), "timeout": 5 }] })));
-        }
     }
     want
 }
@@ -865,11 +838,12 @@ mod tests {
         let stop = v["hooks"]["Stop"].to_string();
         assert!(stop.contains("my-own-check") && stop.contains("/new/bin/cue-hook") && !stop.contains("/old/bin"));
         assert_eq!(v["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "guard");
-        for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure", "SessionStart"] {
+        for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure"] {
             assert!(v["hooks"][e].to_string().contains("/new/bin/cue-hook"), "{e}");
         }
-        // The tmux guard is on this Mac only: a machine's settings get no SessionStart. Ask me before's check is on
-        // both (a machine's for Bash only: an item's copies, whose edits are checked, are on this Mac).
+        // No SessionStart any more: an older Cue's entry is taken out. Ask me before's check is on this Mac and a machine
+        // (a machine's for Bash only: an item's copies, whose edits are checked, are on this Mac).
+        assert!(v["hooks"]["SessionStart"].is_null(), "an older Cue's SessionStart is gone");
         assert!(v["hooks"]["PreToolUse"][1].to_string().contains("guard claude"), "Ask me before's check, after yours");
         let machine = merge_hooks(json!({}), "$HOME/.cue/cue-hook", "claude", false).unwrap();
         assert!(machine["hooks"]["SessionStart"].is_null() && !machine["hooks"]["Stop"].is_null());

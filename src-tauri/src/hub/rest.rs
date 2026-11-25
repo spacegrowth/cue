@@ -6,7 +6,7 @@
 //!
 //! Only the process Cue itself started for the session, through the port that started it (`Hosted::close`): never
 //! a session in a terminal (its process is the terminal's), never one on another machine, never by name or pattern.
-//! Never one at work, asking you something, compacting, with a message on its way or kept for it, with a teammate,
+//! Never one at work, asking you something, compacting, with a message on its way or kept for it (or just woken for one), with a teammate,
 //! a background agent or a background command still going (they would end with it), or holding a Desk item that is
 //! landing. One whose cache is still warm waits until it runs out, so coming back to it soon costs what it would have.
 //! On the ~10 s tick, off the main thread (usage.rs).
@@ -23,7 +23,10 @@ pub(crate) fn can_rest(st: &Store, s: &Session, now: u64, after_ms: u64) -> bool
         return false;
     }
     let going = s.helpers > 0 || s.background > 0 || !s.running.is_empty() || s.team.iter().any(|t| matches!(t.state.as_str(), "working" | "queued" | "reviewing"));
-    let sending = s.queued.is_some() || s.held.is_some() || s.kept_on_way.is_some() || s.compacting_ms > 0;
+    // A message of yours on its way counts too, and so does a wake for one (#922): Cue started it again moments ago,
+    // its agent hasn't said its turn began, so the session still reads as idle since its last reply hours back.
+    let sending = s.queued.is_some() || s.held.is_some() || s.kept_on_way.is_some() || s.compacting_ms > 0
+        || st.hosted_waking.contains_key(sid) || s.thread.iter().any(|e| e.role == "you" && e.pending);
     let asking = st.items.iter().any(|i| i.origin.session_id == sid && i.status == "pending" && i.kind != "waiting");
     let landing = st.desk.items.iter().any(|i| i.state == "finishing" && i.holder.as_ref().is_some_and(|h| h.is(sid)));
     let warm = st.insight.get(sid).and_then(|v| v["until_ms"].as_u64()).is_some_and(|until| until > now);

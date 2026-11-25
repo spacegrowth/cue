@@ -14,11 +14,11 @@ const bgOpened = new Map();    // "sid|id" → an earlier one in full (null whil
 /** The open tab's name ("Agents"), for its full view's Back; "" when neither is open. */
 const bgTabName = (sid) => BG_TABS.find(([k]) => k === bgTabOn.get(sid))?.[1] || "";
 
-/** The tabs' buttons: each only for a session with that kind of work (or the tab open), with a live dot and
- *  how many run while any do. */
+/** The tabs' buttons: Activity, then each of Agents and Scripts only for a session with that kind of work (or the tab
+ *  open), with a live dot and how many run while any do. */
 function bgTabBtn(sid) {
   const all = bgAll(sid);
-  return BG_TABS.map(([k, label, is]) => {
+  return bgActTabBtn(sid) + BG_TABS.map(([k, label, is]) => {
     const on = bgTabOn.get(sid) === k;
     if (k === "agents") {
       // Its count is the one every place says (agents.js agentCount); the tab shows while it has any, earlier ones too.
@@ -28,9 +28,22 @@ function bgTabBtn(sid) {
     }
     const hs = all.filter(is);
     if (!hs.length && !on) return "";
-    const n = hs.filter(helperRunning).length;
-    return `<button class="stab ${on ? "on" : ""}" data-bg-tab="${k}" data-sid="${esc(sid)}">${label}${n ? `<span class="stab-n"><span class="dot-live"></span>${n} running</span>` : ""}</button>`;
+    // Running: "● 1 running"; none running and one failed since the turn ended: red "1 failed" (#867).
+    const n = hs.filter(helperRunning).length, f = n ? 0 : bgFailedScripts(sid).length;
+    return `<button class="stab ${on ? "on" : ""}" data-bg-tab="${k}" data-sid="${esc(sid)}">${label}${n ? `<span class="stab-n"><span class="dot-live"></span>${n} running</span>` : f ? `<span class="stab-n bad">${f} failed</span>` : ""}</button>`;
   }).join("");
+}
+/** Activity (#872), next to Chat as on the Desk: Cue's messages to the session (hand-offs, Reopened, done…) and its
+ *  Desk lines, which its chat leaves out (chat/pane.js activeChat). Always there, as on the Desk (#898). */
+function bgActTabBtn(sid) {
+  const on = bgTabOn.get(sid) === "activity";
+  return `<button class="stab ${on ? "on" : ""}" data-bg-tab="activity" data-sid="${esc(sid)}">Activity</button>`;
+}
+/** The Activity tab's page: its rows as the Desk's session page lists them (desk/page.js deskSessActivity,
+ *  deskActRowHtml), newest first. */
+function bgActPage(sid) {
+  const d = deskForSession(sid), rows = deskSessActivity(sid, d);
+  return `<div class="dk-moves bg-acts">${rows.length ? rows.map((r) => deskActRowHtml(r, d)).join("") : `<div class="bg-empty">Nothing yet.</div>`}</div>`;
 }
 /** Where the open tab's page goes, in place of the chat (extensions.js placeExt hides the chat under it);
  *  not while one is open in full. */
@@ -45,6 +58,7 @@ function bgAll(sid) {
 const bgOrder = (a, b) => (helperRunning(b) - helperRunning(a)) || (helperRunning(a) ? a.started_ms - b.started_ms : (b.finished_ms || b.last_ms || b.started_ms) - (a.finished_ms || a.last_ms || a.started_ms));
 
 function bgPage(sid, tab) {
+  if (tab === "activity") return bgActPage(sid);
   const [k, label, is] = BG_TABS.find(([k]) => k === tab) || BG_TABS[0];
   const rows = k === "agents" ? agentsPage(sid, bgAll(sid)) : bgAll(sid).filter(is).sort(bgOrder).map((h) => bgRow(sid, h, true)).join("");
   const e = bgEarlier.get(sid);

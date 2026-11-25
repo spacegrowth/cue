@@ -161,7 +161,7 @@ impl Hub {
             what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
             files = if t.files.is_empty() { "(none)".to_string() } else { t.files.join(", ") },
         );
-        let kept = kept(&self.tell(lead, &text)?);
+        let kept = kept(&self.tell(lead, &text, crate::sessions::Kind::Crew)?);
         self.set_teammate(lead, &t.call, |m| {
             m.fix_rounds += 1;
             m.step = if kept { FIXES_KEPT } else { FIXES_RESTART }.into();
@@ -182,7 +182,7 @@ impl Hub {
             if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
             name = t.name
         );
-        let kept = kept(&self.tell(lead, &text)?);
+        let kept = kept(&self.tell(lead, &text, crate::sessions::Kind::Crew)?);
         self.set_teammate(lead, &t.call, |m| {
             let now = now_ms();
             if kept {
@@ -246,12 +246,12 @@ impl Hub {
             // Gone quiet with nothing running: its lead asks it where it is, and to carry on.
             "resume" => {
                 // At once: its lead's turn waits on this very teammate, so a message kept for the turn's end never goes.
-                self.send_to_session(lead, &resume_words(&t.name), &[], true)?;
+                self.tell_now(lead, &resume_words(&t.name), true, crate::sessions::Kind::Nudge)?;
                 Ok(format!("Asked its lead to wake {}", t.name))
             }
             "stop" => {
                 // At once, as Resume: a stuck teammate holds its lead's turn open, so a kept message would never go.
-                self.send_to_session(lead, &format!("Stop your teammate {} now (TaskStop, task id {}), and say so.", t.name, t.agent_id), &[], true)?;
+                self.tell_now(lead, &format!("Stop your teammate {} now (TaskStop, task id {}), and say so.", t.name, t.agent_id), true, crate::sessions::Kind::Nudge)?;
                 Ok(format!("Asked its lead to stop {}", t.name))
             }
             "aside" => {
@@ -353,7 +353,7 @@ impl Hub {
         let mins = now.saturating_sub(t.step_ms) / 60_000;
         let text = format!("(Cue) Your teammate {name} has been quiet for {mins} min with nothing running. Ask it where it is with SendMessage (to: \"{name}\"); if it doesn't answer, stop it.", name = t.name);
         // At once: its lead's turn waits on this teammate, so a message kept for that turn's end would never go.
-        if let Err(e) = self.send_to_session(&origin.session_id, &text, &[], true) {
+        if let Err(e) = self.tell_now(&origin.session_id, &text, true, crate::sessions::Kind::Nudge) {
             eprintln!("cue: couldn't tell {} about its quiet teammate {}: {e}", origin.session_id, t.name);
         }
     }
@@ -623,10 +623,16 @@ fn finished_files(m: &mut Teammate, c: Option<&Changes>) {
     }
 }
 
-/// What `git status` says changed in `dir` (under `only`, when given): every path, and the untracked ones.
+/// An untracked folder with more files than this is a build's or a download's (a teammate's own `target-837/`, say),
+/// not work: none of its files count (#876: one such folder put 15,785 files on a teammate, and every one of them
+/// rode along in each state the window was sent, until Cue grew past its memory limit and quit).
+const UNTRACKED_FOLDER_MOST: usize = 200;
+
+/// What `git status` says changed in `dir` (under `only`, when given): every path, and the untracked ones. An
+/// untracked folder counts file by file, unless it holds more than UNTRACKED_FOLDER_MOST files.
 fn status(machine: &str, dir: &str, only: &[&str]) -> Result<(Vec<String>, Vec<String>), String> {
     let filters = crate::safe_git::no_repo_filters(machine, dir);
-    let mut args: Vec<&str> = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+    let mut args: Vec<&str> = vec!["status", "--porcelain=v1", "-z", "--untracked-files=normal"];
     if !only.is_empty() {
         args.push("--");
         args.extend(only.iter().copied());
@@ -643,12 +649,29 @@ fn status(machine: &str, dir: &str, only: &[&str]) -> Result<(Vec<String>, Vec<S
         if xy.starts_with('R') || xy.starts_with('C') {
             parts.next(); // a rename's old path follows it
         }
+        if xy.starts_with("??") && path.ends_with('/') {
+            for f in untracked_in(machine, dir, &filters, path) {
+                untracked.push(f.clone());
+                files.push(f);
+            }
+            continue;
+        }
         if xy.starts_with("??") {
             untracked.push(path.to_string());
         }
         files.push(path.to_string());
     }
     Ok((files, untracked))
+}
+
+/// The files in untracked folder `folder` (from the repository's top, as `git status` names it), from the top too;
+/// none when it holds more than UNTRACKED_FOLDER_MOST, or git can't say.
+fn untracked_in(machine: &str, dir: &str, filters: &[String], folder: &str) -> Vec<String> {
+    let spec = format!(":(top,literal){folder}");
+    let args = ["ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--", spec.as_str()];
+    let Ok((out, 0)) = crate::safe_git::run(machine, dir, filters, &args) else { return Vec::new() };
+    let found: Vec<String> = out.split('\0').filter(|p| !p.is_empty()).take(UNTRACKED_FOLDER_MOST + 1).map(str::to_string).collect();
+    if found.len() > UNTRACKED_FOLDER_MOST { Vec::new() } else { found }
 }
 
 /// The top folder of the git repository folder `dir` is in, None when it's in none. Here, the nearest folder of it

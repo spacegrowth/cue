@@ -1,4 +1,4 @@
-//! ⋯ → Move to terminal: a session Cue runs (hosted, or in Cue's own terminal) resumed where you run agents yourself,
+//! ⋯ → Move to terminal: a session Cue hosts resumed where you run agents yourself,
 //! for when you're moving away from Cue. Not something to do often, so it's in ⋯, not a button.
 //! - On this Mac: its agent's own resume line in a plain tab of your terminal app (iTerm, Terminal), not one kept running
 //!   by Cue's tmux, where it's an ordinary terminal session from then on, Cue or no Cue.
@@ -11,7 +11,6 @@ use super::with_hub;
 use crate::hub::Hub;
 use crate::model::{self, Origin};
 use crate::terminal::focus;
-use crate::terminal::launch::Place;
 use std::sync::Arc;
 use tauri::State;
 
@@ -26,15 +25,8 @@ pub(crate) fn move_to_terminal_now(h: &Arc<Hub>, session_id: &str) -> Result<Str
         h.closable(session_id)?;
         return if origin.machine.is_empty() { hosted_here(h, &origin) } else { hosted_there(h, &origin) };
     }
-    let origin = h.live_origin(session_id).ok_or("that session is gone")?;
-    if origin.tmux_pane.is_empty() {
-        return Err("it already runs in a terminal of yours".into());
-    }
-    if !origin.machine.is_empty() {
-        return Err(format!("it already runs in tmux on {}, its own terminal", crate::machines::display_name(&origin.machine)));
-    }
-    h.closable(session_id)?;
-    in_cues_terminal(h, &origin)
+    h.live_origin(session_id).ok_or("that session is gone")?;
+    Err("it already runs in a terminal of yours".into())
 }
 
 /// Its agent's resume line on this Mac: Claude Code on the model it last used and with its MCP selection; Pi and Codex
@@ -68,7 +60,7 @@ fn hosted_here(h: &Arc<Hub>, o: &Origin) -> Result<String, String> {
     let line = resume_line_here(o)?;
     let (label, star) = (label(h, o), h.session_star(&o.session_id));
     h.hosted().close(&o.session_id);
-    let tab = h.launcher().here(&line, &o.cwd, &label, Place::Tab)?;
+    let tab = h.launcher().here(&line)?;
     Ok(now_in(h, o, &label, star, tab))
 }
 
@@ -85,21 +77,4 @@ fn hosted_there(h: &Arc<Hub>, o: &Origin) -> Result<String, String> {
     let moved = Origin { session_id: sid.to_string(), harness: o.harness.clone(), cwd: dir, transcript_path: o.transcript_path.clone(), term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
     h.resumed(moved, &label, &[], false);
     Ok(format!("Moved to tmux on {}", crate::machines::display_name(&m.name)))
-}
-
-/// A session in Cue's own terminal: its agent ended and its window there closed (as Close does), then resumed in a tab
-/// of your terminal app. The resume line is made first: one Cue couldn't resume is never ended.
-fn in_cues_terminal(h: &Arc<Hub>, o: &Origin) -> Result<String, String> {
-    let line = resume_line_here(o)?;
-    let (label, star) = (label(h, o), h.session_star(&o.session_id));
-    super::end_session(h, &o.session_id)?;
-    // Its end drops Cue's record of it: let that land before the new one is made.
-    for _ in 0..20 {
-        if h.session_origin(&o.session_id).is_none() {
-            break;
-        }
-        crate::clock::sleep_ms(100);
-    }
-    let tab = h.launcher().here(&line, &o.cwd, &label, Place::Tab)?;
-    Ok(now_in(h, o, &label, star, tab))
 }

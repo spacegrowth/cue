@@ -25,6 +25,10 @@ pub enum Line {
     /// What comes after option `option` ("any": whichever) of item `id` is picked (#543), as its holder says:
     /// `IF PICKED: #<id> | <option> | <kind> | <title> | you'll see: … | done when: … | by: <me | new | name>`.
     IfPicked { id: String, next: crate::desk::model::FollowUp },
+    /// The user picked option `option` of item `id` in words, in its holder's chat (#864), as its holder reports it:
+    /// `PICKED: #<id> | <option> | add: <anything more they asked for>` (`add` may be left out). Cue does what the
+    /// option's Pick does; `extras` go with what follows.
+    Picked { id: String, option: String, extras: String },
     /// Item `id`'s designs are at `url` (its canvas), as any session of its project says; a newer one replaces it.
     Designs { id: String, url: String },
     /// Item `id`'s two lines, from the lead (#382): what you'll see when it's done, in plain words, and (when said)
@@ -97,6 +101,12 @@ pub enum Line {
     /// The lead moving item `id` to another Desk, named `to` (#639, desk/move_desk.rs): `MOVE: #<id> -> <Desk> | why: …`.
     /// It goes with its notes, copy and branch, and its holder's hand-off.
     Move { id: String, to: String, why: String },
+    /// The lead asking to see more of its Desk (#818): `SHOW: #<id> #<id>` (those items in full) or `SHOW: desk` (`desk`:
+    /// the whole Desk block).
+    Show { ids: Vec<String>, desk: bool },
+    /// The Desk lead installing what's on main now, through Cue so the Desk shows it (#867): `INSTALL: main`, or a
+    /// plain `INSTALL:`.
+    Install,
 }
 
 /// What a LOOP: line says (#583). A part with no label of its own goes on the one before it, so a goal or a check
@@ -194,6 +204,9 @@ fn one(t: &str) -> Option<Line> {
     let l = unmarked(t);
     let (word, body) = l.split_once(':')?;
     let body = body.trim().trim_start_matches("**").trim().trim_end_matches('*').trim();
+    if word.trim_end_matches('*').trim() == "INSTALL" {
+        return install(body);
+    }
     if body.is_empty() || body.starts_with('<') {
         return None;
     }
@@ -208,6 +221,7 @@ fn one(t: &str) -> Option<Line> {
         "CONTEXT" => context(body),
         "DESIGNS" => designs(body),
         "IF PICKED" => if_picked(body),
+        "PICKED" => picked(body),
         "TITLE" => title(body),
         "SEE" => see(body),
         "SPLIT" => split(body),
@@ -244,8 +258,17 @@ fn one(t: &str) -> Option<Line> {
         "COPY" => copy(body),
         "LOOP" => loop_line(body),
         "MOVE" => crate::desk::move_desk::parse(body),
+        "SHOW" => show(body),
         _ => None,
     }
+}
+
+/// `INSTALL: main`, `INSTALL: main | why: …` or a plain `INSTALL:` (#867): Line::Install. Anything else after it (the line
+/// explained in prose) isn't one.
+fn install(body: &str) -> Option<Line> {
+    let (head, _) = body.split_once('|').unwrap_or((body, ""));
+    let head = head.trim().trim_matches(['`', '*']).trim();
+    (head.is_empty() || head.eq_ignore_ascii_case("main")).then_some(Line::Install)
 }
 
 /// `LOOP: <project> | name: … | goal: … | done when: … | check: … | rounds: … | time: … | spend: … | decisions: …`
@@ -326,6 +349,19 @@ fn hold(body: &str) -> Option<Line> {
         }
     }
     Some(Line::Hold { id: id_of(head)?, area: area?, till, why })
+}
+
+/// `SHOW: #<id> #<id>` or `SHOW: desk` (#818). None when it names neither.
+fn show(body: &str) -> Option<Line> {
+    let words: Vec<&str> = body.split(|c: char| c.is_whitespace() || c == ',' || c == '|').filter(|w| !w.is_empty()).collect();
+    let desk = words.first().is_some_and(|w| w.trim_matches(['`', '*', '.']).eq_ignore_ascii_case("desk"));
+    let mut ids: Vec<String> = Vec::new();
+    for w in &words {
+        if let Some(id) = w.strip_prefix('#').map(|d| d.trim_end_matches(['.', ')', '`', '*'])).filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_alphanumeric())) {
+            ids.push(id.to_ascii_lowercase());
+        }
+    }
+    (desk || !ids.is_empty()).then_some(Line::Show { ids, desk })
 }
 
 /// `UNHOLD: #<id>` (#540); anything after a "|" is left alone.
@@ -447,6 +483,21 @@ fn if_picked(body: &str) -> Option<Line> {
     let Some(Line::Item { kind, title, see, done_when, .. }) = item(&rest.join(" | ")) else { return None };
     let by = if by.is_empty() { "me".to_string() } else { by };
     Some(Line::IfPicked { id: id_of(head)?, next: crate::desk::model::FollowUp { option, kind, title, see, done_when, by } })
+}
+
+/// "#12 | B | add: a search box" (#864): option B of item 12, picked in words, with what more was asked for. The
+/// option as a Pick reads it (letter_of); anything after it, its "add:" (or "with:", "extras:") label left off, the
+/// extras. None without an option.
+fn picked(body: &str) -> Option<Line> {
+    let p = parts(body);
+    let (head, option) = (p.first()?, p.get(1)?);
+    if !head.starts_with('#') || head.contains(' ') {
+        return None;
+    }
+    let option = crate::desk::hub::turn::act::letter_of(option.trim().trim_start_matches("option ").trim_start_matches("Option "))?;
+    let extras = p[2..].join(" | ");
+    let extras = ["add", "with", "extras"].iter().find_map(|l| labelled(&extras, l).filter(|_| extras[l.len()..].trim_start().starts_with(':'))).unwrap_or(&extras);
+    Some(Line::Picked { id: id_of(head)?, option, extras: extras.trim().to_string() })
 }
 
 /// `part` without its "you'll see:" label (or "you will see:", "see:"; a curly quote too), with its colon, so a

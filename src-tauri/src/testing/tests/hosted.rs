@@ -8,13 +8,8 @@ use crate::ipc::{end_session, move_to_terminal_now, move_session_to_cue, park, r
 use crate::testing::{until, AgentProcess, Transcript, World};
 use serde_json::{json, Value};
 
-fn hosted_on(on: bool) {
-    crate::config::set("hosted.on", json!(on)).unwrap();
-}
-
 /// A hosted session started by + New in the World's folder, with `message`: its id.
 fn started(w: &World, message: &str) -> String {
-    hosted_on(true);
     let opts = StartOpts { hosted: true, perm: "auto".into(), extra: "--model opus".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), message, "trial", &opts).unwrap();
     r["session_id"].as_str().unwrap().to_string()
@@ -31,14 +26,14 @@ fn takes(w: &World, sid: &str, text: &str) {
 }
 
 /// A hosted session started with `message`, which Claude has taken (its turn under way): its id.
-fn running(w: &World, message: &str) -> String {
+pub(super) fn running(w: &World, message: &str) -> String {
     let sid = started(w, message);
     takes(w, &sid, message);
     sid
 }
 
 /// `sid` at the end of a turn that said `reply`.
-fn turn_ends(w: &World, sid: &str, reply: &str) {
+pub(super) fn turn_ends(w: &World, sid: &str, reply: &str) {
     w.hosted_says(sid, HostedEvent::TurnEnded { text: reply.into(), failed: false, cost_usd: 0.25, unprompted: false });
     w.settle();
 }
@@ -53,12 +48,16 @@ fn ask(kind: AskKind, request_id: &str) -> HostedEvent {
 }
 
 #[test]
-fn with_the_setting_off_nothing_starts_hosted() {
+fn a_new_session_starts_hosted_whatever_it_asked_for() {
     let w = World::new();
-    let opts = StartOpts { hosted: true, ..Default::default() };
-    let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "", &opts);
-    assert!(r.is_err(), "{r:?}");
-    assert!(w.hosted.launched().is_empty() && w.launcher.launched().is_empty());
+    // Old settings and + New's old picker: Cue's terminal, and hosting off. Neither decides anything now.
+    let opts = StartOpts { tmux: Some(true), hosted: false, ..Default::default() };
+    let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "", &opts).unwrap();
+    let sid = r["session_id"].as_str().unwrap().to_string();
+    assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(Start::New(sid.clone())));
+    assert!(w.launcher.launched().is_empty(), "no terminal");
+    assert!(w.hub().session_origin(&sid).is_some_and(|o| o.hosted));
+    assert!(start_session_with(w.hub(), "gemini", &w.home().to_string_lossy(), "hi", "", &opts).is_err(), "only an agent Cue can host");
 }
 
 #[test]
@@ -88,7 +87,6 @@ fn a_new_hosted_session_starts_claude_with_no_terminal_and_hands_it_its_first_me
 #[test]
 fn a_hosted_session_that_wont_start_says_why_and_adds_nothing() {
     let w = World::new();
-    hosted_on(true);
     w.hosted.refuse("couldn't start Claude Code: not found");
     let opts = StartOpts { hosted: true, ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "", &opts);
@@ -117,7 +115,6 @@ fn a_message_sent_to_an_idle_one_goes_to_it_directly_and_starts_a_turn_when_take
 #[test]
 fn a_message_sent_while_the_first_is_on_its_way_waits_its_turn() {
     let w = World::new();
-    hosted_on(true);
     let release = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     w.hosted.hang_next_send(release.clone());
     let dir = w.home().to_string_lossy().into_owned();
@@ -131,7 +128,7 @@ fn a_message_sent_while_the_first_is_on_its_way_waits_its_turn() {
         other => panic!("started as {other:?}"),
     };
     let to = sid.clone();
-    let second = w.client().spawn(move |c| c.hub.tell(&to, "and the signup"));
+    let second = w.client().spawn(move |c| c.hub.tell(&to, "and the signup", crate::sessions::Kind::Notice));
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert!(!second.is_finished(), "the second waits while the first is on its way");
     assert!(w.hosted.sent().is_empty(), "nothing handed over yet: {:?}", w.hosted.sent());
@@ -534,7 +531,6 @@ fn a_parked_hosted_session_resumes_hosted() {
     turn_ends(&w, &sid, "Done.");
     park(w.hub(), &sid).unwrap();
     assert!(w.hub().parked(&sid).is_some());
-    hosted_on(false);
     resume_parked_session(w.hub(), &sid, "pick it up").unwrap();
     assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(Start::Resume(sid.clone())), "hosted it was, hosted it stays");
     assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "pick it up".to_string())));
@@ -543,9 +539,8 @@ fn a_parked_hosted_session_resumes_hosted() {
 }
 
 #[test]
-fn move_to_cue_with_the_setting_on_resumes_a_terminal_session_hosted() {
+fn move_to_cue_resumes_a_terminal_session_hosted() {
     let w = World::new();
-    hosted_on(true);
     let agent = AgentProcess::start();
     let a = w.session("t").in_folder(w.home()).running_as(agent.pid);
     a.transcript().prompt("go").assistant("Done.").turn_end();
@@ -570,7 +565,7 @@ fn move_to_terminal_closes_it_and_resumes_it_in_a_tab_as_a_terminal_session() {
     assert_eq!(w.hosted.closed(), vec![sid.clone()]);
     let l = w.launcher.last();
     assert!(l.line.contains(&format!("claude --resume '{sid}'")), "{}", l.line);
-    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
+    assert!(l.machine.is_empty(), "a plain tab of your terminal app on this Mac");
     let o = w.hub().session_origin(&sid).unwrap();
     assert!(!o.hosted && o.agent_pid.is_none());
     assert_eq!(w.snapshot().session(&sid)["name"], "trial");
@@ -649,7 +644,6 @@ fn a_reply_to_its_card_goes_straight_to_it_and_settles_when_taken() {
 
 /// A Pi session started hosted by + New with `message`: its id.
 fn pi_started(w: &World, message: &str, perm: &str) -> String {
-    hosted_on(true);
     let opts = StartOpts { hosted: true, perm: perm.into(), ..Default::default() };
     let r = start_session_with(w.hub(), "pi", &w.home().to_string_lossy(), message, "", &opts).unwrap();
     r["session_id"].as_str().unwrap().to_string()
@@ -730,7 +724,6 @@ fn the_next_cue_ends_what_its_hosted_sessions_ran_as() {
 #[test]
 fn codex_starts_hosted_under_the_id_it_picks_and_resumes_by_it() {
     let mut w = World::new();
-    hosted_on(true);
     let opts = StartOpts { hosted: true, perm: "edits".into(), extra: "--model gpt-6 -c model_reasoning_effort=high".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "codex", &w.home().to_string_lossy(), "add a test", "", &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();
@@ -812,7 +805,6 @@ fn claude_codes_own_screens_are_in_the_slash_menu_marked_as_for_a_terminal_and_m
 
 /// A hosted `agent` session started by + New in the World's folder: its id.
 fn started_as(w: &World, agent: &str) -> String {
-    hosted_on(true);
     let opts = StartOpts { hosted: true, ..Default::default() };
     let r = start_session_with(w.hub(), agent, &w.home().to_string_lossy(), "", "trial", &opts).unwrap();
     r["session_id"].as_str().unwrap().to_string()
@@ -941,7 +933,7 @@ fn move_to_terminal_resumes_a_hosted_pi_with_pi_not_claude_code() {
     move_to_terminal_now(w.hub(), &pi).unwrap();
     let l = w.launcher.last();
     assert!(l.line.contains(&format!("pi --session '{pi}'")) && !l.line.contains("claude"), "{}", l.line);
-    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
+    assert!(l.machine.is_empty(), "a plain tab of your terminal app on this Mac");
     assert_eq!(w.hub().session_origin(&pi).unwrap().harness, "pi", "still Pi, now in a terminal");
 }
 

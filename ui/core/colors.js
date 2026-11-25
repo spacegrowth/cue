@@ -1,34 +1,20 @@
-// Cue UI core: projects (a folder's repository), their colors, pins, and the one-project filter.
+// Cue UI core: projects (a folder's repository), pins, the one-project filter, and the window's one Color.
 // ---------- a project: the git repository a folder is in (every worktree of it too), else the folder ----------
 /** A folder's project: its repository's name, as Cue read it ("cue" for any worktree of cue), else the folder's name. */
 const projOf = (cwd) => state.projects?.[cwd]?.name || baseName(cwd);
 /** Where + New starts for a project shown with this folder: its repository's main checkout, else the folder. */
 const projRoot = (cwd) => state.projects?.[cwd]?.root || cwd;
-// ---------- a project's color: its dot on every card, row and tile, picked by project name ----------
+// ---------- the window's Color (Settings → General → Color): one for all of Cue, every project alike ----------
 /** The ten swatches, in the order offered: Moss (Cue's own look, saved as 0), then around the color wheel,
  *  graphite last: [saved as, hue, strength (0: grey, 1: as colorful as Moss)], from the colors picked
  *  (styles/base.css --pcpN, in saved order: Moss #7a7a66 #9b8eb4 #a8925e #b7a38f #6d8375 #5f8b8a #6b739c #a3828f
  *  #6e7076). Nothing between rose and taupe (red and amber mean "asks you" and "stuck"). The window takes
- *  the hue and strength, at Moss's own lightness (projTheme); Moss is Cue's own theme. */
+ *  the hue and strength, at Moss's own lightness (projTheme); Moss is Cue's own theme. Projects have no color
+ *  of their own (#848): a project.colors or appearance.project left in settings.json is never read. */
 const MOSS = 0;
 const SWATCHES = [[MOSS], [4, 67, 0.37], [3, 87, 0.75], [1, 107, 0.3], [5, 157, 0.33], [6, 194, 0.48], [7, 276, 0.64], [2, 301, 0.57], [8, 353, 0.44], [9, 271, 0.1]];
 const swatchOk = (c) => Number.isInteger(c) && c >= 0 && c < SWATCHES.length;
-/** Project colors (Settings → General) on: each project has its own swatch. Off, the default: every project wears
- *  the window's Color (All projects'), so the dots still pulse while a session works, all in one color. */
-const projColors = () => state.settings?.appearance?.project === true;
-/** The swatch (0–9) for a project: the one you picked, else one by a hash of the name, so it's the same
- *  after a restart and on every machine. */
-function projIdx(project) {
-  if (!projColors()) return allIdx();
-  const c = state.settings?.project?.colors?.[project];
-  if (swatchOk(c)) return c;
-  let h = 0;
-  for (const ch of String(project || "")) h = (h * 31 + ch.charCodeAt(0)) % 9973;
-  return h % SWATCHES.length;
-}
-/** All projects (the header chip with no one project picked), as a project for the colors: a name no project has (no "/" in one). */
-const ALL_PROJ = "/all";
-/** Your own Color, past the ten (Settings → General, or All projects' swatches): any hue and strength, saved as
+/** Your own Color, past the ten (Settings → General → Color): any hue and strength, saved as
  *  project.hue { h, k }. project.all keeps the nearest of the ten, for anything that knows only those. */
 const OWN = 10;
 const ownHue = () => {
@@ -41,7 +27,7 @@ const ownHue = () => {
 let hueLive = null;
 /** Your own Color's chroma at full strength (k = 1): a picked color as vivid or more is k 1, grey is 0. */
 const OWN_FULL = 0.12;
-/** All projects' color: Moss until you pick another (one of the ten, or your own). */
+/** The window's Color: Moss until you pick another (one of the ten, or your own). */
 const allIdx = () => { if (ownHue()) return OWN; const c = state.settings?.project?.all; return swatchOk(c) ? c : MOSS; };
 /** The one of the ten nearest a hue and strength (Moss, which has no hue, never). */
 function nearestSwatch(h, k) {
@@ -92,38 +78,23 @@ function pickOwnColor(at) {
   Object.assign(ownInput.style, { left: `${r.left}px`, top: `${r.bottom}px` });
   try { ownInput.showPicker(); } catch { ownInput.click(); }
 }
-/** The ten swatches for a project (or All projects, with your own under them). */
-const swatchPicker = (project) => {
-  const cur = swatchOf(project);
-  return `<div class="pc-row">${SWATCHES.map(([i], n) => `<button class="pc-sw ${cur === i ? "on" : ""}" style="--c:var(--pc${i})" data-pcpick="${esc(project)}" data-pcidx="${i}" aria-label="${i === MOSS ? "Moss" : `Swatch ${n + 1}`}"></button>`).join("")}</div>${project === ALL_PROJ ? ownRow() : ""}`;
+/** The ten swatches with your own under them: Settings → General → Color. */
+const swatchPicker = () => {
+  const cur = allIdx();
+  return `<div class="pc-row">${SWATCHES.map(([i], n) => `<button class="pc-sw ${cur === i ? "on" : ""}" style="--c:var(--pc${i})" data-pcpick="${i}" aria-label="${i === MOSS ? "Moss" : `Swatch ${n + 1}`}"></button>`).join("")}</div>${ownRow()}`;
 };
-const swatchOf = (project) => project === ALL_PROJ ? allIdx() : projIdx(project);
-/** The window in the color of the project picked in the header (Project colors on), else of All projects: your
- *  Color (styles/base.css .proj-theme). Moss: Cue's own theme. */
-const themeIdx = () => projFilter ? projIdx(projFilter) : allIdx();
+/** The window in your Color (styles/base.css .proj-theme), whichever project is picked at the top. Moss: Cue's own theme. */
+const themeIdx = () => allIdx();
 function projTheme() {
   const idx = themeIdx(), o = ownHue();
   const sw = idx === OWN ? [OWN, o.h, o.k] : idx !== MOSS && SWATCHES.find(([i]) => i === idx);
   const root = document.documentElement;
-  // Your own Color's dot (styles/base.css --pc10), wherever it shows.
+  // Your own Color's swatch (styles/base.css --pc10) in Settings.
   if (o) { root.style.setProperty("--oh", o.h); root.style.setProperty("--ok", o.k); }
   root.classList.toggle("proj-theme", !!sw);
   if (!sw) return;
   root.style.setProperty("--ph", sw[1]);
   root.style.setProperty("--pk", sw[2]);
-}
-const projStyle = (project) => `--pc:var(--pc${projIdx(project)})`;
-/** The dot: solid while the session waits or idles, pulsing while it works. */
-const projDot = (project, live = false) => project ? `<i class="pdot ${live ? "live" : ""}" style="${projStyle(project)}"></i>` : "";
-let colorFor = null;   // { p, w }: the project (or ALL_PROJ) whose swatches are open, and where ("ap": the pane head, "pj": the projects list, "chip": the header chip, "pin": a pinned project's chip)
-/** The dot as a button: a click opens the swatches under it (just the project's name above them). */
-function projBtn(project, where) {
-  if (!project) return "";
-  if (project !== ALL_PROJ && !projColors()) return projDot(project);   // Project colors off: nothing to pick
-  const all = project === ALL_PROJ, cur = swatchOf(project), open = colorFor?.p === project && colorFor.w === where;
-  const title = `<b>${all ? "All projects" : esc(projLabel(project))}</b>`;
-  const pop = open ? `<div class="pc-pop"><div class="pc-title">${title}</div>${swatchPicker(project)}</div>` : "";
-  return `<span class="pc-wrap"><button class="pdot-btn ${open ? "on" : ""}" data-pcolor="${esc(project)}" data-pcwhere="${where}" aria-label="Color for ${all ? "all projects" : esc(project)}"><i class="pdot" style="--pc:var(--pc${cur})"></i></button>${pop}</span>`;
 }
 /** A project as Cue shows it: the name you gave it, else its own (its repository's or folder's). */
 const projLabel = (p) => (state.settings?.project?.names || {})[p] || p;
@@ -197,9 +168,8 @@ function removeProject(p) {
   setSetting("project.moves", pr.moves);
   setSetting("project.folders", pr.folders);
   setSetting("project.made", pr.made);
-  // Its pin, color and name go with it: a pin would keep showing a project that's gone.
+  // Its pin and name go with it: a pin would keep showing a project that's gone.
   if (projPins().includes(p)) { pr.pins = projPins().filter((x) => x !== p); setSetting("project.pins", pr.pins); }
-  if (pr.colors && p in pr.colors) { const { [p]: _, ...rest } = pr.colors; pr.colors = rest; setSetting("project.colors", rest); }
   if (pr.names && p in pr.names) { const { [p]: _, ...rest } = pr.names; pr.names = rest; setSetting("project.names", rest); }
   if (projFilter === p) setProjFilter("");
   toast(`Removed ${projLabel(p)}`);
@@ -215,17 +185,13 @@ function togglePin(project) {
   setSetting("project.pins", next);
 }
 const PIN_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 4 4v2H6v-2l4-4z"/></svg>`;
-function setProjColor(project, idx) {
+/** The window's Color, one of the ten: your own Color is put by (picked again from Your own, it starts from this one). */
+function setWindowColor(idx) {
   const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
-  if (project === ALL_PROJ) {
-    // One of the ten: your own Color is put by (picked again from Your own, it starts from this one).
-    hueLive = null;
-    if (p.hue) { p.hue = null; setSetting("project.hue", null); }
-    p.all = idx;
-    return setSetting("project.all", idx);
-  }
-  p.colors = { ...(p.colors || {}), [project]: idx };
-  setSetting("project.colors", p.colors);
+  hueLive = null;
+  if (p.hue) { p.hue = null; setSetting("project.hue", null); }
+  p.all = idx;
+  setSetting("project.all", idx);
 }
 // ---------- one project at a time: the Projects chip in the header hides every other project's cards ----------
 let projFilter = (() => { try { return localStorage.getItem("cue.projFilter") || ""; } catch { return ""; } })();

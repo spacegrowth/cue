@@ -331,6 +331,12 @@ pub struct DeskItem {
     /// Waiting for room (#711), no machine of its own: it starts wherever has room first (queue.rs `machine_sweep`, #776).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub room_wait: bool,
+    /// Waiting for a free slot (#798): as many of its Desk's items are at work where it would work as that machine's at
+    /// once in Desk settings (this Mac's too, in the shared folder as in copies). With a holder,
+    /// routed to that session and not sent yet; without one, a new session waits too (`room_wait`). It starts by itself
+    /// as one finishes (desk/hub/turn/slots.rs).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slot_wait: bool,
     /// Those places in words ("box or This Mac"): only as shown (view.rs `shown`); an older save's is read as `room_wait`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub machine_wait: String,
@@ -363,6 +369,11 @@ pub struct DeskItem {
     /// its session as "nothing landed since it was reopened". Cleared with `reopened`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reopened_unseen: bool,
+    /// Sent back once since its reopen as "nothing new landed" (#811). Its next DONE with a CHECK line goes on to check
+    /// as it is: its holder looked again and stands by it (nothing needed changing), so it never goes round. Cleared
+    /// with `reopened`, and by a new reopen.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub told_nothing_new: bool,
     /// Its work went to check as mocks, notes or plans only, nothing the app runs (#408, `Finish::mocks`): kept past
     /// a reopen, which clears its `finish`, so its next DONE isn't held for something new on main (#549).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -460,7 +471,7 @@ impl DeskItem {
     pub(crate) fn mark_reopened(&mut self) {
         let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
         self.reopened = Some((wall, self.commit_in.len()));
-        self.reopened_unseen = false;
+        (self.reopened_unseen, self.told_nothing_new) = (false, false);
     }
 
     /// `mark_reopened`, sent back while it was still finishing (`unseen`: its install not run yet, so what you checked
@@ -680,6 +691,10 @@ pub struct DeskDecision {
     pub at: u64,
     /// "none" | "can" | "asked" | "one_way"
     pub undo: String,
+    /// A call made while you were away that you've closed (#863): Keep, Got it, Keep all, or left open when you next
+    /// wrote to the lead. Undone ones (`undo` "asked") are closed without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub kept: bool,
     /// A judgment call (a DECIDED line, the lead's or a holder's): the only kind the Decisions list shows. The rest
     /// (routes, gives, sessions started, contexts kept, Cue's hand-off asks) are steps, shown on their item.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -755,6 +770,9 @@ pub struct Desk {
     /// Each project's sessions on its Desk, in the order they joined: the ones its lead may route to (saved:
     /// db/desk.rs). You add and remove them; a session given an item joins, as does one you say yes to using.
     pub members: HashMap<String, Vec<String>>,
+    /// Every session that has been on each Desk (#921): kept when it leaves `members` (idle a day, closed), so the
+    /// Board knows it for the Desk's however old (saved: db/desk.rs). Only you taking it off the Desk drops it.
+    pub worked: HashMap<String, HashSet<String>>,
     /// What builds and installs this Cue with a finished item's commit: the app's own (self_install.rs) unless a test
     /// put another in. Not saved.
     pub installer: super::installer::InstallerSlot,
@@ -802,6 +820,8 @@ pub struct Waiting {
     /// Your words: sent after the Desk's summary as built for the lead it reaches (which may not be the one there was
     /// when you sent them).
     pub text: String,
+    /// Whose they are, as said where they were sent (#837): yours, or Cue's of a kind.
+    pub said: crate::sessions::Said,
     pub reply: std::sync::mpsc::Sender<Result<String, String>>,
 }
 
@@ -847,7 +867,11 @@ impl Desk {
 
     /// Session `sid` on `project`'s Desk from now: true when it wasn't before.
     pub fn join(&mut self, project: &str, sid: &str) -> bool {
-        if sid.is_empty() || self.on_desk(project, sid) {
+        if sid.is_empty() {
+            return false;
+        }
+        self.worked.entry(project.to_string()).or_default().insert(sid.to_string());
+        if self.on_desk(project, sid) {
             return false;
         }
         self.members.entry(project.to_string()).or_default().push(sid.to_string());

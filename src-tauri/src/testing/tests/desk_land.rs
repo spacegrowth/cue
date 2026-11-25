@@ -487,6 +487,11 @@ fn an_item_in_the_line_whose_copy_turns_out_empty_is_finished_where_it_was() {
     w.hub().desk_tick_now();
     let it = item(&w, &project, "Header jumps");
     assert_ne!(it["state"], "finishing", "not left finishing: {it}");
+    // Nothing of it anywhere: back to its holder once (#830); its DONE again finishes it where it was.
+    super::desk_commit::sent_back_then_done_again(&w, &project, &id, &h);
+    w.hub().desk_tick_now();
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "to_check", "{it}");
     assert!(it["tree"].is_null() && !path.exists(), "its empty copy is gone");
 }
 
@@ -663,6 +668,39 @@ fn a_reopened_item_said_done_with_no_new_commit_goes_back_to_its_session() {
     ends(&w, &h, &format!("Fixed the column.\nDONE: #{id}"));
     let it = item(&w, &project, "Header jumps");
     assert!(it["state"] == "to_check" && it["reopened"].is_null(), "{it}");
+}
+
+/// #811 (#790's loop): reopened, its work all on main and nothing to change. Sent back once as nothing new, its
+/// DONE again with what you check goes to check as it is, not round and round. A DONE without it is still sent back.
+#[test]
+fn a_reopened_item_needing_no_change_goes_to_check_on_its_second_done_with_a_check_line() {
+    let w = World::new();
+    let (dir, project, id, h, path) = routed(&w);
+    std::fs::write(path.join("a.txt"), "1\n").unwrap();
+    ends(&w, &h, &format!("Fixed.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "to_check");
+    let main = |dir: &PathBuf| String::from_utf8(std::process::Command::new(crate::safe_git::git_bin()).arg("-C").arg(dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout).unwrap();
+    let before = main(&dir);
+    w.hub().desk_item_act(&id, "send_back", "Run only your own tests").unwrap();
+    w.settle();
+    let check = format!("CHECK: #{id} | Where: the Desk | Do: open the header | Expect: it stays put");
+    ends(&w, &h, &format!("Nothing to change: it's all on main.\nDONE: #{id}\n{check}"));
+    let it = item(&w, &project, "Header jumps");
+    assert_eq!(it["state"], "working", "sent back once: {it}");
+    let told = |w: &World| w.hosted.sent().iter().filter(|(s, t)| *s == h && t.contains("Nothing of it landed on main since it was reopened")).count();
+    assert_eq!(told(&w), 1);
+    assert!(w.hosted.sent().iter().any(|(s, t)| *s == h && t.contains("say DONE again with its CHECK line")), "told how to say it needs no change");
+    // DONE again, no check line: still back.
+    ends(&w, &h, &format!("Still nothing to change.\nDONE: #{id}"));
+    assert_eq!(item(&w, &project, "Header jumps")["state"], "working");
+    assert_eq!(told(&w), 2);
+    // DONE again with its check line: to check, nothing new landed.
+    ends(&w, &h, &format!("Looked again: nothing to change.\nDONE: #{id}\n{check}"));
+    assert_eq!(main(&dir), before, "nothing landed");
+    let it = item(&w, &project, "Header jumps");
+    assert!(it["state"] == "to_check" && it["reopened"].is_null() && it["told_nothing_new"].is_null(), "{it}");
+    assert_eq!(told(&w), 2, "not sent back again");
+    assert_eq!(it["check"]["expect"], "it stays put", "{it}");
 }
 
 #[test]

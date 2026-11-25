@@ -78,7 +78,7 @@ impl Hub {
     pub fn crew_go_back(&self, sid: &str, id: &str) -> Result<String, String> {
         let d = self.write(|st| st.sessions.crew_go_back(sid, id))?;
         self.changed();
-        match self.tell(sid, &go_back_words(&d)) {
+        match self.tell(sid, &go_back_words(&d), crate::sessions::Kind::Crew) {
             Ok(said) if super::team::kept(&said) => Ok("Cue tells its lead to undo this when its turn ends".into()),
             Ok(_) => Ok("Asked its lead to undo this".into()),
             Err(e) => {

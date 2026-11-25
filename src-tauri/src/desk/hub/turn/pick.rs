@@ -139,31 +139,49 @@ fn range(from: &str, to_word: &str, to: &str) -> Option<Vec<String>> {
 /// closes. Picked already: nothing new, and the answer says what it's being built as.
 pub(crate) fn pick(st: &mut Store, id: &str, text: &str, now: u64) -> Result<Effects, String> {
     let mut fx = Effects::default();
+    pick_into(st, id, text, "", now, &mut fx)?;
+    Ok(fx)
+}
+
+/// `pick`, into `fx`, with `extras`: what more you asked for with the option (#864, "C, but add search"; "" for
+/// none), which goes with each item that follows it, on what you'll see and in its brief. Its holder's PICKED: line
+/// comes here (desk/hub/turn/heard.rs `picked_said`), as a Pick on its page does.
+pub(crate) fn pick_into(st: &mut Store, id: &str, text: &str, extras: &str, now: u64, fx: &mut Effects) -> Result<(), String> {
     let id = st.desk.canon(id);
     let it = st.desk.item(&id).ok_or("no such item")?.clone();
     let option = pickable(st, &it, text)?;
     let canvas = canvas_of(&it);
+    let extras = extras.trim();
     let filed = file_follow_ups(st, &it, &option, &canvas, now);
+    if !extras.is_empty() {
+        for (n, _) in &filed {
+            if let Some(b) = st.desk.item_mut(n) {
+                b.see = if b.see.is_empty() { format!("Also, as you asked: {extras}") } else { format!("{} Also, as you asked: {extras}", b.see.trim_end()) };
+                b.why = format!("{}. You also asked: {extras}", b.why);
+            }
+        }
+    }
     let ids: Vec<String> = filed.iter().map(|(n, _)| n.clone()).collect();
     fx.answers.extend(question_answered(st, &it, &option));
     // Done first, so its holder is free to take what follows.
     let m = st.desk.item_mut(&id).ok_or("no such item")?;
     (m.picked, m.built_as) = (option.clone(), ids.first().cloned().unwrap_or_default());
-    close_picked(st, &it, &option, &ids, now, &mut fx);
-    let (routed, heard) = route_follow_ups(st, &it, &option, &filed, now, &mut fx);
+    close_picked(st, &it, &option, &ids, now, fx);
+    let (routed, heard) = route_follow_ups(st, &it, &option, &filed, now, fx);
     // The lead hears every pick (#667), so it doesn't close the item again or wait on it, and its chat shows the one
     // line ("You picked B2 on #652; #666 builds it"). Something of it left for it to route: at once, so it routes it
     // now, ahead of the new item's row. All of it routed already: no lead step, the line goes with its next message.
     let route = if heard.is_empty() { String::new() } else { format!(" {}.", heard.join("; ")) };
-    let words = format!("The owner picked option {option} on #{id} ({}): \"{}\". #{id} is done; {}.{route}", it.title, text.trim(), follows_words(&ids));
+    let said = if extras.is_empty() { text.trim().to_string() } else { format!("{}, {extras}", text.trim()) };
+    let words = format!("The owner picked option {option} on #{id} ({}): \"{said}\". #{id} is done; {}.{route}", it.title, follows_words(&ids));
     let first = ids.first().cloned().unwrap_or_default();
     if !heard.is_empty() {
         crate::desk::hub::lead::feed::raise(st, &it.project, &id, crate::desk::feed::ChangeKind::Picked, words, &format!("{option}:{first}"), now);
     } else if st.desk.lead_sid(&it.project).is_some() {
         crate::desk::feed::add(&mut st.desk.feed, &it.project, &id, crate::desk::feed::ChangeKind::YouDid, words, &now.to_string(), now);
     }
-    tell_holder(&it, &option, &ids, &routed, &canvas, &mut fx);
-    Ok(fx)
+    tell_holder(&it, &option, &ids, &routed, &canvas, fx);
+    Ok(())
 }
 
 /// The lead filed item `build` for your pick of `option` on item `id` in its chat (`ITEM: … | from: #<id> | picked:
@@ -210,7 +228,7 @@ fn tell_holder(it: &DeskItem, option: &str, ids: &[String], routed: &[String], c
     let follows = format!("{}{}", follows[..1].to_uppercase(), &follows[1..]);
     let next = if routed.is_empty() { String::new() } else { format!(" What follows: {}.", routed.join("; ")) };
     let mark = if canvas.is_empty() { String::new() } else { format!(" Mark \"Picked: {option}\" where it shows its options ({canvas}), keeping the others.") };
-    fx.sends.push((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {follows}.{next}{mark} Do no other work on #{id}.", it.title)));
+    fx.sends.push(crate::desk::hub::core::desk::kinded((h.to().to_string(), format!("Desk item #{id} ({}): option {option} was picked, so it's done. {follows}.{next}{mark} Do no other work on #{id}.", it.title)), crate::sessions::Kind::Note));
 }
 
 /// An item of options to pick from (#667): mocks or a canvas, what follows each option (IF PICKED: lines), or a pick

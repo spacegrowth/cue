@@ -63,7 +63,7 @@ function livePop(rows) {
     .map(([p, rs]) => {
       const many = spread(rs), cwd = many ? projRoot(rs[0].cwd) : rs[0].cwd;
       for (const r of rs) r.where = many ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
-      return `<div class="lv-group"><div class="lv-ghead">${here?.sessions && ordered.length === 1 ? `<span>${esc(here.sessions)}</span>` : ""}${projDot(p, rs.some((r) => r.st === "working"))}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
+      return `<div class="lv-group"><div class="lv-ghead">${here?.sessions && ordered.length === 1 ? `<span>${esc(here.sessions)}</span>` : ""}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
     }).join("");
   return `<div class="lv-pop">
     <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="${esc(here?.ask || "Find a session, or anything said…")}  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
@@ -130,33 +130,8 @@ function modelRow() {
   const reload = `<button class="nf-reload" data-lv="models-reload" aria-label="Reload the model list" ${modelsReading ? "disabled" : ""}>${RELOAD_ICON}</button>`;
   return `<div class="nf-row"><span class="nf-k">Model</span><div class="nf-where"><select class="nf-in nf-sel" id="new-model" data-model aria-label="Model">${opts.map((m) => `<option value="${esc(m.value)}" ${m.value === pick ? "selected" : ""}>${esc(m.label || m.value)}</option>`).join("")}</select>${typed}${big}${reload}<span class="nf-hint">${esc(hint)}</span></div></div>`;
 }
-/** + New's Runs in: hosted by Cue (Settings → Cue-hosted sessions on), Cue's own terminal (tmux installed), or a
- *  terminal tab. On a machine: hosted there by cue-host, or tmux there (Cue's terminal over SSH). Shown when there's
- *  a choice. */
-function whereRow() {
-  if (newMachine) return machineWhereRow();
-  const tmux = !!state.settings?.sessions?.tmux_installed;
-  if (!tmux && !hostedOffered()) return "";
-  const opts = [...(hostedOffered() ? [["hosted", "Hosted"]] : []), ...(tmux ? [[true, "Cue"]] : []), [false, termName()]];
-  const cur = newHosted() ? "hosted" : newTmux() && tmux;
-  const hint = cur === "hosted" ? `no terminal: Cue talks to ${agentName(newAgent)} directly, and every ask is an item in Waiting` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
-  return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v === false ? TERM_ICON : CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
-}
-/** Runs in, on a machine: hosted there (cue-host, which Cue puts there) or tmux there. */
-function machineWhereRow() {
-  if (!hostedOffered()) return "";
-  const cur = newHosted() ? "hosted" : true;
-  const hint = cur === "hosted" ? `no terminal: it runs on that machine under cue-host (Cue puts it in ~/.cue there), every ask an item in Waiting, and it carries on if Cue quits or the connection drops` : "in tmux there, shown in Cue's terminal";
-  return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[["hosted", "Hosted"], [true, "Cue"]].map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
-}
 const OTHER = "other…";   // the drop-down's "Other…" entry's value: no model id has an ellipsis
 const RELOAD_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>`;
-let newWhere = { true: true, false: false, hosted: "hosted" }[remembered("newWhere")] ?? null;   // tmux or not, or hosted (null: Settings' default)
-/** + New can start a Claude Code, Pi or Codex session hosted by Cue, with no terminal: Settings → Cue-hosted sessions
- *  on, on this Mac or a machine (there by cue-host). */
-const hostedOffered = () => !!state.settings?.hosted?.on && ["claude", "pi", "codex"].includes(newAgent);
-const newHosted = () => hostedOffered() && newWhere === "hosted";
-const newTmux = () => (newWhere === "hosted" || newWhere == null ? !!state.settings?.sessions?.tmux : newWhere);
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
 /** + New session: which machine (this Mac, or one from + New → Machine). Remembered. */
 let newMachine = (() => { try { return localStorage.getItem("cue.newMachine") || ""; } catch { return ""; } })();
@@ -177,7 +152,7 @@ let nfProj = { at: "", info: null, pick: null, open: false };
 let nfNewProj = "";
 const NF_HOW = { repo: "its git repository", "repo-says": "its repository says so", put: "you put this folder in it", folder: "this folder" };
 function projLine() {
-  if (nfNewProj) return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(nfNewProj)}<b>${esc(nfNewProj)}</b><span class="nf-hint">this session only</span><button class="btn small" data-lv="proj-new-off">Change…</button></div></div>`;
+  if (nfNewProj) return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj"><b>${esc(nfNewProj)}</b><span class="nf-hint">this session only</span><button class="btn small" data-lv="proj-new-off">Change…</button></div></div>`;
   const cwd = draft("new-cwd").text.trim(), at = `${newMachine}|${cwd}`;
   // (On a machine "~" is that machine's home, which Cue only knows once a session's there.)
   if (!(newMachine ? /^\//.test(cwd) : /^[/~]/.test(cwd))) return "";
@@ -189,9 +164,9 @@ function projLine() {
   if (!i) return "";
   const name = nfProj.pick ?? i.name, how = nfProj.pick != null && nfProj.pick !== i.name ? (nfProj.pick === i.own ? "its own again, from now on" : "every session in this folder, from now on") : NF_HOW[i.how] || "";
   const names = [...new Set([i.own, ...projPins(), ...projectsKnown().map(([p]) => p), ...(state.history || []).map((h) => h.project)])].filter((p) => p && p !== name).slice(0, 12);
-  const drop = nfProj.open ? `<div class="nf-drop nf-pdrop">${names.map((p) => `<button class="nf-dopt" data-lv="proj-pick" data-project="${esc(p)}">${projDot(p)}${esc(projLabel(p))}${p === i.own ? `<span class="nf-hint">its own</span>` : ""}</button>`).join("") || `<div class="nf-hint">No other projects yet</div>`}</div>` : "";
+  const drop = nfProj.open ? `<div class="nf-drop nf-pdrop">${names.map((p) => `<button class="nf-dopt" data-lv="proj-pick" data-project="${esc(p)}">${esc(projLabel(p))}${p === i.own ? `<span class="nf-hint">its own</span>` : ""}</button>`).join("") || `<div class="nf-hint">No other projects yet</div>`}</div>` : "";
   const change = i.how === "folder" && nfProj.pick == null ? "Put in a project…" : "Change…";
-  return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(name)}<b>${esc(projLabel(name))}</b><span class="nf-hint">${esc(how)}</span><button class="btn small" data-lv="proj-open" aria-expanded="${nfProj.open}">${change}</button>${drop}</div></div>`;
+  return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj"><b>${esc(projLabel(name))}</b><span class="nf-hint">${esc(how)}</span><button class="btn small" data-lv="proj-open" aria-expanded="${nfProj.open}">${change}</button>${drop}</div></div>`;
 }
 /** Folders on this Mac under the path being typed (folders_under), for the text they were read for. */
 let nfDisk = { q: null, list: [] };
@@ -270,7 +245,6 @@ function newForm() {
     ${newAgent === "claude" ? modelRow() : ""}
     ${`<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>`}
     <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button><button class="icon-btn nf-attach nf-mic ${dictating?.key === "new-msg" ? "on" : ""}" data-mic="new-msg" aria-label="${dictating?.key === "new-msg" ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button></div>${draftChips("new-msg")}</div></div>
-    ${whereRow()}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
     ${ran}</div>${acts}`;
@@ -285,16 +259,11 @@ function nfRecentLine(folders) {
   // In the order you last used them, so a click never moves them; one typed in All options comes first.
   const top = folders.slice(0, 3), three = !cur || top.includes(cur) ? top : [cur, ...top].slice(0, 3);
   if (!three.length) return "";
-  const pill = (f) => `<button class="nf-rf ${f === cur ? "on" : ""}" data-lv="folder-quick" data-cwd="${esc(f)}">${projDot(projectAtFolder(f))}${esc(baseName(f))}</button>`;
+  const pill = (f) => `<button class="nf-rf ${f === cur ? "on" : ""}" data-lv="folder-quick" data-cwd="${esc(f)}">${esc(baseName(f))}</button>`;
   return `<div class="nf-recent"><span class="nf-k">In</span>${three.map(pill).join("")}<button class="nf-rf" data-lv="folder-more" aria-label="Another folder">…</button></div>`;
 }
-/** A folder's project, as Cue last had it for a session there (its own name if none). */
-function projectAtFolder(f) {
-  const same = (x) => x?.cwd && homeless(x.cwd) === homeless(f);
-  return (state.sessions.find(same) || (state.live || []).find(same) || (state.history || []).find(same))?.project || baseName(f);
-}
 function nfSummary(withFolder = true) {
-  const where = newMachine ? `${newHosted() ? "Hosted on " : ""}${machShort(newMachine)}` : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
+  const where = newMachine ? `Hosted on ${machShort(newMachine)}` : "Hosted";
   const model = newAgent !== "claude" ? "" : newModel === "default" || !newModel ? "" : `${(modelsOf(newMachine) || []).find((m) => m.value === newModel)?.label || newModel}${newModel1m && !/\[.*\]$/.test(newModel) ? " 1M" : ""}`;
   const perm = PERMS[newAgent]?.find(([v]) => v === newPerm)?.[1] || "";
   return [agentName(newAgent), withFolder && (draft("new-cwd").text.trim() || "no folder yet"), model, where, perm && `${perm}${newPerm === "skip" ? " (runs anything without asking)" : ""}`].filter(Boolean).join(" · ");
@@ -389,7 +358,7 @@ async function lvStart(_d, trust = false) {
     const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
     const mk = `f:${cwd}`;
     const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted(), trust });
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: draft("new-name").text, perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, trust });
     mcpPick.delete(mk);
     rememberFolder(newMachine, cwd);
     afterNewSession(r);
@@ -422,7 +391,6 @@ const LV_ACTS = {
   all: () => { liveOpen = newOpen = false; view = "sessions"; renderMain(); },
   new: lvNew,
   agent: (d) => { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); renderMain(); },
-  where: (d) => { newWhere = d.tmux === "hosted" ? "hosted" : d.tmux === "true"; remember("newWhere", String(newWhere)); renderMain(); },
   "machine-add": lvMachineAdd,
   machine: (d) => { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); renderMain(); },
   perm: (d) => { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); renderMain(); },
@@ -448,7 +416,7 @@ function liveRows() {
   const rows = state.sessions.map((s) => {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
-    const what = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
+    const what = s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
     return { sid: s.session_id, harness: s.harness, name: nameOf(s.session_id, s.project), project: s.project || projOf(s.cwd), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
   });
   for (const q of state.live || []) {
@@ -615,7 +583,7 @@ function svTileCard(t, q, match) {
   if (!solo.length) return null;
   const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
   const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
-      <div class="sx-thead">${projDot(t.project, members.some((m) => m.st === "working"))}<span class="sx-tname">${esc(t.project ? projLabel(t.project) : "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>
+      <div class="sx-thead"><span class="sx-tname">${esc(t.project ? projLabel(t.project) : "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>
       <div class="sx-solo">${svItems(solo)}</div></div>`;
   return { machine: t.machine, rank, latest, html };
 }
@@ -689,7 +657,7 @@ async function svAct(act, sid) {
     // A Claude session Cue hasn't heard from (resumed after a restart, say): Cue takes it in, so it opens
     // like any other, with its chat and a box to type in. If it can't, what it can show read-only.
     if ((state.live || []).find((x) => x.session_id === sid)?.harness === "claude") {
-      try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); return setActive(null, sid); }
+      try { await invoke("adopt_session", { sessionId: sid }); setState(await fetchState()); return setActive(null, sid); }
       catch (e) { toast(`Couldn't open it here: ${e}`); }
     }
     setActive(null, null); quietOpen = sid; followProject(sid); loadSteps(sid); return renderMain();

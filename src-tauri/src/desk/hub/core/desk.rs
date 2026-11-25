@@ -4,6 +4,7 @@
 //! message) is desk/hub/lead/run.rs.
 //! A change is made under the store's lock and leaves `Effects`: its saves and messages, done once it's let go.
 
+use crate::sessions::{Kind, Said};
 use crate::desk::hub::prelude::*;
 use crate::desk::{DeskDecision, DeskItem, Holder};
 use crate::sessions::Session;
@@ -22,7 +23,7 @@ pub(crate) struct Effects {
     pub(crate) dropped: Vec<String>,
     pub(crate) decisions: Vec<String>,
     /// Messages to sessions: (session, text).
-    pub(crate) sends: Vec<(String, String)>,
+    pub(crate) sends: Vec<DeskSend>,
     /// Your Send backs (#396): (item, its message in `sends`), kept on the item if it has to wait for a copy.
     pub(crate) backs: Vec<(String, String)>,
     /// Your pick on a mocks item whose holder waits on its question (#281): (that ask, its question, the answer),
@@ -62,6 +63,8 @@ pub(crate) struct Effects {
     pub(crate) land: bool,
     /// The lead's PAUSE (true) or RESUME (false) of its Desk (#366): (Desk, on, its name, its session, why).
     pub(crate) pause: Vec<(String, bool, String, String, String)>,
+    /// The lead's INSTALL: main (#867): (Desk, the lead's session), installed through Cue a moment later and answered.
+    pub(crate) install: Vec<(String, String)>,
     /// Steps whose message is in `sends` (your notes and send-backs, the lead's NOTE: #437): (step, session, item), so
     /// how each send went is kept on its step (`desk_went`), and the item's page can say so (and offer Retry).
     pub(crate) went: Vec<(String, String, String)>,
@@ -70,9 +73,10 @@ pub(crate) struct Effects {
     pub(crate) to_lead: Vec<(String, String, String, String)>,
     /// Holds taken or lifted (#540, desk/holds.rs), to save; those whose item ended are added as the Desk saves.
     pub(crate) holds: Vec<crate::desk::holds::HoldSave>,
-    /// Bands to other Desks' leads (#540, desk/tell.rs): (that Desk, the message, the sending lead's session), sent as
-    /// Cue's own words to it; and the bands sent or answered, to save.
-    pub(crate) tells: Vec<(String, String, String)>,
+    /// Bands to other Desks' leads (#540, desk/tell.rs): (that Desk, the message, the sending lead's session, its kind),
+    /// sent as Cue's own words to it; and the bands sent or answered, to save. Kind Peer for a band; Answer for Cue's
+    /// own reply to a lead's line that carries a whole Desk block (SHOW: desk, #909), which leaves its chat for Activity.
+    pub(crate) tells: Vec<(String, String, String, crate::sessions::Kind)>,
     pub(crate) bands: Vec<crate::desk::tell::Band>,
     /// Questions to the user when Desks' leads can't settle it (#540, desk/escalate.rs), each on all its Desks.
     pub(crate) to_user: Vec<crate::desk::escalate::ToUser>,
@@ -243,6 +247,10 @@ impl Hub {
         // Bands between Desks (#540): the last day's.
         st.desk.bands = crate::db::desk_bands(now_ms().saturating_sub(crate::desk::tell::BAND_KEEP_MS));
         st.desk.members.clear();
+        st.desk.worked.clear();
+        for (p, sid) in crate::db::desk_worked() {
+            st.desk.worked.entry(p).or_default().insert(sid);
+        }
         for (p, sid) in crate::db::desk_members() {
             st.desk.join(&p, &sid);
         }
@@ -255,7 +263,25 @@ impl Hub {
 
     /// `project`'s lead put back as it was before a change of lead that failed (`before`: None when it had none).
     pub(crate) fn desk_put_back_lead(&self, project: &str, before: Option<crate::desk::Lead>) {
+        let failed = self.desk_lead_sid(project).unwrap_or_default();
+        let back = before.as_ref().map(|l| l.sid.clone());
         self.desk_lead_to(project, before);
+        // Back as it was: neither the one put back nor the one that failed is the other's earlier lead (#792).
+        if let Some(sid) = back {
+            crate::db::desk_unpast_lead(project, &sid, &failed);
+        }
+    }
+
+    /// The lead `project`'s Desk had before session `sid` ran it (#792), for the lead chat's "Show earlier": { sid,
+    /// name, at_ms (when it stopped), handoff (it handed off), count, first_ms, last_ms (its messages in Cue's log),
+    /// note (its hand-off note's path, "" for none), cwd }. Null when `sid` was its first.
+    pub(crate) fn desk_lead_before(&self, project: &str, sid: &str) -> serde_json::Value {
+        let Some((old, name, at_ms, handoff)) = crate::db::desk_lead_before(project, sid) else { return serde_json::Value::Null };
+        let (count, first_ms, last_ms) = crate::db::session_log_span(&old);
+        let (known, cwd) = self.read(|st| st.sessions.all().into_iter().find(|s| s.origin.session_id == old).map(|s| (shown_name(&s), s.origin.cwd.clone())).unwrap_or_default());
+        let name = if name.is_empty() { known } else { name };
+        let note = if handoff { crate::db::handoff(&old).map(|k| k.note).unwrap_or_default() } else { String::new() };
+        serde_json::json!({ "sid": old, "name": name, "at_ms": at_ms, "handoff": handoff, "count": count, "first_ms": first_ms, "last_ms": last_ms, "note": note, "cwd": cwd })
     }
 
     /// `project`'s lead from now (`lead`, or none), kept and saved.
@@ -376,6 +402,10 @@ impl Hub {
         let ask = NewAsk { kind: "question".into(), tool_name: "AskUserQuestion".into(), tool_input: input, suggestions: Value::Null, context: vec![], agent_id: String::new() };
         // Nobody waits on the card: its answer is sent to the lead as a message (`desk_answered`).
         let (id, _) = self.add_ask(origin, ask);
+        // The lead's older open ASK about the same item is moot now (#880): this one replaces it.
+        if let Some(about) = item.filter(|_| using.is_none()) {
+            self.desk_moot_older(lsid, &id, |t| t["desk_item"].as_str() == Some(about) && t.get("desk_use").is_none_or(Value::is_null));
+        }
         self.write(|st| {
             let workspace = st.desk.project_of(project).to_string();
             if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
@@ -424,8 +454,10 @@ impl Hub {
         let answer = d.answers.as_ref().and_then(|a| a.as_object()).and_then(|a| a.values().next()).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
         let answer = answer.or_else(|| d.message.clone()).unwrap_or_else(|| if d.behavior == "deny" { "no".into() } else { "yes".into() });
         let answer = crate::desk::parse::plain_choice(&answer).to_string();
-        // Your own words on Cue's Yes / No card (a push, old copies, a change to how work lands) aren't a yes or a no
-        // (#651): the card stays open and the words go to the lead, who answers you in its chat.
+        // A plain no typed on Cue's Yes / No card is its No (#880).
+        let answer = if (push.is_some() || old.is_some() || lands.is_some()) && plain_no(&answer) { "No".to_string() } else { answer };
+        // Your own words on Cue's Yes / No card (a push, old copies, a change to how work lands) aren't a yes (#651):
+        // they go to the lead, the card open still for a question of yours, else closed with nothing changed (#880).
         if d.behavior != "deny" && (push.is_some() || old.is_some() || lands.is_some()) && !["Yes", "No"].iter().any(|c| answer.eq_ignore_ascii_case(c)) {
             return self.desk_card_words(id, &answer);
         }
@@ -457,7 +489,8 @@ impl Hub {
             words = self.desk_use_answered(&u, d.behavior != "deny", &answer);
         }
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&sid, &words) {
+            // A sentence Cue wrote around your Yes or No: Cue's answer to its ASK (#837).
+            if let Err(e) = h.tell(&sid, &words, crate::sessions::Kind::Answer) {
                 eprintln!("cue: desk: couldn't send the lead its answer: {e}");
             }
         });
@@ -465,32 +498,65 @@ impl Hub {
     }
 
     /// Your words `text` typed on Cue's own Yes / No card `id` in a lead's chat, which aren't one of its choices
-    /// (#651): never taken as a yes or a no. The card stays open (your words kept on it), and the words go to the
-    /// lead, who answers you in its chat. False when `id` isn't such a card (then the words go as they would).
+    /// (#651): never taken as a yes. A plain no ("no", "nope", "no thanks") is its No (#880). A question ("what does
+    /// it mean?") keeps the card open, your words kept on it, for its Yes or No once the lead has answered you (#651).
+    /// Anything else answers it in your words (#880): the card closes, nothing changes (as a no would), and the lead
+    /// is told it can ask again. Either way the words go to the lead, who answers you in its chat. False when `id`
+    /// isn't such a card (then the words go as they would).
     pub(crate) fn desk_card_words(&self, id: &str, text: &str) -> bool {
         let text = text.trim();
         let now = now_ms();
-        let Some((lead, question)) = self.write(|st| {
-            let it = st.items.iter_mut().find(|i| i.id == id && i.desk && i.status == "pending" && ["desk_push", "desk_old", "desk_lands"].iter().any(|k| i.tool_input.get(*k).is_some_and(|v| !v.is_null())))?;
-            if !it.tool_input["desk_said"].is_array() {
-                it.tool_input["desk_said"] = json!([]);
-            }
-            if let Some(all) = it.tool_input["desk_said"].as_array_mut() {
-                all.push(json!({ "text": text, "at": now }));
-            }
-            Some((it.origin.session_id.clone(), it.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string()))
+        let Some((lead, question, push)) = self.read(|st| {
+            let it = st.items.iter().find(|i| i.id == id && i.desk && i.status == "pending" && ["desk_push", "desk_old", "desk_lands"].iter().any(|k| i.tool_input.get(*k).is_some_and(|v| !v.is_null())))?;
+            Some((it.origin.session_id.clone(), it.tool_input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("").to_string(), it.tool_input.get("desk_push").cloned()))
         }) else { return false };
-        self.changed();
         if text.is_empty() {
             return true;
         }
-        let words = card_words(&question, text);
+        if plain_no(text) {
+            let d = Decision { behavior: "allow".into(), answers: Some(json!({ question.as_str(): "No" })), ..Default::default() };
+            return self.desk_answered(id, &d);
+        }
+        // A question anywhere in them ("what does it mean? what do i do"), pictures' paths left out.
+        let open = crate::desk::your_words(text).0.contains('?');
+        if open {
+            self.write(|st| {
+                if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
+                    if !it.tool_input["desk_said"].is_array() {
+                        it.tool_input["desk_said"] = json!([]);
+                    }
+                    if let Some(all) = it.tool_input["desk_said"].as_array_mut() {
+                        all.push(json!({ "text": text, "at": now }));
+                    }
+                }
+            });
+        } else {
+            let shown: String = text.lines().next().unwrap_or("").chars().take(200).collect();
+            self.finish(id, "answered", &format!("answered in your words: {shown}"));
+            // A push card answered in words: no yes, so its held starts go as a no would.
+            self.desk_push_card_closed(push);
+        }
+        self.changed();
+        let words = card_words(&question, text, open);
         self.later(0, move |h| {
-            if let Err(e) = h.tell(&lead, &words) {
+            // Your own typed words: yours, never Cue's (#837).
+            if let Err(e) = h.send_to_session(&lead, &words, &[], false) {
                 eprintln!("cue: desk: couldn't send the lead your words on Cue's question: {e}");
             }
         });
         true
+    }
+
+    /// Lead `lsid`'s older open questions that its newer one `id` replaces (#880): moot, closed without an answer and
+    /// nothing sent. `same`: whether an older card asks the same thing (its `tool_input`).
+    pub(crate) fn desk_moot_older(&self, lsid: &str, id: &str, same: impl Fn(&Value) -> bool) {
+        let older: Vec<String> = self.read(|st| st.items.iter().filter(|i| i.id != id && i.desk && i.status == "pending" && i.origin.session_id == lsid && same(&i.tool_input)).map(|i| i.id.clone()).collect());
+        for o in &older {
+            self.finish(o, "gone", "a newer question replaced it");
+        }
+        if !older.is_empty() {
+            self.changed();
+        }
     }
 
     /// Ask `id` answered with `d`: when it's the question of an item's holder, and the answer is one of the options
@@ -594,7 +660,8 @@ impl Hub {
         if !kept_back.is_empty() {
             self.desk_went(&kept_back, &Ok("kept in Cue".into()));
         }
-        self.desk_send_out(std::mem::take(&mut fx.sends), went_with, &fx.restarts, &fx.now);
+        let backs: Vec<String> = fx.backs.iter().map(|(_, m)| m.clone()).collect();
+        self.desk_send_out(std::mem::take(&mut fx.sends), went_with, &fx.restarts, &fx.now, &backs);
         self.desk_send_bands(std::mem::take(&mut fx.to_lead), std::mem::take(&mut fx.tells));
         for q in std::mem::take(&mut fx.to_user) {
             self.desk_to_user_ask(&q);
@@ -616,27 +683,31 @@ impl Hub {
         if fx.land {
             self.later(0, |h| h.desk_land_line());
         }
+        for (desk, _lead) in fx.install {
+            self.later(0, move |h| crate::desk::hub::landing::install_shown::lead_install(h, &desk));
+        }
         self.desk_pause_and_cleanup(fx.pause, fx.cleanup);
     }
 
     /// `desk_done`'s words between sessions and leads, each sent a moment later: `to_lead`, a session's TO LEAD lines,
     /// and `tells`, a lead's bands to another Desk's lead.
-    fn desk_send_bands(&self, to_lead: Vec<(String, String, String, String)>, tells: Vec<(String, String, String)>) {
+    fn desk_send_bands(&self, to_lead: Vec<(String, String, String, String)>, tells: Vec<(String, String, String, crate::sessions::Kind)>) {
         // A session's words for its lead (#474), to whoever leads that Desk as they go; when they can't, it's told.
+        // Cue's, not yours (#831): never kept as words you sent, and never joined to yours (send.rs send_held).
         for (desk, sid, text, words) in to_lead {
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_with(h, &desk, &text) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text, crate::sessions::Kind::Question) {
                     eprintln!("cue: desk: {sid}'s TO LEAD didn't reach {desk}'s lead: {e}");
-                    let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""));
+                    let _ = h.tell(&sid, &format!("Your TO LEAD: line didn't reach the Desk's lead: {e}\nIt said: \"{words}\""), crate::sessions::Kind::Answer);
                 }
             });
         }
         // A band to another Desk's lead (#540), as Cue's own words to it; when it can't go, the sending lead is told.
-        for (desk, text, from) in tells {
+        for (desk, text, from, kind) in tells {
             self.later(0, move |h| {
-                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text) {
+                if let Err(e) = crate::desk::hub::lead::desk_send_cue(h, &desk, &text, kind) {
                     eprintln!("cue: desk: a band didn't reach {desk}'s lead: {e}");
-                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)));
+                    let _ = h.tell(&from, &format!("Your TELL didn't reach {}'s lead: {e}", h.desk_name(&desk)), crate::sessions::Kind::Answer);
                 }
             });
         }
@@ -686,8 +757,11 @@ impl Hub {
     }
 
     /// `desk_done`'s messages, each sent off this thread with the steps that go with it.
-    fn desk_send_out(&self, sends: Vec<(String, String)>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String]) {
-        for ((sid, text), steps) in sends.into_iter().zip(went_with) {
+    /// Each is Cue's own message to the session (#836), unless it carries your words: a step of yours (your note, your
+    /// question, your Send back, a Retry of one) or one of your Send backs (`backs`).
+    fn desk_send_out(&self, sends: Vec<DeskSend>, went_with: Vec<Vec<String>>, restarts: &[(String, String, String)], now_ones: &[String], backs: &[String]) {
+        for ((sid, text, kind), steps) in sends.into_iter().zip(went_with) {
+            let yours = backs.contains(&text) || self.read(|st| st.desk.decisions.iter().any(|d| d.by == "You" && steps.contains(&d.id)));
             // A Resume's send says how it went, on its item (#291).
             let restart = restarts.iter().find(|(_, to, _)| *to == sid).map(|(id, _, name)| (id.clone(), name.clone()));
             let now = now_ones.contains(&sid);
@@ -695,7 +769,8 @@ impl Hub {
             self.later(0, move |h| {
                 // Your pictures from an item's page go as pictures, as a session's own chat sends them (#541).
                 let (text, pictures) = crate::desk::as_sent(&text);
-                let sent = if pictures.is_empty() { h.send_to_session(&sid, &text, &[], now) } else { h.send_saved(&sid, &text, pictures, now) };
+                let said = if yours { Said::You } else { Said::Cue(kind) };
+                let sent = h.send_saved(&sid, &text, pictures, now, said);
                 if let Err(e) = &sent {
                     eprintln!("cue: desk: couldn't send {sid} its item: {e}");
                 }
@@ -756,7 +831,7 @@ impl Hub {
 
 /// Whether a change left nothing for `desk_done` to do.
 fn left_nothing(fx: &Effects) -> bool {
-    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.to_lead.is_empty() && fx.holds.is_empty() && fx.tells.is_empty() && fx.bands.is_empty() && fx.to_user.is_empty()
+    fx.items.is_empty() && fx.said.is_empty() && fx.dropped.is_empty() && fx.decisions.is_empty() && fx.sends.is_empty() && fx.asks.is_empty() && fx.lands.is_empty() && fx.news.is_empty() && fx.starts.is_empty() && fx.joined.is_empty() && fx.uses.is_empty() && fx.stopped.is_empty() && fx.trees_gone.is_empty() && fx.closes.is_empty() && fx.on_main.is_empty() && fx.cleanup.is_empty() && !fx.land && fx.pause.is_empty() && fx.install.is_empty() && fx.to_lead.is_empty() && fx.holds.is_empty() && fx.tells.is_empty() && fx.bands.is_empty() && fx.to_user.is_empty()
 }
 
 /// Steps whose message goes now, by the send that carries it; the rest Cue keeps (a paused Desk, an item waiting
@@ -766,7 +841,7 @@ fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
     let mut went_with: Vec<Vec<String>> = fx.sends.iter().map(|_| Vec::new()).collect();
     let mut kept_back = Vec::new();
     for (step, to, item) in tracked {
-        match fx.sends.iter().position(|(s, text)| *s == to && text.contains(&format!("#{item} ("))) {
+        match fx.sends.iter().position(|(s, text, _)| *s == to && text.contains(&format!("#{item} ("))) {
             Some(n) => went_with[n].push(step),
             None => kept_back.push(step),
         }
@@ -774,15 +849,30 @@ fn went_with(fx: &mut Effects) -> (Vec<Vec<String>>, Vec<String>) {
     (went_with, kept_back)
 }
 
+/// Message `text` as its session gets it: pictures as their paths after the words (hub/send.rs deliver), so its
+/// prompt is known as the Desk's (desk_prompt_taken).
+pub(crate) fn as_delivered(text: &str) -> String {
+    let (words, pictures) = crate::desk::as_sent(text);
+    if pictures.is_empty() { words } else { crate::uploads::with_paths(&words, &pictures) }
+}
+
 /// In the store: each send kept as sent to its session, and items at work stamped for their holder; then the items
 /// and steps to save.
+/// A message the Desk sends a session: to whom, its words, and what kind of Cue's message it is (#837). Your notes
+/// and send-backs among them go as yours (`desk_send_out`).
+pub(crate) type DeskSend = (String, String, Kind);
+
+/// `send` (to, words) as a Desk send of kind `kind`.
+pub(crate) fn kinded((to, text): (String, String), kind: Kind) -> DeskSend {
+    (to, text, kind)
+}
+
 fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<DeskDecision>) {
-    for (to, text) in &fx.sends {
+    for (to, text, _) in &fx.sends {
         let sent = st.desk.run.sent.entry(to.clone()).or_default();
         // As the session gets it: pictures as their paths after the words (hub/send.rs deliver), so its prompt is
         // known as the Desk's (desk_prompt_taken).
-        let (words, pictures) = crate::desk::as_sent(text);
-        sent.push(if pictures.is_empty() { words } else { crate::uploads::with_paths(&words, &pictures) });
+        sent.push(as_delivered(text));
         if sent.len() > 8 {
             sent.remove(0);
         }
@@ -798,7 +888,7 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
             it.held_by(&sid, now);
         }
         // Sent to its holder (again): a stall on it counts from here (desk/hub/stall/stall.rs).
-        if fx.sends.iter().any(|(to, _)| *to == sid) {
+        if fx.sends.iter().any(|(to, _, _)| *to == sid) {
             st.desk.run.sent_at.insert(id.clone(), (sid, now));
         }
     }
@@ -810,6 +900,15 @@ fn stamp_sends(st: &mut Store, fx: &Effects, now: u64) -> (Vec<DeskItem>, Vec<De
 }
 
 /// What the lead is told when you write your own words on Cue's Yes / No card `question` (#651).
-pub(crate) fn card_words(question: &str, text: &str) -> String {
-    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.")
+pub(crate) fn card_words(question: &str, text: &str, open: bool) -> String {
+    if open {
+        return format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nThe question is still open and waits for their Yes or No: Cue took neither. Answer them here in plain words (what it means, what each choice does, what you'd pick); don't answer it for them.");
+    }
+    format!("On Cue's question in your chat (\"{question}\"), the user wrote: \"{text}\"\nCue took that as their answer: the question is closed and nothing changed. Do what their words ask; if it still needs their yes, ask it again.")
+}
+
+/// Words typed on a Yes / No card that are a plain no (#880): "no", "nope", "nah", "no thanks", "not now", "don't".
+fn plain_no(text: &str) -> bool {
+    let t = text.trim().trim_end_matches(['.', '!']).trim().to_lowercase();
+    matches!(t.as_str(), "no" | "n" | "nope" | "nah" | "no thanks" | "no thank you" | "not now" | "don't" | "dont" | "don't do it" | "leave it" | "keep it")
 }

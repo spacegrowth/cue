@@ -1,18 +1,17 @@
-//! Bringing sessions back at launch (and when a machine is reached): rebuilding panes, restoring cards.
+//! At launch (and when a machine is reached): sessions still running in Cue's old terminal (tmux) are moved
+//! to hosted, each between turns; waiting cards come back.
 
-use crate::config;
 use crate::model;
 use crate::machines;
 use crate::logs::live;
 use crate::terminal::focus;
-use crate::terminal::launch::{Place, Started};
 use crate::hub::Hub;
+use std::collections::HashSet;
 use std::sync::Arc;
 
-/// Would a reboot have left this session without its pane, so Cue rebuilds it? Claude only:
-/// it's the only harness with `--resume`. A session without a pane (a plain Terminal one) is left alone.
-pub(crate) fn rebuildable(o: &model::Origin) -> bool {
-    o.harness == "claude" && !o.tmux_pane.is_empty() && !o.cwd.is_empty()
+/// A Claude Code session in a tmux pane, not hosted: how Cue's own terminal ran sessions before every one was hosted.
+pub(crate) fn terminal_chat(o: &model::Origin) -> bool {
+    o.harness == "claude" && !o.hosted && !o.tmux_pane.is_empty() && !o.cwd.is_empty()
 }
 
 /// Run `f` (blocking) at most `secs`: None when it hasn't finished (its thread keeps going).
@@ -22,67 +21,119 @@ pub(crate) fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'st
     rx.recv_timeout(std::time::Duration::from_secs(secs)).ok()
 }
 
-/// One session again in tmux, as Resume does: `claude --resume` typed into its new pane,
-/// the new pane recorded (its old one died with the reboot). Failures skip it, quietly.
-pub(crate) fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
-    let Ok(line) = focus::resume_line_local(&o.cwd, &o.session_id, &o.transcript_path) else { return };
-    let Ok(tab) = hub.launcher().here(&line, &o.cwd, label, Place::Tmux) else { return };
-    let fresh = model::Origin {
-        session_id: o.session_id.clone(),
-        harness: "claude".into(),
-        cwd: o.cwd.clone(),
-        transcript_path: o.transcript_path.clone(),
-        term_program: tab.term_program,
-        tty: tab.tty,
-        tmux_pane: tab.tmux_pane,
-        ..Default::default()
-    };
-    hub.mark_state(&fresh, "waiting");
-    // Its card comes back too: the turn it finished is still the turn to answer.
-    hub.waiting_card(&fresh);
+/// This Mac's saved sessions to move at launch: in Cue's terminal (`is_cues` of its pane, name and terminal),
+/// their agent still `running`. One whose agent ended needs nothing: resuming it starts it hosted.
+pub(crate) fn launch_moves(saved: Vec<crate::sessions::Session>, running: &HashSet<String>, is_cues: impl Fn(&str, &str, &str) -> bool) -> Vec<String> {
+    let label = |s: &crate::sessions::Session| if s.name.is_empty() { model::folder_of(&s.origin.cwd) } else { s.name.clone() };
+    saved
+        .into_iter()
+        .filter(|s| s.origin.machine.is_empty() && terminal_chat(&s.origin) && running.contains(&s.origin.session_id) && is_cues(&s.origin.tmux_pane, &label(s), &s.origin.tty))
+        .map(|s| s.origin.session_id)
+        .collect()
 }
 
-/// Machine sessions, each call time-boxed at 8s. A failure goes in machines.log; a host that can't be
-/// reached is skipped (Cue can't tell whether its pane survived) until it's reached again.
-pub(crate) fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)>) {
-    for (machine, o, name) in sessions {
-        let sid = o.session_id.clone();
-        let mn = machine.clone();
-        let h = hub.clone();
-        let done = with_timeout(move || {
-            let Some(m) = machines::get(&machine) else { return };
-            // Its agent still runs there (Claude Code's registry: <pid>.json naming the session, that
-            // pid alive), in Cue's tmux or your own: leave it, a second one would share its conversation.
-            match machines::run(&m.host, &agent_running_script(&o.session_id)) {
-                Ok(s) if s.trim() == "GONE" => {}
-                Ok(_) => return,
-                Err(e) => { machines::hooks::log_raw(&machine, &format!("rebuild {} skipped: {e}", o.session_id)); return; }
-            }
-            let Ok(line) = focus::resume_line_with(&o.cwd, &o.session_id, &focus::model_args(&o.transcript_path, &machine)) else { return };
-            let label = if !name.is_empty() { name.clone() } else { model::folder_of(&o.cwd) };
-            let Started { pane, tty, dir } = match h.launcher().there(&m, &line, &o.cwd, &label) {
-                Ok(t) => t,
-                Err(e) => { machines::hooks::log_raw(&machine, &format!("rebuild {} failed: {e}", o.session_id)); return; }
-            };
-            let fresh = model::Origin {
-                session_id: o.session_id.clone(),
-                harness: "claude".into(),
-                cwd: dir,
-                transcript_path: o.transcript_path.clone(),
-                term_program: "tmux".into(),
-                tty,
-                tmux_pane: pane,
-                machine: m.name.clone(),
-                ..Default::default()
-            };
-            h.mark_state(&fresh, "waiting");
-            // Its card comes back too: the turn it finished is still the turn to answer.
-            h.waiting_card(&fresh);
-        }, 8);
-        if done.is_none() {
-            machines::hooks::log_raw(&mn, &format!("rebuild {sid} timed out"));
+/// Between turns: at its prompt (its turn ended, or it never started one), nothing it asked (a permission, a
+/// question, a prompt in its terminal) open, and its pane agrees: what was typed into it while Cue was closed
+/// started a turn Cue never heard of.
+pub(crate) fn between_turns(hub: &Arc<Hub>, o: &model::Origin) -> bool {
+    let sid = &o.session_id;
+    let idle = hub.saved_sessions().iter().any(|s| &s.origin.session_id == sid && matches!(s.state.as_str(), "waiting" | "stopped"));
+    idle && !hub.pending().iter().any(|i| &i.origin.session_id == sid && i.kind != "waiting") && at_rest(o)
+}
+
+/// Its pane at rest, from one read of it: no dialog up, no turn running ("esc to interrupt"). What's in its input
+/// box isn't asked: a capture can't tell a dimmed suggestion from typed text, and a session held for that would
+/// never move; a draft never sent is all that's left behind.
+fn at_rest(o: &model::Origin) -> bool {
+    let Some(screen) = pane_screen(o) else { return false };
+    crate::terminal::dialog::parse(&screen).is_none() && !screen.contains("esc to interrupt")
+}
+
+/// What a session's tmux pane shows now, this Mac's or its machine's; None when it can't be read.
+fn pane_screen(o: &model::Origin) -> Option<String> {
+    if o.machine.is_empty() {
+        let mut cmd = std::process::Command::new(focus::tmux_bin());
+        let out = focus::capped(cmd.args(["capture-pane", "-p", "-J", "-t", &o.tmux_pane]), std::time::Duration::from_secs(10)).ok()?;
+        return out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned());
+    }
+    let m = machines::get(&o.machine)?;
+    machines::tmux(&m.host, &["capture-pane", "-p", "-J", "-t", &o.tmux_pane]).ok()
+}
+
+/// One pass: each session between turns is moved to hosted (Move to Cue: its agent ended, resumed hosted from
+/// the same conversation). Gives back the ones still mid-turn, to try again; one that ended or was moved
+/// another way is dropped, and so is one whose move failed (it keeps running where it is).
+pub(crate) fn move_between_turns(hub: &Arc<Hub>, sids: Vec<String>) -> Vec<String> {
+    let mut left = Vec::new();
+    for sid in sids {
+        let Some(o) = hub.session_origin(&sid).filter(terminal_chat) else { continue };
+        if !between_turns(hub, &o) {
+            left.push(sid);
+            continue;
+        }
+        if let Err(e) = super::move_session_to_cue(hub, &sid) {
+            eprintln!("cue: moving {sid} from the terminal to hosted failed: {e}");
         }
     }
+    left
+}
+
+/// How often a session mid-turn is looked at again, and for how long at most (then it's left in tmux: it
+/// still runs, and resuming it later starts it hosted).
+const RETRY_MS: u64 = 15_000;
+const GIVE_UP_MS: u64 = 12 * 60 * 60 * 1000;
+
+/// The sessions some waiter is waiting on to move.
+static WAITING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Sessions one waiter holds: let go when it's dropped, however its thread ends (a panic too).
+pub(crate) struct Waiting(pub(crate) Vec<String>);
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        crate::locking::lock(&WAITING, "WAITING").retain(|s| !self.0.contains(s));
+    }
+}
+
+/// Of `sids`, the ones no waiter has yet, held for a new one.
+pub(crate) fn wait_for(sids: Vec<String>) -> Waiting {
+    let mut w = crate::locking::lock(&WAITING, "WAITING");
+    let fresh: Vec<String> = sids.into_iter().filter(|s| !w.contains(s)).collect();
+    w.extend(fresh.iter().cloned());
+    Waiting(fresh)
+}
+
+/// Move `sids` in the background, each once it's between turns. A session already being waited on isn't
+/// taken twice.
+fn move_when_between_turns(hub: &Arc<Hub>, sids: Vec<String>) {
+    let held = wait_for(sids);
+    if held.0.is_empty() {
+        return;
+    }
+    let h = hub.clone();
+    std::thread::spawn(move || {
+        let held = held;
+        let mut left = move_between_turns(&h, held.0.clone());
+        let mut waited = 0;
+        while !left.is_empty() && waited < GIVE_UP_MS {
+            crate::clock::sleep_ms(RETRY_MS);
+            waited += RETRY_MS;
+            left = move_between_turns(&h, left);
+        }
+    });
+}
+
+/// At launch: this Mac's sessions still running in Cue's terminal move to hosted, each between turns.
+/// Skipped in a quiet test instance.
+pub(crate) fn move_terminal_sessions(hub: &Arc<Hub>) {
+    if std::env::var_os("CUE_QUIET").is_some() {
+        return;
+    }
+    // Claude Code's own registry of the sessions running now, read fresh (the watcher hasn't yet).
+    live::refresh();
+    let running: HashSet<String> = live::claude().into_iter().map(|q| q.session_id).collect();
+    let sids = launch_moves(hub.saved_sessions(), &running, focus::pane_is_cues);
+    move_when_between_turns(hub, sids);
 }
 
 /// The script that says whether a Claude session's agent runs on a machine: LIVE or GONE.
@@ -96,35 +147,21 @@ echo GONE"#,
     )
 }
 
-/// At launch: a reboot killed every tmux pane, so live sessions' panes are gone. Open each
-/// again (its own tmux session, `claude --resume` typed in), like Resume does for one.
-/// Skipped in a quiet test instance, or when Settings says sessions don't run in tmux.
-pub(crate) fn restore_sessions(hub: &Arc<Hub>) {
-    if std::env::var_os("CUE_QUIET").is_some() || !config::tmux_sessions() {
-        return;
-    }
-    // Claude Code's own registry of the sessions running now, read fresh (the watcher hasn't yet).
-    live::refresh();
-    let running: std::collections::HashSet<String> = live::claude().into_iter().map(|q| q.session_id).collect();
-    for s in hub.saved_sessions() {
-        // A machine's sessions come back when Cue reaches the machine (restore_machine), not here.
-        if !rebuildable(&s.origin) || !s.origin.machine.is_empty() {
-            continue;
-        }
-        let label = if !s.name.is_empty() { s.name.clone() } else { model::folder_of(&s.origin.cwd) };
-        // Its agent still runs (Cue restarted, the Mac didn't): wherever it runs, in Cue's tmux, your
-        // own, or a renamed session, a second `claude --resume` would be two agents on one conversation.
-        if running.contains(&s.origin.session_id) || focus::pane_in_its_session(&s.origin.tmux_pane, &label) {
-            continue;
-        }
-        rebuild(hub, &s.origin, &label);
-    }
+/// The script that says whether a session runs in Cue's terminal on a machine: its agent LIVE and its pane in
+/// Cue's tmux session there, still on its terminal `tty` (MOVE), or not (STAY).
+pub(crate) fn cues_terminal_script(session_id: &str, pane: &str, tty: &str) -> String {
+    format!(
+        "[ \"$({live})\" = LIVE ] && [ \"$(tmux display-message -p -t {pane} '#{{session_name}}|#{{pane_tty}}' 2>/dev/null)\" = {want} ] && echo MOVE || echo STAY",
+        live = agent_running_script(session_id),
+        pane = focus::shq(pane),
+        want = focus::shq(&format!("{}|{tty}", focus::TMUX_SESSION))
+    )
 }
 
-/// A machine reached (Cue started, or the machine came back from a reboot or a dropped line): its live
-/// sessions whose agent no longer runs there are opened again. One pass per machine at a time.
-pub(crate) fn restore_machine(hub: &Arc<Hub>, machine: &str) {
-    if std::env::var_os("CUE_QUIET").is_some() || !config::tmux_sessions() {
+/// A machine reached (Cue started, or the machine came back): its sessions still running in Cue's tmux there
+/// move to hosted on it, each between turns. One pass per machine at a time; each check time-boxed at 8 s.
+pub(crate) fn move_machine_sessions(hub: &Arc<Hub>, machine: &str) {
+    if std::env::var_os("CUE_QUIET").is_some() {
         return;
     }
     static BUSY: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
@@ -135,29 +172,24 @@ pub(crate) fn restore_machine(hub: &Arc<Hub>, machine: &str) {
         }
         busy.push(machine.to_string());
     }
-    restore_machine_now(hub, machine);
+    let mut sids = Vec::new();
+    // One with no terminal recorded can't be told from another pane with its id: left where it is.
+    for s in hub.saved_sessions().into_iter().filter(|s| s.origin.machine == machine && terminal_chat(&s.origin) && !s.origin.tty.is_empty()) {
+        let (mn, sid, pane, tty) = (machine.to_string(), s.origin.session_id.clone(), s.origin.tmux_pane.clone(), s.origin.tty.clone());
+        let said = with_timeout(move || machines::get(&mn).map(|m| machines::run(&m.host, &cues_terminal_script(&sid, &pane, &tty))), 8);
+        match said {
+            Some(Some(Ok(out))) if out.trim() == "MOVE" => sids.push(s.origin.session_id),
+            Some(Some(Err(e))) => machines::hooks::log_raw(machine, &format!("move {} skipped: {e}", s.origin.session_id)),
+            None => machines::hooks::log_raw(machine, &format!("move {} check timed out", s.origin.session_id)),
+            _ => {}
+        }
+    }
+    move_when_between_turns(hub, sids);
     crate::locking::lock(&BUSY, "BUSY").retain(|m| m != machine);
 }
 
-pub(crate) fn restore_machine_now(hub: &Arc<Hub>, machine: &str) {
-    if !hub.saved_sessions().iter().any(|s| s.origin.machine == machine && rebuildable(&s.origin)) {
-        return;
-    }
-    // Read after the machine's queued events were handled (an "ended" one has forgotten its session).
-    let sessions = machine_restores(hub.saved_sessions(), machine);
-    if !sessions.is_empty() {
-        remote_restores(hub, sessions);
-    }
-}
-
-/// A machine's saved sessions Cue brings back itself: the rebuildable ones.
-pub(crate) fn machine_restores(saved: Vec<crate::sessions::Session>, machine: &str) -> Vec<(String, model::Origin, String)> {
-    saved.into_iter().filter(|s| s.origin.machine == machine && rebuildable(&s.origin)).map(|s| (s.origin.machine.clone(), s.origin, s.name)).collect()
-}
-
 /// Launch: every session saved as waiting comes back with its card, however it lost it. The card
-/// is the turn it finished, and its saved thread still has it. (A rebuild makes one right away;
-/// anything else that's waiting with no card gets it here.)
+/// is the turn it finished, and its saved thread still has it.
 pub(crate) fn bring_back_cards(hub: &Arc<Hub>) {
     let pending = hub.pending();
     for s in hub.saved_sessions() {
@@ -180,20 +212,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_machines_rebuildable_sessions_come_back() {
-        let saved = |sid: &str, machine: &str, pane: &str| -> crate::sessions::Session {
-            serde_json::from_value(serde_json::json!({
-                "session_id": sid, "harness": "claude", "cwd": "/w", "tmux_pane": pane, "machine": machine, "project": "w",
-                "state": "working", "driven_by": "", "queued": null, "since_ms": 1, "prompt": "", "segments": [], "thread": []
-            }))
-            .unwrap()
-        };
-        let all = vec![saved("mine", "box", "%3"), saved("no-pane", "box", ""), saved("elsewhere", "other", "%4")];
-        let got: Vec<String> = machine_restores(all, "box").into_iter().map(|(_, o, _)| o.session_id).collect();
-        assert_eq!(got, vec!["mine"], "its own machine's, with a pane to rebuild");
-    }
-
-    #[test]
     fn a_machine_session_whose_agent_runs_is_left_alone() {
         let home = std::env::temp_dir().join(format!("cue-running-{}", std::process::id()));
         let dir = home.join("sessions");
@@ -211,11 +229,35 @@ mod tests {
         std::fs::remove_dir_all(&home).ok();
     }
 
+    /// The machine check, run here with a stand-in tmux on PATH and Claude Code's registry in a folder of its own.
     #[test]
-    fn rebuildable_takes_claude_sessions_with_a_pane_and_a_folder() {
-        assert!(rebuildable(&model::Origin { harness: "claude".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }));
-        assert!(!rebuildable(&model::Origin { harness: "codex".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }), "only claude has --resume");
-        assert!(!rebuildable(&model::Origin { harness: "claude".into(), cwd: "/tmp/x".into(), ..Default::default() }), "the Apple Terminal one: no pane");
+    fn a_machine_session_moves_only_live_in_cues_tmux_on_its_own_terminal() {
+        let home = std::env::temp_dir().join(format!("cue-cues-term-{}", std::process::id()));
+        let (reg, bin) = (home.join("sessions"), home.join("bin"));
+        std::fs::create_dir_all(&reg).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let tmux = bin.join("tmux");
+        std::fs::write(&tmux, "#!/bin/sh\ncase \"$4\" in %1) echo 'cue|/dev/pts/3' ;; %2) echo 'mine|/dev/pts/4' ;; *) exit 1 ;; esac\n").unwrap();
+        std::fs::set_permissions(&tmux, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        std::fs::write(reg.join(format!("{}.json", std::process::id())), r#"{"sessionId":"live-1"}"#).unwrap();
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+        let run = |sid: &str, pane: &str, tty: &str| {
+            let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("PATH", &path).args(["-c", &cues_terminal_script(sid, pane, tty)]).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(run("live-1", "%1", "/dev/pts/3"), "MOVE");
+        assert_eq!(run("live-1", "%1", "/dev/pts/9"), "STAY", "its pane id now on another terminal");
+        assert_eq!(run("live-1", "%2", "/dev/pts/4"), "STAY", "a tmux session of your own");
+        assert_eq!(run("gone-1", "%1", "/dev/pts/3"), "STAY", "its agent ended");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn terminal_chat_is_a_claude_session_in_a_pane_not_hosted() {
+        assert!(terminal_chat(&model::Origin { harness: "claude".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }));
+        assert!(!terminal_chat(&model::Origin { harness: "codex".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }), "only claude has --resume");
+        assert!(!terminal_chat(&model::Origin { harness: "claude".into(), cwd: "/tmp/x".into(), ..Default::default() }), "the Apple Terminal one: no pane");
+        assert!(!terminal_chat(&model::Origin { harness: "claude".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), hosted: true, ..Default::default() }), "hosted already");
     }
 
     #[test]

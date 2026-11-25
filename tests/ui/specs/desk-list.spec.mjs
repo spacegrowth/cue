@@ -104,7 +104,7 @@ test("the lead's chat in the middle, the items at the right; All N sessions puts
   await left.locator('[data-desk-chat-of="host"]').click();
   const hostChat = page.locator('.dk-right [data-desk-chat="host"]');
   await expect(hostChat).toHaveCount(1);
-  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", /^Talk to /);
+  await expect(page.locator(".dk-right .foot:not(.held) .composer textarea")).toHaveAttribute("placeholder", /^Reply to /);
   // It's working: Esc is its Stop first, as on the Board (#494): once arms it, twice stops it, its chat still open.
   await page.keyboard.press("Escape");
   await expect(hostChat).toHaveCount(1);

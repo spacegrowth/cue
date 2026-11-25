@@ -2,7 +2,7 @@
 // the Desk's sessions list; nothing for this Mac), and an item worked there says how that machine is doing in one quiet
 // line: not answering for how long, what it waits for, when it last pushed.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
-import { statusOf } from "./desk.mjs";
+import { statusOf, fullOf } from "./desk.mjs";
 
 test("a holder on another machine shows the machine, and its item says how that machine is doing", async ({ page, cue }) => {
   await cue.open("desk");
@@ -17,7 +17,7 @@ test("a holder on another machine shows the machine, and its item says how that 
   const row = page.locator('.dkn-row[data-desk-item="d5"]');
   // The label at the end of the line under the row's title, the machine's line its Now.
   await expect(row.locator(".dkn-sub .mach")).toHaveText("remote-1");
-  await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
+  await expect(fullOf(page, "d5")).toHaveText("Machine not answering for 12 min · Its work is on the machine, not pushed · last pushed 5 min ago");
   // This Mac's: no label, no line.
   const mine = page.locator('.dkn-row[data-desk-item="d2"]');
   await expect(mine.locator(".mach")).toHaveCount(0);
@@ -32,7 +32,7 @@ test("a holder on another machine shows the machine, and its item says how that 
   await expect(statusOf(page, "d5")).not.toContainText("not answering");
   // Quiet, and nothing of it was ever pushed (#598): its work is only there, and the item says so.
   await cue.change((st) => Object.assign(st.desk.projects.find((d) => d.project === "cue").items.find((i) => i.id === "d5").remote, { quiet_since: Date.now() - 31 * 60000, pushed_at: 0, sha: "" }));
-  await expect(statusOf(page, "d5")).toHaveText("Machine not answering for 31 min · its work is on the machine, not pushed");
+  await expect(fullOf(page, "d5")).toHaveText("Machine not answering for 31 min · its work is on the machine, not pushed");
   await expect(page.locator(".dkn-items [title]")).toHaveCount(0);
 });
 
@@ -48,7 +48,9 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const sec = dlg.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-h")).toHaveText("Machines");
+  // On Where it works, under where an item works (#913).
+  await expect(dlg.locator('[data-ld-tab="where"]')).toHaveAttribute("aria-selected", "true");
+  await expect(sec.locator(".ld-label")).toHaveText(["Starts on", "At once"]);
   await expect(sec.locator("[data-ld-mach]")).toHaveText(["This Mac", "build-box", "gpu-1"]);
   await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("~/code/cue");
@@ -120,25 +122,25 @@ test("the Desk's settings can tick two machines, each with its folder, and both 
 
 // How many items at once on each machine (#711): a − n + on each ticked machine's row, 1 to 9, saved with the rest and
 // there when the settings open again.
-test("Desk settings open on Machines, where every machine has how many items may work there at once", async ({ page, cue }) => {
+test("Desk settings open on Where it works, where every machine has how many items may work there at once", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = { ...ms, machine: "", picked: [""] }; }, machines);
   await openDesk(page);
   await deskAllSessions(page);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
-  // First on the screen, named Machines.
-  await expect(dlg.locator(".ld-h").first()).toHaveText("Machines");
+  // On the first tab, Where it works (#913): where they start, and how many at once on each.
+  await expect(dlg.locator('[data-ld-tab="where"]')).toHaveAttribute("aria-selected", "true");
   const sec = dlg.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-sub")).toContainText("how many of its items each machine works on at once");
+  await expect(sec.locator(".ld-label")).toHaveText(["Starts on", "At once"]);
   // Only This Mac ticked: every machine still has its number, This Mac's too (the Desk's Items at once, now only
   // here: no Desk-wide row under How work lands).
   await expect(sec.locator(".ld-mach-name")).toHaveText(["This Mac", "build-box", "gpu-1"]);
   const n = sec.locator(".ld-mach-n .ld-n");
   await expect(n).toHaveText(["3", "3", "3"]);
   await expect(sec.locator(".ld-mach-at")).toHaveText(["at once", "at once", "at once"]);
-  await expect(dlg.locator(".ld-row", { hasText: "Items at once" })).toHaveCount(0);
-  await expect(dlg.locator('[data-ld-sec="lands"] [data-ld-model]')).toHaveCount(1);
+  await expect(dlg.locator(".ld-label", { hasText: "At once" })).toHaveCount(1);
+  await expect(dlg.locator('[data-ld-sec="model"] [data-ld-model]')).toHaveCount(1);
   await expect(sec.locator(".ld-hint", { hasText: "The most of this Desk's items working on each machine together" })).toHaveCount(1);
   for (let k = 0; k < 2; k++) await sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]').click();
   await expect(n).toHaveText(["3", "1", "3"]);

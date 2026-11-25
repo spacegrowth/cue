@@ -2,19 +2,6 @@
 // Cue UI app — the window's state as Cue sends it (setState), and boot(). The draw (and a draw that fails, shown as an
 // error) is ui/app/render.js; its listeners ui/app/bind.js.
 addEventListener("wheel", () => { glide = null; }, { capture: true, passive: true });
-/** The closed strip's line: the open session's screen, every 2 s (its last line with anything on it). */
-setInterval(async () => {
-  const sid = active?.sid;
-  if (!sid || document.hidden || termSid === sid || !inTmux(sid)) return;
-  try {
-    const screen = await invoke("session_screen", { sessionId: sid });
-    const last = (screen.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 200);
-    if (termLast.get(sid) === last) return;
-    termLast.set(sid, last);
-    const el = document.querySelector(`.tstrip[data-sid="${CSS.escape(sid)}"] .tlast`);
-    if (el) el.textContent = last;
-  } catch {}
-}, 2000);
 setInterval(trimCaches, 5 * 60000);
 
 let setupShown = false;
@@ -81,14 +68,24 @@ async function listenApp() {
 async function boot() {
   await loadDrafts();
   bindMain();
-  setState(await invoke("get_state"));
+  setState(await fetchState());
   loadExtensions();
   addOn.boot();
   loadMachines();   // their names (and what you renamed them to) for every label, before + New is opened
   restoreSpot();
-  // Each state drawn, Cue's told, and sends the next only then: states sent faster than they're drawn would wait
-  // in line, your clicks behind them (hub/redraw.rs, DRAWN_WAIT).
-  await T.event.listen("state", (e) => { try { setState(e.payload); } finally { invoke("state_drawn").catch(() => {}); } });
+  // Cue only says the state changed; it's fetched here once the last is drawn, then Cue's told it's drawn. States
+  // sent whole, faster than they're drawn, waited in line: your clicks behind them (#587), and Cue holding each
+  // one until it was read, growing all day (#794; hub/redraw.rs).
+  let pulling = false, again = false;
+  const pull = async () => {
+    if (pulling) { again = true; return; }
+    pulling = true;
+    try {
+      do { again = false; try { setState(await fetchState()); } catch (e) { console.error(e); } } while (again);
+    } finally { pulling = false; invoke("state_drawn").catch(() => {}); }
+  };
+  await T.event.listen("state-changed", pull);
+  pull();   // a change between the first fetch and listening
   await T.event.listen("dictation", (e) => onDictation(e.payload));
   await T.event.listen("speak", (e) => kokoroLine(e.payload));
   await T.event.listen("voice-status", () => extReload());
@@ -113,7 +110,7 @@ async function boot() {
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);
   });
-  await T.event.listen("term", (e) => { onTermOutput(e.payload); onShellOutput(e.payload); });
+  await T.event.listen("term", (e) => onShellOutput(e.payload));
   await T.event.listen("shell", (e) => onShellEvent(e.payload));
   restoreShells();   // the shells still running in tmux, back in their tabs
   await listenApp();

@@ -26,6 +26,9 @@ fn the_desk_says_your_name_and_the_lead_is_told_it() {
     assert!(item(&view, "Show Robin the footer")["id"].is_string(), "{view}");
     let summary = w.hub().desk_summary(&project, &d, false).0;
     assert!(summary.contains("The user is Robin.") && summary.contains("call them Robin"), "{summary}");
-    assert!(!summary.contains("the owner"), "Cue's own words to the lead use the name: {summary}");
+    // The name line says what to avoid as it is; every other word of Cue's to the lead uses the name.
+    let (rest, name_line) = summary.split_once("The user is Robin.").unwrap();
+    assert!(!rest.contains("the owner"), "Cue's own words to the lead use the name: {summary}");
+    assert!(name_line.contains("never \"the owner\" or \"the user\"."), "{summary}");
     test_name::set(None);
 }

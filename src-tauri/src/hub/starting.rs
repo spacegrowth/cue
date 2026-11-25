@@ -1,18 +1,15 @@
-//! Starting a session: + New (in a terminal tab here or on a machine, or hosted by Cue), and the new sessions Cue
-//! starts itself (a Desk's lead, a hand-off's next session). The window's commands are in ipc/sessions.rs and
+//! Starting a session: + New (hosted by Cue, here or on a machine), and the new sessions Cue starts itself (a Desk's
+//! lead, a hand-off's next session, a fork: `StartOpts::fork_of`). The window's commands are in ipc/sessions.rs and
 //! ipc/hosted.rs.
 
 use super::{Hub, HostedStart};
 use crate::hosted::{Agent, Start};
 use crate::logs::live;
-use crate::machines;
 use crate::model::{self, Origin};
 use crate::terminal::focus;
-use crate::terminal::launch::{Place, Started};
 use std::sync::Arc;
 
-/// The work behind "+ New session": open a terminal tab in `cwd`
-/// and start `agent` there. Blocking: it types into a terminal.
+/// The work behind "+ New session": `agent` started hosted in `cwd`. Blocking: it waits for the agent to start.
 pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str) -> Result<serde_json::Value, String> {
     start_session_with(h, agent, cwd, message, name, &StartOpts::default())
 }
@@ -21,10 +18,12 @@ pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str,
 /// may do without asking, and any extra flags.
 #[derive(Default)]
 pub(crate) struct StartOpts {
+    /// Ignored: every session starts hosted. Kept until the window stops sending it.
+    #[allow(dead_code)]
     pub tmux: Option<bool>,
     pub perm: String,
     pub extra: String,
-    /// A machine from + New → Machine to run it on (empty: this Mac): in tmux there, or hosted by cue-host there.
+    /// A machine from + New → Machine to run it on (empty: this Mac): hosted by cue-host there.
     pub machine: String,
     /// The MCP servers it runs with (a Claude Code session on this Mac): written as its selection
     /// (logs/mcp.rs) under the id Cue picks, and passed as `--mcp-config <file> --strict-mcp-config`.
@@ -32,77 +31,32 @@ pub(crate) struct StartOpts {
     pub mcp: Option<Vec<String>>,
     /// Images with the first message (pasted or dropped into its box): saved, their paths typed after it.
     pub images: Vec<model::Upload>,
-    /// Hosted by Cue, with no terminal (Claude Code, Pi or Codex, Settings → Cue-hosted sessions on).
+    /// Ignored: every session starts hosted by Cue, with no terminal. Kept until its callers stop setting it.
+    #[allow(dead_code)]
     pub hosted: bool,
     /// You said you trust the folder (Cue asked, as Claude Code's terminal would: `trusted` below).
     pub trust: bool,
     /// The project whose Desk it starts as the lead of (desk/): it starts with the Desk's instructions. "" for any
     /// other.
     pub desk_lead: String,
+    /// The Claude Code session it starts as a fork of (Fork): its conversation copied under the new id
+    /// (`--resume <it> --fork-session`), its MCP selection with it. "" for a new conversation.
+    pub fork_of: String,
 }
 
 pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
+    // Every session Cue starts is hosted, here or on a machine (cue-host there): no terminal.
+    let hosted = Agent::named(agent).ok_or("Cue starts Claude Code, Pi and Codex")?;
     let saved = crate::uploads::save(&opts.images)?;
-    if !opts.machine.is_empty() && opts.hosted {
-        let Some(hosted) = crate::hosted::Agent::named(agent).filter(|_| crate::config::hosted_on()) else {
-            return Err("only Claude Code, Pi and Codex can be hosted, with Settings → Cue-hosted sessions on".into());
-        };
-        return start_hosted(h, hosted, cwd.trim(), message, name, opts, &saved);
-    }
     if !opts.machine.is_empty() {
-        return start_on_machine(h, agent, cwd, message, name, opts, &saved);
+        return start_hosted(h, hosted, cwd.trim(), message, name, opts, &saved);
     }
     let dir = cwd.trim();
     let dir = if let Some(rest) = dir.strip_prefix("~") { format!("{}{rest}", std::env::var("HOME").unwrap_or_default()) } else { dir.to_string() };
     if !std::path::Path::new(&dir).is_dir() {
         return Err(format!("{dir} isn't a folder"));
     }
-    if opts.hosted {
-        let Some(hosted) = crate::hosted::Agent::named(agent).filter(|_| crate::config::hosted_on()) else {
-            return Err("only Claude Code, Pi and Codex can be hosted in Cue, with Settings → Cue-hosted sessions on".into());
-        };
-        return start_hosted(h, hosted, &dir, message, name, opts, &saved);
-    }
-    let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
-    let asks_trust = agent == "claude" && !focus::claude_trusts(&dir);
-    let mut args = vec![];
-    if let (Some(names), "claude", false) = (&opts.mcp, agent, sid.is_empty()) {
-        let path = crate::logs::mcp::selection_path(&sid);
-        crate::logs::mcp::write_selection(&path, &crate::logs::mcp::definitions(&dir), names)?;
-        args = crate::logs::mcp::flags_for(&path);
-    }
-    let line = focus::start_line_args(agent, &dir, &sid, &crate::uploads::with_paths(message, &saved), name, &opts.perm, &opts.extra, &args)?;
-    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(&dir));
-    let tab = h.launcher().here(&line, &dir, &label, Place::chosen(opts.tmux))?;
-    if !sid.is_empty() {
-        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
-        h.started(origin, message, &paths_of(&saved), asks_trust);
-        h.name_new(&sid, name);
-    }
-    Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
-}
-
-/// + New session on a machine: in tmux there (Cue's terminal shows it, over SSH), in `cwd` there.
-pub(crate) fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts, saved: &[crate::uploads::Saved]) -> Result<serde_json::Value, String> {
-    let m = machines::get(&opts.machine).ok_or(format!("{} isn't one of your machines (+ New → Machine)", opts.machine))?;
-    let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
-    // Its images copied there first, so the paths in its first message open on that machine.
-    let there = crate::uploads::on_machine(&m.name, saved, &|_, _| {})?;
-    // It starts where tmux opens the window (`cwd`): the line itself stays in that folder.
-    let line = focus::start_line_with(agent, ".", &sid, &crate::uploads::with_paths(message, &there), name, &opts.perm, &opts.extra)?;
-    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(cwd.trim()));
-    let Started { pane, tty, dir } = h.launcher().there(&m, &line, cwd, &label)?;
-    if !sid.is_empty() {
-        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
-        h.started(origin, message, &paths_of(saved), false);
-        h.name_new(&sid, name);
-    }
-    Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} on {}", agent, m.name) }))
-}
-
-/// The saved images' paths on this Mac, for the chat's copy of the first message.
-fn paths_of(saved: &[crate::uploads::Saved]) -> Vec<String> {
-    saved.iter().map(|s| s.path.clone()).collect()
+    start_hosted(h, hosted, &dir, message, name, opts, &saved)
 }
 
 /// + New session, hosted: `agent` started by Cue in `dir` with no terminal, its first message (and images)
@@ -112,6 +66,16 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
     let start = Start::fresh();
     let sid = start.session_id().to_string();
     let (mut args, model) = model_apart(agent, flag_words(&opts.extra)?);
+    if !opts.fork_of.is_empty() {
+        if agent != Agent::Claude {
+            return Err("Fork works with Claude Code sessions".into());
+        }
+        // The fork keeps a copy of its MCP selection (unless one was picked for it).
+        let (was, now) = (crate::logs::mcp::selection_path(&opts.fork_of), crate::logs::mcp::selection_path(&sid));
+        if opts.machine.is_empty() && opts.mcp.is_none() && was.exists() && std::fs::copy(&was, &now).is_ok() {
+            args.extend(crate::logs::mcp::flags_for(&now));
+        }
+    }
     let (dir, transcript_path) = if opts.machine.is_empty() {
         // An MCP selection is Claude Code's (Pi has no MCP servers of its own), and this Mac's: a machine's agent
         // has the servers set up there.
@@ -132,6 +96,12 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
         trust(&opts.machine, &dir)?;
     }
     let origin = Origin { session_id: sid.clone(), harness: agent.program().into(), cwd: dir, transcript_path, hosted: true, machine: opts.machine.clone(), ..Default::default() };
+    // A fork copies the first written conversation it comes from (a fork not yet written is followed back), and has
+    // its name for Claude Code's own list too (/resume), as a fork in a terminal had it.
+    let fork_from = (!opts.fork_of.is_empty()).then(|| super::hosted::fork_source(&origin, opts.fork_of.clone()));
+    if let Some(from) = &fork_from {
+        args.extend(["--resume".to_string(), from.clone(), "--fork-session".to_string(), "-n".to_string(), name.to_string()]);
+    }
     if !opts.desk_lead.is_empty() {
         h.desk_lead_starting(&opts.desk_lead, &sid, name);
     }
@@ -143,6 +113,10 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
             return Err(e);
         }
     };
+    // A fork is kept as one only once it has started: a start that failed leaves nothing behind.
+    if let Some(from) = &fork_from {
+        super::hosted::note_fork(&sid, from, name);
+    }
     if !opts.desk_lead.is_empty() && origin.session_id != sid {
         // Codex assigns its own ID when the thread opens. Replace the provisional lead and membership before
         // recording or messaging the session, so the Desk points to the session that actually exists.
@@ -151,7 +125,7 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
     }
     let sid = origin.session_id.clone();
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-    h.started(origin, "", &[], false);
+    h.started(origin, "", &[]);
     h.name_new(&sid, name);
     if !message.trim().is_empty() || !paths.is_empty() {
         // Under its typing gate (no lock held here): a reply sent meanwhile waits for this one.

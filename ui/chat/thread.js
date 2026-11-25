@@ -56,6 +56,18 @@ async function loadOlder(sid, fromTranscript = false, pressed = false) {
   // (The chat desk/view.js deskSettle keeps at its end: the right one while something is open, B2.)
   if (shown && view === "desk" && shown === document.querySelector(".dk-right .dk-chat")) deskChatEnd = false;
 }
+/** How many of a Desk chat's messages it wants drawn before it stops loading earlier pages by itself (fillOlder). */
+const FILL_SHOWN = 6;
+/** A Desk chat (chat/render.js chatHtml) that draws only `shown` of its messages, the rest being the Desk's own (they
+ *  go to Activity, #789): the next page of Cue's log, loaded by itself, while it has more (#869). Whether it's still
+ *  filling: its first page not in yet, or one more on the way. */
+function fillOlder(sid, shown) {
+  const o = older.get(sid);
+  if (!o) return true;
+  if (o.done || shown >= FILL_SHOWN) return false;
+  if (!o.busy) queueMicrotask(() => loadOlder(sid));
+  return true;
+}
 /** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
 const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();
 /** The thread keeps only the last few messages, so once earlier ones are loaded, new messages push
@@ -114,10 +126,15 @@ function conversation(it, s) {
 }
 /** What you forwarded from another session, as Cue typed it: an optional note, then the header and the message. */
 const FORWARDED = /^(?:([\s\S]*?)\n\n)?\[Forwarded from the (.+?) session\]\n([\s\S]*)$/;
-/** Cue's routing context uses either a project header or a named Desk header. Every such block goes, not only a
- *  leading one: messages sent while the lead was busy reach it as one, joined by a newline, each with its block. */
-const deskSaid = (text) => String(text ?? "").replace(/(^|\n)<desk (?:id="[^"\n]*" name="[^"\n]*" )?project="[^"\n]*">\n[\s\S]*?\n<\/desk>(?:\n\n|\s*$)/g, "$1").replace(/\n+$/, "");
-const deskSaidE = (e) => e.role === "you" ? { ...e, text: deskSaid(e.text) } : e;
+/** Cue's Desk block on a message to a lead (desk/hub/lead/run.rs `wrapped`): `<desk ` and any settings (id, name,
+ *  project, changes="only", more later), then its lines and `</desk>` on a line of its own. Every such block goes, not only
+ *  a leading one: messages sent while the lead was busy reach it as one, joined by a newline, each with its block (#627).
+ *  As desk/mod.rs `blocks` takes them, but for a bare `<desk>`, which Cue never writes: words of yours that start so stay. */
+const DESK_BLOCK = /(^|\n)<desk ((?:[^\n">]|"[^"\n]*")*)>\n([\s\S]*?)\n<\/desk>(?:[ \t]*\n\s*|\s*$)/g;
+const deskSaid = (text) => String(text ?? "").replace(DESK_BLOCK, "$1").replace(/\n+$/, "");
+/** Message `e` as the chat shows it: your words without Cue's Desk blocks, which the lead still gets but no chat shows
+ *  (#882: they happen behind the scenes). */
+const deskSaidE = (e) => (e.role === "you" ? { ...e, text: deskSaid(e.text) } : e);
 /** The line Cue adds after what you said by voice for a session whose hook can't add it (talk.rs ASK). */
 const VOICE_ASK = /\n\n\(Voice: I'm listening, not reading\.[^\n]*\)$/;
 /** That line, word for word, as the agent got it (talk.rs ASK): shown when you open it under a voice message. */
@@ -135,7 +152,7 @@ function addedNote(key, label, line) {
 }
 /** Your message's bubble. Said by voice: a mic beside it, and inside it the line Cue added for the agent (or will
  *  add, `later`: kept in Cue or queued, it hasn't gone yet). A status list asked for by a prompt hook (`status_ask`)
- *  gets its own note. Each + opens its text word for word (`key`). */
+ *  gets its own note. Each + opens its text (`key`). */
 function yourBubble(e, key, style = "", later = false, head = "") {
   const said = yourWords(e);
   const notes = (said.voice ? addedNote(key, `Cue ${later ? "will ask" : "asked"} for a short spoken answer`, VOICE_ASK_LINE) : "")
@@ -160,7 +177,7 @@ function msgLine(m) {
     held: "<b>Not sent yet</b> · Cue sends it when its turn ends",
     queued: `<b>Queued for ${to}</b> · it reads this after its current step`,
     delivered: [m.from ? "" : m.by ?? "You", m.at ? `<span data-ago="${m.at}">${ago(m.at)}</span> ago` : ""].filter(Boolean).join(" · "),
-    failed: `<b>Couldn't send</b>${m.why ? ` · ${m.why}` : ""}`,
+    failed: `<b>${m.head || "Couldn't send"}</b>${m.why ? ` · ${m.why}` : ""}`,
   }[m.st];
   if (m.say && (m.st === "held" || m.st === "queued")) words = m.say;
   // The foot of the message (#501, messages.css): how it went at the left (.mg-st), its actions at the right (.mg-acts).
@@ -173,7 +190,10 @@ const typedQueued = (s) => (s?.state === "working" || s?.compacting_ms ? { st: "
 /** A message drawn as the chat's "you" bubble with its one line under it: `inner` is the bubble (yourBubble's), `m`
  *  msgLine's, `after` anything under its line. Dashed on the panel till it's with them, filled once delivered, outlined
  *  red when it couldn't go. */
-const msgRow = (m, inner, cls = "", attrs = "", after = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}>${inner}${msgLine(m)}${after}</div>`;
+const msgRow = (m, inner, cls = "", attrs = "", after = "") => `<div class="cv-you mg-you msg-${m.st}${cls ? ` ${cls}` : ""}"${attrs}${MSG_TRACED.has(m.st) ? ` style="--qd:-${Date.now() % 4000}ms"` : ""}>${inner}${msgLine(m)}${after}</div>`;
+/** The states whose bubble has the drifting arc (messages.css): each draw starts it where the clock has it, so a redraw
+ *  doesn't send it back to the start. */
+const MSG_TRACED = new Set(["sending", "held", "queued"]);
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
 /** A message from another session (#501, messages.css): the family's card, who it's from as its chip in the head, then
  *  the message (a forward quotes the original under it, as the full text). */
@@ -183,16 +203,15 @@ function peerBubble(from, how, at, body, quote) {
 }
 // ---------- steps: what the agent did between your message and its reply ----------
 // Read from the session's transcript by Cue on demand (only for the session open here), never saved.
-// Settings → Steps: each turn folded or open (every step one line; click one for its output or diff), or hidden.
+// Settings → Steps: one line each (open a step for its output or diff), everything open, or hidden.
 const stepFeeds = new Map();   // sid -> { version, turns, at }
-const stepFlip = new Set();    // "sid|id": steps you opened (every step is one line until you click it)
+const stepFlip = new Set();    // "sid|id": steps you opened (or, where Show all opened every step, closed)
 const turnFold = new Map();    // "sid|turn" -> open? (your choice over the default)
-const runOpen = new Set();     // "sid|first step id": a run of steps opened from its count (the rest of its turn stays folded)
+const turnAll = new Set();     // "sid|turn": turns where "Show all" opened every step
 const hookOpen = new Set();    // "sid|turn": its "After a stop hook" part, opened
 /** A turn a Stop hook sent back to work (steps/model.rs `hooked_ms`): what it did and wrote from then on is the
  *  hook's follow-up, not its answer. */
 const hookedPart = (turn, x) => !!turn.hooked_ms && x.at_ms >= turn.hooked_ms;
-const runFull = new Map();     // "sid|id" -> a running command in full (step_detail's `full`), for its row at a folded turn's foot
 const stepDetail = new Map();  // "sid|id" -> { full, output | diff } | "loading"
 // Words and steps that come in while you watch appear smoothly, once: patchChat gives a new line the
 // `reveal` class as it goes in (a full draw gives nothing that class). This is the longest a new
@@ -206,7 +225,7 @@ const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000;
 const PULSE_MS = 1400;
 function sweep(sid, s) {
   if (!(s?.state === "working" || s?.compacting_ms)) return "";
-  if ((s.stuck_ms && !s.compacting_ms) || preStart(s)) return `<i class="sweep stalled"></i>`;
+  if (s.stuck_ms && !s.compacting_ms) return `<i class="sweep stalled"></i>`;
   const lastStep = stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1)?.at_ms || 0;
   const calm = now() - Math.max(s.doing_ms || 0, lastStep, s.compacting_ms || 0, s.since_ms || 0) > QUIET_MS;
   return `<i class="sweep ${calm ? "calm" : ""}" style="animation-duration:${calm ? CALM_MS : SWEEP_MS}ms" data-sweep></i>`;
@@ -229,65 +248,33 @@ async function loadSteps(sid) {
     if (r.turns && !same) { renderMain(); wantDetails(sid); }
   } catch {} finally { stepsBusy = false; }
 }
-/** Fetch the output / diff of every step that's open and not fetched yet (60 a call, the rest after). */
+/** Fetch the output / diff of every step that's open and not fetched yet (one call). */
 async function wantDetails(sid) {
   const f = stepFeeds.get(sid);
   if (!f) return;
   const ids = [];
-  const lastTurn = f.turns.at(-1);
   for (const t of f.turns) {
-    // Only the steps you opened (an open turn lists every step on one line; each opens on its own).
+    const all = turnAllOpen(`${sid}|${t.at_ms}`);
     for (const x of t.items) {
       const k = `${sid}|${x.id}`;
-      if (x.t === "step" && x.done && stepFlip.has(k) && !stepDetail.has(k)) ids.push(x.id);
+      if (x.t === "step" && x.done && all !== stepFlip.has(k) && !stepDetail.has(k)) ids.push(x.id);
     }
   }
-  // The newest step (a Stop hook's part too, as the turn's foot shows it): running, its command in full for its row
-  // (kept apart: its output isn't in yet), once per step; done, its detail as any open step's. A finished step's copy goes.
-  const last = lastTurn?.items.at(-1), lk = last && `${sid}|${last.id}`;
-  const running = last?.t === "step" && !last.done && last.kind === "run";
-  const runId = running && !runFull.has(lk) ? last.id : null;
-  if (runId) { runFull.set(lk, ""); ids.push(runId); }
-  if (last?.t === "step" && last.done && last.kind === "run" && !stepDetail.has(lk) && !ids.includes(last.id)) ids.push(last.id);
-  // 60 at a time, the newest first; the rest in further calls once these land.
   const want = ids.slice(-60);
-  // A finished step's copy goes once its detail is in (below, or before), so its line never falls back to the cut subject;
-  // one no longer wanted (not newest, not being read) goes now.
-  for (const k of runFull.keys()) {
-    if (!k.startsWith(`${sid}|`) || (running && k === lk)) continue;
-    const d = stepDetail.get(k), id = k.slice(sid.length + 1);
-    if ((d && d !== "loading") || (!want.includes(id) && d !== "loading")) runFull.delete(k);
-  }
   if (!want.length) return;
-  want.forEach((id) => { if (id !== runId) stepDetail.set(`${sid}|${id}`, "loading"); });
+  want.forEach((id) => stepDetail.set(`${sid}|${id}`, "loading"));
   let got = null;
   try { got = await invoke("step_detail", { sessionId: sid, ids: want }); } catch {}
   // Couldn't be read now: asked again next time, not kept as "No output".
-  want.forEach((id) => {
-    const k = `${sid}|${id}`;
-    // A running step read once: no full kept as "" (its subject stays), so a redraw doesn't ask again; a failed read, again next time.
-    if (id === runId) { if (got) runFull.set(k, got[id]?.full || ""); else runFull.delete(k); return; }
-    if (got) { stepDetail.set(k, got[id] || {}); runFull.delete(k); } else stepDetail.delete(k);
-  });
+  want.forEach((id) => (got ? stepDetail.set(`${sid}|${id}`, got[id] || {}) : stepDetail.delete(`${sid}|${id}`)));
   renderMain();
-  // More open steps than one call takes: the next ones (each asked once, so this ends; not after a failed call).
-  if (got && ids.length > want.length) wantDetails(sid);
 }
-/** "9 commands, 2 tools, 1 edit, 1 message": a folded turn's steps in a few words, by kind. */
+/** "read 3 files · 2 edits · 4 commands · 1 failed": a folded turn in a few words. */
 function turnSummary(steps) {
-  const n = (f) => steps.filter(f).length;
-  const msg = (x) => x.kind === "agent" && /^Messag/.test(x.verb || "");
-  return [
-    [n((x) => x.kind === "run"), "command"], [n((x) => x.kind === "read"), "read"], [n((x) => x.kind === "search"), "search", "searches"],
-    [n((x) => x.kind === "edit"), "edit"], [n((x) => x.kind === "agent" && !msg(x)), "agent"], [n((x) => ["web", "todo", "ask", "other"].includes(x.kind)), "tool"],
-    [n(msg), "message"], [n((x) => x.bad), "failed", "failed"],
-  ].filter(([c]) => c).map(([c, one, many]) => `${c} ${c === 1 ? one : many || one + "s"}`).join(", ");
-}
-/** A command in full, when Cue has it (step_detail's `full`): a step line shows it whole in place of its first line. */
-function stepFull(sid, x) {
-  if (x.kind !== "run") return "";
-  const k = `${sid}|${x.id}`, d = stepDetail.get(k);
-  return (d && d !== "loading" && d.full) || runFull.get(k) || "";
+  const n = (k) => steps.filter((x) => x.kind === k).length;
+  const bad = steps.filter((x) => x.bad).length;
+  return [[n("read"), "read %", "file"], [n("search"), "%", "search", "searches"], [n("edit"), "%", "edit"], [n("run"), "%", "command"], [bad, "% failed"]]
+    .filter(([c]) => c).map(([c, f, one, many]) => f.replace("%", one ? `${c} ${c === 1 ? one : many || one + "s"}` : c)).join(" · ");
 }
 function stepResult(x) {
   if (!x.done) return `<span class="dot-live"></span>`;
@@ -299,8 +286,7 @@ function stepDetailHtml(k, x) {
   const d = stepDetail.get(k);
   if (!d || d === "loading") return `<div class="stx-detail"><span class="dim">Loading…</span></div>`;
   // The whole command (or pattern, URL) when the line had to cut it; a file's full path, small.
-  // (A command's goes on its line instead: stepFull.)
-  const cutShort = d.full && x.kind !== "run" && d.full.trim() !== x.subject.replace(/^“|”$/g, "").trim();
+  const cutShort = d.full && d.full.trim() !== x.subject.replace(/^“|”$/g, "").trim();
   const full = !d.full ? "" : x.kind === "edit" || x.kind === "read" ? `<div class="stx-path mono">${esc(d.full)}</div>` : cutShort ? `<div class="stx-full mono">${esc(d.full)}</div>` : "";
   let body = "";
   if (d.diff) {
@@ -317,12 +303,12 @@ function stepDetailHtml(k, x) {
 const keyed = (html, k) => html.replace(/^<([a-z]+)/i, `<$1 data-key="${esc(String(k))}"`);
 /** Keys for one chat: a second row with the same key gets a suffix, so no two rows share one. */
 const keyer = () => { const seen = new Map(); return (k) => { const n = (seen.get(k) || 0) + 1; seen.set(k, n); return n > 1 ? `${k}#${n}` : k; }; };
-/** One step: one line cut with "…" until you click it; then whole, with its output or diff. `plain`: never opens. */
-function stepLine(sid, x, plain = false) {
+/** One step as 0.1.86 drew it (#897): one line; open (a click, or its turn's Show all), its output or diff under it. */
+function stepLine(sid, x, all, plain = false) {
   const k = `${sid}|${x.id}`;
-  const open = !plain && x.done && stepFlip.has(k), full = stepFull(sid, x);
+  const open = !plain && x.done && all !== stepFlip.has(k);
   return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
-    <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject || full ? ` <span class="${x.mono ? "mono" : ""}">${esc(full || x.subject)}</span>` : ""}</span>
+    <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject ? ` <span class="${x.mono ? "mono" : ""}">${esc(x.subject)}</span>` : ""}</span>
     <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;
 }
 /** The open session's steps (or a quiet one's), every 0.5 s while it works, else every 2 s (only new lines are read;

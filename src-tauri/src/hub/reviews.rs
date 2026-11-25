@@ -67,7 +67,7 @@ impl Hub {
     }
 
     fn send_review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
-        let sent = self.tell(lead, text);
+        let sent = self.tell(lead, text, crate::sessions::Kind::Crew);
         // Under review from here, or back to done.
         self.team_review_sent(exec, sent.is_ok());
         match sent {

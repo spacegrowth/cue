@@ -21,6 +21,11 @@ pub struct HostedStart {
     pub model: Option<String>,
 }
 
+/// How long a paused hosted session Cue started again for a message has to take it (#857). Past this it didn't wake:
+/// a resume can stall (a very large chat to read back), and the message would sit on "Sending…" for good. Under a
+/// minute, so you hear within one.
+pub(crate) const WAKE_LIMIT_MS: u64 = 50_000;
+
 /// Claude Code's flag that starts it in fast mode.
 pub(crate) fn fast_mode() -> [String; 2] {
     ["--settings".to_string(), r#"{"fastMode":true}"#.to_string()]
@@ -82,6 +87,16 @@ impl Hub {
         let start = if written { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
         args.extend(crate::logs::mcp::selection_flags(sid));
+        // A fork whose own conversation isn't written yet starts as that fork again, named again, so it isn't empty.
+        // On a machine that can't be asked, it counts as not written: forked again, its entry kept.
+        let fork = fork_entry(sid);
+        let fork_written = fork.is_some() && (origin.machine.is_empty() && written || !origin.machine.is_empty() && written_on_machine_known(origin) == Some(true));
+        let start = if fork.is_some() && !fork_written { Start::New(sid.to_string()) } else { start };
+        match fork {
+            Some(f) if !fork_written => args.extend(["--resume".to_string(), fork_source(origin, f.from), "--fork-session".to_string(), "-n".to_string(), f.name]),
+            Some(_) => forget_fork(sid),
+            None => {}
+        }
         // SHORTCUT: resumed in Claude's own default permission mode, not the one + New picked (it isn't kept), so a
         // session started on Auto asks more after a resume, never less. Keep the mode with the session (its record
         // or Origin) and pass it here when the trial says it matters.
@@ -100,6 +115,13 @@ impl Hub {
         let gate = self.typing_gate(sid);
         let _typing = super::send::wait_turn(&gate)?;
         self.send_to_hosted_held(sid, typed, saved, busy, None)
+    }
+
+    /// Cue's own words of kind `kind` to a hosted session, handed over as `send_to_hosted` does (queued to the agent
+    /// when `busy`, never kept in Cue): known as Cue's first, so its chat never shows them as yours (#837).
+    pub(crate) fn tell_hosted(&self, sid: &str, text: &str, busy: bool, kind: crate::sessions::Kind) -> Result<String, String> {
+        self.cue_says(text, kind);
+        self.send_to_hosted(sid, text, &[], busy)
     }
 
     /// The same, for the kept message `held` (send_held): its copy takes its place in the same write (#422).
@@ -125,8 +147,11 @@ impl Hub {
             }
         });
         self.changed();
+        // A wake that failed (its agent wouldn't start again) is the session not waking, not the message refused.
+        let mut wake_failed = false;
+        let mut woke = None;
         let handed = self.hosted_origin(sid).ok_or_else(|| "that session is gone".to_string()).and_then(|o| {
-            self.wake_hosted(&o)?;
+            woke = self.wake_hosted(&o).inspect_err(|_| wake_failed = true)?;
             // On a machine, its images copied there first, so the paths in the message open there.
             let there = crate::uploads::on_machine(&o.machine, saved, &|_, _| {})?;
             let message = crate::uploads::with_paths(typed, &there);
@@ -136,23 +161,45 @@ impl Hub {
                 None => self.hosted().send(sid, &message),
             }
         });
-        self.write(|st| match &handed {
-            Ok(()) => st.sessions.note_delivery(sid, text, "handed to it directly"),
+        self.handed_over(sid, text, &handed, woke, wake_failed);
+        handed.map(|()| if busy { "queued: it reads this at its next step".into() } else { "sent".into() })
+    }
+
+    /// How the hand-over of `text` to session `sid` went, in its chat: handed (`woke`: started again for it, as that
+    /// process, which then has WAKE_LIMIT to take it, `wake_check`), not woken for (`wake_failed`: its agent wouldn't
+    /// start again, #857), or not sent.
+    fn handed_over(&self, sid: &str, text: &str, handed: &Result<(), String>, woke: Option<i32>, wake_failed: bool) {
+        self.write(|st| match handed {
+            Ok(()) => st.sessions.note_delivery(sid, text, if woke.is_some() { "handed to it directly, once started again" } else { "handed to it directly" }),
+            Err(e) if wake_failed => {
+                st.sessions.set_pending(sid, text, true);
+                st.sessions.no_wake_pending(sid, &format!("it didn't wake: {e}"));
+                st.sessions.set_queued(sid, None);
+            }
             Err(e) => {
                 st.sessions.mark_unsent(sid, text, e);
                 st.sessions.set_queued(sid, None);
             }
         });
         self.changed();
-        handed.map(|()| if busy { "queued: it reads this at its next step".into() } else { "sent".into() })
+        // Started again for this: it has WAKE_LIMIT to take it (`wake_check`).
+        if let (Ok(()), Some(pid)) = (handed, woke) {
+            self.write(|st| st.hosted_waking.insert(sid.to_string(), pid));
+            let (sid, text) = (sid.to_string(), text.to_string());
+            self.later(WAKE_LIMIT_MS, move |h| h.wake_check(&sid, &text, pid));
+        }
+        // Its Desk item's lead hears it (feed.rs holder_gone), off this send's typing gate.
+        if wake_failed {
+            self.later(0, |h| h.desk_feed_watch());
+        }
     }
 
     /// A paused hosted session started again on its conversation, with the model it last used and its MCP
-    /// selection, before a message goes to it. Nothing to do for one that runs.
-    pub(crate) fn wake_hosted(&self, origin: &Origin) -> Result<(), String> {
+    /// selection, before a message goes to it: the process it now runs as. Nothing to do for one that runs (None).
+    pub(crate) fn wake_hosted(&self, origin: &Origin) -> Result<Option<i32>, String> {
         let sid = origin.session_id.as_str();
         if self.hosted().running(sid) {
-            return Ok(());
+            return Ok(None);
         }
         let woken = self.resume_hosted_as(origin)?;
         // A new process: teammates of the one before ended with it, however that one went.
@@ -161,7 +208,39 @@ impl Hub {
             st.sessions.team_process_ended(sid, crate::clock::now_ms());
         });
         self.changed();
-        Ok(())
+        Ok(woken.agent_pid)
+    }
+
+    /// WAKE_LIMIT after Cue started session `sid` again (as process `pid`) for `text`: still not taken, and no turn
+    /// under way, it didn't wake (#857). Its process is closed (a late take would answer a message you've been told
+    /// didn't go), what waited for it is marked so, with Try again and Send to a fresh session, and the lead of a
+    /// Desk item it holds hears it. Taken meanwhile, ended (its exit said so), or started again since: nothing to do.
+    pub(crate) fn wake_check(&self, sid: &str, text: &str, pid: i32) {
+        let stalled = self.write(|st| {
+            if st.hosted_waking.get(sid) != Some(&pid) {
+                return false;
+            }
+            let working = st.sessions.state(sid).as_deref() == Some("working");
+            if working || !st.sessions.is_pending(sid, text) {
+                st.hosted_waking.remove(sid);
+                return false;
+            }
+            st.hosted_waking.remove(sid);
+            true
+        });
+        if !stalled {
+            return;
+        }
+        self.hosted().close(sid);
+        let secs = WAKE_LIMIT_MS / 1000;
+        self.write(|st| {
+            st.sessions.set_pid(sid, None);
+            st.sessions.team_process_ended(sid, crate::clock::now_ms());
+            st.sessions.no_wake_pending(sid, &format!("it didn't wake: started again, it took nothing in {secs}s"));
+            st.sessions.set_queued(sid, None);
+        });
+        self.changed();
+        self.desk_feed_watch();
     }
 
     /// Hosted sessions an earlier Cue left running under cue-host, picked up (at launch): each gets its process
@@ -344,6 +423,11 @@ impl Hub {
     /// (as it's sent, which may be just after this): nothing to note here, only the message to settle.
     fn hosted_taken(&self, origin: Origin, text: String) {
         let sid = origin.session_id.clone();
+        // A fork's first message taken: its own conversation is written now, so it resumes as itself from here on.
+        if origin.machine.is_empty() && fork_entry(&sid).is_some() && written_as(&origin, &sid) == Some(true) {
+            forget_fork(&sid);
+        }
+        self.write(|st| st.hosted_waking.remove(&sid));
         if self.read(|st| st.sessions.state(&sid).as_deref() == Some("working")) {
             // Nothing settled: the message that started this turn, already taken when the turn started.
             if self.write(|st| st.sessions.got_message(&sid, &text, "it took it mid-turn")) {
@@ -445,12 +529,23 @@ impl Hub {
             self.finish(&id, "gone", "Claude Code exited");
         }
         let paused = Origin { agent_pid: None, ..origin };
-        self.write(|st| {
+        // Started again for a message and gone before taking it: it didn't wake (#857).
+        let waking = self.write(|st| {
+            let waking = st.hosted_waking.remove(&sid).is_some() && st.sessions.first_pending(&sid).is_some();
             st.sessions.set_pid(&sid, None);
             st.sessions.team_process_ended(&sid, crate::clock::now_ms());
-            st.sessions.unsend_pending(&sid, "Claude Code exited first");
+            if waking {
+                let code = code.map_or("a signal".to_string(), |c| format!("code {c}"));
+                st.sessions.no_wake_pending(&sid, &format!("it didn't wake: Claude Code exited ({code}) before taking it"));
+            } else {
+                st.sessions.unsend_pending(&sid, "Claude Code exited first");
+            }
             st.sessions.set_queued(&sid, None);
+            waking
         });
+        if waking {
+            self.desk_feed_watch();
+        }
         if during_turn {
             let why = last_words.lines().rev().find(|l| !l.trim().is_empty()).map(str::trim).unwrap_or("");
             let code = code.map_or("a signal".to_string(), |c| format!("code {c}"));
@@ -496,9 +591,82 @@ fn given(input: bool, reply: Result<Reply, oneshot::error::RecvError>) -> Given 
 /// says so; an empty or missing one is asked of the machine (the copy can lag behind). One the machine can't be asked
 /// about is taken to be there (it ran: a terminal session moved in, say), so a resume, not a second conversation.
 fn written_on_machine(origin: &Origin) -> bool {
+    written_on_machine_known(origin).unwrap_or(true)
+}
+
+/// As `written_on_machine`, but `None` when the machine couldn't be asked. A fork's entry is only dropped on a yes:
+/// dropped on a guess, a fork not yet written would come back empty.
+fn written_on_machine_known(origin: &Origin) -> Option<bool> {
     if std::fs::metadata(&origin.transcript_path).is_ok_and(|m| m.len() > 0) {
-        return true;
+        return Some(true);
     }
-    let Some(m) = crate::machines::get(&origin.machine) else { return true };
-    origin.transcript_path.is_empty() || crate::machines::log_mirror::written_there(&m, &origin.transcript_path).unwrap_or(true)
+    let m = crate::machines::get(&origin.machine)?;
+    if origin.transcript_path.is_empty() {
+        return Some(true);
+    }
+    crate::machines::log_mirror::written_there(&m, &origin.transcript_path)
+}
+
+/// A fork not yet written (`hosted.forked_from` in Settings): the session it forks, and its name. A fork is a copy of
+/// that session only once Claude has written the fork's own conversation, which it does with the first message it
+/// takes; until then a fork started again is forked again (`resume_hosted_as`).
+pub(crate) struct Fork {
+    pub from: String,
+    pub name: String,
+}
+
+/// Fork `sid` of `from`, named `name`, kept until its conversation is written. Forks noted more than `CLOSED_DAYS`
+/// ago go: Closed no longer offers them.
+pub(crate) fn note_fork(sid: &str, from: &str, name: &str) {
+    let now = now_ms();
+    let _ = crate::config::update_with("hosted.forked_from", |c| {
+        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
+        all.retain(|_, v| v["at"].as_u64().is_some_and(|at| now.saturating_sub(at) < super::CLOSED_DAYS * 86_400_000));
+        all.insert(sid.to_string(), json!({ "from": from, "name": name, "at": now }));
+        Ok((Some(Value::Object(all)), ()))
+    });
+}
+
+pub(crate) fn fork_entry(sid: &str) -> Option<Fork> {
+    let v = crate::config::load().pointer("/hosted/forked_from").and_then(|m| m.get(sid)).cloned()?;
+    Some(Fork { from: v["from"].as_str()?.to_string(), name: v["name"].as_str().unwrap_or_default().to_string() })
+}
+
+/// Fork `sid`'s entry gone: its conversation is written, or it was deleted.
+pub(crate) fn forget_fork(sid: &str) {
+    if fork_entry(sid).is_none() {
+        return;
+    }
+    let _ = crate::config::update_with("hosted.forked_from", |c| {
+        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
+        Ok((all.remove(sid).map(|_| Value::Object(all)), ()))
+    });
+}
+
+/// The conversation a fork of `origin`'s session is copied from: `from`, or, when `from` is itself a fork not yet
+/// written, the one it forks, and so on to the first written one.
+pub(crate) fn fork_source(origin: &Origin, from: String) -> String {
+    let mut from = from;
+    for _ in 0..20 {
+        match fork_entry(&from) {
+            Some(f) if written_as(origin, &from) != Some(true) => from = f.from,
+            Some(_) => {
+                forget_fork(&from);
+                break;
+            }
+            None => break,
+        }
+    }
+    from
+}
+
+/// Whether Claude has written conversation `id` beside `origin`'s (a fork's is in the same folder, here or on its
+/// machine).
+fn written_as(origin: &Origin, id: &str) -> Option<bool> {
+    let mine = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, &origin.session_id) } else { origin.transcript_path.clone().into() };
+    let path = mine.with_file_name(format!("{id}.jsonl"));
+    if origin.machine.is_empty() {
+        return Some(path.is_file());
+    }
+    written_on_machine_known(&Origin { transcript_path: path.to_string_lossy().into_owned(), ..origin.clone() })
 }

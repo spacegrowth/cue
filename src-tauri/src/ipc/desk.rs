@@ -27,6 +27,13 @@ pub(crate) async fn desk_set_lead(hub: State<'_, Arc<Hub>>, project: String, sid
     with_hub(&hub, move |h| desk_set_lead_with(h, &project, sid.as_deref().filter(|s| !s.is_empty()), trust.unwrap_or(false))).await?
 }
 
+/// The lead Desk `project` had before session `sid` ran it, for "Show earlier" over the lead chat's hand-off band
+/// (#792): its name, when it handed off, how many messages it has; null when `sid` was the first.
+#[tauri::command]
+pub(crate) async fn desk_lead_before(hub: State<'_, Arc<Hub>>, project: String, sid: String) -> Result<serde_json::Value, String> {
+    with_hub(&hub, move |h| h.desk_lead_before(&project, &sid)).await
+}
+
 /// A new Desk in `folder` (Desk home's + New Desk, + New's Start a Desk): the folder's project, its lead a new
 /// session Cue starts there. Every call creates an independent Desk. Returns { id, project: id, sid }.
 #[tauri::command]
@@ -196,6 +203,18 @@ pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: Str
     .await?
 }
 
+/// Install now on Desk `project`'s group waiting for its update after landing (#911): its after-landing steps run now,
+/// as the lead's INSTALL: main runs them. Ok with what started; Err with why nothing did.
+#[tauri::command]
+pub(crate) async fn desk_install_now(hub: State<'_, Arc<Hub>>, project: String) -> Result<String, String> {
+    with_hub(&hub, move |h| {
+        let said = h.desk_lead_install(&project);
+        h.desk_install_watch();
+        said
+    })
+    .await?
+}
+
 /// Looks right on item `id`: its changed files committed at once (word check first, no push) and it's done; none, just
 /// done; with files another session is editing, done and the commit waits. { commit, files, waiting } (desk/hub/landing/commit.rs).
 #[tauri::command]
@@ -241,6 +260,12 @@ pub(crate) async fn desk_moves(hub: State<'_, Arc<Hub>>, project: String, before
 #[tauri::command]
 pub(crate) async fn desk_moves_clear(hub: State<'_, Arc<Hub>>, project: String) -> Result<(), String> {
     with_hub(&hub, move |h| h.desk_moves_clear(&project)).await?
+}
+
+/// Keep (Got it, Keep all) on calls made while you were away (#863): closed, nothing sent.
+#[tauri::command]
+pub(crate) async fn desk_calls_keep(hub: State<'_, Arc<Hub>>, ids: Vec<String>) -> Result<(), String> {
+    with_hub(&hub, move |h| h.desk_calls_keep(&ids)).await?
 }
 
 /// Undo this: whoever made the decision is asked to undo it. What Cue did.

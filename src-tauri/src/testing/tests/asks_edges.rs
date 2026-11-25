@@ -1,8 +1,7 @@
 //! Permission asks and questions at their edges (stability plan §4, Asks): every way a card is answered or
 //! given up on, hooks that go away without a word, a dialog answered by its number, and bursts of asks.
 
-use crate::terminal::dialog::Dialog;
-use crate::testing::{Key, World};
+use crate::testing::World;
 use serde_json::json;
 
 #[test]
@@ -167,51 +166,6 @@ fn a_hundred_asks_of_one_session_at_one_instant_get_ids_of_their_own() {
     assert_eq!(ids.len(), 100);
     w.answer(&asks[42].id, json!({"behavior": "allow"}));
     assert!(asks.iter().enumerate().all(|(i, a)| (i == 42) == a.told().is_some()), "only the one answered heard");
-}
-
-/// A dialog only its terminal can answer (a command's "/model …"), as Claude Code draws it.
-fn model_dialog() -> Dialog {
-    Dialog { title: "Switch model?".into(), detail: String::new(), options: vec!["Yes, switch".into(), "No, go back".into()], selected: 0 }
-}
-
-#[test]
-fn a_dialogs_choice_is_pressed_by_its_number_in_the_pane() {
-    let w = World::new();
-    let a = w.session("a").in_tmux("%3");
-    a.prompt("go");
-    w.terminal.pane("a", |p| p.dialog = Some(model_dialog()));
-    a.terminal_ask("Claude needs your attention");
-    let card = w.snapshot().card("a")["id"].as_str().unwrap().to_string();
-    w.terminal.pane("a", |p| p.dialog_takes_a_key = true);
-    assert_eq!(w.hub().answer_terminal(&card, 2), Ok("chose No, go back".to_string()));
-    assert_eq!(w.terminal.keys("a"), [Key::Keys(vec!["2".into()])], "no Enter: the dialog went with the key");
-    assert_eq!(w.snapshot().history(&card)["outcome"], "chose 2. No, go back");
-}
-
-#[test]
-fn a_dialog_still_up_after_its_number_gets_enter_too() {
-    let w = World::new();
-    let a = w.session("a").in_tmux("%3");
-    a.prompt("go");
-    w.terminal.pane("a", |p| p.dialog = Some(model_dialog()));
-    a.terminal_ask("Claude needs your attention");
-    let card = w.snapshot().card("a")["id"].as_str().unwrap().to_string();
-    w.hub().answer_terminal(&card, 1).unwrap();
-    assert_eq!(w.terminal.keys("a"), [Key::Keys(vec!["1".into()]), Key::Keys(vec!["Enter".into()])]);
-}
-
-#[test]
-fn a_dialog_that_closed_meanwhile_presses_nothing() {
-    let w = World::new();
-    let a = w.session("a").in_tmux("%3");
-    a.prompt("go");
-    w.terminal.pane("a", |p| p.dialog = Some(model_dialog()));
-    a.terminal_ask("Claude needs your attention");
-    let card = w.snapshot().card("a")["id"].as_str().unwrap().to_string();
-    w.terminal.pane("a", |p| p.dialog = None);
-    assert_eq!(w.hub().answer_terminal(&card, 1), Err("that dialog isn't on its screen any more".to_string()));
-    assert!(w.terminal.keys("a").is_empty(), "a key there now could answer something else");
-    assert_eq!(w.hub().answer_terminal(&card, 3), Err("that isn't one of its choices".to_string()));
 }
 
 #[test]

@@ -5,7 +5,7 @@ use super::apps::{current_tty, iterm_contents, iterm_predicate, terminal_app_con
 use super::tmux::{pane_now, session_screen};
 use crate::model::Origin;
 
-/// Whether Claude Code's input box is empty on `screen` (session_screen): its prompt line, "❯ " (or "> "
+/// Whether Claude Code's input box is empty on `screen` (screen_of): its prompt line, "❯ " (or "> "
 /// inside the older │ box), in the last lines. None when no prompt line shows (a question or a permission
 /// prompt has the screen, or another agent's): unknown, so nothing should be typed into it unasked.
 pub fn box_empty(screen: &str) -> Option<bool> {
@@ -15,6 +15,12 @@ pub fn box_empty(screen: &str) -> Option<bool> {
         let rest = l.strip_prefix('❯').or_else(|| l.strip_prefix('>'))?;
         Some(rest.trim().is_empty())
     })
+}
+
+/// Whether the session's input box is empty, wherever Cue can read its screen (tmux, iTerm, Terminal.app). None
+/// when it can't, or no box shows.
+pub fn box_empty_of(o: &Origin) -> Option<bool> {
+    box_empty(&screen_of(o)?)
 }
 
 /// What the session's terminal shows right now, wherever it is: its tmux pane (this Mac's or a

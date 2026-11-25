@@ -121,11 +121,11 @@ impl Hub {
         match pick {
             Pick::Unrun(why) => {
                 let words = format!("Cue is being installed from main at {at} without a full run: {why}. Its tests were not all run on it.");
-                self.desk_feed_line(project, ChangeKind::FullRunFailed, &words, &format!("installed without a full run: {commit}"));
+                self.desk_feed_line(project, ChangeKind::Installed, &words, &format!("installed without a full run: {commit}"));
             }
             Pick::Failing(item) => {
                 let words = format!("Cue is being installed from main at {at} although the full run still fails: #{item} broke it and no fix has passed in 4 hours.");
-                self.desk_feed_line(project, ChangeKind::FullRunFailed, &words, &format!("installed although the full run fails: {commit}"));
+                self.desk_feed_line(project, ChangeKind::Installed, &words, &format!("installed although the full run fails: {commit}"));
             }
             _ => {}
         }

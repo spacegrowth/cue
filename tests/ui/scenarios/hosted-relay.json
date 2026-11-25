@@ -27,11 +27,6 @@
    "cache": true,
    "queue": true,
    "skills": {}
-  },
-  "sessions": {
-   "tmux": true,
-   "tmux_installed": true,
-   "terminal": "iTerm"
   }
  },
  "ahead_watch": [],
@@ -107,7 +102,9 @@
     }
    ],
    "machine": "",
-   "tmux_pane": "%1"
+   "hosted": true,
+   "tmux_pane": null,
+   "term_program": null
   },
   {
    "session_id": "det",
@@ -498,8 +495,6 @@
    "resolved_ms": 1793980500000
   }
  ],
- "tasks": {},
- "tasks_spent": {},
  "parked": [],
  "ended": [
   {

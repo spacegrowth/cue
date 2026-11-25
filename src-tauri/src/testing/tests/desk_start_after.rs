@@ -65,6 +65,33 @@ fn a_leads_note_on_an_item_to_check_leaves_it_to_check() {
     assert!(band.get("reopened").is_none_or(|r| r.is_null()), "not reopened: {band}");
 }
 
+/// #811: the lead's note sent by a Cue that has since restarted (or by another Cue on the same data, as #790's was)
+/// is still the Desk's own message when its holder takes it: the item stays to check, never reopened as if you'd
+/// typed it.
+#[test]
+fn a_leads_note_sent_before_a_restart_still_leaves_it_to_check() {
+    let w = World::new();
+    let (h, project, l, m, _) = band_and_older_pages(&w, "to_check");
+    let before = sent_to(&w, &h).len();
+    ends(&w, &l, &format!("NOTE: #{m} | let your test run finish"));
+    let note = sent_to(&w, &h)[before..].iter().find(|t| t.contains(&format!("Desk item #{m}"))).cloned().unwrap();
+    // What this Cue sent since it started is gone, as after a restart or when another Cue sent it.
+    w.hub().write(|st| st.desk.run.sent.clear());
+    // Taken twice over, as a queue hands two of them over in one prompt.
+    w.hosted_says(&h, HostedEvent::Taken { text: format!("{note}\n{note}") });
+    w.settle();
+    let d = desk(&w, &project);
+    let band = item(&d, "Band");
+    assert_eq!(band["state"], "to_check", "{band}");
+    assert!(band.get("reopened").is_none_or(|r| r.is_null()), "not reopened: {band}");
+    // Words you type yourself still put it back to work.
+    ends(&w, &h, "I'll let it finish.");
+    w.advance(1000);
+    w.hosted_says(&h, HostedEvent::Taken { text: format!("#{m}: the band is still too thin") });
+    w.settle();
+    assert_eq!(item(&desk(&w, &project), "Band")["state"], "working");
+}
+
 /// Tonight's other half: the lead's note on #472 ("nothing more for you") came again with each `/loop` wake-up, as
 /// Cue read the wake-up's turn back to the Desk's last message; delivered while #472 was to check, it reopened it.
 /// The wake-up is a turn of its own: nothing it didn't say is acted on.

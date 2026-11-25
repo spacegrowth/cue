@@ -153,7 +153,7 @@ pub(crate) fn waits_line(text: &str) -> Option<String> {
     let lines: Vec<&str> = text
         .lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty() && !["DONE:", "ITEM:", "DESIGNS:", "IF PICKED:", "DECIDED:", "DECISION:", "ROUTE:", "ASK:"].iter().any(|p| l.starts_with(p)))
+        .filter(|l| !l.is_empty() && !["DONE:", "ITEM:", "DESIGNS:", "IF PICKED:", "PICKED:", "DECIDED:", "DECISION:", "ROUTE:", "ASK:"].iter().any(|p| l.starts_with(p)))
         .collect();
     lines.iter().rev().take(3).find_map(|l| {
         let t = l.to_lowercase().replace('\u{2019}', "'");
@@ -349,7 +349,7 @@ pub(crate) fn stalls_asked(st: &mut Store, sid: &str, text: &str, on: &[String],
         }
     }
     if !ask.is_empty() {
-        fx.sends.push((sid.to_string(), ask.join("\n")));
+        fx.sends.push(crate::desk::hub::core::desk::kinded((sid.to_string(), ask.join("\n")), crate::sessions::Kind::Nudge));
     }
 }
 
