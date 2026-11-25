@@ -490,3 +490,12 @@
   .dkh { padding-top: 10px; }
   .dkh-t { font-size: var(--type-title); line-height: var(--type-title-lh); }
 }
+
+/* Looks right and Send back in the Try bar (#883): on its green, Looks right filled light, Send back outlined; the
+   item's header keeps its width for the title. */
+.dkn-hcb { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.dkn-hct > .dkn-hcb + .dkn-hcf, .dkn-hc.fold > .dkn-hcb + .dkn-hcf { margin-left: 4px; }
+.dkn-hc .dkn-hok { background: var(--sel); color: var(--on-sel); border-color: transparent; box-shadow: none; }
+.dkn-hc .dkn-hsb { background: transparent; color: var(--on-bg); border-color: transparent; box-shadow: inset 0 0 0 1px var(--on-bg-muted); }
+.dkn-hc .dkn-hok:hover { filter: brightness(1.05); }
+.dkn-hc .dkn-hsb:hover { background: color-mix(in srgb, var(--on-bg) 12%, transparent); }

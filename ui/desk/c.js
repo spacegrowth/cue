@@ -539,7 +539,8 @@ function deskCItemBar(i, bare = false) {
   const acts = backing ? "" : done ? (i.holder ? `<button class="btn small" data-desk-act="send_back" data-id="${id}">Reopen</button>` : "") : i.kept && bare ? `<button class="btn small primary" data-desk-act="pickup_kept" data-id="${id}">Pick up again</button><button class="btn small dk-drop${armed ? " armed" : ""}" data-desk-act="remove_kept" data-id="${id}">${armed ? "Remove it and its work" : "Remove"}</button>`
     : !check ? mocksBtn + deskItemActs(i, bare) + (bare && i.state !== "held" ? drop : "") : deskLooksSoon.has(i.id) ? deskLooksSoonHtml(i.id)
     : mocksBtn && deskPickOptions(i).length ? `${mocksBtn}<button class="btn small" data-desk-act="send_back" data-id="${id}">Send back</button>`
-    : `<button class="btn small primary" data-desk-act="looks_right" data-id="${id}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button><button class="btn small" data-desk-act="send_back" data-id="${id}">Send back</button>`;
+    // Ready to check: Looks right and Send back are in the Try bar at the chat's foot (#883), so the title has the width.
+    : "";
   const see = done ? `<div class="dkn-ibsee">${deskCommitLine(i)}</div>` : "";
   const back = backing ? `<div class="dkn-ibback">${deskBackHtml(i.id)}</div>` : "";
   // Queued for its session, which is still on something else: what it waits for and Start now, over that chat.
@@ -550,7 +551,7 @@ function deskCItemBar(i, bare = false) {
   const sid = deskHolderSid(i), hs = sid && sessionOf(sid), d = deskOf(i.project);
   const meta = hs ? `with ${deskChatLink(sid, deskHolderName(sid), d)} · ${esc(deskHeadWord(hs).toLowerCase())}` : i.holder?.name ? `with <b>${esc(i.holder.name)}</b>` : bare ? deskB2Status(i)[0] : "";
   const stop = hs?.state === "working" && !bare ? `<button class="btn small deny" data-act="interrupt" data-sid="${esc(sid)}">Stop</button>` : "";
-  const head = deskHead({ kind: i.kind || "task", mark: `${kind}#${id}`, name: esc(i.title), state: deskCHeadState(i), meta, acts: acts + stop });
+  const head = deskHead({ kind: i.kind || "task", mark: `${kind}#${id}`, name: esc(i.title), state: check && !backing && !deskLooksSoon.has(i.id) && !deskPickOptions(i).length ? "" : deskCHeadState(i), meta, acts: acts + stop });
   // What's under the header, only when there is some: how a finished item went, where its work is kept, Send back's
   // box, what it waits for before it starts, a failed build's output. Its words and you'll-see aren't here: what to try
   // is the bar at the chat's foot (deskCHowTo), what it was added with in its Activity.
@@ -577,15 +578,18 @@ function deskCHowTo(i) {
     return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct"><span class="dkn-hcc">Pick one · ${opts.length} options</span>${fold(true)}</div><ul class="dk-opts dkn-hco">${opts.map(row).join("")}</ul></div>`;
   }
   if (i.state !== "to_check" || deskInstallWait(i)) return "";
+  // Ready to check (#883): the bar says so and carries Looks right and Send back, out of the header.
+  const btns = `<span class="dkn-hcb"><button class="btn small dkn-hok" data-desk-act="looks_right" data-id="${id}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button><button class="btn small dkn-hsb" data-desk-act="send_back" data-id="${id}">Send back</button></span>`;
+  const chk = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}"><span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>${btns}${btn ? fold(false) : ""}</div>`;
   const cl = deskToCheckLine(i);
-  if (cl.kind === "nothing" || cl.kind === "unsaid") return line(esc(DESK_CHECK_LABEL[cl.kind].replace(/:$/, "")), esc(cl.text), false);
+  if (cl.kind === "nothing" || cl.kind === "unsaid") return chk(`Ready to check · ${esc(DESK_CHECK_LABEL[cl.kind].replace(/:$/, ""))}`, esc(cl.text), false);
   // Its Do as the steps it wrote ("1. … 2. …"), else as one.
   const dos = cl.steps ? cl.steps[1].split(/(?:^|\s)\d+[.)]\s+/).map((t) => t.trim()).filter(Boolean) : [];
-  if (folded) return line("How to check", cl.steps ? `Where, ${dos.length > 1 ? `${dos.length} steps` : "Do"}, Expect` : esc(cl.text));
+  if (folded) return chk("Ready to check", cl.steps ? `Where, ${dos.length > 1 ? `${dos.length} steps` : "Do"}, Expect` : esc(cl.text));
   const row = (k, v) => `<div class="dkn-hcl"><span class="dkn-hck">${k}</span>${v}</div>`;
   const body = cl.steps ? row("Where", `<span>${esc(cl.steps[0])}</span>`) + row("Do", dos.length > 1 ? `<ol>${dos.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : `<span>${esc(cl.steps[1])}</span>`) + row("Expect", `<span>${esc(cl.steps[2])}</span>`)
     : row("Try", `<span>${esc(cl.text)}</span>`);
-  return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct"><span class="dkn-hcc">How to check</span>${fold(true)}</div>${body}</div>`;
+  return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct"><span class="dkn-hcc">Ready to check · How to check</span>${btns}${fold(true)}</div>${body}</div>`;
 }
 /** An item opened: its session's chat (the same as clicking the session on the left), not a page of its own (#560's
  *  plan A, finished in #744: one item per session until it's done, so that chat is its story), its bar over the chat.
