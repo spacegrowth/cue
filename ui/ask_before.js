@@ -23,7 +23,7 @@ function askBeforeDue() {
 function askBeforeChange(project) {
   if (!project) return;
   const d = typeof landsDeskFor === "function" && landsDeskFor(project);
-  if (d) return landsChange(d.id || d.project);
+  if (d) return landsChange(d.id || d.project, "ask");
   askBefore = { project, ticks: [...askBeforeNow(project)], more: false, change: true, busy: false };
   renderMain();
 }

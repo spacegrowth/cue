@@ -12,6 +12,8 @@ const open = async (page, cue) => {
   await openDesk(page);
   await deskAllSessions(page);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
+  // On the More tab (#913).
+  await page.locator('.ld-dialog [data-ld-tab="more"]').click();
   return page.locator(".ld-dialog");
 };
 const row = (dlg) => dlg.locator(".ld-row", { has: dlg.page().locator(".ld-label", { hasText: /^Items waiting on another start$/ }) });
@@ -25,7 +27,8 @@ for (const [name, size] of [["a laptop window", { width: 1440, height: 900 }], [
       const waits = row(dlg);
       await expect(waits.locator(".ld-seg button")).toHaveText(["When it lands", "When you've checked it"]);
       await expect(waits.locator("button.on")).toHaveText("When it lands");
-      await expect(waits.locator(".ld-hint")).toHaveCount(0);
+      // One line of help, as each row of Settings has (#913).
+      await expect(waits.locator(".ld-hint")).toHaveText("An item queued after another starts once that one is on main.");
       await expect(waits.locator("textarea, input")).toHaveCount(0);
       await waits.scrollIntoViewIfNeeded();
       const [d, ...bs] = await Promise.all([dlg.boundingBox(), ...[0, 1].map((i) => waits.locator(".ld-seg button").nth(i).boundingBox())]);

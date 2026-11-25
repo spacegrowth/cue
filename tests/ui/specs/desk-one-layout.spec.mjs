@@ -52,10 +52,11 @@ test("The Desks from the header, Desk settings' sections, the sessions' chats, S
   await expect(menu.locator('.hv-row.on[data-hv-desk="cue"]')).toHaveAttribute("aria-current", "true");
   await expect(menu.locator(".hv-tick")).toHaveCount(0);
   await expect(menu.locator("[data-hv-new-desk]")).toHaveText("New Desk…");
-  // Desk settings: a dialog with its sections; Esc closes it.
+  // Desk settings: a dialog with its tabs (#913); Esc closes it.
   await menu.locator("[data-hv-desk-set]").click();
   const dlg = page.locator(".ld-dialog");
-  for (const s of ["lands", "old"]) await expect(dlg.locator(`[data-ld-sec="${s}"]`)).toHaveCount(1);
+  await expect(dlg.locator("[data-ld-tab]")).toHaveText(["Where it works", "When it's done", "Ask me first", "More"]);
+  await expect(dlg.locator('[data-ld-sec="lands"]')).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
   // The groups: Working, Waiting on you (desk-live, 670449c234: Working above Waiting on you), then Up next and Done

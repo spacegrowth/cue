@@ -1,5 +1,5 @@
 // Old working folders (desk_copies.rs, #397): not in the item list; the lead asks once in its chat (a question card,
-// tested in Rust), and How work lands has Remove old working folders: it looks, lists them with their size, and
+// tested in Rust), and Desk settings' More tab has Remove old working folders: it looks, lists them with their size, and
 // removes them on a second press.
 import { test, expect, openDesk, deskAllSessions } from "./cue.mjs";
 
@@ -17,8 +17,9 @@ test("How work lands lists the old working folders with their size, and removes 
   await expect(page.locator(".dk-items")).not.toContainText("Old copies");
   await deskAllSessions(page);
   await page.locator(".dk-strip [data-lands-change]").click();
-  // Its name is its section's heading since #447 made the screen shorter.
-  await expect(page.locator('.ld-dialog [data-ld-sec="old"] .ld-h')).toHaveText("Old working folders");
+  // A row of its own on the More tab (#913).
+  await page.locator('.ld-dialog [data-ld-tab="more"]').click();
+  await expect(page.locator('.ld-dialog [data-ld-sec="old"] .ld-label')).toHaveText("Old working folders");
   await row(page).locator('[data-ld="old"]').click();
   await expect(row(page).locator(".ld-old-list")).toContainText("agent-a1 · 3.0 GB");
   await expect(row(page).locator(".ld-old-list")).toContainText("desk-9 · 512 MB");
@@ -36,6 +37,7 @@ test("Keep them closes the list, removing nothing; none found says so", async ({
   await openDesk(page);
   await deskAllSessions(page);
   await page.locator(".dk-strip [data-lands-change]").click();
+  await page.locator('.ld-dialog [data-ld-tab="more"]').click();
   await row(page).locator('[data-ld="old"]').click();
   await row(page).locator('[data-ld="old-no"]').click();
   await expect(row(page).locator('[data-ld="old"]')).toBeVisible();

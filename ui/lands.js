@@ -28,8 +28,8 @@ function deskSettingsLine(d) {
 }
 /** The push choice in a Desk's header line (#692). */
 const LANDS_PUSH_WORDS = { after: "Sends to GitHub right away", ask: "Asks before sending to GitHub", never: "Doesn't send to GitHub" };
-/** Open Desk `desk`'s settings. */
-function landsChange(desk) {
+/** Open Desk `desk`'s settings, on tab `tab` (else the last one looked at). */
+function landsChange(desk, tab) {
   const d = deskOf(desk), l = d?.lands;
   if (!l) return;
   const project = d.ask_before?.project || d.workspace_project || l.project;
@@ -45,7 +45,7 @@ function landsChange(desk) {
   const picked = (d.machines?.picked || [d.machines?.machine || ""]).filter((n) => !n || ms.some((m) => m.name === n));
   const mach = ms.length ? { list: picked.length ? picked : [""], folders: Object.fromEntries(ms.map((m) => [m.name, m.folder || ""])), at: Object.fromEntries(ms.map((m) => [m.name, m.at_once || 3])) } : null;
   const model = d.model || "default";
-  lands = { desk, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders }, at: { ...mach.at } } : null, model } };
+  lands = { desk, tab: tab || landsTabLast, edit: {}, set: { ...l.set }, steps, ab, mach, model, was: { set: { ...l.set }, steps: { ...steps }, ticks: ab ? [...ab.stored] : null, mach: mach ? { list: [...mach.list], folders: { ...mach.folders }, at: { ...mach.at } } : null, model } };
   renderMain();
 }
 /** How work lands as it's saved: your own steps go with a part only when that part is "Your own steps". */
@@ -78,52 +78,81 @@ function landsWhereNote() {
 }
 /** The Desk whose settings show Ask me before for `project`, if any. */
 const landsDeskFor = (project) => (state.desk?.projects || []).find((d) => d.lead && d.lands && (d.ask_before?.project || d.workspace_project || d.lands.project) === project);
+/** Option A of #904: the screen's words, short as Settings' rows (lands.rs keeps the long ones for the lead). A part's
+ *  name on its row, a choice's name where it's shorter, and one line of help for the choice picked. */
+const LD_TITLES = { where: "Each item works in", how: "Lands on main as", check: "Check first", after: "Then runs", push: "Send to GitHub", tests: "Tests", waits: "Items waiting on another start" };
+const LD_CHOICE = { how: { squash: "One commit" } };
+const LD_HELP = {
+  where: { shared: "The project's own folder. The Desk commits only the item's own files.", copy: "Its own copy of the project, cut from main when it starts.", branch: "Its own branch in the project's folder, one item at a time." },
+  how: { squash: "One commit, named after the item. One at a time.", merge: "A merge commit, with the item's own commits kept under it. One at a time.", pr: "A pull request from the item's own branch. It lands once that's merged.", owner: "Nothing is committed. A finished item shows its files and waits for you." },
+  check: { none: "Nothing is run. An item lands as not checked.", command: "Your steps run on main plus the item. One fails, nothing lands." },
+  after: { nothing: "An item is done once it's on main.", command: "Your steps, in the main folder, once it's on main." },
+  push: { after: "Each item, as soon as it lands. Nothing there is ever overwritten.", ask: "You're asked each time. Nothing there is ever overwritten.", never: "Nothing is sent. You push it yourself." },
+  tests: { all: "Sessions run every test before they say done.", changed: "Sessions run the tests for what they changed.", changed_full: "The tests for what changed as they work, all of them before done." },
+  waits: { landed: "An item queued after another starts once that one is on main.", checked: "An item queued after another starts once you've said that one looks right." },
+};
+/** The tabs, as Settings has them; the last one looked at opens next time. */
+const LD_TABS = [["where", "Where it works"], ["done", "When it's done"], ["ask", "Ask me first"], ["more", "More"]];
+let landsTabLast = "where";
 /** A part's choices: those that can be picked, and those not built yet (shown, saying so). One the folder rules out
  *  isn't shown: the Desk's `why` says why. */
 function landsSeg(p) {
   const shown = p.choices.filter((c) => c.ok || c.why === "not yet");
-  return `<div class="seg ld-seg" role="radiogroup" aria-label="${esc(p.label)}">${shown.map((c) => {
-    const on = lands.set[p.key] === c.key;
+  return `<div class="seg ld-seg" role="radiogroup" aria-label="${esc(LD_TITLES[p.key] || p.label)}">${shown.map((c) => {
+    const on = lands.set[p.key] === c.key, label = LD_CHOICE[p.key]?.[c.key] || c.label;
     return c.ok
-      ? `<button role="radio" aria-checked="${on}" class="${on ? "on" : ""}" data-ld-part="${esc(p.key)}" data-ld-pick="${esc(c.key)}">${esc(c.label)}</button>`
-      : `<button role="radio" aria-checked="false" disabled>${esc(c.label)} <span class="ld-not">${esc(c.why)}</span></button>`;
+      ? `<button role="radio" aria-checked="${on}" class="${on ? "on" : ""}" data-ld-part="${esc(p.key)}" data-ld-pick="${esc(c.key)}">${esc(label)}</button>`
+      : `<button role="radio" aria-checked="false" disabled>${esc(label)} <span class="ld-not">${esc(c.why)}</span></button>`;
   }).join("")}</div>`;
 }
-function landsPart(p, l) {
+/** One row as Settings' rows are: its name and a line of help on the left, its choice on the right. */
+const landsRow = (title, help, control, extra = "", attrs = "") => `<div class="ld-row${extra ? " stack" : ""}"${attrs}><div class="ld-line"><div class="ld-text"><div class="ld-label">${esc(title)}</div>${help ? `<div class="ld-hint">${help}</div>` : ""}</div><div class="ld-ct">${control}</div></div>${extra}</div>`;
+/** Your steps' names, for their one line: "[Build] app:build" is Build, a step with no name its command. */
+const landsStepNames = (text) => (text || "").split("\n").map((x) => x.trim()).filter(Boolean).map((x) => x.match(/^\[([^\]]+)\]/)?.[1] || x);
+function landsPart(p) {
   const now = p.choices.find((c) => c.key === lands.set[p.key]);
-  const steps = (p.key === "check" || p.key === "after") && lands.set[p.key] === "command"
-    ? `<textarea class="ld-cmd" rows="${landsRows(lands.steps[p.key])}" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>` : "";
-  return `<div class="ld-row"><div class="ld-label">${esc(p.label)}</div><div class="ld-body">${landsSeg(p)}${steps}${now?.hint ? `<div class="ld-hint">${esc(now.hint)}</div>` : ""}${p.key === "where" ? landsWhereNote() : ""}</div></div>`;
+  const help = esc(LD_HELP[p.key]?.[now?.key] || "");
+  let extra = "";
+  if ((p.key === "check" || p.key === "after") && lands.set[p.key] === "command") {
+    const names = landsStepNames(lands.steps[p.key]);
+    // Your steps show as one line until you edit them; none yet opens the box at once.
+    // Once open it stays open while the screen is, so a redraw as you type keeps the box and your caret.
+    if (!names.length) lands.edit[p.key] = true;
+    extra = lands.edit[p.key]
+      ? `<textarea class="ld-cmd" rows="${landsRows(lands.steps[p.key])}" spellcheck="false" aria-label="${esc(p.label)}: your steps, one per line" placeholder="One step per line, e.g. npm test" data-ld-steps="${p.key}">${esc(lands.steps[p.key])}</textarea>${now?.hint ? `<div class="ld-hint ld-steps-help">${esc(now.hint)}</div>` : ""}`
+      : `<div class="ld-steps"><span class="ld-steps-t"><b>${names.length} ${names.length === 1 ? "step" : "steps"}:</b> ${esc(names.join(" · "))}</span><span class="grow"></span><button class="ld-lk" data-ld-edit="${p.key}">Edit steps</button></div>`;
+  }
+  return landsRow(LD_TITLES[p.key] || p.label, help, landsSeg(p), extra + (p.key === "where" ? landsWhereNote() : ""), ` data-ld-key="${esc(p.key)}"`);
 }
 /** A steps box as tall as its steps (three lines while empty, five at most), so the screen stays short (#447). */
 const landsRows = (text) => (text || "").trim() ? Math.min(5, text.split("\n").length) : 3;
-/** Items at once: the most of this Desk's items at work on This Mac together, however they work there (#798: in the
- *  shared folder and on a branch too; in their own copies it's also the most copies). */
+/** At once: the most of this Desk's items at work on This Mac together, however they work there (#798: in the
+ *  shared folder and on a branch too; in their own copies it's also the most copies). With machines it's theirs too
+ *  (landsMach). */
 function landsAtOnce(l) {
-  // With machines (#711): This Mac's number is in Machines, beside theirs; the model keeps its row here.
-  if (lands.mach) return `<div class="ld-row" data-ld-sec="model"><div class="ld-label">New sessions</div><div class="ld-body">${landsModelPick()}</div></div>`;
+  if (lands.mach) return "";
   const n = lands.set.at_once, min = l.at_once?.min ?? 1, max = l.at_once?.max ?? 9;
-  // The model new sessions start on shares this line (#620): the screen stays short enough not to scroll (#447).
-  return `<div class="ld-row"><div class="ld-label">Items at once</div><div class="ld-body"><div class="ld-line"><div class="ld-step">
-    <button class="btn" data-ld="less" aria-label="Fewer"${n <= min ? " disabled" : ""}>−</button><b class="ld-n">${n}</b><button class="btn" data-ld="more" aria-label="More"${n >= max ? " disabled" : ""}>+</button></div>
-    <label class="ld-model-at" data-ld-sec="model"><span class="ld-model-l">New sessions start on</span>${landsModelPick()}</label></div>
-    <div class="ld-hint">More than ${n === 1 ? "one waits" : `${n === 2 ? "two" : n === 3 ? "three" : n} wait`} ${lands.set.where === "copy" ? "for a free copy" : "in Up next and start by themselves as one finishes"}.</div></div></div>`;
+  const more = `More than ${n === 1 ? "one waits" : `${n === 2 ? "two" : n === 3 ? "three" : n} wait`} ${lands.set.where === "copy" ? "for a free copy" : "in Up next and start by themselves as one finishes"}.`;
+  return landsRow("At once", more, `<div class="ld-step">
+    <button class="btn" data-ld="less" aria-label="Fewer"${n <= min ? " disabled" : ""}>−</button><b class="ld-n">${n}</b><button class="btn" data-ld="more" aria-label="More"${n >= max ? " disabled" : ""}>+</button></div>`, "", ` data-ld-sec="at-once"`);
 }
+/** The model a Desk's new sessions start on (#620). */
+const landsModelRow = () => landsRow("New sessions start on", "The model, from Claude Code's list on this Mac.", landsModelPick(), "", ` data-ld-sec="model"`);
 /** A size given in KB, as people say it. */
 const landsKb = (kb) => (kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb || 0} KB`);
 /** Remove old working folders: the folders of this project whose work is already on main and that nothing uses. */
 function landsOld() {
   const o = lands.old, l = o?.list, n = l?.copies?.length || 0;
-  let body;
-  if (!o) body = `<button class="btn" data-ld="old">Remove old working folders</button>
-    <div class="ld-hint">Their work is already on main and nothing uses them. Listed before anything is removed.</div>`;
-  else if (o.looking) body = `<button class="btn" disabled>Looking…</button>`;
-  else if (o.removing) body = `<button class="btn" disabled>Removing…</button>`;
-  else if (!n) body = `<div class="ld-hint">None: every other folder has work not on main yet, or is in use.</div>`;
-  else body = `<div class="ld-old-list">${l.copies.map((c) => `<div>${esc(c.path)} · ${landsKb(c.kb)}</div>`).join("")}</div>
+  const help = "Their work is already on main and nothing uses them. Listed before anything is removed.";
+  let ct = "", extra = "";
+  if (!o) ct = `<button class="btn" data-ld="old">Remove old working folders</button>`;
+  else if (o.looking) ct = `<button class="btn" disabled>Looking…</button>`;
+  else if (o.removing) ct = `<button class="btn" disabled>Removing…</button>`;
+  else if (!n) extra = `<div class="ld-hint">None: every other folder has work not on main yet, or is in use.</div>`;
+  else extra = `<div class="ld-old-list">${l.copies.map((c) => `<div>${esc(c.path)} · ${landsKb(c.kb)}</div>`).join("")}</div>
     <div class="ld-old-b"><button class="btn armed" data-ld="old-yes">Remove ${n} (${landsKb(l.kb)})</button><button class="btn" data-ld="old-no">Keep them</button></div>
     <div class="ld-hint">Any that gets new work or comes into use first stays.</div>`;
-  return `<div class="ld-old"><div class="ld-body">${body}</div></div>`;
+  return `<div class="ld-old" data-ld-sec="old">${landsRow("Old working folders", help, ct, extra)}</div>`;
 }
 /** Remove old working folders pressed: looked at now. */
 function landsOldLook() {
@@ -178,21 +207,21 @@ function landsMach() {
   // This Mac's is the Desk's Items at once, however its items work there (#798).
   const l = deskOf(lands.desk)?.lands, k = lands.set.at_once, lo = l?.at_once?.min ?? 1, hi = l?.at_once?.max ?? 9;
   const mac = `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">This Mac</span><div class="ld-step ld-mach-n"><button class="btn" data-ld="less" aria-label="Fewer at once on This Mac"${k <= lo ? " disabled" : ""}>−</button><b class="ld-n">${k}</b><button class="btn" data-ld="more" aria-label="More at once on This Mac"${k >= hi ? " disabled" : ""}>+</button><span class="ld-mach-at">at once</span></div></div>`;
-  const at = `<div class="ld-row" data-ld-sec="at-once"><div class="ld-label">At once</div><div class="ld-body">${mac}${ms.map((x) => `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">${esc(x.label)}</span>${n(x)}</div>`).join("")}
-    <div class="ld-hint">The most of this Desk's items working on each machine together${lands.set.where === "copy" ? " (on This Mac, each in a folder of its own until it lands)" : ""}. More ${many ? "go to another place you ticked that has room, or " : ""}wait until one there is done, then start by themselves.</div></div></div>`;
+  const at = landsRow("At once", `The most of this Desk's items working on each machine together${lands.set.where === "copy" ? " (on This Mac, each in a folder of its own until it lands)" : ""}. More ${many ? "go to another place you ticked that has room, or " : ""}wait until one there is done, then start by themselves.`, "", `<div class="ld-mach-list">${mac}${ms.map((x) => `<div class="ld-folder-on ld-mach-row"><span class="ld-mach-name">${esc(x.label)}</span>${n(x)}</div>`).join("")}</div>`, ` data-ld-sec="at-once"`);
   const where = ons.length ? `<div class="ld-hint">The folder of this repository's clone on ${ons.length > 1 ? "each machine" : esc(ons[0].label)}. If the project isn't there yet, Cue downloads it there first. Each new session starts there from the latest main, on a branch of its own, and its work lands here.</div>` : "";
   const spread = many ? `<div class="ld-hint">New items start on whichever of these has the fewest of this Desk's items at work. Each item says where it's working.</div>` : "";
   const folder = `${folders}${spread}${where || (many ? "" : `<div class="ld-hint">The lead asks you before a Desk's first item on another machine. You can also choose per item, on its page. Tick more than one to spread new items over them.</div>`)}`;
-  // First on the screen, named for what it holds (#711: under How work lands, as "Where new sessions start", it wasn't found).
-  return `<div class="ld-sec" data-ld-sec="machine"><div class="set-group ld-h">Machines</div>
-    <div class="ld-hint ld-sub">Where this Desk's new sessions start, and how many of its items each machine works on at once.</div>
-    <div class="ld-rows"><div class="ld-row"><div class="ld-label">Starts on</div><div class="ld-body">${seg}${folder}</div></div>${at}</div></div>`;
+  // On Where it works, under where an item works (#711, #913).
+  return `<div data-ld-sec="machine">${landsRow("Starts on", "Where this Desk's new sessions start.", "", `${seg}${folder}`)}${at}</div>`;
 }
-/** Ask me before, its kinds on one line, saved with the rest (ask_before.js has the rows and their words). */
+/** Ask me first: a switch per kind, as Settings' notifications are (ask_before.js has the kinds and their words).
+ *  Pushing to main isn't one: Send to GitHub says what happens (#692). */
 function landsAskBefore() {
   if (!lands.ab) return "";
-  return `<div class="ld-sec" data-ld-sec="ask"><div class="set-group ld-h">Ask me before</div>
-    <div class="ld-hint ld-sub">The lead and its sessions stop and ask you first.</div>${askBeforeRows(lands.ab, ["main"])}</div>`;
+  const kinds = askBeforeKinds().filter((k) => k.key !== "main"), offered = kinds.filter((k) => k.offered), unchecked = kinds.filter((k) => !k.offered);
+  const row = (k) => { const on = lands.ab.ticks.includes(k.key); return landsRow(k.label, "", `<button class="toggle${on ? " on" : ""}" role="switch" aria-checked="${on}" aria-label="${esc(k.label)}" data-ab-kind="${esc(k.key)}"><span></span></button>`); };
+  return `<div data-ld-sec="ask"><div class="ld-hint ld-tabnote">The lead and its sessions stop and ask you first.</div>${offered.map(row).join("")}
+    ${unchecked.length ? `<div class="ld-hint ld-tabnote ld-unchecked">Not offered, as Cue can't check them: ${unchecked.map((k) => `${esc(k.label.toLowerCase())} (${esc(k.why)})`).join("; ")}. Sessions on another machine are told, not stopped.</div>` : ""}</div>`;
 }
 function landsHtml() {
   if (!lands) return "";
@@ -200,20 +229,22 @@ function landsHtml() {
   if (!l) { lands = null; return ""; }
   // Named as the Desk is: its settings are its own (#460).
   const name = d.name || (typeof projLabel === "function" ? projLabel(l.project) : l.project);
-  const parts = l.parts.map((p) => p.key === "how" ? landsAtOnce(l) + landsPart(p, l) : landsPart(p, l)).join("");
-  // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, groups under it; a click
-  // outside or Esc closes it (#447).
+  const part = (k) => { const p = l.parts.find((x) => x.key === k); return p ? landsPart(p) : ""; };
+  const tabs = LD_TABS.filter(([k]) => k !== "ask" || lands.ab);
+  const tab = tabs.some(([k]) => k === lands.tab) ? lands.tab : "where";
+  const pane = {
+    where: `${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}<div data-ld-sec="lands">${part("where")}</div>${landsMach()}${landsAtOnce(l)}${landsModelRow()}`,
+    done: `<div data-ld-sec="lands">${part("check")}${part("how")}${part("after")}${part("push")}</div>`,
+    ask: landsAskBefore(),
+    more: `<div data-ld-sec="lands">${part("tests")}${part("waits")}</div>${landsOld()}`,
+  }[tab];
+  // As Settings is (sheets.js settingsSheet): a sheet, its title and Esc on one line, its tabs under it; a click
+  // outside or Esc closes it (#447). Option A of #904 (#913).
   return `<div class="scrim ld-scrim" data-ld="scrim"><div class="sheet ld-dialog" role="dialog" aria-labelledby="ld-title">
     <div class="sheet-head"><h3 class="move-title" id="ld-title">Settings for ${esc(name)}</h3><span class="grow"></span><kbd class="ld-esc" data-ld="close" role="button" aria-label="Close">Esc</kbd></div>
-    <div class="sheet-body">
-    <div class="ld-hint ld-intro">Kept in Cue, not in the project. Changes apply when you press Save; you can also tell the lead, and it asks you first.</div>
-    ${landsMach()}
-    <div class="ld-sec" data-ld-sec="lands"><div class="set-group ld-h">How work lands</div>
-    ${l.why ? `<div class="ld-why">${esc(l.why)}</div>` : ""}
-    <div class="ld-rows">${parts}</div></div>
-    ${landsAskBefore()}
-    <div class="ld-sec" data-ld-sec="old"><div class="set-group ld-h">Old working folders</div><div class="ld-rows">${landsOld()}</div></div>
-  </div>${landsFoot()}</div></div>`;
+    <div class="set-tabs seg ld-tabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" class="${tab === k ? "on" : ""}" aria-selected="${tab === k}" data-ld-tab="${k}">${t}</button>`).join("")}</div>
+    <div class="ld-hint ld-intro">Kept in Cue, not in the project. Save keeps what you changed on every tab.</div>
+    <div class="sheet-body" data-ld-pane="${tab}">${pane}</div>${landsFoot()}</div></div>`;
 }
 /** Save and Cancel under the screen; leaving with changes unsaved asks there first. */
 function landsFoot() {
@@ -334,6 +365,14 @@ document.addEventListener("click", (e) => {
     if (!list.length) return;
     m.list = order.filter((n) => list.includes(n));
     lands.leaving = false;
+    return renderMain();
+  }
+  // A tab, kept for next time as Settings keeps its own; Edit steps opens that part's box.
+  const tb = e.target.closest?.("[data-ld-tab]"), ed = e.target.closest?.("[data-ld-edit]");
+  if (lands && (tb || ed)) {
+    e.stopPropagation();
+    if (tb) lands.tab = landsTabLast = tb.dataset.ldTab;
+    else lands.edit[ed.dataset.ldEdit] = true;
     return renderMain();
   }
   const pick = e.target.closest?.("[data-ld-pick]"), b = e.target.closest?.("[data-ld]:not([data-ld=scrim])") || (e.target.dataset?.ld === "scrim" ? e.target : null);

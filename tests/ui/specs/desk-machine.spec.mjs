@@ -48,7 +48,9 @@ test("the Desk's settings say where its new sessions start, with the folder ther
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
   const sec = dlg.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-h")).toHaveText("Machines");
+  // On Where it works, under where an item works (#913).
+  await expect(dlg.locator('[data-ld-tab="where"]')).toHaveAttribute("aria-selected", "true");
+  await expect(sec.locator(".ld-label")).toHaveText(["Starts on", "At once"]);
   await expect(sec.locator("[data-ld-mach]")).toHaveText(["This Mac", "build-box", "gpu-1"]);
   await expect(sec.locator('[data-ld-mach="build-box"]')).toHaveAttribute("aria-checked", "true");
   await expect(sec.locator("[data-ld-folder]")).toHaveValue("~/code/cue");
@@ -120,25 +122,25 @@ test("the Desk's settings can tick two machines, each with its folder, and both 
 
 // How many items at once on each machine (#711): a − n + on each ticked machine's row, 1 to 9, saved with the rest and
 // there when the settings open again.
-test("Desk settings open on Machines, where every machine has how many items may work there at once", async ({ page, cue }) => {
+test("Desk settings open on Where it works, where every machine has how many items may work there at once", async ({ page, cue }) => {
   await cue.open("desk");
   await cue.change((st, ms) => { st.desk.projects.find((x) => x.project === "cue").machines = { ...ms, machine: "", picked: [""] }; }, machines);
   await openDesk(page);
   await deskAllSessions(page);
   await page.locator(".dk-strip .dk-ab [data-lands-change]").click();
   const dlg = page.locator(".ld-dialog");
-  // First on the screen, named Machines.
-  await expect(dlg.locator(".ld-h").first()).toHaveText("Machines");
+  // On the first tab, Where it works (#913): where they start, and how many at once on each.
+  await expect(dlg.locator('[data-ld-tab="where"]')).toHaveAttribute("aria-selected", "true");
   const sec = dlg.locator('[data-ld-sec="machine"]');
-  await expect(sec.locator(".ld-sub")).toContainText("how many of its items each machine works on at once");
+  await expect(sec.locator(".ld-label")).toHaveText(["Starts on", "At once"]);
   // Only This Mac ticked: every machine still has its number, This Mac's too (the Desk's Items at once, now only
   // here: no Desk-wide row under How work lands).
   await expect(sec.locator(".ld-mach-name")).toHaveText(["This Mac", "build-box", "gpu-1"]);
   const n = sec.locator(".ld-mach-n .ld-n");
   await expect(n).toHaveText(["3", "3", "3"]);
   await expect(sec.locator(".ld-mach-at")).toHaveText(["at once", "at once", "at once"]);
-  await expect(dlg.locator(".ld-row", { hasText: "Items at once" })).toHaveCount(0);
-  await expect(dlg.locator('[data-ld-sec="lands"] [data-ld-model]')).toHaveCount(1);
+  await expect(dlg.locator(".ld-label", { hasText: "At once" })).toHaveCount(1);
+  await expect(dlg.locator('[data-ld-sec="model"] [data-ld-model]')).toHaveCount(1);
   await expect(sec.locator(".ld-hint", { hasText: "The most of this Desk's items working on each machine together" })).toHaveCount(1);
   for (let k = 0; k < 2; k++) await sec.locator('[data-ld-mach-n="build-box"][data-ld-by="-1"]').click();
   await expect(n).toHaveText(["3", "1", "3"]);

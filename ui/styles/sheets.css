@@ -60,56 +60,53 @@ kbd { font: 600 var(--type-label)/var(--type-label-lh) var(--mono); padding: 2px
 .ab-more { align-self: flex-start; padding: 6px 4px; font-size: var(--type-body); color: var(--muted); text-align: left; }
 .ab-more:hover { color: var(--ink); }
 .ab-note { padding: 4px 4px 0; font-size: var(--type-small); line-height: 1.45; color: var(--muted); }
-/* How work lands (lands.js): a label column, then each part's choices, the picked one's words under them. A choice not
-   built yet is shown greyed, saying so. */
+/* A Desk's settings (lands.js). A choice not built yet is shown greyed, saying so. */
 .ld-scrim { z-index: 30; }
 .ld-dialog { width: min(760px, calc(100vw - 32px)); }
-.ld-rows { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 4px; }
-.ld-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start; }
-.ld-label { padding-top: 6px; font-size: var(--type-body); font-weight: 600; color: var(--ink); }
-.ld-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.ld-seg { flex-wrap: wrap; align-self: flex-start; }
+/* Option A of #904 (#913): tabs as Settings has, and rows as its rows are: a bold name and one line of help on the
+   left, the choice on the right, a hairline between; narrow, the choice goes under its words. */
+.ld-tabs { margin-top: 0; flex-wrap: wrap; }
+.ld-intro { padding: 6px 22px 2px; }
+.ld-dialog .sheet-body { padding-top: 0; }
+.ld-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+[data-ld-pane] > :last-child.ld-row, [data-ld-pane] > :last-child > .ld-row:last-child, [data-ld-pane] > .ld-old:last-child .ld-row { border-bottom: 0; }
+.ld-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.ld-text { flex: 1 1 240px; min-width: 0; }
+.ld-label { font-weight: 600; color: var(--ink); }
+.ld-ct { flex: none; display: flex; align-items: center; gap: 8px; max-width: 100%; }
+.ld-ct:empty { display: none; }
+.ld-seg { flex-wrap: wrap; }
+.ld-row.stack .ld-seg[role="group"] { align-self: flex-start; }
 .ld-seg button:disabled { opacity: .55; cursor: default; }
 .ld-not { font-weight: 500; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .ld-hint, .ld-why { font-size: var(--type-small); line-height: 1.45; color: var(--muted); }
-.ld-why { margin: 2px 0 4px; color: var(--ink); }
+.ld-why { margin: 10px 0 0; color: var(--ink); }
+.ld-tabnote { padding: 10px 0 2px; }
+.ld-steps { display: flex; align-items: center; gap: 8px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
+.ld-steps b { color: var(--ink); font-weight: 600; }
+.ld-steps-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ld-lk { flex: none; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--accent); white-space: nowrap; }
 .ld-old-list { max-height: 140px; overflow-y: auto; font-size: var(--type-small); line-height: 1.6; color: var(--muted); word-break: break-all; }
-.ld-old-b { display: flex; gap: 8px; margin: 6px 0 2px; }
+.ld-old-b { display: flex; gap: 8px; margin: 2px 0; }
 .ld-old-b .btn.armed { color: var(--deny); }
-.ld-step { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; }
+.ld-step { display: inline-flex; align-items: center; gap: 10px; }
 .ld-step .btn { min-width: 30px; padding: 4px 8px; }
 .ld-n { min-width: 14px; text-align: center; font-size: var(--type-body); }
-.ld-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
-.ld-model-at { display: inline-flex; align-items: center; gap: 8px; font-size: var(--type-body); color: var(--muted); }
-.ld-dialog .set-group { margin: 9px 0 6px; }
-.ld-sub { margin: -2px 0 4px; }
 .ld-esc { cursor: pointer; }
-.ld-intro { margin: 0 0 2px; }
-.ld-folder { margin-top: 8px; resize: none; }
-.ld-folder-on { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.ld-folder { margin-top: 2px; resize: none; }
+.ld-folder-on { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .ld-folder-on .ld-folder { margin-top: 0; flex: 1; min-width: 0; }
 .ld-folder-on .ld-mach-n { flex: none; gap: 6px; }
-.ld-mach-row { margin-top: 4px; }
-.ld-mach-row:first-child { margin-top: 0; }
+.ld-mach-list { display: flex; flex-direction: column; gap: 4px; }
+.ld-mach-row { margin-top: 0; }
 .ld-mach-row .ld-mach-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ld-mach-at { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .ld-folder-name, .ld-mach-name { flex: none; min-width: 72px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .ld-cmd { width: 100%; box-sizing: border-box; font: var(--type-body)/1.5 var(--mono); padding: 6px 8px; border-radius: var(--radius-qp); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); resize: vertical; }
-.ld-dialog .ab-rows { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 16px; margin: 0; }
-.ld-dialog .ab-row, .ld-dialog .ab-more { padding: 4px; }
-.ld-dialog .ab-note { flex-basis: 100%; padding-top: 0; }
-.ld-old .ld-body > .btn { align-self: flex-start; }
-/* Before it looks (#780): its heading, the button and its words on one line, so the screen stays short (#447). */
-.ld-sec[data-ld-sec="old"]:has([data-ld="old"]) { display: flex; align-items: center; gap: 16px; }
-.ld-sec[data-ld-sec="old"]:has([data-ld="old"]) > .set-group { flex: none; margin-bottom: 0; }
-.ld-sec[data-ld-sec="old"]:has([data-ld="old"]) > .ld-rows { flex: 1; min-width: 0; margin: 9px 0 0; }
-.ld-old .ld-body:has(> [data-ld="old"]) { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
-.ld-old .ld-body:has(> [data-ld="old"]) > .ld-hint { flex: 1; min-width: 240px; }
 .ld-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 14px; border-top: 1px solid var(--line); }
 .ld-foot-t { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); }
 .ld-leaving .ld-foot-t { color: var(--ink); font-weight: 600; }
 .ld-move { margin-top: 2px; font-size: var(--type-small); line-height: 1.45; color: var(--ink); }
-@media (max-width: 560px) { .ld-row { grid-template-columns: 1fr; gap: 6px; } .ld-label { padding-top: 0; } }
 /* An add-on row's choice of many (sheets.js extPick): a button, and the choices listed under its row. */
 .xp-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: var(--radius-btn); background: var(--panel-2); color: var(--ink); font-size: var(--type-body); font-weight: 600; }
 .xp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
