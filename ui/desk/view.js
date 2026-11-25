@@ -207,7 +207,7 @@ function deskRightChat(d, taskApprovals) {
   // Activity at the panel's foot (#688): its last 3 rows, the rest a click away.
   const activity = deskPanelActivity(deskActivity(d), d);
   return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", activity, back: "", mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta), state: deskLead(d) && sessionOf(deskLead(d).sid) ? deskHeadWord(sessionOf(deskLead(d).sid)) : "",
-    now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel: "", main: `<div class="dk-tabs dk-ptabs">${tab("lead", "Chat", 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Activity", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
+    now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel: "", main: `<div class="dk-tabs dk-ptabs"><span class="tabtrk">${tab("lead", "Chat", 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Activity", 0)}${tab("away", "Away", 0)}</span></div>${main}`, foot })}</div>`;
 }
 /** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. Not one whose turn
  *  is over with only its background work left: its row says "your turn" (#867). */

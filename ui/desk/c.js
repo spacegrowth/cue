@@ -663,7 +663,7 @@ function deskCCrewPage({ lead, key, t, it, leadName, back, word, dot, acts, main
   const k = `crew:${lead}:${key}`, tab = ["files", "activity"].includes(deskCSessTabs.get(k)) ? deskCSessTabs.get(k) : "chat";
   const rows = dkActivityOf(lead);
   const b = (id, label) => `<button class="dkn-stab${tab === id ? " on" : ""}" role="tab" aria-selected="${tab === id}" data-desk-c-stab="${id}" data-sid="${esc(k)}">${label}</button>`;
-  const tabs = `<div class="dkn-stabs" role="tablist">${b("chat", "Chat")}${b("files", "Files")}${b("activity", "Activity")}</div>`;
+  const tabs = `<div class="dkn-stabs"><span class="tabtrk" role="tablist">${b("chat", "Chat")}${b("files", "Files")}${b("activity", "Activity")}</span></div>`;
   const body = tab === "files" ? `<div class="dk-pane dkn-sfiles" data-scroll-key="cfiles:${esc(k)}">${files || `<div class="dk-quiet">Nothing changed yet.</div>`}</div>`
     : tab === "activity" ? `<div class="dk-pane dkn-sfiles" data-scroll-key="cact:${esc(k)}">${rows.length ? `<div class="dk-prows">${rows.map((r) => deskActPanelRow({ at: r.at, line: r }, d)).join("")}</div>` : `<div class="dk-quiet">Nothing yet.</div>`}</div>`
     : main;
@@ -736,7 +736,7 @@ function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
   // Activity (#789): the Desk's moves on the item open here (or, a session opened on its own, those in its chat and
   // Cue's messages to it), which its chat no longer shows.
   const acts = tab === "activity" ? (item ? deskItemActivity(d, item) : deskSessActivity(sid, d)) : null;
-  const tabs = `<div class="dkn-stabs" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}${t("activity", "Activity")}</div>`;
+  const tabs = `<div class="dkn-stabs"><span class="tabtrk" role="tablist">${t("chat", "Chat")}${t("files", `Files <span class="n">${n}</span>`)}${t("activity", "Activity")}</span></div>`;
   let main;
   if (tab === "activity") main = `<div class="dk-pane dk-moves dkn-sact" data-scroll-key="sact:${esc(sid)}:${esc(item?.id || "")}">${acts.length ? acts.map((r) => deskActRowHtml(r, d)).join("") : `<div class="dk-quiet">Nothing yet.</div>`}</div>`;
   else if (tab === "files") main = `<div class="dk-pane dkn-sfiles" data-scroll-key="files:${esc(sid)}">${deskSessFiles(sid) || deskPsec("Changed this turn", `<div class="dk-quiet">Nothing yet.</div>`, "dk-pfiles")}${deskCSessTaskFiles(d, sid)}</div>`;

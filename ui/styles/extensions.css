@@ -1,16 +1,20 @@
 /* Extensions: a session's tabs under its activity bar; an extension tab's page floats over the slot. */
-/* The same tab row as a Desk chat's (desk-c.css .dkn-stabs): a band between two lines, its first label under the
-   heading text, the picked tab filled. */
-.stabs { flex: none; display: flex; align-items: stretch; gap: 0; min-width: 0; margin: 10px 0 0; padding: 0 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.stab { all: unset; flex: none; cursor: pointer; display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; padding: 7px 14px; font: 600 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--muted); }
-.stab:hover { color: var(--ink); }
-.stab.on { color: var(--on-accent); background: var(--accent); }
-.stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
-.stab.on .stab-n { color: inherit; opacity: 0.8; }
-.stab-n { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Every chat's tab row (a session's on the Board, a session's or crew member's on the Desk: desk/c.js .dkn-stabs, the
+   lead's: desk/view.js .dk-ptabs), option A of the calmer-tabs mocks (#935): the tabs fill the row as equal parts of one
+   rounded track, the picked one raised; muted words, one line under the row where the chat starts. */
+.stabs, .dkn-stabs, .dk-c .dk-ptabs { flex: none; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 0; overflow: visible; margin: 8px 0 0; padding: 0 12px 10px; border-top: 0; border-bottom: 1px solid var(--line); }
+.tabtrk { flex: 1 1 auto; min-width: 0; display: flex; gap: 2px; padding: 2px; border-radius: var(--radius-btn); background: color-mix(in srgb, var(--ink) 7%, var(--panel)); }
+.stab, .dkn-stab, .dk-c .dk-ptabs .dk-tab { all: unset; box-sizing: border-box; flex: 1 1 0; min-width: max-content; cursor: pointer; display: inline-flex; justify-content: center; gap: 5px; align-items: baseline; white-space: nowrap; padding: 4px 8px; border-radius: 6px; font: 500 var(--type-small)/var(--type-small-lh) var(--sans); color: var(--muted); }
+.stab:hover, .dkn-stab:hover, .dk-c .dk-ptabs .dk-tab:hover { color: var(--ink); }
+.stab.on, .dkn-stab.on, .dk-c .dk-ptabs .dk-tab.on { color: var(--ink); font-weight: 600; background: color-mix(in srgb, var(--ink) var(--tab-lift, 0%), var(--panel)); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.07); }
+/* In dark the raised tab is lighter than the track (in light it is the panel's white). */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tab-lift: 16%; } }
+:root[data-theme="dark"] { --tab-lift: 16%; }
+.stab:focus-visible, .dkn-stab:focus-visible, .dk-c .dk-ptabs .dk-tab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
+.stab-n, .dkn-stab .n, .dk-c .dk-ptabs .dk-tab .n { font: inherit; font-weight: 500; margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .stab-n.bad { color: var(--deny); font-weight: 600; }   /* "1 failed" (#867) */
 .stab-n .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
-.stab-ran { align-self: center; padding-right: 14px; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+.stab-ran { flex: 0 1 auto; min-width: 0; max-width: 30%; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stab-ran code { font-family: var(--mono); }
 .ext-slot { flex: 1; min-height: 0; }
 .ext-frame { position: fixed; z-index: 2; border: 0; background: var(--panel); }
