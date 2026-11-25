@@ -65,6 +65,8 @@ async function deskSendBox(key, sendNow = false) {
 async function deskSendItem(to, key, text, sendNow = false) {
   const project = to.project || deskSelection(), it = deskItem(project, to.item);
   if (!it) return toast("That item isn't on this Desk any more.");
+  // Its How to check folds to its line and stays while it's to check, whatever its session does with your words (#883).
+  if (it.state === "to_check" || deskCHowKeep.has(it.id)) { deskCHowKeep.add(it.id); deskCHowFold.set(it.id, true); }
   // A question on an item to check or done (#475): its holder answers it, and the item stays where it is unless that
   // answer changes its code (the hub's desk/hub/turn/asked.rs).
   // A quick phrase on an item to check (#488, "Go ahead"): a note to its holder too, never a Send back.
@@ -148,6 +150,7 @@ const deskDone = (id) => (state.desk?.projects || []).some((p) => (p.items || []
 /** Item `id` sent back to its holder with what's in box `key`: the box emptied once it went (kept when it didn't).
  *  Whether it went. */
 async function deskSendBack(id, key) {
+  deskCHowKeep.delete(id);
   // A quick phrase (compose.js sendPhrase): the box holds what you typed, so it isn't emptied, whether it goes or not.
   const phrase = phraseSending, reopen = deskDone(id);
   let pend = null;
@@ -267,7 +270,7 @@ function openInDesk(project, itemId = "") {
 }
 async function deskAct(id, act, el = null) {
   // Looks right commits the item's files at once; Undo on a done item only puts it back to check (desk/commit.js).
-  if (act === "looks_right") return deskLooksRight(id);
+  if (act === "looks_right") { deskCHowKeep.delete(id); return deskLooksRight(id); }
   if (act === "looks_undo") return deskLooksUndo(id);
   if (act === "reopen") return deskReopen(id);
   if (act === "msg_retry") return el?.dataset.step ? deskRetry(id, el.dataset.step) : deskMsgRetry(id, el?.dataset.at);

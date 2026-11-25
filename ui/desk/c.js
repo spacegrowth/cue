@@ -561,6 +561,9 @@ function deskCItemBar(i, bare = false) {
 /** Items whose How to check you folded (true) or opened (false) at the chat's foot; unset, it's open, folded at the
  *  smallest window. */
 const deskCHowFold = new Map();
+/** Items you wrote to while they were to check (#883): their How to check stays (folded) though their session works
+ *  on your words, till Looks right or Send back. */
+const deskCHowKeep = new Set();
 const deskCHowFolded = (id) => deskCHowFold.get(id) ?? (typeof matchMedia !== "undefined" && matchMedia("(max-height: 680px)").matches);
 /** What to try on an item ready to check, or its options to pick, in a bar at the foot of its chat over the box (#865,
  *  #851's D3): it stays there as the chat goes on until you answer. How to check: Where, Do (its steps) and Expect as
@@ -577,15 +580,18 @@ function deskCHowTo(i) {
     const row = (o) => `<li><b class="dk-optk">${esc(o)}</b><span class="dk-optw">${esc(words.get(o) || named(o) || `Option ${o}`)}</span><button class="btn small" data-desk-act="pick" data-id="${id}" data-on="${esc(o)}" aria-label="Pick ${esc(o)}">Pick</button></li>`;
     return `<div class="dkn-hc" data-desk-how="${id}"><div class="dkn-hct"><span class="dkn-hcc">Pick one · ${opts.length} options</span>${fold(true)}</div><ul class="dk-opts dkn-hco">${opts.map(row).join("")}</ul></div>`;
   }
-  if (i.state !== "to_check" || deskInstallWait(i)) return "";
+  if (["done", "dropped"].includes(i.state)) deskCHowKeep.delete(i.id);
+  const kept = deskCHowKeep.has(i.id) && ["working", "finishing", "needs_you"].includes(i.state);
+  if ((i.state !== "to_check" && !kept) || deskInstallWait(i)) return "";
   // Ready to check (#883): the bar says so and carries Looks right and Send back, out of the header.
   const btns = `<span class="dkn-hcb"><button class="btn small dkn-hok" data-desk-act="looks_right" data-id="${id}">${deskUncommitted(i) ? "Commit to main" : "Looks right"}</button><button class="btn small dkn-hsb" data-desk-act="send_back" data-id="${id}">Send back</button></span>`;
-  const chk = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}"><span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>${btns}${btn ? fold(false) : ""}</div>`;
+  // Folded: one slim line, "How to check ▸" opening it, what to try, then Looks right and Send back.
+  const chk = (cap, rest, btn = true) => `<div class="dkn-hc fold" data-desk-how="${id}">${btn ? `<button class="dkn-hcw dkn-hco2" data-desk-c-how="${id}" aria-expanded="false"><b>${cap} ▸</b><span>${rest}</span></button>` : `<span class="dkn-hcw"><b>${cap}</b><span>${rest}</span></span>`}${btns}</div>`;
   const cl = deskToCheckLine(i);
   if (cl.kind === "nothing" || cl.kind === "unsaid") return chk(`Ready to check · ${esc(DESK_CHECK_LABEL[cl.kind].replace(/:$/, ""))}`, esc(cl.text), false);
   // Its Do as the steps it wrote ("1. … 2. …"), else as one.
   const dos = cl.steps ? cl.steps[1].split(/(?:^|\s)\d+[.)]\s+/).map((t) => t.trim()).filter(Boolean) : [];
-  if (folded) return chk("Ready to check", cl.steps ? `Where, ${dos.length > 1 ? `${dos.length} steps` : "Do"}, Expect` : esc(cl.text));
+  if (folded) return chk("How to check", cl.steps ? `Where, ${dos.length > 1 ? `${dos.length} steps` : "Do"}, Expect` : esc(cl.text));
   const row = (k, v) => `<div class="dkn-hcl"><span class="dkn-hck">${k}</span>${v}</div>`;
   const body = cl.steps ? row("Where", `<span>${esc(cl.steps[0])}</span>`) + row("Do", dos.length > 1 ? `<ol>${dos.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : `<span>${esc(cl.steps[1])}</span>`) + row("Expect", `<span>${esc(cl.steps[2])}</span>`)
     : row("Try", `<span>${esc(cl.text)}</span>`);

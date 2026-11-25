@@ -499,3 +499,7 @@
 .dkn-hc .dkn-hsb { background: transparent; color: var(--on-bg); border-color: transparent; box-shadow: inset 0 0 0 1px var(--on-bg-muted); }
 .dkn-hc .dkn-hok:hover { filter: brightness(1.05); }
 .dkn-hc .dkn-hsb:hover { background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
+/* The folded How to check (#883): its words a button that opens it. */
+.dkn-hco2 { all: unset; cursor: pointer; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--on-bg); }
+.dkn-hco2:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; border-radius: var(--radius-btn); }
+.dkn-hco2:hover b { text-decoration: underline; text-underline-offset: 2px; }
