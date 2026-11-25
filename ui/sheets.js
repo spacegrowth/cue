@@ -202,7 +202,7 @@ async function openFound(sid, act = "open") {
   if (!here) return svAct(act, sid);
   const live = (state.live || []).find((x) => x.session_id === sid);
   if (act === "quiet" && !sessionOf(sid) && live?.harness === "claude") {
-    try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); }
+    try { await invoke("adopt_session", { sessionId: sid }); setState(await fetchState()); }
     catch (e) { toast(`Couldn't open it here: ${e}`); }
   }
   if (sessionOf(sid) && here(sid)) return;
@@ -218,7 +218,7 @@ async function resumeOlder(r) {
     const res = await invoke("resume_session", { sessionId: r.session_id });
     toast(`${res.detail}: ${r.name || r.project}`);
     if (view === "board") return setActive(null, res.session_id);
-    setState(await invoke("get_state"));
+    setState(await fetchState());
     openFound(res.session_id);
   } catch (e) { toast(`Couldn't resume it: ${e}`); }
 }

@@ -665,7 +665,7 @@
   async function boot() {
     bind();
     await loadDrafts();   // the drafts Cue's chat keeps (window.js): what you typed to a session, here or there
-    take(await invoke("get_state"));
+    take(await fetchState());
     // Told it changed, the state's fetched once the last is drawn, then Cue's told it's drawn, as Cue's window does
     // (app.js): states sent whole waited in line, held by Cue till read (#794).
     let pulling = false, again = false;
@@ -673,7 +673,7 @@
       if (pulling) { again = true; return; }
       pulling = true;
       try {
-        do { again = false; try { take(await invoke("get_state")); } catch (e) { console.error(e); } } while (again);
+        do { again = false; try { take(await fetchState()); } catch (e) { console.error(e); } } while (again);
       } finally { pulling = false; invoke("state_drawn").catch(() => {}); }
     };
     await T.event.listen("state-changed", pull);

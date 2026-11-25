@@ -684,7 +684,7 @@ async function svAct(act, sid) {
     // A Claude session Cue hasn't heard from (resumed after a restart, say): Cue takes it in, so it opens
     // like any other, with its chat and a box to type in. If it can't, what it can show read-only.
     if ((state.live || []).find((x) => x.session_id === sid)?.harness === "claude") {
-      try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); return setActive(null, sid); }
+      try { await invoke("adopt_session", { sessionId: sid }); setState(await fetchState()); return setActive(null, sid); }
       catch (e) { toast(`Couldn't open it here: ${e}`); }
     }
     setActive(null, null); quietOpen = sid; followProject(sid); loadSteps(sid); return renderMain();

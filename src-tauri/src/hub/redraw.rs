@@ -45,6 +45,8 @@ pub(super) struct Redraws {
     drawn_now: Condvar,
     /// The state last sent: what a page that's told it changed fetches, when the store changed again since.
     sent: Mutex<Option<Arc<Value>>>,
+    /// The states handed to each window, to send the next as only what changed (state_since.rs).
+    pub(super) given: Mutex<super::state_since::Given>,
 }
 
 #[derive(Default)]
@@ -198,6 +200,12 @@ impl Hub {
     /// since: the draw that follows tells them again).
     pub(crate) fn sent_state(&self) -> Option<Value> {
         crate::locking::lock(&self.redraws.sent, "state sent").clone().map(|s| Self::stamped(&s))
+    }
+
+    /// The state as last built, or as last sent when the store changed since (`kept_state` and `sent_state`, not
+    /// stamped): what a window that's told it changed fetches, as only what changed (state_since.rs).
+    pub(crate) fn current_snapshot(&self) -> Option<Arc<Value>> {
+        self.shown.get().or_else(|| crate::locking::lock(&self.redraws.sent, "state sent").clone())
     }
 
     /// Window `label` drew the last state it was sent (its `state` listener, ui/app.js and ui/mini.js): the next

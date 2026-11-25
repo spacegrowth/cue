@@ -81,7 +81,7 @@ async function listenApp() {
 async function boot() {
   await loadDrafts();
   bindMain();
-  setState(await invoke("get_state"));
+  setState(await fetchState());
   loadExtensions();
   addOn.boot();
   loadMachines();   // their names (and what you renamed them to) for every label, before + New is opened
@@ -94,7 +94,7 @@ async function boot() {
     if (pulling) { again = true; return; }
     pulling = true;
     try {
-      do { again = false; try { setState(await invoke("get_state")); } catch (e) { console.error(e); } } while (again);
+      do { again = false; try { setState(await fetchState()); } catch (e) { console.error(e); } } while (again);
     } finally { pulling = false; invoke("state_drawn").catch(() => {}); }
   };
   await T.event.listen("state-changed", pull);

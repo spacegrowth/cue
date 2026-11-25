@@ -11,8 +11,18 @@ use tauri::State;
 /// that tells the pages again, hub/redraw.rs): what a page fetches when it's told the state changed. Never waits for
 /// the store, and not for the blocking pool either (busy hub calls can fill it). Only the first ask, before anything
 /// is built, builds it there.
+///
+/// `since` (the windows' own fetch, ui/core/state_since.js): only what changed since the state number `have`, the one
+/// Cue gave this window last, or the whole state numbered when it has none (hub/state_since.rs, #877).
 #[tauri::command]
-pub(crate) async fn get_state(hub: State<'_, Arc<Hub>>) -> Result<serde_json::Value, String> {
+pub(crate) async fn get_state(window: tauri::WebviewWindow, hub: State<'_, Arc<Hub>>, since: Option<bool>, have: Option<u64>) -> Result<serde_json::Value, String> {
+    if since.unwrap_or(false) {
+        let snap = match hub.current_snapshot() {
+            Some(s) => s,
+            None => with_hub(&hub, |h| h.snapshot()).await?,
+        };
+        return Ok(hub.state_since(window.label(), have, snap));
+    }
     match hub.kept_state().or_else(|| hub.sent_state()) {
         Some(v) => Ok(v),
         None => with_hub(&hub, |h| h.state()).await,
