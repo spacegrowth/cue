@@ -234,6 +234,19 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-pill { flex: none; padding: 1px 7px; border-radius: var(--radius-pill); font: 600 var(--type-label) var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
 button.bg-pill { border: 0; cursor: pointer; }
 button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
+/* #867: red "1 failed" / "update failed"; paler on the green; on a picked (lime) row in its ink. */
+.bg-pill.bad { color: var(--deny); background: color-mix(in srgb, var(--deny) 14%, transparent); }
+.working .bg-pill.bad, .dkn-side .bg-pill.bad, .dk-sessions .bg-pill.bad { color: var(--deny-on-bg); background: color-mix(in srgb, var(--deny-on-bg) 18%, transparent); }
+.nrow.on .bg-pill.bad, .dkn-ss.on .bg-pill.bad { color: var(--on-sel); background: color-mix(in srgb, var(--deny) 30%, transparent); }
+.dkn-s .bg-pill, .dkn-st .bg-pill, .dk-st .bg-pill { margin-left: 6px; }
+/* The status line's red words: "Your turn · npm test failed" (chat/helpers.js bgWaitLine). */
+.cv-status .bg-bad { color: var(--deny); font-weight: 600; }
+/* Cue's update in a Desk lead's tray (chat/helpers.js cueInstallRow): the C mark in lime, Show why at its end. */
+.stx-ic.k-cue { background: var(--sel); color: var(--on-sel); }
+.bg-row.cu-row { cursor: default; }
+.bg-row.cu-row:hover { background: none; }
+.bg-row .bg-go { all: unset; flex: none; cursor: pointer; font-weight: 600; font-size: var(--type-small); line-height: 22px; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.cu-meta { margin-bottom: 10px; font-size: var(--type-small); line-height: var(--type-small-lh); }
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
 .stx-full { font-size: var(--type-small); line-height: var(--type-small-lh); white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: var(--radius-qp); padding: 6px 9px; }
 .stx-path { font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); word-break: break-all; }

@@ -169,8 +169,9 @@ function deskRightChat(d, taskApprovals) {
   return `<div class="${card}">${deskPage({ page: "dispatcher", kind: "desk", activity, back: `<span class="dk-back dk-here">${esc(deskName(d))}</span>`, mark: "Dispatcher · ", title: esc(deskLeadName(d)), meta: esc(meta),
     now: strip ? deskB2Strip(d, waits, working, ask, taskApprovals) : deskLeadNow(d, waits, working, ask), panel: "", main: `<div class="dk-tabs dk-ptabs">${tab("lead", esc(deskLeadName(d)), 0)}${tab("decisions", "Decisions", deskOpenCalls(d).filter((c) => !c.minor).length)}${tab("moves", "Activity", 0)}${tab("away", "Away", 0)}</div>${main}`, foot })}</div>`;
 }
-/** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. */
-const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && deskSessBusy(sessionOf(r.sid))).map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
+/** The sessions at work for Desk `d` (not its lead): [{ sid, name, on }], `on` the item each is on. Not one whose turn
+ *  is over with only its background work left: its row says "your turn" (#867). */
+const deskWorkingFor = (d) => deskSessionsOf(d.project, d).filter((r) => deskHasSession(d, r.sid) && r.sid !== deskLead(d)?.sid && deskSessBusy(sessionOf(r.sid)) && deskSessWithHelpers(sessionOf(r.sid))[0] === "").map((r) => ({ ...r, on: deskSessItem(d, r.sid) }));
 /** The Dispatcher's NOW (Lead chats pick 1 + D, as a panel since #200): its state's dot and word; a sentence: what it
  *  routes ("Routing #125"), what waits on you, how many items are with sessions; Check #131 opening the first that
  *  waits on you. Folded: "· 4 items · 6 sessions working". */

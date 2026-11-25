@@ -28,8 +28,9 @@ function bgTabBtn(sid) {
     }
     const hs = all.filter(is);
     if (!hs.length && !on) return "";
-    const n = hs.filter(helperRunning).length;
-    return `<button class="stab ${on ? "on" : ""}" data-bg-tab="${k}" data-sid="${esc(sid)}">${label}${n ? `<span class="stab-n"><span class="dot-live"></span>${n} running</span>` : ""}</button>`;
+    // Running: "● 1 running"; none running and one failed since the turn ended: red "1 failed" (#867).
+    const n = hs.filter(helperRunning).length, f = n ? 0 : bgFailedScripts(sid).length;
+    return `<button class="stab ${on ? "on" : ""}" data-bg-tab="${k}" data-sid="${esc(sid)}">${label}${n ? `<span class="stab-n"><span class="dot-live"></span>${n} running</span>` : f ? `<span class="stab-n bad">${f} failed</span>` : ""}</button>`;
   }).join("");
 }
 /** Where the open tab's page goes, in place of the chat (extensions.js placeExt hides the chat under it);
