@@ -689,12 +689,12 @@ function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
   // The Board's own top bar, without its hover words (none on the Desk), and under it, as on the Board, its folder
   // (not on an item's page, whose head is the item's) and its last half hour as a bar (#865, the headers' option B).
   // Its header is the Desk's one header (deskHead, #865): its kind and name, its state, its buttons; what it's on (else
-  // its folder) on the quiet line. On an item's page the item's header stands in for it. Under it, as on the Board,
-  // its last half hour as a bar.
+  // its folder) on the quiet line. On an item's page the item's header stands in for it.
   const on = !item && deskSessItems(d, sid)[0], k = deskSessKind(sid, d);
   const head = item ? "" : deskHead({ kind: k, mark: DESK_MARKS[k], name: esc(deskHolderName(sid)), state: deskHeadWord(s), acts: deskCSessActs(sid, s),
     meta: on ? `on ${deskItemLink(on)} · ${esc(on.title)}` : `<span class="dkh-path">${esc(homeless(s.cwd || ""))}</span>` });
-  const track = `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>`;
+  // No strip under it (#865): the header is all, as the lead's chat; where it stands is the header's state word.
+  const track = "";
   // This turn's files and each of its items' (its Files tab lists them all).
   const n = (deskTurnDiff(sid)?.files || s.changes?.files || []).length + deskCSessTasks(d, sid).reduce((k, i) => k + (deskDiffs.get(deskDiffId(i))?.files || deskCFilesOn(i)).length, 0);
   const tab = ["files", "activity"].includes(deskCSessTabs.get(sid)) ? deskCSessTabs.get(sid) : "chat";
@@ -722,7 +722,8 @@ function deskCSessChat(sid, from, d, foot, itemHead = "", item = null) {
   // An item's page: the item's head first, then its session's (#865); what to try at the chat's foot, over the box.
   return item
     ? `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskBack("")}</div>${itemHead}${track}${tabs}<div class="dkn-spm">${main}${tab === "chat" ? deskCHowTo(item) : ""}${foot}</div></div>`
-    : `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${deskChatBack(from, d)}</div>${head}${track}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
+    // Opened from an item (#865): no ‹ back to it, the item list beside it is the way back.
+    : `<div class="dkn-sp" data-desk-page="session"><div class="dkn-sback">${from?.kind === "item" ? "" : deskChatBack(from, d)}</div>${head}${track}${tabs}<div class="dkn-spm">${main}${foot}</div></div>`;
 }
 /** Items you just sent back, by id: what was open on the Desk then (commit.js deskLooksPlace). Their rows stay where
  *  they were in Waiting on you till you open something else (#791), rather than jump up to Working under you. */
