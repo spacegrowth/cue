@@ -145,3 +145,23 @@ test("a reply you wrote into while it worked: only the bullet at work now pulses
   await expect(turn.first().locator(".bul-row").first()).toContainText("First steps");
   await expect(turn.first().locator(".bul-row.now")).toHaveCount(0);
 });
+
+test("closing a bullet's steps folds them up, then they're gone and the chat stays in place", async ({ page, cue }) => {
+  const turn = await open(page, cue, { extra: 6 });
+  await page.setViewportSize({ width: 1280, height: 520 });
+  const live = turn.locator(".bul-row").nth(1);
+  await live.locator(".bul-n").click();
+  await expect(live.locator(".stx-line")).toHaveCount(9);
+  await page.waitForTimeout(400);
+  const full = (await live.locator(".stx-steps").boundingBox()).height;
+  await live.locator(".bul-n").click();
+  // Part-way: still there, shorter than it was.
+  await page.waitForTimeout(90);
+  const mid = await live.locator(".stx-steps").evaluate((el) => el.getBoundingClientRect().height).catch(() => null);
+  expect(mid).not.toBeNull();
+  expect(mid).toBeGreaterThan(0);
+  expect(mid).toBeLessThan(full);
+  await expect(live.locator(".stx-steps")).toHaveCount(0);
+  await expect(live.locator(".bul-n")).toHaveText("9 steps ›");
+  await expect(live.locator(".bul-run")).toHaveCount(1);
+});
