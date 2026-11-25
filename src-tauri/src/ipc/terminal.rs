@@ -112,9 +112,9 @@ pub(crate) async fn term_resize(session_id: String, cols: u16, rows: u16) -> Res
     term::resize(&session_id, cols, rows)
 }
 
-/// Close it (the session keeps running). A shell's tab closed: the shell ends. `gen`: the opening the window
-/// means (term_open's answer), when it has it: then a newer one, opened since, stays (term::close_if);
-/// without it, whatever is open or opening goes.
+/// Close a terminal by its id. A shell's tab closed: the shell ends. `gen`: the opening the window means (the `gen`
+/// shell_open answered with), when it has it: then a newer one, opened since, stays (term::close_if); without it,
+/// whatever is open or opening goes.
 #[tauri::command]
 pub(crate) async fn term_close(session_id: String, gen: Option<u64>) -> Result<(), String> {
     blocking(move || match gen {

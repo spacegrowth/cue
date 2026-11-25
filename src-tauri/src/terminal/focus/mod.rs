@@ -43,7 +43,7 @@ pub fn close_tab(o: &Origin) -> Result<String, String> {
 /// its iTerm session or Terminal.app tab, its WezTerm pane or kitty window, else just its app.
 pub fn focus(o: &Origin) -> Result<String, String> {
     if !o.machine.is_empty() {
-        return Err(format!("It runs on {}: open its terminal in Cue (Runs in Cue, over the reply box)", o.machine));
+        return Err(format!("It runs on {}: Move to terminal (in ⋯) resumes it in a terminal of yours", o.machine));
     }
     if o.hosted {
         return Err("it's hosted in Cue, with no terminal: Move to terminal (over its reply box) gives it one".into());
@@ -77,15 +77,10 @@ fn focus_tmux(pane: &str) -> Result<String, String> {
     if !client.is_empty() {
         return apps::by_tty(&client).map(|d| format!("tmux pane {pane} via {d}"));
     }
-    // No window shows this tmux session (it's detached): open one attached to it. Not for a "Runs in Cue"
-    // session: its terminal is the one in Cue's window, and attaching iTerm to that session would mirror
-    // every such session into iTerm tabs.
+    // No window shows this tmux session (it's detached): open one attached to it.
     let name = ask("#{session_name}");
     if name.is_empty() {
         return Err(format!("tmux pane {pane} is gone"));
-    }
-    if tmux::tmux_is_cues(&name) {
-        return Err("it runs in Cue: its terminal is here, the Terminal strip above the reply box".into());
     }
     apps::attach_in_new_window(&name).map(|app| format!("tmux session \"{name}\" (wasn't open in any window; opened it in {app})"))
 }
