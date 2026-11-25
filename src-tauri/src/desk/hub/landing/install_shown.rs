@@ -170,12 +170,14 @@ impl Hub {
             };
             return Err(format!("An install is already under way ({whose}, {}): the Desk shows it. Nothing else started.", s.step));
         }
-        let (ours, queued) = self.read(|st| {
+        let (ours, waiting) = self.read(|st| {
             let finishing = || st.desk.items.iter().filter(|i| i.state == "finishing").filter_map(|i| i.finish.as_ref().map(|f| (i, f)));
             let ours = finishing().any(|(_, f)| installing(&f.step));
-            let queued: Vec<String> = finishing().filter(|(_, f)| f.step == "queued" && crate::desk::hub::lead::checks::builds_this_cue(&f.repo)).map(|(i, _)| i.id.clone()).collect();
-            (ours, queued)
+            let waiting: Vec<(String, String)> = finishing().filter(|(_, f)| f.step == "queued").map(|(i, f)| (i.id.clone(), f.repo.clone())).collect();
+            (ours, waiting)
         });
+        // Which are Cue's own, checked off the store: the check reads files.
+        let queued: Vec<String> = waiting.into_iter().filter(|(_, repo)| crate::desk::hub::lead::checks::builds_this_cue(repo)).map(|(id, _)| id).collect();
         if ours {
             return Err("An install is already under way (the Desk's): the Desk shows it. Nothing else started.".into());
         }
