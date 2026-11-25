@@ -23,7 +23,7 @@ const ADDED: [(i64, &str, &str); 14] = [
     (13, "exchanges", "by_cue"),
     (14, "exchanges", "cue_kind"),
 ];
-const LATEST: i64 = 14;
+const LATEST: i64 = 15;
 
 /// The World's database file, opened beside Cue's (Cue's own connection let go first).
 fn outside(w: &World) -> Connection {
