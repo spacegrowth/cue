@@ -177,9 +177,27 @@ const MESSAGE_CLICKS = [
   (t) => { if (!t.matches(".scrim")) return false; sheet = null; if (t.matches(".spot-scrim")) liveOpen = newOpen = false; renderMain(); return true; },
 ];
 
+/** A bullet whose steps you just opened: the chat glides up so they show, as far as fits but never past the
+ *  bullet's own line, under the pinned "Working" bar and above the reply's buttons pinned at the bottom. */
+function bulletIntoView(k) {
+  const row = () => document.querySelector(`[data-key="${CSS.escape(`g:${k}`)}"]`);
+  const el = row(), chat = scrollerOf(el);
+  if (!chat) return;
+  const r = el.getBoundingClientRect(), box = chat.getBoundingClientRect(), M = 12;
+  const pin = el.closest(".bul")?.querySelector(".bul-pin")?.getBoundingClientRect();
+  const top = Math.max(box.top, pin && pin.bottom <= box.top + pin.height + 1 ? pin.bottom : box.top);
+  let bottom = box.bottom;
+  for (const s of chat.querySelectorAll(".cv-acts")) {
+    const a = s.getBoundingClientRect();
+    if (a.height && a.top < bottom && a.bottom >= box.bottom - 24 && a.top > r.top) bottom = a.top;
+  }
+  const by = Math.min(r.bottom + M - bottom, r.top - M - top);
+  if (by > 1) glideTo(() => scrollerOf(row()), chat.scrollTop + by);
+}
+
 const CHAT_FOOT_CLICKS = [
   // A bullet's "N steps ›" (Settings → Chat → Bullets with a clock): its steps open under it, or close.
-  rule("[data-bul]", (b) => { bulletOpen.set(b.dataset.bul, b.dataset.open !== "1"); renderMain(); }),
+  rule("[data-bul]", (b) => { const k = b.dataset.bul, open = b.dataset.open !== "1"; bulletOpen.set(k, open); renderMain(); if (open) requestAnimationFrame(() => bulletIntoView(k)); }),
   rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); for (const b of [...bulletOpen.keys()]) if (b.startsWith(`${k}|`)) bulletOpen.delete(b); renderMain(); wantDetails(k.split("|")[0]); }),
   rule("[data-agent-brief]", (ab) => { flipIn(agentBriefOpen, ab.dataset.agentBrief); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),

@@ -102,3 +102,20 @@ test("once it's done: a Worked chip with its steps and updates; the reply once; 
   await expect(turn.locator(".bul-row")).toHaveCount(0);
   await expect(chip).toHaveAttribute("aria-expanded", "false");
 });
+
+test("opening a bullet's steps low in the chat glides them up into view", async ({ page, cue }) => {
+  const turn = await open(page, cue);
+  await page.setViewportSize({ width: 1280, height: 520 });
+  const live = turn.locator(".bul-row").nth(1);
+  // Its line at the chat's bottom, as when the reply's newest bullet is what you see last.
+  await live.evaluate((row) => { const c = scrollerOf(row); c.scrollTop += row.getBoundingClientRect().bottom - c.getBoundingClientRect().bottom + 4; });
+  const chat = page.locator(".dk-right .dkn-sp[data-desk-page='session'] .dk-chat");
+  await live.locator(".bul-n").click();
+  const last = live.locator(".stx-line").last();
+  await expect(last).toHaveText(/Running cargo test/);
+  await expect.poll(async () => {
+    const [r, b] = await Promise.all([last.boundingBox(), chat.boundingBox()]);
+    return r.y + r.height <= b.y + b.height;
+  }).toBe(true);
+  await expect.poll(async () => (await live.boundingBox()).y >= (await chat.boundingBox()).y).toBe(true);
+});
