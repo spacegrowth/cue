@@ -368,8 +368,8 @@
 .dkn-smeta.dkn-on .dkn-ont { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dkn-smeta { flex: none; padding: 4px 16px 0; font-size: var(--type-small); line-height: var(--type-small-lh); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The tabs over a session's or crew member's chat: the picked one is filled. */
-/* One line under each header (#865): the tabs' own, at their foot. */
-.dkn-stabs { flex: none; display: flex; gap: 0; margin-top: 10px; padding: 0 2px; /* first label under the heading text (16px in) */ border-bottom: 1px solid var(--line); }
+/* The tabs sit in a band between two lines (#865 kept the one over them). */
+.dkn-stabs { flex: none; display: flex; gap: 0; margin-top: 10px; padding: 0 2px; /* first label under the heading text (16px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .dkn-stab { all: unset; cursor: pointer; padding: 7px 14px; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .dkn-stab:hover { color: var(--ink); }
 .dkn-stab.on { color: var(--on-accent); background: var(--accent); }
@@ -379,9 +379,9 @@
    or crew member's chat (an item's bar, #827) drops its own bottom line. */
 .dkn-sp > :has(+ .dkn-stabs) { border-bottom: 0; }
 .dkn-stab:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; border-radius: var(--radius-btn); }
-/* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: one line at their foot,
+/* The lead's tabs (its name · Decisions · Activity · Away, desk/view.js) the same way: a band between two lines,
    the picked one filled moss. */
-.dk-c .dk-ptabs { gap: 0; min-height: 0; margin-top: 8px; padding: 0 6px; /* first label under the heading text (20px in) */ border-bottom: 1px solid var(--line); }
+.dk-c .dk-ptabs { gap: 0; min-height: 0; margin-top: 8px; padding: 0 6px; /* first label under the heading text (20px in) */ border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .dk-c .dk-ptabs .dk-tab, .dk-c .dk-ptabs .dk-tname > .dk-tab { align-self: stretch; padding: 7px 14px; border: 0; font-size: var(--type-small); line-height: var(--type-small-lh); font-weight: 600; color: var(--muted); }
 .dk-c .dk-ptabs .dk-tab:hover { color: var(--ink); }
 .dk-c .dk-ptabs .dk-tab.on { color: var(--on-accent); background: var(--accent); }
