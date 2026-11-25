@@ -177,27 +177,36 @@ const MESSAGE_CLICKS = [
   (t) => { if (!t.matches(".scrim")) return false; sheet = null; if (t.matches(".spot-scrim")) liveOpen = newOpen = false; renderMain(); return true; },
 ];
 
+/** Opening a bullet's steps is your click in the chat: a chat at its end stops following it (box/end.js, the Desk's
+ *  deskSettle), else a long bullet's steps pulled the chat to their end and its line went off the top. */
+function bulletReading(b) {
+  const c = scrollerOf(b);
+  if (c) { c._wasEnd = false; c._youAt = Date.now(); }
+}
 /** A bullet whose steps you just opened: the chat glides up so they show, as far as fits but never past the
- *  bullet's own line, under the pinned "Working" bar and above the reply's buttons pinned at the bottom. */
+ *  bullet's own line, kept under the pinned "Working" bar and above the reply's buttons pinned at the bottom. */
 function bulletIntoView(k) {
   const row = () => document.querySelector(`[data-key="${CSS.escape(`g:${k}`)}"]`);
   const el = row(), chat = scrollerOf(el);
   if (!chat) return;
   const r = el.getBoundingClientRect(), box = chat.getBoundingClientRect(), M = 12;
-  const pin = el.closest(".bul")?.querySelector(".bul-pin")?.getBoundingClientRect();
-  const top = Math.max(box.top, pin && pin.bottom <= box.top + pin.height + 1 ? pin.bottom : box.top);
+  // The "Working" bar stays at the chat's top as it scrolls: the line goes under it, not behind it.
+  // Where it sticks: the chat's padding in from its top edge.
+  const pin = el.closest(".bul")?.querySelector(".bul-pin");
+  const top = box.top + (pin ? parseFloat(getComputedStyle(chat).paddingTop) + (parseFloat(getComputedStyle(pin).top) || 0) + pin.getBoundingClientRect().height : 0);
   let bottom = box.bottom;
   for (const s of chat.querySelectorAll(".cv-acts")) {
     const a = s.getBoundingClientRect();
     if (a.height && a.top < bottom && a.bottom >= box.bottom - 24 && a.top > r.top) bottom = a.top;
   }
-  const by = Math.min(r.bottom + M - bottom, r.top - M - top);
-  if (by > 1) glideTo(() => scrollerOf(row()), chat.scrollTop + by);
+  // Cut off below: up, never past its line. Its line under the bar or above the chat: down to it.
+  const by = r.bottom + M > bottom ? Math.min(r.bottom + M - bottom, r.top - M - top) : r.top - M < top ? r.top - M - top : 0;
+  if (Math.abs(by) > 1) glideTo(() => scrollerOf(row()), chat.scrollTop + by);
 }
 
 const CHAT_FOOT_CLICKS = [
   // A bullet's "N steps ›" (Settings → Chat → Bullets with a clock): its steps open under it, or close.
-  rule("[data-bul]", (b) => { const k = b.dataset.bul, open = b.dataset.open !== "1"; bulletOpen.set(k, open); renderMain(); if (open) requestAnimationFrame(() => bulletIntoView(k)); }),
+  rule("[data-bul]", (b) => { const k = b.dataset.bul, open = b.dataset.open !== "1"; bulletOpen.set(k, open); if (open) bulletReading(b); renderMain(); if (open) requestAnimationFrame(() => bulletIntoView(k)); }),
   rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); for (const b of [...bulletOpen.keys()]) if (b.startsWith(`${k}|`)) bulletOpen.delete(b); renderMain(); wantDetails(k.split("|")[0]); }),
   rule("[data-agent-brief]", (ab) => { flipIn(agentBriefOpen, ab.dataset.agentBrief); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),

@@ -4,17 +4,18 @@
 import { test, expect, openDesk } from "./cue.mjs";
 
 /** host-lead at work on #d5: two steps (one failed), what it found, two steps, then one running now. */
-const open = async (page, cue, { bullets = true, working = true } = {}) => {
+const open = async (page, cue, { bullets = true, working = true, extra = 0, mid = false } = {}) => {
   await cue.open("desk");
   await cue.override("session_steps", ({ sessionId }, working) => {
     const at = (window.__t0 ||= Date.now());
     const step = (id, kind, verb, subject, result, ago, o = {}) => ({ t: "step", id, kind, verb, subject, mono: true, result, bad: false, done: true, at_ms: at - ago * 1000, ...o });
     const items = [
       step("s1", "read", "Read", "header.js", "40 lines", 110),
-      step("s2", "run", "Ran", "npm test", "exit 1", 100, { bad: true }),
+      window.__mid ? step("s2", "run", "Running", "npm test", "", 100, { done: false }) : step("s2", "run", "Ran", "npm test", "exit 1", 100, { bad: true }),
       { t: "say", text: "Found it: the header centres on the wrong box.", at_ms: at - 90000 },
       step("s3", "edit", "Edited", "header.js", "+1 −1", 80),
       step("s4", "run", "Ran", "git diff --stat", "1 file", 70),
+      ...Array.from({ length: window.__extra || 0 }, (_, n) => step(`x${n}`, "read", "Read", `file${n}.js`, "10 lines", 69 - n * 0.1)),
       working ? step("s5", "run", "Running", "cargo test --lib", "", 60, { done: false }) : step("s5", "run", "Ran", "cargo test --lib", "ok", 60),
       ...(working ? [] : [{ t: "say", text: "Fixed: the header centres on its own box now.", at_ms: at - 30000 }]),
     ];
@@ -23,13 +24,13 @@ const open = async (page, cue, { bullets = true, working = true } = {}) => {
   await cue.override("step_detail", ({ ids }) => Object.fromEntries(ids.map((id) => [id, id === "s3"
     ? { full: "/repo/ui/header.js", diff: [["-", "  return box.parent;"], ["+", "  return box;"]], skipped: 0 }
     : { full: `full ${id}`, output: [`out ${id}`], skipped: 0 }])));
-  await page.evaluate(() => { window.__t0 ||= Date.now(); });
-  await cue.change((st, [bullets, working]) => {
+  await page.evaluate(([e, m]) => { window.__t0 ||= Date.now(); window.__extra = e; window.__mid = m; }, [extra, mid]);
+  await cue.change((st, [bullets, working, mid]) => {
     st.settings = { ...(st.settings || {}), steps: { ...(st.settings?.steps || {}), mode: "line", bullets } };
     Object.assign(st.desk.projects.find((x) => x.project === "cue").items.find((i) => i.id === "d5"), { state: working ? "working" : "review", now_on: working, said: [] });
     Object.assign(st.sessions.find((x) => x.session_id === "host"), { state: working ? "working" : "idle",
-      thread: [{ role: "you", text: "About #d5 (x): go on", at_ms: window.__t0 - 125000 }, ...(working ? [] : [{ role: "agent", text: "Fixed: the header centres on its own box now.", at_ms: window.__t0 - 30000 }])] });
-  }, [bullets, working]);
+      thread: [{ role: "you", text: "About #d5 (x): go on", at_ms: window.__t0 - 125000 }, ...(mid ? [{ role: "you", text: "also check the footer", at_ms: window.__t0 - 95000 }] : []), ...(working ? [] : [{ role: "agent", text: "Fixed: the header centres on its own box now.", at_ms: window.__t0 - 30000 }])] });
+  }, [bullets, working, mid]);
   await openDesk(page);
   await page.locator('[data-desk-item="d5"]').first().click();
   return page.locator(".dk-right .dkn-sp[data-desk-page='session'] .stx");
@@ -118,4 +119,29 @@ test("opening a bullet's steps low in the chat glides them up into view", async 
     return r.y + r.height <= b.y + b.height;
   }).toBe(true);
   await expect.poll(async () => (await live.boundingBox()).y >= (await chat.boundingBox()).y).toBe(true);
+});
+
+test("a long bullet's steps opened at the chat's end: its own line stays in view, under the bar", async ({ page, cue }) => {
+  const turn = await open(page, cue, { extra: 30 });
+  await page.setViewportSize({ width: 1280, height: 520 });
+  const live = turn.locator(".bul-row").nth(1);
+  await live.evaluate((row) => { const c = scrollerOf(row); c.scrollTop = c.scrollHeight; });
+  const chat = page.locator(".dk-right .dkn-sp[data-desk-page='session'] .dk-chat");
+  await live.locator(".bul-n").click();
+  await expect(live.locator(".stx-line")).toHaveCount(33);
+  await page.waitForTimeout(400);   // past the glide and the chat's own settling
+  const [r, bar] = await Promise.all([live.boundingBox(), turn.locator(".bul-pin").boundingBox()]);
+  expect(r.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+  expect(r.y).toBeLessThan((await chat.boundingBox()).y + 120);
+});
+
+test("a reply you wrote into while it worked: only the bullet at work now pulses and shows its running step", async ({ page, cue }) => {
+  const turn = await open(page, cue, { mid: true });
+  const msgs = page.locator(".dk-right .dkn-sp[data-desk-page='session']");
+  await expect(msgs.locator(".bul-row")).toHaveCount(2);
+  await expect(msgs.locator(".bul-row.now")).toHaveCount(1);
+  await expect(msgs.locator(".bul-run")).toHaveCount(1);
+  await expect(msgs.locator(".bul-row.now .bul-run")).toContainText("Running cargo test --lib");
+  await expect(turn.first().locator(".bul-row").first()).toContainText("First steps");
+  await expect(turn.first().locator(".bul-row.now")).toHaveCount(0);
 });

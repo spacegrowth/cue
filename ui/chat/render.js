@@ -27,7 +27,7 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const bk = `t:${turn.at_ms}:${part.from}`;
   const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}" aria-expanded="${open}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
   if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
-  if (stepsBullets()) return bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first, fold, say });
+  if (stepsBullets()) return bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first, fold, say, now: live && part.to === Infinity });
   let body = "", run = [], runKey = "";
   // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
   const flush = () => { if (run.length) body += `<div class="stx-steps" data-key="run:${esc(runKey)}">${run.join("")}</div>`; run = []; };
@@ -65,7 +65,7 @@ function bulletGroups(items) {
   }
   return groups;
 }
-function bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first, fold, say }) {
+function bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first, fold, say, now: atWork = live }) {
   const bad = steps.filter((x) => x.bad).length;
   const groups = bulletGroups(items);
   const many = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -80,7 +80,9 @@ function bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first
   if (!live && !open) return head || fold ? `<div class="stx bul" data-key="${esc(bk)}">${head}${fold}</div>` : "";
   const rows = groups.map((g, n) => {
     const gk = `${key}|${g.say ? g.say[0].at_ms : g.steps[0]?.id ?? n}`;
-    const isNow = live && n === groups.length - 1;
+    // The one at work: the last bullet of the turn's last part. A turn you wrote into while it ran is split at your
+    // message, and the part above it pulses and runs nothing.
+    const isNow = atWork && n === groups.length - 1;
     const opened = bulletOpen.has(gk) ? bulletOpen.get(gk) : all;
     const start = g.say ? g.say[0].at_ms : g.steps[0]?.at_ms ?? turn.at_ms;
     const gbad = g.steps.filter((x) => x.bad).length;
