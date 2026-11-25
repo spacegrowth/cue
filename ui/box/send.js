@@ -33,6 +33,15 @@ function boxEnter(e, key, sid, send) {
   if (now && !typed && sid && sendWaitingNow(sid)) return;
   return send(now);
 }
+/** Every chat's empty box text, from here only (#881): "Reply to <the AI that chat talks to>…" (Claude Code, Codex,
+ *  Pi), and what happens to it while that session is at work, or `more` when the box says something of its own (a
+ *  parked session's "sending resumes it first"). `sid`: the session the box writes to ("" when none is known). */
+function boxPlaceholder(sid, more = "") {
+  const s = sid ? sessionOf(sid) : null, h = s?.harness || (sid && parkedOf(sid)?.harness) || "";
+  const after = s?.state === "working" ? (h === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends") : "";
+  const add = more || after;
+  return `Reply to ${h ? agentName(h) : "it"}…${add ? ` ${add}` : ""}`;
+}
 /** The quiet "⌘↵ send now" beside a box's Send, while session `sid` is at work or has a message waiting: then ⌘↵ does
  *  something ↵ doesn't. "" otherwise. Not read out: it says what a key does, which the box already does. */
 function boxNowHint(sid) {

@@ -72,10 +72,10 @@ function deskBox(d, o = deskOpen) {
   // lead is at work, the "/" menu, Send at, and Listen's line over it while a reply is read out. Its Send is the Desk's.
   if (deskLeadBoxTo(to)) {
     const s = deskLeadSession(d), busy = s?.state === "working";
-    const after = s?.harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
     // Handing off to a new lead (#841, desk/earlier.js): the box held, saying so, till the new lead is ready.
     const h = deskHanding(d), held = !!h && !h.over;
-    const say = held ? "Handing off to a new lead…" : busy ? `Message ${lead}… ${after}` : ph;
+    // Its empty text as every chat's (box/send.js boxPlaceholder, #881).
+    const say = held ? "Handing off to a new lead…" : boxPlaceholder(s?.session_id);
     return `${listenLine(s?.session_id)}<div class="foot">${box(key, say, busy ? "Queue" : "Send", `data-desk-send="${esc(key)}"`, true, "", "", true, held)}</div>`;
   }
   // Pictures pasted, dropped or added, and the mic, as in a session's chat box (app/inputs.js, chat/compose.js); its
@@ -83,12 +83,15 @@ function deskBox(d, o = deskOpen) {
   // talks to: the lead, the open holder, or the holder of the open item (not a crew member: those words are Cue's).
   const sugSid = to.mate ? "" : to.item ? sugItem : to.sid || deskLead(d)?.sid || "";
   // The new layout: the same box as the lead's (a session's chat box), who it goes to at its left (deskCBox).
-  return deskCBox(key, pre, ph, suggestionFor(sugSid), sugSid, to.mate ? "crew" : to.item ? "item" : "session");
+  // Options to pick from on an item: the box says a pick is its Pick button (#445, #543).
+  const pick = to.item && deskPickOptions(deskItem(d.project, to.item) || {}).length ? "(pick an option above to go ahead)" : "";
+  return deskCBox(key, pre, pick, suggestionFor(sugSid), sugSid, to.mate ? "crew" : to.item ? "item" : "session");
 }
 /** The new layout's box to anyone but the lead: the lead's own box (two lines, a session's chat box), with who it goes
  *  to ("To cue-744, its lead") in a tag at the left of where you type. */
-// Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member.
-const deskCBox = (key, pre, ph, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: ph, sug, sugSid, nowSid: deskBoxSid(key), top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
+// Its quick phrases are those of chat kind `kind` (chat/compose.js QUICK_BY_CHAT): none to a crew member. Its empty
+// text is every chat's (box/send.js boxPlaceholder, #881), to the session it writes to, with `more` after it.
+const deskCBox = (key, pre, more, sug = "", sugSid = "", kind = "session") => `<div class="foot">${boxHtml({ key, look: "composer", rows: 2, drop: true, pre, placeholder: boxPlaceholder(deskBoxSid(key), more), sug, sugSid, nowSid: deskBoxSid(key), top: quickRow(`data-quick="${esc(key)}"`, "", kind), send: { attrs: `data-desk-send="${esc(key)}"` } })}</div>`;
 /** Box `to` is the lead's own: about no item, crew member, kept copy or other session. */
 const deskLeadBoxTo = (to) => !!to && !to.item && !to.sid && !to.mate && !to.kept;
 // The lead's box writes to its session (chat/compose.js sidOfKey): its "/" menu, Send at and suggestion are the lead's.
@@ -137,7 +140,7 @@ function deskItemFootNow(i, d) {
   const to = i.holder.kind === "crew" && !i.ask ? { project: d.project, sid, mate: i.holder.name, item: i.id } : { project: d.project, sid, item: i.id };
   const key = deskBoxKey(to), line = deskToLine(i.holder.name, i);
   // An item's chat, or a crew member's when one holds it (no quick phrases to a crew member).
-  return deskCBox(key, line.pre, line.ph, "", "", to.mate ? "crew" : "item");
+  return deskCBox(key, line.pre, "", "", "", to.mate ? "crew" : "item");
 }
 function deskRight(project, taskApprovals) {
   return deskOpenCard(project, taskApprovals) || deskRightChat(deskOf(project), taskApprovals);

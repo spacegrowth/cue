@@ -73,11 +73,10 @@ function activeFoot(it, s, pending, harness, project, sid, quick = true) {
     if (own !== it) return askFoot(own, sid, harness);
   } else if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
   // A hosted session has no terminal: the reply goes straight to it.
-  if (pending && !crewAsk) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send", "", quick)}</div>`;
+  if (pending && !crewAsk) return `<div class="foot">${field(it, boxPlaceholder(sid, s?.hosted ? "" : "(typed into its terminal)"), "Send", "", quick)}</div>`;
   if (!s) return "";
   const busy = s.state === "working";
-  const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", "", quick)}</div>`;
+  return `<div class="foot">${box_(`s:${sid}`, boxPlaceholder(sid), busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", "", quick)}</div>`;
 }
 /** What fills the chat area instead of the chat: a background agent opened in full (helperPane), or a reply open
  *  in the reader (readerPane, read-only, the box and insight bar out of the way). */

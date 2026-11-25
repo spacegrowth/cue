@@ -111,7 +111,7 @@ function parkedPane(p) {
       <button class="btn primary" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>${w ? "Resuming…" : "Resume"}</button></div>
     ${subHead(p.cwd, "", "")}
     ${chatBox(`p|${sid}`, `${more}${rows || `<div class="dim cv-empty" data-key="empty">Cue kept no messages from it.</div>`}${line}${w ? "" : resumeCost(sid)}`)}
-    <div class="foot">${box(`s:${sid}`, `Message ${name}… sending resumes it first`, w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
+    <div class="foot">${box(`s:${sid}`, boxPlaceholder(sid, "sending resumes it first"), w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
 }
 
 /** Over a restarting session's chat and box: its steps (stop, start, load; hub/mod.rs Restart), the one it's on. */
