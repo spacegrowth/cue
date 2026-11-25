@@ -1,13 +1,11 @@
-//! Resuming and ending a session: a parked or closed one brought back (in a terminal tab here, in tmux on its
-//! machine, or hosted by Cue), and Close. The window's commands are in ipc/sessions.rs and ipc/hosted.rs.
+//! Resuming and ending a session: a parked or closed one brought back (hosted by Cue, here or on its machine), and
+//! Close. The window's commands are in ipc/sessions.rs and ipc/hosted.rs.
 
 use super::Hub;
 use crate::db;
 use crate::logs::live;
-use crate::machines;
-use crate::model::{self, Origin};
+use crate::model::Origin;
 use crate::terminal::focus;
-use crate::terminal::launch::{Place, Started};
 use std::sync::Arc;
 
 /// What Resume says when the session was running again already: it only left Parked, and `message` wasn't sent.
@@ -40,37 +38,14 @@ pub(crate) fn closed_record(h: &Arc<Hub>, session_id: &str) -> Result<crate::ses
     Ok(crate::sessions::Parked { parked_ms: ended_ms, session })
 }
 
-/// The work behind Resume, for a parked or a closed session: in tmux on this Mac or on its machine.
-pub(crate) fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &str) -> Result<String, String> {
-    let session_id = p.session.origin.session_id.clone();
-    let session_id = session_id.as_str();
-    let o = p.session.origin.clone();
-    if o.hosted {
-        return resume_hosted(h, p, message);
+/// The work behind Resume, for a parked or a closed session: hosted by Cue, here or on its machine. One that ran in a
+/// terminal comes back hosted too, its conversation picked up by its id.
+pub(crate) fn resume_record(h: &Arc<Hub>, mut p: crate::sessions::Parked, message: &str) -> Result<String, String> {
+    let o = &p.session.origin;
+    if !o.hosted {
+        p.session.origin = Origin { session_id: o.session_id.clone(), harness: o.harness.clone(), cwd: o.cwd.clone(), transcript_path: o.transcript_path.clone(), machine: o.machine.clone(), hosted: true, ..Default::default() };
     }
-    // On this Mac, with its MCP selection when it has one (logs/mcp.rs), so the choice sticks.
-    // And on its model, here or on its machine (focus::model_args).
-    let mut args = if o.harness == "claude" { focus::model_args(&o.transcript_path, &o.machine) } else { vec![] };
-    if o.machine.is_empty() {
-        args.extend(crate::logs::mcp::selection_flags(session_id));
-    }
-    let mut line = focus::resume_line_for_with(&o.harness, &o.cwd, session_id, &args)?;
-    if !message.trim().is_empty() {
-        line += &format!(" {}", focus::shq(message.trim()));
-    }
-    let label = if p.session.name.is_empty() { model::folder_of(&o.cwd) } else { p.session.name.clone() };
-    let base = model::Origin { session_id: session_id.to_string(), harness: o.harness.clone(), transcript_path: o.transcript_path.clone(), ..Default::default() };
-    let (fresh, at) = if o.machine.is_empty() {
-        let tab = h.launcher().here(&line, &o.cwd, &label, Place::chosen(None))?;
-        let at = tab.what.clone();
-        (model::Origin { cwd: o.cwd.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..base }, at)
-    } else {
-        let m = machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
-        let Started { pane, tty, dir } = h.launcher().there(&m, &line, &o.cwd, &label)?;
-        (model::Origin { cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..base }, format!("tmux on {}", m.name))
-    };
-    h.unparked(p, fresh, message.trim());
-    Ok(format!("Resumed in {at}"))
+    resume_hosted(h, p, message)
 }
 
 /// The work behind Close. Blocking: it ends a process and closes a tab.

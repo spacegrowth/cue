@@ -16,7 +16,6 @@ fn asks(w: &World, sid: &str, request: &str) -> String {
 #[test]
 fn a_second_codex_approval_stays_visible_on_the_item_after_allow() {
     let w = World::new();
-    crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = crate::ipc::StartOpts { hosted: true, ..Default::default() };
     let started = crate::ipc::start_session_with(w.hub(), "codex", &w.home().to_string_lossy(), "hello", "worker", &opts).unwrap();
     let sid = started["session_id"].as_str().unwrap();

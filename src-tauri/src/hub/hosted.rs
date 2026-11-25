@@ -87,6 +87,12 @@ impl Hub {
         let start = if written { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
         args.extend(crate::logs::mcp::selection_flags(sid));
+        // A fork whose own conversation isn't written yet starts as that fork again, so it isn't empty.
+        match forked_from(sid) {
+            Some(from) if !written => args.extend(["--resume".to_string(), from, "--fork-session".to_string()]),
+            Some(_) => forget_fork(sid),
+            None => {}
+        }
         // SHORTCUT: resumed in Claude's own default permission mode, not the one + New picked (it isn't kept), so a
         // session started on Auto asks more after a resume, never less. Keep the mode with the session (its record
         // or Origin) and pass it here when the trial says it matters.
@@ -576,6 +582,28 @@ fn given(input: bool, reply: Result<Reply, oneshot::error::RecvError>) -> Given 
 /// Whether a session on a machine has a conversation there to resume. Its log here is a copy: anything in the copy
 /// says so; an empty or missing one is asked of the machine (the copy can lag behind). One the machine can't be asked
 /// about is taken to be there (it ran: a terminal session moved in, say), so a resume, not a second conversation.
+/// Kept in Settings (`hosted.forked_from`, the fork's id → the session it forks): a fork is a copy of that session
+/// only once Claude has written the fork's own conversation, which it does with the first message it takes. Until
+/// then a fork started again has to be forked again (`resume_hosted_as`).
+pub(crate) fn note_fork(sid: &str, from: &str) {
+    let _ = crate::config::update_with("hosted.forked_from", |c| {
+        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
+        all.insert(sid.to_string(), json!(from));
+        Ok((Some(Value::Object(all)), ()))
+    });
+}
+
+fn forked_from(sid: &str) -> Option<String> {
+    crate::config::load().pointer("/hosted/forked_from").and_then(|m| m.get(sid)).and_then(Value::as_str).map(str::to_string)
+}
+
+fn forget_fork(sid: &str) {
+    let _ = crate::config::update_with("hosted.forked_from", |c| {
+        let mut all = c.pointer("/hosted/forked_from").and_then(Value::as_object).cloned().unwrap_or_default();
+        Ok((all.remove(sid).map(|_| Value::Object(all)), ()))
+    });
+}
+
 fn written_on_machine(origin: &Origin) -> bool {
     if std::fs::metadata(&origin.transcript_path).is_ok_and(|m| m.len() > 0) {
         return true;

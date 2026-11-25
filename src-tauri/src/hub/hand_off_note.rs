@@ -158,8 +158,9 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     let o = h.session_origin(session_id).ok_or("Cue has no record of that session")?;
     let log = local_log(h, session_id);
     let model = (o.harness == "claude").then(|| log.as_deref().and_then(steps::model_of)).flatten();
-    // A hosted lead carries on hosted (its team with it: `carry_team`).
-    let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), hosted: o.hosted, ..Default::default() };
+    // Hosted, whatever the old one ran in (a lead's team goes with it: `carry_team`); trusted, as the old one already
+    // worked in that folder.
+    let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), trust: true, ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
     let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd), &h.desk_item_names(session_id), &h.names_taken());
     h.cue_says(&first, crate::sessions::Kind::HandOff);

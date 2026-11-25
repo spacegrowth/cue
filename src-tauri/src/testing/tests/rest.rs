@@ -19,7 +19,6 @@ fn idle(w: &World, reply: &str) -> String {
 
 /// A session Cue runs, mid-turn on its first message (its conversation written, as Claude does on taking it): its id.
 fn at_work(w: &World) -> String {
-    crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "go", "trial", &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();

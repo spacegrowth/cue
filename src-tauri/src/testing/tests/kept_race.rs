@@ -5,7 +5,6 @@
 use crate::hosted::{HostedEvent, Start};
 use crate::ipc::{start_session_with, StartOpts};
 use crate::testing::{Transcript, World};
-use serde_json::json;
 
 #[test]
 fn a_message_kept_as_the_turn_ends_goes_instead_of_waiting_for_the_next_end() {
@@ -26,7 +25,6 @@ fn a_message_kept_as_the_turn_ends_goes_instead_of_waiting_for_the_next_end() {
 #[test]
 fn a_message_kept_as_a_hosted_turn_ends_goes_too() {
     let w = World::new();
-    crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "long job", "trial", &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();

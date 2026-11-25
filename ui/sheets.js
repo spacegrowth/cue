@@ -294,12 +294,10 @@ const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glas
 const seg = (key, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${JSON.stringify(v) === JSON.stringify(cur) ? "on" : ""}" data-set="${key}" data-val='${esc(JSON.stringify(v))}'>${esc(l)}</button>`).join("")}</div>`;
 const toggle = (key, on) => `<button class="toggle ${on ? "on" : ""}" data-set="${key}" data-val="${!on}" role="switch" aria-checked="${on}" aria-label="${esc(key)}"><span></span></button>`;
 const setRow = (title, sub, control) => `<div class="set-row"><div class="set-text"><div class="set-title">${title}</div>${sub ? `<div class="set-sub">${sub}</div>` : ""}</div>${control}</div>`;
-/** Settings → Agents' New sessions: where they run, and the hosted trial. */
+/** Settings → Agents' sessions Cue runs: when an idle one's memory is freed, and cue-host. */
 const newSessionRows = (st) => `
-    ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
-    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is an item in Waiting, and a message goes to it directly. Move to Cue brings a terminal app's session in this way, and Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}
     ${setRow("Free an idle session's memory after", "A session Cue runs keeps its agent in memory while it waits. Idle this long, Cue ends the agent and keeps the session and its whole chat; your next message starts it again where it left off, a moment slower. Never one at work, asking you something, or with anything still running.", seg("hosted.rest_min", st.hosted?.rest_min ?? 30, [[15, "15 min"], [30, "30 min"], [60, "1 hour"], [0, "Never"]]))}
-    ${st.hosted?.on ? hostRow() : ""}`;
+    ${hostRow()}`;
 /** Settings → Agents' cue-host row: what it's doing, and Restart cue-host (twice: it ends every hosted agent). Asked
  *  again every few seconds while Settings shows it. */
 let hostInfo = null, hostArm = false, hostAsked = 0;
@@ -637,7 +635,7 @@ function settingsSheet() {
     <div class="set-group">Connected agents</div>
     ${agentRows()}
     ${extRows()}
-    <div class="set-group">New sessions</div>
+    <div class="set-group">Sessions</div>
     ${newSessionRows(st)}
     <div class="set-group">Pi</div>
     ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}

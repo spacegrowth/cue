@@ -223,8 +223,8 @@ fn a_desk_session_over_the_mark_is_asked_for_its_note_and_goes_on_in_a_fresh_ses
     w.advance(2_000);
     let k = crate::db::handoff("webui1").unwrap();
     assert!(!k.next.is_empty(), "it went on in a new session: {:?} {:?} {:?}", k.note, crate::db::insight_events_of("webui1"), decisions(&w, &project));
-    let l = w.launcher.last();
-    assert!(l.line.contains("HANDOFF-webui1.md"), "started from its note: {}", l.line);
+    let first = w.hosted.sent().into_iter().filter(|(s, _)| *s == k.next).map(|(_, t)| t).next().unwrap_or_default();
+    assert!(first.contains("HANDOFF-webui1.md"), "started from its note: {first}");
     let item = &desk(&w, &project)["items"][0];
     assert_eq!(item["holder"]["sid"], k.next.as_str(), "the new session holds the item: {item}");
     let handed: Vec<Value> = decisions(&w, &project).into_iter().filter(|d| d["text"].as_str().is_some_and(|t| t.starts_with("Handed shop off to"))).collect();

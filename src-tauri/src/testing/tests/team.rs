@@ -9,7 +9,6 @@ use serde_json::{json, Value};
 
 /// A hosted lead started with `message`, which Claude has taken (its turn under way): its id.
 pub(super) fn lead(w: &World, message: &str) -> String {
-    crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), message, "cue-teams", &opts).unwrap();
     let sid = r["session_id"].as_str().unwrap().to_string();
@@ -410,7 +409,6 @@ fn skill_in(args: &[String]) -> Option<String> {
 #[test]
 fn a_prompt_you_append_yourself_gets_the_skill_merged_in_not_a_second_option() {
     let w = World::new();
-    crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = StartOpts { hosted: true, perm: "auto".into(), extra: "--append-system-prompt Terse.".into(), ..Default::default() };
     start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), "hi", "cue-teams", &opts).unwrap();
     let args = launched_args(&w);
