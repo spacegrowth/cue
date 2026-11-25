@@ -115,11 +115,11 @@ for (const name of ["Pro", "Max 5x", "Max 20x"]) {
   });
 }
 
-test("Ultra: no 5-hour limit is said plainly, with no bar or old number", async ({ cue, page }) => {
+test("Ultra: the weekly limit and its use show in the top bar, never \"no limit\"", async ({ cue, page }) => {
   await cue.open("board-waiting");
   await plan(cue, "Ultra");
   const chip = page.locator('.usage-chip');
-  await expect(chip).toHaveText('5hno limitwk4%');
+  await expect(chip).toHaveText('wk4%');
   await expect(chip.locator('.um')).toHaveCount(1);
   await chip.click();
   const pop = page.locator('.usage-pop');
@@ -127,8 +127,9 @@ test("Ultra: no 5-hour limit is said plainly, with no bar or old number", async 
   await expect(pop).toContainText('No 5-hour limit on your plan');
   await expect(pop.locator('.up-bar')).toHaveCount(1);
   await expect(pop).toContainText('4%');
-  // Beside Codex, the shared 5h chip says the same.
+  // Beside Codex, Claude shows its weekly window, named, since it has no 5-hour one.
   await chip.click();
   await plan(cue, "Ultra", { codex: true });
-  await expect(page.getByRole('button', { name: 'Usage', exact: true })).toHaveText('Claudeno limitCodex64%5h');
+  await expect(page.getByRole('button', { name: 'Usage', exact: true })).toHaveText('Claudewk4%Codex64%5h');
+  await expect(page.getByRole('button', { name: 'Usage', exact: true })).not.toContainText('no limit');
 });
