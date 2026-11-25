@@ -222,7 +222,7 @@ const deskCNum = (i) => `<span class="dkn-id">${deskCKind(i)}#${esc(i.id)}</span
 /** Where it runs, only when that isn't this Mac (most items run here, and the sessions column says This Mac once). */
 const deskCMach = (i) => (i?.machine === "This Mac" ? "" : deskMachTag(i));
 /** The Now cell: Asks you (Needs your OK for a tool), Ready to check with the ✓ (Looks right, as today's rows), else a
- *  few plain words on where it stands (deskCShort); the full line is the open row's (deskCFull, #810 option C). */
+ *  few plain words on where it stands (deskCShort). */
 function deskCNow(i) {
   // What it asks opens with the row, as Check did: no Choose… button fighting the words for room.
   if (i.state === "needs_you") return `<span class="dkn-nask">${deskCAsksTool(i) ? "Needs your OK" : "Asks you"}</span>`;
@@ -303,23 +303,12 @@ function deskCShort(i) {
   if (!i.holder) return ["Not given out yet", ""];
   return ["Queued", ""];
 }
-/** What comes after the step an item at work is on (deskCAt), for its full line: "Next: tests". */
-const DESK_C_NEXT = ["it starts building", "tests", "it commits", "it lands on main", "it's yours to check", ""];
-/** The open row's full line (#810, option C): where it stands in full (what it's doing, its exact command, what it
- *  waits on and what starts it), then what's next while it moves. Drawn on every row, shown on the open one only
- *  (desk-c.css), so the other rows keep their height. */
-function deskCFull(i) {
-  const st = deskCWhy(i) || deskB2Status(i)[0];
-  const moving = (i.state === "working" && !i.waiting && !i.remote?.wait && !(i.remote?.quiet_since > 0)) || deskFinishing(i);
-  const next = moving ? DESK_C_NEXT[deskCAt(i)] || "" : "";
-  return `<div class="dkn-xl"><b>Now</b><span class="dkn-xs">${st}</span>${next ? `<span class="dkn-xn">Next: ${next}</span>` : ""}</div>`;
-}
 /** One item in the card: its title with its kind, number, who has it and where it runs; then its strip and Now.
  *  Narrow, the strip goes under the title. Lit while its page is open. */
 function deskCRow(i) {
   // Lit while its page is open, or its holder's chat (that session's chat is the item's chat).
   const o = deskOpen, on = (o?.kind === "item" && deskIdIs(i, o.id)) || ((o?.kind === "chat" || o?.kind === "holder") && !!o.sid && deskHolderSid(i) === o.sid);
-  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>${deskCRowMore(i)}${deskCFull(i)}</div>`;
+  return `<div class="dk-it dkn-row${on ? " on" : ""}${i.state === "needs_you" ? " ask" : ""}${(i.state === "to_check" && deskLooksSoon.has(i.id)) || deskCStays(i) ? " soon" : ""}${deskLeaveStyle(i.id)}" role="button" tabindex="0" data-desk-item="${esc(i.id)}"><div class="dkn-t"><span class="dkn-tt">${esc(i.title)}</span><span class="dkn-sub">${deskCSub(i)}</span></div><div class="dkn-pl">${deskCStrip(i)}</div><div class="dkn-now">${deskCNow(i)}</div>${deskCRowMore(i)}</div>`;
 }
 /** A row's ⋯ (#839): Start now, Park and Drop (page.js deskRowMoreItems), without opening the item. Shown as you point
  *  at the row and on the open one (desk-c.css .dkn-rwrap); "" when nothing fits. */
