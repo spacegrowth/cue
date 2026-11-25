@@ -319,20 +319,22 @@ impl Hub {
 /// Whether an item's work is on the main line, as it finishes (split from finish.rs).
 impl Hub {
     /// Whether item `id`'s own commits on `top`'s main line (those Cue made for it, its crew's merges) changed nothing
-    /// that goes into the app (live_ui::outside_app). With none there, its files in that repository say: each outside
-    /// the app or never in it (a mocks item's scratch files, read as the repository's, #432). False when git can't
-    /// say, or it has a file in the app (work its holder committed itself): it's installed as before.
+    /// that goes into the app (live_ui::outside_app), and its files in that repository say the same: each outside the
+    /// app or never in it (a mocks item's scratch files, read as the repository's, #432). The files count even when Cue
+    /// made a commit for it: work its holder committed itself is in no commit Cue knows (#919: #913's session
+    /// committed its window's files, Cue's commit for it held only a test, and it went to check with no install). False
+    /// when git can't say, or it has a file in the app: it's installed as before.
     pub(crate) fn runs_nothing(&self, id: &str, top: &str) -> bool {
         let Some(it) = self.read(|st| st.desk.item(id).cloned()) else { return false };
         let merges = it.finish.as_ref().map(|f| f.merges.clone()).unwrap_or_default();
         let here = |folder: &str| main_checkout(folder).is_some_and(|(m, _)| same_dir(&m, top));
         let own: Vec<String> = it.commit_in.iter().chain(&merges).filter(|(folder, _)| here(folder)).map(|(_, sha)| sha.clone()).collect();
-        if !own.is_empty() {
-            return own.iter().all(|sha| crate::install::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::install::live_ui::outside_app(p))));
+        if !own.iter().all(|sha| crate::install::live_ui::changed_in(top, sha).is_some_and(|paths| paths.iter().all(|p| crate::install::live_ui::outside_app(p)))) {
+            return false;
         }
         let Ok((_, machine, sources)) = self.desk_change_sources(id) else { return false };
         let files: Vec<(String, String)> = sources.into_iter().filter(|(folder, _)| machine.is_empty() && here(folder)).flat_map(|(folder, paths)| paths.into_iter().map(move |p| (folder.clone(), p))).collect();
-        !files.is_empty() && files.iter().all(|(folder, p)| crate::install::live_ui::outside_app(p) || never_in(folder, p))
+        (!own.is_empty() || !files.is_empty()) && files.iter().all(|(folder, p)| crate::install::live_ui::outside_app(p) || never_in(folder, p))
     }
 
     /// Where item `id`'s work is, when it isn't all on `top`'s main yet ("on fix-header, not main"): the main line's

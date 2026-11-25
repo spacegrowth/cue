@@ -26,6 +26,11 @@ fn done_since_running_with(w: &World, files: &'static [&'static str], checked: b
 
 /// `done_since_running_with`, its holder's DONE turn saying `words` first.
 fn done_since_running_saying(w: &World, files: &'static [&'static str], checked: bool, ahead: bool, words: &str) -> (Arc<Fake>, std::path::PathBuf, String, String) {
+    done_since_running_committing(w, files, checked, ahead, words, &[])
+}
+
+/// `done_since_running_saying`, its holder committing `own` of its files on the main line itself before its DONE.
+fn done_since_running_committing(w: &World, files: &'static [&'static str], checked: bool, ahead: bool, words: &str, own: &'static [&'static str]) -> (Arc<Fake>, std::path::PathBuf, String, String) {
     let fake = Arc::new(Fake::default());
     w.hub().desk_set_installer(fake.clone());
     let (dir, project, id) = super::desk_commit::done_saying(
@@ -64,6 +69,12 @@ fn done_since_running_saying(w: &World, files: &'static [&'static str], checked:
                 std::fs::create_dir_all(std::path::Path::new(p).parent().unwrap()).unwrap();
             }
             says(w, h, writes("toolu_A", "agentA", "fixer", &paths));
+            if !own.is_empty() {
+                let mut add = vec!["add", "--"];
+                add.extend(own.iter().copied());
+                git(dir, &add);
+                git(dir, &["commit", "-q", "-m", "its holder's own commit"]);
+            }
         },
         words,
     );
@@ -143,6 +154,20 @@ fn an_item_whose_work_changed_the_app_waits_for_an_install_even_with_mocks_besid
     w.advance(30 * 60_000);
     assert_eq!(fake.started().len(), 1, "installed");
     assert!(item(&w, &project, "Header jumps")["finish"]["mocks"].is_null(), "in the app, not mocks (#436)");
+}
+
+/// #919 (#913): its holder committed its change to the app itself, and the commit Cue made for it holds only a test:
+/// it waits for the install, not to check with nothing to install.
+#[test]
+fn an_item_whose_holder_committed_its_app_change_itself_waits_for_an_install() {
+    let w = World::new();
+    let (fake, dir, project, _) = done_since_running_committing(&w, &["src-tauri/desk.rs", "tests/desk.spec.mjs"], false, false, "Fixed.", &["src-tauri/desk.rs"]);
+    let last = git(&dir, &["show", "--name-only", "--format=", "HEAD"]);
+    assert_eq!(last.trim(), "tests/desk.spec.mjs", "Cue's commit for it holds only the test");
+    assert_eq!(step(&w, &project), "queued", "{}", item(&w, &project, "Header jumps"));
+    assert!(item(&w, &project, "Header jumps")["finish"]["mocks"].is_null(), "in the app, not mocks");
+    w.advance(30 * 60_000);
+    assert_eq!(fake.started().len(), 1, "installed");
 }
 
 /// #432 (#423 lined up to install): a mocks item whose only files in the repository are ones it never committed (a
