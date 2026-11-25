@@ -770,6 +770,25 @@ function deskCInstallHead(d) {
   if (!name) return "";
   return /^install$/i.test(name) ? "WAITING TO INSTALL" : `WAITING FOR ${esc(name.toUpperCase())}`;
 }
+/** Install now at the top of Desk `d`'s group waiting for its update after landing (#911): runs that Desk's own steps
+ *  after landing at once (desk_install_now, the lead's INSTALL: main), named by them ("Install now", "Deploy now").
+ *  "" while an install runs or was just asked for, or when the Desk has no such steps (no group). */
+let deskCInstalling = "";
+function deskCInstallBar(d, inst) {
+  const n = d?.lands?.set?.after_names || {}, names = Object.values(n);
+  const name = n.installing || names.at(-1);
+  if (!name || !inst.length || deskCInstalling === d.project || cueInstallNow()) return "";
+  if (inst.some((i) => i.finish?.now || ["building", "installing", "starting"].includes(i.finish?.step))) return "";
+  const steps = names.map(esc).join(" · ");
+  return `<div class="dkn-gbar"><span>${steps} · runs now instead of waiting</span><button class="btn small" data-desk-install-now="${esc(d.project)}">${esc(name)} now</button></div>`;
+}
+async function deskCInstallGo(project) {
+  deskCInstalling = project;
+  renderMain();
+  try { await invoke("desk_install_now", { project }); }
+  catch (err) { toast(`Didn't start: ${err}`, 6000); }
+  finally { deskCInstalling = ""; renderMain(); }
+}
 /** Items: one line at its head (Items, Add an item…, Away, Pause; no tabs: every group is on screen); the white card
  *  with the step names over Waiting on you and Working; then Up next and Done today side by side on the green. */
 function deskCList(project, taskApprovals) {
@@ -812,7 +831,7 @@ function deskCList(project, taskApprovals) {
   const blocked = grp("blocked", "BLOCKED ON YOU", [], (ask?.one_way ? "" : leadAsk) + (aw.more || ""), blockedN, hf.html);
   const you = grp("you", "WAITING ON YOU", hf.rest, "", hf.rest.filter((i) => !heldIds.has(i.id)).length);
   const work = grp("working", "WORKING", working);
-  const install = instHead ? grp("install", instHead, inst) : "";
+  const install = instHead ? grp("install", instHead, inst, "", inst.length, deskCInstallBar(d, inst)) : "";
   // Kept copies are a band too: its heading sticks and stacks with the rest. The calls made while you're away show in
   // the lead's chat once Away goes off, and in its Away tab (#863), not here.
   const kept = (d?.kept || []).length ? grp("kept", "KEPT COPIES", [], d.kept.map(deskKeptRow).join(""), d.kept.length) : "";
@@ -852,6 +871,7 @@ deskClicks({
     deskCGoing.set(list.dataset.dknList, { top, until: Date.now() + DESK_C_GOING_MS });
     list.scrollTo({ top, behavior: "smooth" });
   },
+  deskInstallNow: (el) => deskCInstallGo(el.dataset.deskInstallNow),
   deskCFold: (el) => {
     const k = el.dataset.deskCFold;
     if (k === "next" || k === "parked") return deskCLowFold(k);

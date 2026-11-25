@@ -178,6 +178,18 @@ pub(crate) async fn desk_item_act(hub: State<'_, Arc<Hub>>, id: String, act: Str
     .await?
 }
 
+/// Install now on Desk `project`'s group waiting for its update after landing (#911): its after-landing steps run now,
+/// as the lead's INSTALL: main runs them. Ok with what started; Err with why nothing did.
+#[tauri::command]
+pub(crate) async fn desk_install_now(hub: State<'_, Arc<Hub>>, project: String) -> Result<String, String> {
+    with_hub(&hub, move |h| {
+        let said = h.desk_lead_install(&project);
+        h.desk_install_watch();
+        said
+    })
+    .await?
+}
+
 /// Looks right on item `id`: its changed files committed at once (word check first, no push) and it's done; none, just
 /// done; with files another session is editing, done and the commit waits. { commit, files, waiting } (desk/hub/landing/commit.rs).
 #[tauri::command]

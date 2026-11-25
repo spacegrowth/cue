@@ -257,6 +257,16 @@ CueBridge.area("desk", (w) => {
       const diff = on ? (it.files || []).map((f) => `diff --git a/${f} b/${f}\n--- a/${f}\n+++ b/${f}\n@@ -1,2 +1,3 @@\n-old ${f}\n+new ${f}\n+more\n same\n`).join("") : "";
       return { diff, machine: "" };
     },
+    // Install now on a Desk's group waiting for its update after landing (#911): what waits goes now (the hub's
+    // INSTALL: main); with an install under way, nothing starts.
+    desk_install_now: ({ project }) => {
+      const d = deskOf(project);
+      if (!d) throw "no such Desk";
+      if (desk().install?.step) throw "An install is already under way: the Desk shows it. Nothing else started.";
+      for (const i of d.items || []) if (i.state === "finishing" && i.finish?.step === "queued") i.finish.now = true;
+      w.changed();
+      return "Installing now: the Desk shows it.";
+    },
     desk_commit_undo: ({ id }) => {
       const it = itemOf(id);
       if (!it) throw "No such item";
