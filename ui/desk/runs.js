@@ -122,7 +122,7 @@ function dkNoticeQuiet(s, ex, turn, page) {
 function dkPlainWords(text) {
   return String(text || "").split("\n").filter((l) => {
     if (DECIDED_LINE.test(l)) return false;
-    const h = deskLineHtml(l, false);
+    const h = deskLineHtml(l, esc);   // its words only classify the line here; plain escaping is enough
     if (!h) return true;
     if (h === MD_DROP) return false;
     const k = dkKindOf(h);
