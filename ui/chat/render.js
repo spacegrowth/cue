@@ -86,7 +86,7 @@ function bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first
     const gbad = g.steps.filter((x) => x.bad).length;
     const running = isNow ? g.steps.findLast((x) => !x.done) : null;
     const time = isNow ? `<span class="bul-t" data-clock="${turn.at_ms}">${clockText(now() - turn.at_ms)}</span>` : `<span class="bul-t">${clockText(start - turn.at_ms)}</span>`;
-    const text = g.say ? md(say ? say(g.say[0].text) : g.say[0].text) : `<span class="dim">First steps</span>`;
+    const text = g.say ? md(say ? say(g.say[0].text) : g.say[0].text) : `<span class="dim">${first ? "First steps" : "After your message"}</span>`;
     const count = g.steps.length ? `<button class="bul-n" data-bul="${esc(gk)}" data-open="${opened ? 1 : 0}" aria-expanded="${opened}">${gbad ? `<span class="bul-bad">${gbad} failed · </span>` : ""}${many(g.steps.length, "step")} ${opened ? "⌄" : "›"}</button>` : "";
     const run = running && !opened ? `<div class="bul-run"><span class="dot-live"></span><span class="bul-cmd">${esc(running.verb)}${running.subject ? ` <span class="${running.mono ? "mono" : ""}">${esc(running.subject)}</span>` : ""}</span><span class="dim">· <span data-ago="${running.at_ms}">${ago(running.at_ms)}</span></span></div>` : "";
     const rowsHtml = opened && g.steps.length ? `<div class="stx-steps">${g.steps.map((x) => stepLine(sid, x, false)).join("")}</div>` : "";
