@@ -380,9 +380,9 @@ function chatAgentHtml(c, e, n) {
   const quiet = notice?.stays ? dkNoticeQuiet(s, ex, notice.turn, page) : "";
   return `<div class="cv-agent mg-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"${out ? " data-dkr" : ""} data-at="${e.at_ms}">${quiet}<div class="mg-h">${mgAgentHead(harness, it?.machine || s?.machine, e.at_ms)}${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg mg-text cv-text">${withCount(body, folded ? "" : cnt)}</div>${split?.after || ""}${said.after}${thumbs(e.images)}${localImages(e.text)}
-      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${page?.noActs ? "" : fwdBtn(key, e.text, project, sid)}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}</div>${follow}</div>`;
+      <div class="mg-f cv-acts">${folded ? cnt : ""}${listen ? listenBtn(key) : ""}${listen && paged ? `<button class="mg-btn rd-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${foldable ? `<button class="mg-lk cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${page?.noActs ? "" : fwdBtn(key, e.text, project, sid)}</div>${follow}</div>`;
 }
-/** "↗ Send to…" on an agent's words, a pill like Listen and Read and always shown, right after Read: the one button every chat that talks to a session draws (#854): this chat's, the
+/** "↗ Send to…" on an agent's words, a pill like Listen and Read, always shown, at the right end of their row (as on the Board): the one button every chat that talks to a session draws (#854): this chat's, the
  *  Board's, the Desk's item and session chats, a crew member's (helpers.js agentChatHtml) and a parked session's
  *  (parked.js). It keeps what it sends (fwdMsgs; `key` starts with the session's id and ":", so window.js keeps it
  *  while the session lasts), and a click opens the one menu (sheets.js forwardPop) over the same list of sessions. */
