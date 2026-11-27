@@ -67,9 +67,11 @@ fn a_new_hosted_session_starts_claude_with_no_terminal_and_hands_it_its_first_me
     let l = w.hosted.launched();
     assert_eq!(l.len(), 1);
     assert_eq!((&l[0].start, l[0].permissions.as_str(), &l[0].args[..2]), (&Start::New(sid.clone()), "auto", &["--model".to_string(), "opus".to_string()][..]));
-    // Then the team skill every hosted Claude lead starts with (hub/team/out.rs), and nothing else.
-    assert_eq!((l[0].args.len(), l[0].args[2].as_str()), (4, "--append-system-prompt"));
-    assert!(l[0].args[3].starts_with("# Working as a crew lead (Cue)"));
+    // Then its name for Claude Code's own list, and the team skill every hosted Claude lead starts with
+    // (hub/team/out.rs), and nothing else.
+    assert_eq!(&l[0].args[2..4], ["-n", "trial"]);
+    assert_eq!((l[0].args.len(), l[0].args[4].as_str()), (6, "--append-system-prompt"));
+    assert!(l[0].args[5].starts_with("# Working as a crew lead (Cue)"));
     assert!(w.launcher.launched().is_empty(), "no terminal");
     assert_eq!(w.hosted.sent(), vec![(sid.clone(), "fix the login".to_string())]);
     let o = w.hub().session_origin(&sid).unwrap();
@@ -594,14 +596,84 @@ fn the_watcher_leaves_a_hosted_session_to_its_own_exit_report() {
 }
 
 #[test]
-fn renaming_it_names_it_in_cue_and_types_nothing() {
+fn renaming_it_sends_claude_its_rename_and_the_turn_that_reports_it_isnt_shown() {
     let w = World::new();
     let sid = started(&w, "");
     assert_eq!(w.hub().rename(&sid, "cue-hosted-test"), Ok("Renamed".to_string()));
-    let row = w.snapshot().session(&sid).clone();
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "/rename cue-hosted-test".to_string())), "Claude Code's own list gets the name");
+    assert!(w.terminal.typed(&sid).is_empty());
+    renamed_turn(&w, &sid, "cue-hosted-test");
+    let snap = w.snapshot();
+    let row = snap.session(&sid).clone();
     assert_eq!(row["name"], "cue-hosted-test");
     assert!(row["rename_error"].is_null(), "no notice that it couldn't be told: {row}");
-    assert!(w.terminal.typed(&sid).is_empty());
+    assert_ne!(row["state"], "working", "{row}");
+    assert!(!row.to_string().contains("Session renamed to"), "the rename's turn isn't in its chat: {row}");
+    // Its next real turn is shown as ever.
+    w.send_to(&sid, "go");
+    takes(&w, &sid, "go");
+    turn_ends(&w, &sid, "Done.");
+    assert!(w.snapshot().session(&sid).to_string().contains("Done."));
+}
+
+#[test]
+fn renaming_it_mid_turn_sends_the_rename_when_the_turn_ends() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    assert_eq!(w.hub().rename(&sid, "later-name"), Ok("Renamed · Claude Code gets it when this turn ends".to_string()));
+    assert!(!w.hosted.sent().iter().any(|(_, t)| t.starts_with("/rename")), "not into the middle of its work");
+    turn_ends(&w, &sid, "Done.");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "/rename later-name".to_string())));
+}
+
+#[test]
+fn its_name_is_on_claudes_command_line_when_it_starts_and_when_it_starts_again() {
+    let mut w = World::new();
+    let sid = started(&w, "");
+    let first = w.hosted.launched()[0].args.clone();
+    assert!(first.windows(2).any(|a| a == ["-n", "trial"]), "named as + New named it: {first:?}");
+    w.hub().rename(&sid, "renamed-since").unwrap();
+    w.relaunch();
+    w.send_to(&sid, "hello");
+    let again = w.hosted.launched().last().unwrap().args.clone();
+    assert!(again.windows(2).any(|a| a == ["-n", "renamed-since"]), "started again under the name Cue shows: {again:?}");
+    assert_eq!(again.iter().filter(|a| *a == "-n").count(), 1);
+}
+
+/// Claude Code's list showing `sid` under `name`, `made_up` by its process or not, `status` as it reports it.
+fn listed_as(sid: &str, name: &str, made_up: bool, status: &str) -> crate::live::Quiet {
+    crate::live::Quiet { session_id: sid.into(), harness: "claude".into(), name: name.into(), generated: made_up, cwd: String::new(), pid: 1, status: status.into(), waiting_for: String::new(), since_ms: 0 }
+}
+
+#[test]
+fn one_running_under_a_made_up_name_is_sent_cues_name_once_it_is_idle() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    let renames = || w.hosted.sent().into_iter().filter(|(s, t)| *s == sid && t.starts_with("/rename")).map(|(_, t)| t).collect::<Vec<_>>();
+    // Started before Cue passed names on: Claude Code lists it as "cue-5b".
+    crate::live::set_claude(vec![listed_as(&sid, "cue-5b", true, "busy")]);
+    w.hub().refresh_activity();
+    assert!(renames().is_empty(), "not into its work");
+    turn_ends(&w, &sid, "Done.");
+    crate::live::set_claude(vec![listed_as(&sid, "cue-5b", true, "idle")]);
+    w.hub().refresh_activity();
+    w.hub().refresh_activity();
+    assert_eq!(renames(), ["/rename trial"], "once, under the name Cue shows");
+    renamed_turn(&w, &sid, "trial");
+    // Claude Code took it: nothing more is sent.
+    crate::live::set_claude(vec![listed_as(&sid, "trial", false, "idle")]);
+    w.hub().refresh_activity();
+    assert_eq!(renames().len(), 1);
+    assert_eq!(w.snapshot().session(&sid)["name"], "trial");
+    crate::live::set_claude(vec![]);
+}
+
+/// What Claude reports for a `/rename` it ran: a turn of one line, no model.
+fn renamed_turn(w: &World, sid: &str, name: &str) {
+    w.hosted_says(sid, HostedEvent::TurnStarted);
+    w.hosted_says(sid, HostedEvent::Said { text: format!("Session renamed to: {name}"), agent: None });
+    w.hosted_says(sid, HostedEvent::TurnEnded { text: format!("Session renamed to: {name}"), failed: false, cost_usd: 0.0, unprompted: true });
+    w.settle();
 }
 
 #[test]

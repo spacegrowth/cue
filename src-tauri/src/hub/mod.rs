@@ -127,6 +127,9 @@ pub(crate) struct Store {
     /// A paused hosted session Cue started again for a message (`wake_hosted`), until it takes it: the process it
     /// started. It ending, or not taking the message within `hosted::WAKE_LIMIT_MS`, means it didn't wake (#857).
     hosted_waking: HashMap<String, i32>,
+    /// A hosted Claude sent `/rename` (sessions.rs `rename_hosted`), until the turn it reports for it ends (or this
+    /// time passes): that turn is the command's, not work, so it isn't shown.
+    hosted_renaming: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     pub(crate) sessions: crate::sessions::Sessions,
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to

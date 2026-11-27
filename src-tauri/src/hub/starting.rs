@@ -101,6 +101,9 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
     let fork_from = (!opts.fork_of.is_empty()).then(|| super::hosted::fork_source(&origin, opts.fork_of.clone()));
     if let Some(from) = &fork_from {
         args.extend(["--resume".to_string(), from.clone(), "--fork-session".to_string(), "-n".to_string(), name.to_string()]);
+    } else if agent == Agent::Claude && !name.trim().is_empty() {
+        // Its name in Claude Code's own list from the start, as + New in a terminal gave it (`claude -n`).
+        args.extend(["-n".to_string(), name.trim().to_string()]);
     }
     if !opts.desk_lead.is_empty() {
         h.desk_lead_starting(&opts.desk_lead, &sid, name);

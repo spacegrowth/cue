@@ -504,9 +504,9 @@ impl Hub {
         if name.is_empty() {
             return Ok("Name cleared in Cue".into());
         }
-        // A hosted session has no terminal to type /rename into: Cue's name is its name (Move to terminal keeps it).
-        if origin.hosted {
-            return Ok("Renamed".into());
+        // A hosted Claude has no terminal to type /rename into: it's sent as a message instead (rename_hosted).
+        if origin.hosted && harness == "claude" {
+            return self.rename_hosted(session_id, &state, &name);
         }
         match harness.as_str() {
             "pi" => {
@@ -529,6 +529,36 @@ impl Hub {
             },
             "codex" => Ok("Named in Cue (Codex has no names of its own)".into()),
             _ => Ok("Named in Cue".into()),
+        }
+    }
+
+    /// A hosted Claude renamed: `/rename <name>` sent to it as a message, a command it runs itself without the model.
+    /// It still reports a one-line turn ("Session renamed to: …"), which Cue drops (`hosted_renaming`). Mid-turn it
+    /// waits for the turn's end (deliver_deferred_rename); paused, it gets the name when it's started again (`-n`,
+    /// run_hosted). Claude Code's list showing the name settles it, as for a terminal.
+    fn rename_hosted(&self, session_id: &str, state: &str, name: &str) -> Result<String, String> {
+        if !self.hosted().running(session_id) {
+            return Ok("Renamed".into());
+        }
+        if state == "working" {
+            self.write(|st| st.sessions.defer_rename(session_id));
+            return Ok("Renamed · Claude Code gets it when this turn ends".into());
+        }
+        self.send_hosted_rename(session_id, name).map(|_| "Renamed".to_string())
+    }
+
+    /// `/rename <name>` sent to a running hosted Claude, the turn it reports dropped. Err: why it didn't get it (noted).
+    fn send_hosted_rename(&self, session_id: &str, name: &str) -> Result<(), String> {
+        self.write(|st| st.hosted_renaming.insert(session_id.to_string(), now_ms() + RENAME_WITHIN_MS));
+        match self.hosted().send(session_id, &format!("/rename {name}")) {
+            Ok(()) => {
+                self.write(|st| st.sessions.expect_rename(session_id, name, now_ms() + RENAME_WITHIN_MS));
+                Ok(())
+            }
+            Err(e) => {
+                self.write(|st| st.hosted_renaming.remove(session_id));
+                Err(self.rename_failed(session_id, &format!("Couldn't give Claude Code the new name: {e}")))
+            }
         }
     }
 
@@ -561,14 +591,39 @@ impl Hub {
     /// ("cue-68", then "cue-ed"): only a name somebody gave it (/rename, or Claude naming its work) is followed.
     pub(super) fn sync_agent_names(&self) {
         let hosted = |sid: &str| self.read(|st| st.sessions.origin(sid).is_some_and(|o| o.hosted));
-        let listed = names_to_follow(crate::live::claude(), hosted);
+        let live = crate::live::claude();
+        self.name_unnamed_hosted(&live);
+        let listed = names_to_follow(live, hosted);
         if self.write(|st| st.sessions.sync_agent_names(&listed, now_ms())) {
             self.changed();
         }
     }
 
+    /// A hosted Claude still under a name it made up ("cue-5b") while Cue shows yours: one started before Cue passed
+    /// names on (or whose rename it never got) is sent it, once it's idle. Not while a rename is on its way, nor
+    /// again after one failed (its notice says so, with Try again).
+    fn name_unnamed_hosted(&self, live: &[crate::live::Quiet]) {
+        for q in live.iter().filter(|q| q.generated && q.status == "idle") {
+            let want = self.read(|st| {
+                let s = st.sessions.all().into_iter().find(|s| s.origin.session_id == q.session_id)?;
+                let ready = s.origin.hosted && s.origin.harness == "claude" && s.origin.machine.is_empty() && s.state != "working";
+                let quiet = !st.hosted_renaming.contains_key(&q.session_id) && !s.rename_pending && s.rename_check.is_none() && s.rename_error.is_empty();
+                (ready && quiet && !s.name.trim().is_empty() && s.name.trim() != q.name).then(|| s.name.trim().to_string())
+            });
+            if let Some(name) = want {
+                let _ = self.send_hosted_rename(&q.session_id, &name);
+            }
+        }
+    }
+
     pub(super) fn deliver_deferred_rename(&self, session_id: &str) {
         let Some((name, origin)) = self.write(|st| st.sessions.take_rename(session_id)) else { return };
+        if origin.hosted {
+            if self.hosted().running(session_id) {
+                let _ = self.send_hosted_rename(session_id, &name);
+            }
+            return;
+        }
         if origin.machine.is_empty() {
             self.write(|st| st.sessions.expect_rename(session_id, &name, now_ms() + 2_000 + RENAME_WITHIN_MS));
         }

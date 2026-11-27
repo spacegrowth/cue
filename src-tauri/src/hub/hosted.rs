@@ -38,6 +38,25 @@ impl Hub {
         &*self.ports.hosted
     }
 
+    /// Whether `e` is part of the turn a hosted Claude reports for Cue's `/rename` (its start, its one line, its end),
+    /// which isn't shown: the rename is no work of its own. Anything else (a step, a question) means it isn't.
+    fn renaming_turn(&self, sid: &str, e: &HostedEvent) -> bool {
+        let Some(until) = self.read(|st| st.hosted_renaming.get(sid).copied()) else { return false };
+        let ours = now_ms() < until;
+        match e {
+            HostedEvent::TurnStarted | HostedEvent::Said { agent: None, .. } if ours => true,
+            HostedEvent::TurnEnded { .. } if ours => {
+                self.write(|st| st.hosted_renaming.remove(sid));
+                true
+            }
+            HostedEvent::TurnStarted | HostedEvent::Said { agent: None, .. } | HostedEvent::TurnEnded { .. } => {
+                self.write(|st| st.hosted_renaming.remove(sid));
+                false
+            }
+            _ => false,
+        }
+    }
+
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
@@ -53,6 +72,14 @@ impl Hub {
         let told = crate::owner::told_line();
         let skill = if told.is_empty() { skill } else { format!("{skill}\n{}", told.trim_end()) };
         let mut args = super::team::out::with_skill(agent, &with.args, &skill);
+        // Its name in Claude Code's own list (what other sessions message it by, /resume): the one Cue shows,
+        // unless it's given one here already (a fork's). Without it, Claude makes one up ("cue-5b").
+        if agent == Agent::Claude && !args.iter().any(|a| a == "-n" || a == "--name") {
+            let name = self.session_name(&origin.session_id);
+            if !name.trim().is_empty() {
+                args.extend(["-n".to_string(), name.trim().to_string()]);
+            }
+        }
         // A Desk lead runs in fast mode: turned on as it starts or resumes (hosted, Claude Code turns it on only when
         // its settings say so), and left to it after that. Other sessions start as they are.
         if agent == Agent::Claude && self.desk_skill(&origin.session_id).is_some() {
@@ -286,6 +313,9 @@ impl Hub {
     /// there is one: it has the process it runs as).
     pub(crate) fn on_hosted(&self, o: &Origin, base: f64, e: HostedEvent) {
         let origin = self.hosted_origin(&o.session_id).unwrap_or_else(|| o.clone());
+        if self.renaming_turn(&origin.session_id, &e) {
+            return;
+        }
         // Its team (team.rs): a teammate started, at work, finished.
         self.team_sees(&origin, &e);
         #[cfg(feature = "ext")]
