@@ -55,12 +55,13 @@ impl Hub {
     }
 
     /// Its teammates' messages to it that the chat hasn't shown yet, from its log (where Cue can read it).
-    /// The first time, from the start of the turn that just ended (else the last 10 minutes).
+    /// The first time, from a minute before the turn that just ended started (else the last 10 minutes): a message
+    /// that started the turn itself is logged as Claude reads it, before Cue sees the turn start (hosted, at once).
     fn teammates_heard(&self, origin: &Origin) -> Vec<transcript::Heard> {
         let Some(log) = super::send::log_here(origin) else { return vec![] };
         let since = self.read(|st| {
             let read = st.sessions.teammates_read(&origin.session_id);
-            if read > 0 { read } else { st.sessions.turn_started(&origin.session_id).unwrap_or_else(|| now_ms().saturating_sub(10 * 60 * 1000)) }
+            if read > 0 { read } else { st.sessions.turn_started(&origin.session_id).map(|at| at.saturating_sub(60 * 1000)).unwrap_or_else(|| now_ms().saturating_sub(10 * 60 * 1000)) }
         });
         transcript::teammate_messages_after(log, since)
     }

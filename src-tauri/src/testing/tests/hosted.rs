@@ -1048,3 +1048,23 @@ fn a_turn_that_ends_on_the_usage_limit_is_limited_and_carries_on_after_the_reset
     w.settle();
     assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), crate::sessions::send_at::CARRY_ON.to_string())));
 }
+
+#[test]
+fn another_sessions_message_shows_in_its_chat_above_the_reply() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    w.advance(5000);
+    // Another session's message, as a hosted Claude takes it: written to its log, repeated back, a turn answering it.
+    let body = "Got it: hi from the other one.";
+    let text = format!("Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\" from-name=\"other\">\n{body}\n</cross-session-message>");
+    let log = w.hub().session_origin(&sid).unwrap().transcript_path;
+    Transcript::at(&log).prompt_from(&text, "p2", json!({"kind": "peer", "name": "other", "body": body, "verifiedPeerPid": 4242}));
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    w.hosted_says(&sid, HostedEvent::Taken { text: text.clone() });
+    w.advance(1000);
+    turn_ends(&w, &sid, "It got there.");
+    let thread = w.snapshot().session(&sid)["thread"].clone();
+    let roles: Vec<_> = thread.as_array().unwrap().iter().map(|e| format!("{}: {}", e["role"].as_str().unwrap_or(""), e["text"].as_str().unwrap_or(""))).collect();
+    assert_eq!(roles[roles.len() - 2..], [format!("peer: {body}"), "agent: It got there.".to_string()], "above the reply that answers it");
+}
