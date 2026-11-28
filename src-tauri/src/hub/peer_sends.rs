@@ -4,6 +4,25 @@
 
 use super::*;
 
+/// A resting session started again for another session's message, until it takes it (Store `peer_waking`).
+#[derive(Clone, Debug)]
+pub(crate) struct PeerWake {
+    /// The process it was started again as.
+    pub pid: i32,
+    /// The sender's id, and its SendMessage call.
+    pub from: String,
+    pub id: String,
+    /// What the message said.
+    pub text: String,
+}
+
+/// Session `to`, woken for `w`, never took it: the message leaves its chat (it never got it), and the sender's
+/// entry says it didn't go, and `why`.
+pub(super) fn peer_wake_failed(st: &mut Store, to: &str, w: &PeerWake, why: &str) {
+    st.sessions.drop_peer_from(to, &w.from, &w.text);
+    st.sessions.peer_undelivered(&w.from, &w.id, why);
+}
+
 /// Who a SendMessage goes to, as the chat says it: Claude Code may add the session's reference after its name
 /// ("cue-9e [f7c5db]").
 fn recipient(to: &str) -> &str {
@@ -125,13 +144,13 @@ impl Hub {
             st.sessions.sender_of(from, &claude)
         });
         let name = if sender.claude.is_empty() { sender.from.clone() } else { sender.claude.clone() };
-        let why = match self.hand_peer_to_hosted(to, &sender, &name, text) {
+        let why = match self.hand_peer_to_hosted(to, &sender, &name, id, text) {
             Ok(woke) => {
                 eprintln!("cue: {from}'s message to {to}, which was resting: started again and handed to it");
                 // Started again for it: it has WAKE_LIMIT to take it, as any wake does (hosted.rs wake_check).
                 if let Some(pid) = woke {
-                    let (from, id, to, text) = (from.to_string(), id.to_string(), to.to_string(), text.to_string());
-                    self.later(super::hosted::WAKE_LIMIT_MS, move |h| h.peer_wake_check(&from, &id, &to, &text, pid));
+                    let to = to.to_string();
+                    self.later(super::hosted::WAKE_LIMIT_MS, move |h| h.peer_wake_check(&to, pid));
                 }
                 return;
             }
@@ -146,27 +165,39 @@ impl Hub {
     /// WAKE_LIMIT after Cue started `to` again (as process `pid`) for `from`'s message `text` (its call `id`): still
     /// not taken, and no turn under way, it didn't wake. Its process is closed, the message leaves its chat (it never
     /// got it), and the sender's says it didn't go. Taken meanwhile, ended, or started again since: nothing to do.
-    pub(super) fn peer_wake_check(&self, from: &str, id: &str, to: &str, text: &str, pid: i32) {
+    /// A message of yours sent it meanwhile (waiting behind this wake) didn't go either: marked so, as `wake_check`
+    /// marks one.
+    pub(super) fn peer_wake_check(&self, to: &str, pid: i32) {
         let stalled = self.write(|st| {
-            if st.hosted_waking.get(to) != Some(&pid) || st.sessions.state(to).as_deref() == Some("working") {
-                return false;
+            if st.peer_waking.get(to).is_none_or(|w| w.pid != pid) {
+                return None;
             }
-            st.hosted_waking.remove(to);
-            true
+            let w = st.peer_waking.remove(to);
+            if st.hosted_waking.get(to) == Some(&pid) {
+                st.hosted_waking.remove(to);
+            }
+            // At work: it took it (or something else woke it to work), and its turn goes on.
+            if st.sessions.state(to).as_deref() == Some("working") { None } else { w }
         });
-        if !stalled {
-            return;
-        }
+        let Some(w) = stalled else { return };
         self.hosted().close(to);
         let secs = super::hosted::WAKE_LIMIT_MS / 1000;
         let why = format!("It was resting: Cue started it again, but it took nothing in {secs}s.");
-        self.write(|st| {
+        let yours = self.write(|st| {
             st.sessions.set_pid(to, None);
             st.sessions.team_process_ended(to, now_ms());
-            st.sessions.drop_peer_from(to, from, text);
-            st.sessions.peer_undelivered(from, id, &why);
+            peer_wake_failed(st, to, &w, &why);
+            let yours = st.sessions.first_pending(to).is_some();
+            if yours {
+                st.sessions.no_wake_pending(to, &format!("it didn't wake: started again, it took nothing in {secs}s"));
+                st.sessions.set_queued(to, None);
+            }
+            yours
         });
         self.changed();
+        if yours {
+            self.desk_feed_watch();
+        }
     }
 }
 

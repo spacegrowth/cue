@@ -266,6 +266,42 @@ fn a_resting_session_woken_for_a_message_that_takes_nothing_is_closed_again_and_
 }
 
 #[test]
+fn a_resting_session_woken_for_a_message_that_exits_before_taking_it_leaves_the_message_failed() {
+    let w = World::new();
+    let b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    assert_eq!(peers(&w, &a)[0]["sent"], "waiting");
+    w.hosted.exits(&b);
+    w.hosted_says(&b, HostedEvent::Exited { code: Some(1), during_turn: false, last_words: String::new() });
+    w.settle();
+    let p = peers(&w, &a);
+    assert_eq!((p[0]["sent"].as_str(), p[0]["why"].as_str()), (Some("failed"), Some("It was resting: Cue started it again, but Claude Code exited (code 1) before taking it.")), "{p:?}");
+    assert!(peers(&w, &b).iter().all(|e| e["text"] != "Are you there?"), "it never got it: {:?}", peers(&w, &b));
+    // Its limit passing later changes nothing more.
+    w.advance(crate::hub::hosted::WAKE_LIMIT_MS + 1000);
+    assert_eq!(w.hosted.closed(), vec![b.clone()], "only the rest that came before");
+}
+
+#[test]
+fn a_message_of_yours_sent_to_a_session_woken_for_another_ones_that_takes_nothing_says_it_didnt_wake() {
+    let w = World::new();
+    let b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    w.send_to(&b, "and the docs?");
+    w.advance(crate::hub::hosted::WAKE_LIMIT_MS + 1000);
+    assert_eq!(w.hosted.closed(), vec![b.clone(), b.clone()], "closed again");
+    let last = w.snapshot().last_yours(&b);
+    assert_eq!((last["text"].as_str(), last["unsent"].as_bool(), last["no_wake"].as_bool()), (Some("and the docs?"), Some(true), Some(true)), "not left waiting on a process that's gone: {last}");
+    assert_eq!(peers(&w, &a)[0]["sent"], "failed");
+}
+
+#[test]
 fn a_woken_session_that_takes_the_message_in_time_isnt_closed() {
     let w = World::new();
     let b = resting(&w, "helper");

@@ -199,23 +199,34 @@ impl Hub {
     /// (the name the sender's Claude goes by, so a SendMessage back reaches it). Its chat shows it from `sender`, never
     /// as yours. Under its typing gate, as any message to it: the process it was started again as, if it was. Err says
     /// why it didn't go, and whether it was the wake.
-    pub(crate) fn hand_peer_to_hosted(&self, sid: &str, sender: &crate::sessions::peers::Sender, from_name: &str, body: &str) -> Result<Option<i32>, (bool, String)> {
+    pub(crate) fn hand_peer_to_hosted(&self, sid: &str, sender: &crate::sessions::peers::Sender, from_name: &str, send_id: &str, body: &str) -> Result<Option<i32>, (bool, String)> {
         let gate = self.typing_gate(sid);
         let _typing = super::send::wait_turn(&gate).map_err(|e| (false, e))?;
         let o = self.hosted_origin(sid).ok_or((false, "that session is gone".to_string()))?;
         let woke = self.wake_hosted(&o).map_err(|e| (true, e))?;
+        // Started again for this: until it takes it, it isn't put back to rest (rest.rs), and it ending first or not
+        // taking it by WAKE_LIMIT (peer_sends.rs peer_wake_check) means it didn't go. Noted before it's sent, so a
+        // quick take or exit finds it.
+        if let Some(pid) = woke {
+            let w = super::peer_sends::PeerWake { pid, from: sender.sid.clone(), id: send_id.to_string(), text: body.trim().to_string() };
+            self.write(|st| {
+                st.hosted_waking.insert(sid.to_string(), pid);
+                st.peer_waking.insert(sid.to_string(), w);
+            });
+        }
         let message = peer_words(from_name, body);
         let handed = self.hosted().send(sid, &message);
-        if handed.is_ok() {
-            let keep = crate::config::context_keep();
-            self.write(|st| st.sessions.note_peer_from(sid, sender, body, keep));
-            self.changed();
-        }
-        // Started again for this: until it takes it, it isn't put back to rest (rest.rs). Its caller looks again at
-        // WAKE_LIMIT (peer_sends.rs peer_wake_check).
-        if let (Ok(()), Some(pid)) = (&handed, woke) {
-            self.write(|st| st.hosted_waking.insert(sid.to_string(), pid));
-        }
+        let keep = crate::config::context_keep();
+        self.write(|st| match &handed {
+            Ok(()) => st.sessions.note_peer_from(sid, sender, body, keep),
+            Err(_) => {
+                if woke.is_some_and(|pid| st.hosted_waking.get(sid) == Some(&pid)) {
+                    st.hosted_waking.remove(sid);
+                }
+                st.peer_waking.remove(sid);
+            }
+        });
+        self.changed();
         handed.map(|()| woke).map_err(|e| (false, e))
     }
 
@@ -493,7 +504,10 @@ impl Hub {
         if origin.machine.is_empty() && fork_entry(&sid).is_some() && written_as(&origin, &sid) == Some(true) {
             forget_fork(&sid);
         }
-        self.write(|st| st.hosted_waking.remove(&sid));
+        self.write(|st| {
+            st.hosted_waking.remove(&sid);
+            st.peer_waking.remove(&sid);
+        });
         if self.read(|st| st.sessions.state(&sid).as_deref() == Some("working")) {
             // Nothing settled: the message that started this turn, already taken when the turn started.
             if self.write(|st| st.sessions.got_message(&sid, &text, "it took it mid-turn")) {
@@ -603,6 +617,11 @@ impl Hub {
         // Started again for a message and gone before taking it: it didn't wake (#857).
         let waking = self.write(|st| {
             let waking = st.hosted_waking.remove(&sid).is_some() && st.sessions.first_pending(&sid).is_some();
+            // Started again for another session's message and gone before taking it: that message didn't go.
+            if let Some(w) = st.peer_waking.remove(&sid) {
+                let code = code.map_or("a signal".to_string(), |c| format!("code {c}"));
+                super::peer_sends::peer_wake_failed(st, &sid, &w, &format!("It was resting: Cue started it again, but Claude Code exited ({code}) before taking it."));
+            }
             st.sessions.set_pid(&sid, None);
             st.sessions.team_process_ended(&sid, crate::clock::now_ms());
             if waking {

@@ -128,6 +128,10 @@ pub(crate) struct Store {
     /// A paused hosted session Cue started again for a message (`wake_hosted`), until it takes it: the process it
     /// started. It ending, or not taking the message within `hosted::WAKE_LIMIT_MS`, means it didn't wake (#857).
     hosted_waking: HashMap<String, i32>,
+    /// A resting hosted session Cue started again for another session's message (peer_sends.rs), until it takes it:
+    /// whose message (the sender's id, its SendMessage call) and what it said. Not taken in time, or its process
+    /// ending first, the message didn't go.
+    peer_waking: HashMap<String, peer_sends::PeerWake>,
     /// A hosted Claude sent `/rename` (sessions.rs `rename_hosted`), until the turn it reports for it ends (or this
     /// time passes): that turn is the command's, not work, so it isn't shown.
     hosted_renaming: HashMap<String, u64>,
