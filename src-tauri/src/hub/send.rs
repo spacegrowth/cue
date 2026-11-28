@@ -776,6 +776,10 @@ impl Hub {
     /// with Enter; where it was typed. The typing gate isn't taken: callers that need it take it themselves.
     pub fn type_command(&self, origin: &Origin, command: &str) -> Result<String, String> {
         debug_assert!(command.starts_with('/'), "not a slash command: {command}");
+        // A hosted session has no terminal: the command goes to its Claude as a message, which runs it itself.
+        if origin.hosted {
+            return self.hosted().send(&origin.session_id, command).map(|_| "Cue".to_string());
+        }
         self.keys().type_into(origin, command)
     }
 

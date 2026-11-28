@@ -14,13 +14,14 @@ use std::path::Path;
 const PRIMITIVES: [&str; 7] = ["type_into(", "send_direct(", "send_saved_hosted(", "send_to_hosted(", "send_to_hosted_held(", "hosted().send(", "send_to_session("];
 /// The lines that may call them, as (file, the call as written there). A file named with "*" may call `what` on any
 /// line: where the primitive is made (the terminal's keys, the hosted connections), or where your words are sent.
-const ALLOWED: [(&str, &str); 20] = [
+const ALLOWED: [(&str, &str); 21] = [
     // deliver itself, and typing a command
     ("hub/send.rs", "self.send_saved_hosted(session_id, typed, saved, busy, now, held)"),
     ("hub/send.rs", "self.send_direct(session_id, text, saved, now)"),
     ("hub/send.rs", "self.keys().type_into(&origin, "),
     ("hub/send.rs", "self.send_to_hosted_held(session_id, typed, saved, busy, held)"),
     ("hub/send.rs", "self.keys().type_into(origin, command)"),
+    ("hub/send.rs", "self.hosted().send(&origin.session_id, command)"),
     // the hosted half of deliver
     ("hub/hosted.rs", "self.send_to_hosted_held(sid, typed, saved, busy, None)"),
     ("hub/hosted.rs", "self.send_to_hosted(sid, text, &[], busy)"),

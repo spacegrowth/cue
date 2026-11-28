@@ -550,8 +550,12 @@ impl Hub {
     /// `/rename <name>` sent to a running hosted Claude, the turn it reports dropped. Err: why it didn't get it (noted).
     fn send_hosted_rename(&self, session_id: &str, name: &str) -> Result<(), String> {
         self.write(|st| st.hosted_renaming.insert(session_id.to_string(), now_ms() + RENAME_WITHIN_MS));
-        match self.hosted().send(session_id, &format!("/rename {name}")) {
-            Ok(()) => {
+        let Some(origin) = self.hosted_origin(session_id) else {
+            self.write(|st| st.hosted_renaming.remove(session_id));
+            return Err(self.rename_failed(session_id, "Couldn't give Claude Code the new name: that session is gone"));
+        };
+        match self.type_command(&origin, &format!("/rename {name}")) {
+            Ok(_) => {
                 self.write(|st| st.sessions.expect_rename(session_id, name, now_ms() + RENAME_WITHIN_MS));
                 Ok(())
             }

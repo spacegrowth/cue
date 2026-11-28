@@ -361,6 +361,8 @@ impl Hub {
     /// A hosted turn is over (`cost`: the session's cost so far): its reply, the stop Cue made, or an API error (a
     /// usage limit leaves it limited, with Cue's carry-on, as a terminal session's StopFailure does).
     fn hosted_turn_ended(&self, origin: Origin, cost: f64, text: String, failed: bool, unprompted: bool) {
+        // A message to another session still going out as its turn ends: its call's result never came.
+        self.peer_sends_stopped(&origin.session_id);
         self.set_cost(&origin.session_id, cost);
         let (stopped, api_error) = self.write(|st| (st.hosted_stopped.remove(&origin.session_id), st.hosted_api_error.remove(&origin.session_id)));
         if let Some((error, said)) = api_error {
@@ -371,8 +373,6 @@ impl Hub {
             self.failed(origin, &error, &said);
             #[cfg(feature = "ext")]
             self.ext_turn_ended(&sid, super::ext::TurnEnd::Failed(said));
-        // A message to another session still going out as its turn ends: its call's result never came.
-        self.peer_sends_stopped(&origin.session_id);
             return;
         }
         if failed && stopped.is_some() {
