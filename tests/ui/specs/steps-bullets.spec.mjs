@@ -73,6 +73,9 @@ test("a click anywhere on a bullet's line opens its steps and closes them again;
   const turn = await open(page, cue, { working: false });
   const first = turn.locator(".bul-row").first();
   await expect(first.locator(".bul-x")).toHaveText("First steps");
+  // Closed, its line shows a soft ground under the mouse; open, none.
+  await first.locator(".bul-x").hover();
+  expect(await first.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
   await first.locator(".bul-x").click();
   await expect(first).toHaveClass(/open/);
   await expect(first.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);

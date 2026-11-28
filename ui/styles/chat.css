@@ -530,6 +530,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .bul-row { display: flex; gap: 10px; border-radius: 10px; }
 /* An opened bullet keeps the chat's ground: its steps open under it as rows, as they did before bullets. */
 .bul-l[data-bul-line] { cursor: pointer; }
+/* A closed bullet with steps shows it opens on hover (a soft ground drawn around it, so nothing moves); an open one
+   stays plain. */
+.bul-row:not(.open):has(.bul-l[data-bul-line]:hover) { background: color-mix(in srgb, var(--panel-2) 70%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--panel-2) 70%, transparent); }
 .bul-row.reveal { animation: stxIn 0.3s ease-out both; }
 .bul-c { flex: none; width: 46px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 3px; }
 .bul-t { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
