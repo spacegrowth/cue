@@ -92,7 +92,7 @@ function bulletsBlock(sid, turn, { live, open, all, key, bk, items, steps, first
     const count = g.steps.length ? `<button class="bul-n" data-bul="${esc(gk)}" data-open="${opened ? 1 : 0}" aria-expanded="${opened}">${gbad ? `<span class="bul-bad">${gbad} failed · </span>` : ""}${many(g.steps.length, "step")} ${opened ? "⌄" : "›"}</button>` : "";
     const run = running && !opened ? `<div class="bul-run"><span class="dot-live"></span><span class="bul-cmd">${esc(running.verb)}${running.subject ? ` <span class="${running.mono ? "mono" : ""}">${esc(running.subject)}</span>` : ""}</span><span class="dim">· <span data-ago="${running.at_ms}">${ago(running.at_ms)}</span></span></div>` : "";
     const rowsHtml = opened && g.steps.length ? `<div class="stx-steps">${g.steps.map((x) => stepLine(sid, x, false)).join("")}</div>` : "";
-    return `<div class="bul-row ${isNow ? "now" : "done"}${gbad ? " fail" : ""}${opened ? " open" : ""}" data-key="g:${esc(gk)}"><div class="bul-c">${time}</div><i class="bul-dot"></i><div class="bul-b"><div class="bul-l"><div class="bul-x msg">${text}</div>${count}</div>${run}${rowsHtml}</div></div>`;
+    return `<div class="bul-row ${isNow ? "now" : "done"}${gbad ? " fail" : ""}${opened ? " open" : ""}" data-key="g:${esc(gk)}"><div class="bul-c">${time}</div><i class="bul-dot"></i><div class="bul-b"><div class="bul-l"${g.steps.length ? ` data-bul-line="${esc(gk)}"` : ""}><div class="bul-x msg">${text}</div>${count}</div>${run}${rowsHtml}</div></div>`;
   }).join("");
   return `<div class="stx bul" data-key="${esc(bk)}">${head}${rows}${fold}</div>`;
 }

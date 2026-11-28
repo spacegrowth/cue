@@ -528,7 +528,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .bul-bad { color: var(--deny); font-weight: 650; }
 .stx-head .bul-bad { margin-left: 4px; flex: none; }
 .bul-row { display: flex; gap: 10px; border-radius: 10px; }
-.bul-row.open { background: color-mix(in srgb, var(--panel-2) 70%, transparent); margin: 0 -8px; padding: 6px 8px; }
+/* An opened bullet keeps the chat's ground: its steps open under it as rows, as they did before bullets. */
+.bul-l[data-bul-line] { cursor: pointer; }
 .bul-row.reveal { animation: stxIn 0.3s ease-out both; }
 .bul-c { flex: none; width: 46px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 3px; }
 .bul-t { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }

@@ -223,6 +223,9 @@ const CHAT_FOOT_CLICKS = [
     if (!open) return bulletFold(b, () => { bulletOpen.set(k, false); renderMain(); });
     bulletOpen.set(k, true); bulletReading(b); renderMain(); requestAnimationFrame(() => bulletIntoView(k));
   }),
+  // Anywhere on a bullet's line opens or closes its steps, as its "N steps" does; not a link in it, and not while
+  // you're selecting its words.
+  rule("[data-bul-line]", (l) => l.querySelector("[data-bul]")?.click(), (_, t) => !t.closest("a") && !String(getSelection?.() || "").trim()),
   rule("[data-turn-all]", (ta) => { const k = ta.dataset.turnAll; flipIn(turnAll, k); for (const b of [...bulletOpen.keys()]) if (b.startsWith(`${k}|`)) bulletOpen.delete(b); renderMain(); wantDetails(k.split("|")[0]); }),
   rule("[data-agent-brief]", (ab) => { flipIn(agentBriefOpen, ab.dataset.agentBrief); renderMain(); }),
   rule("[data-hook-fold]", (hk) => { flipIn(hookOpen, hk.dataset.hookFold); renderMain(); }),

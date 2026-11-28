@@ -69,6 +69,19 @@ test("while it works: a bar with the count, a bullet per thing it said, times an
   await expect(turn.locator(".stx-line")).toHaveCount(0);
 });
 
+test("a click anywhere on a bullet's line opens its steps and closes them again; an open bullet has no panel of its own", async ({ page, cue }) => {
+  const turn = await open(page, cue, { working: false });
+  const first = turn.locator(".bul-row").first();
+  await expect(first.locator(".bul-x")).toHaveText("First steps");
+  await first.locator(".bul-x").click();
+  await expect(first).toHaveClass(/open/);
+  await expect(first.locator(".stx-line")).toHaveText([/Read header\.js/, /Ran npm test/]);
+  // The chat's own ground, as steps had before bullets: no tinted box around the open bullet.
+  expect(await first.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  await first.locator(".bul-x").click();
+  await expect(first.locator(".stx-line")).toHaveCount(0);
+});
+
 test("a bullet's steps open under it, a step opens its diff, and close again; Show all steps opens every bullet", async ({ page, cue }) => {
   const turn = await open(page, cue);
   const live = turn.locator(".bul-row").nth(1);
