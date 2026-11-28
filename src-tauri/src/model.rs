@@ -9,7 +9,7 @@ pub struct Ctx {
 }
 
 /// One step of a session's back-and-forth: what the agent said or asked, what you said or decided.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Exchange {
     /// "agent" | "you" | "peer" (another agent session sent it)
     pub role: String,
@@ -18,13 +18,36 @@ pub struct Exchange {
     /// Images you sent with it (paths under uploads/ in Cue's data folder).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<String>,
-    /// For "peer": the session that sent it.
+    /// For "peer" (one it got): the session that sent it, by the name Cue shows for it (else Claude's name for it,
+    /// else "another agent").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub from: String,
+    /// For "peer" (one it got): the sending session's project, when Cue knows that session.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project: String,
     /// For "peer": the sending session's id, when Cue knows it (it sent through its hook, #472). The lead's chat
     /// finds its Desk and item from it, to show a message from another Desk across the chat.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub from_sid: String,
+    /// For "peer" (one it sent with SendMessage, hub/peer_sends.rs): who to, by the name it used.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub to: String,
+    /// The same session's id, when that name is one Cue knows (its name in Cue, or Claude's name for it).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub to_sid: String,
+    /// One it sent: "sending" (its SendMessage call is out) · "waiting" (it went; no answer yet) · "answered" (that
+    /// session wrote back) · "failed" (it didn't go: `why`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sent: String,
+    /// One it sent that failed: why, in Claude Code's words ("No agent named 'x' is reachable.").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub why: String,
+    /// One it sent that was answered: when the answer came (that message's `at_ms`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub answered_ms: u64,
+    /// One it sent: its SendMessage call's id, so the call's result finds it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub send_id: String,
     /// Yours, typed into the terminal, but the agent never took it as a message (it may have run as a
     /// command, or still be sitting in its box). Cue says so on the bubble.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

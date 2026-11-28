@@ -14,6 +14,7 @@ mod kept_message;
 pub mod send_at;
 mod marks;
 pub(crate) mod names;
+pub mod peers;
 pub mod quiet;
 pub mod team;
 mod thread;
@@ -429,15 +430,6 @@ impl Sessions {
         self.0.get(session_id).map_or(0, |s| s.turn_ends)
     }
 
-    /// The session whose agent runs as `pid`, by id.
-    pub fn sid_by_pid(&self, pid: i32) -> Option<String> {
-        self.0.iter().find(|(_, s)| s.origin.agent_pid == Some(pid)).map(|(k, _)| k.clone())
-    }
-
-    pub fn project_by_pid(&self, pid: i32) -> Option<String> {
-        self.0.values().find(|s| s.origin.agent_pid == Some(pid)).map(|s| s.project.clone())
-    }
-
     /// When its turn started, while it's at it: working, or waiting on its background agents (it works
     /// again when they report, the same turn to you). The first bar segment since it last waited on you.
     pub fn turn_started(&self, session_id: &str) -> Option<u64> {
@@ -520,6 +512,8 @@ impl Sessions {
                     s.state = "stopped".into();
                     s.cut_by_restart = true;
                 }
+                // Its messages to other sessions still going out: their calls' results ended with it.
+                peers::unsettled(&mut s);
             }
             if !s.origin.session_id.is_empty() {
                 self.0.insert(s.origin.session_id.clone(), s);

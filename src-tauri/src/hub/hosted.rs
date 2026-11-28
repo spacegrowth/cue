@@ -60,6 +60,8 @@ impl Hub {
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
         let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
+        // A message it was sending when its last process went (its call never came back): it didn't go.
+        self.peer_sends_stopped(&origin.session_id);
         // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append; with
         // what its project counts one-way (Ask me before, desk/one_way.rs), as the setting is at this start.
         // A project's Desk lead (desk/hub/lead/run.rs) gets the Desk's instructions instead: it only hands work out, so no crew.
@@ -320,6 +322,13 @@ impl Hub {
         self.team_sees(&origin, &e);
         #[cfg(feature = "ext")]
         self.ext_sees(&origin, &e);
+        // Its own messages to other sessions (peer_sends.rs): in its chat as they go out, and how each did.
+        match &e {
+            HostedEvent::ToolCall { id, name, input, agent: None } if name == "SendMessage" => self.peer_send_out(&origin, id, input),
+            HostedEvent::ToolResult { id, output, failed, agent: None } => self.peer_send_back(&origin, id, output, *failed),
+            HostedEvent::Exited { .. } => self.peer_sends_stopped(&origin.session_id),
+            _ => {}
+        }
         match e {
             HostedEvent::TurnStarted => self.hosted_turn_started(origin),
             HostedEvent::Taken { text } => self.hosted_taken(origin, text),
@@ -362,6 +371,8 @@ impl Hub {
             self.failed(origin, &error, &said);
             #[cfg(feature = "ext")]
             self.ext_turn_ended(&sid, super::ext::TurnEnd::Failed(said));
+        // A message to another session still going out as its turn ends: its call's result never came.
+        self.peer_sends_stopped(&origin.session_id);
             return;
         }
         if failed && stopped.is_some() {

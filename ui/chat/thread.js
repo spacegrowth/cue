@@ -201,6 +201,28 @@ function peerBubble(from, how, at, body, quote) {
   return `<div class="mg peer-msg"><div class="mg-h"><span class="mg-chip">${esc(from)}</span>${how ? `<span class="mg-to">${esc(how)}</span>` : ""}<span class="mg-tag">${quote ? "Forwarded" : "From a session"}</span><span class="mg-age">${ago(at)} ago</span></div>
     ${body ? `<div class="msg mg-text cv-text">${md(body)}</div>` : ""}${quote ? `<div class="mg-full msg">${md(quote)}</div>` : ""}</div>`;
 }
+/** A message between this session `sid` and another (peer messages, option B with To and From): the Desk's band
+ *  across the chat (styles desk-lead.css .dk-band, desk/lead.js deskBand), its two-arrow tile, then the head. One it
+ *  got: "From <sender> · <project>", the words, "<this session> answers it below; you don't need to." One it sent
+ *  (`to`, the .out band): "To <recipient>", the words, and how it went (Sending…, Waiting for its answer, Answered ·
+ *  <age>, Didn't send: <why>). "Open its chat" when the other session is one Cue knows. */
+function peerMsgBand(sid, e) {
+  const out = !!e.to;
+  const other = out ? e.to_sid : e.from_sid;
+  const known = other && other !== sid && sessionOf(other) ? other : "";
+  const who = (known && nameOf(known, out ? e.to : e.from)) || (out ? e.to : e.from) || "another session";
+  const tile = `<span class="dk-band-tile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-3-3"/><path d="M20 16H6l3 3"/></svg></span>`;
+  const proj = e.project && e.project !== who ? `<span class="dk-band-by">· ${esc(e.project)}</span>` : "";
+  const head = `${tile}<span class="dk-band-desk">${out ? "To" : "From"} ${esc(who)}</span>${proj}${e.at_ms != null ? `<span class="dk-band-age">${ago(e.at_ms)}</span>` : ""}`;
+  const me = esc(nameOf(sid, sessionOf(sid)?.project) || "This session");
+  const st = !out ? `<span class="dk-band-st">${me} answers it below; you don't need to.</span>`
+    : e.sent === "answered" ? `<span class="dk-band-ok"><i></i>Answered${e.answered_ms ? ` · ${ago(e.answered_ms)} ago` : ""}</span>`
+    : e.sent === "failed" ? `<span class="dk-band-st dk-band-fail">Didn't send${e.why ? `: ${esc(e.why)}` : ""}</span>`
+    : e.sent === "waiting" ? `<span class="dk-band-st">Waiting for its answer</span>`
+    : `<span class="dk-band-st">Sending…</span>`;
+  const open = known ? `<button class="dk-band-open" data-peer-open="${esc(known)}">Open its chat</button>` : "";
+  return `<div class="dk-band peer-band${out ? " out" : ""}" data-peer="${out ? "sent" : "got"}"${out ? ` data-sent="${esc(e.sent || "sending")}"` : ""}><div class="dk-band-h">${head}</div><div class="dk-band-t dk-md">${md(e.text || "")}</div><div class="dk-band-f">${st}${open}</div></div>`;
+}
 // ---------- steps: what the agent did between your message and its reply ----------
 // Read from the session's transcript by Cue on demand (only for the session open here), never saved.
 // Settings → Steps: one line each (open a step for its output or diff), everything open, or hidden.

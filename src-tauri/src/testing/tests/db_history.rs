@@ -7,7 +7,7 @@ use rusqlite::{params, Connection};
 use serde_json::json;
 
 /// The columns each version added (db/schema.rs `migrate`), as (version, table, column).
-const ADDED: [(i64, &str, &str); 14] = [
+const ADDED: [(i64, &str, &str); 20] = [
     (3, "turns", "looks"),
     (3, "turns", "agents"),
     (3, "turns", "relay"),
@@ -22,8 +22,14 @@ const ADDED: [(i64, &str, &str); 14] = [
     (12, "exchanges", "from_sid"),
     (13, "exchanges", "by_cue"),
     (14, "exchanges", "cue_kind"),
+    (16, "exchanges", "project"),
+    (16, "exchanges", "to_name"),
+    (16, "exchanges", "to_sid"),
+    (16, "exchanges", "sent"),
+    (16, "exchanges", "why"),
+    (16, "exchanges", "answered_ms"),
 ];
-const LATEST: i64 = 15;
+const LATEST: i64 = 16;
 
 /// The World's database file, opened beside Cue's (Cue's own connection let go first).
 fn outside(w: &World) -> Connection {
@@ -236,7 +242,7 @@ fn a_cue_message_keeps_its_kind_in_the_saved_chat_and_an_older_database_has_none
         "driven_by": "", "queued": null, "since_ms": 1, "prompt": "", "segments": [], "thread": []
     }))
     .unwrap();
-    let you = |at: u64, text: &str, kind: &str| crate::model::Exchange { role: "you".into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: !kind.is_empty(), kind: kind.into(), cue_parts: vec![] };
+    let you = |at: u64, text: &str, kind: &str| crate::model::Exchange { role: "you".into(), text: text.into(), at_ms: at, images: vec![], from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: !kind.is_empty(), kind: kind.into(), cue_parts: vec![], ..Default::default() };
     s.thread = vec![you(10, "Desk item #4 has moved to docs: stop work on it.", "route"), you(20, "fix the footer", "")];
     crate::db::save_ended(&[(30, s)]);
     let log = crate::db::session_log("k");

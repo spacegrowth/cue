@@ -117,10 +117,30 @@ pub fn save_ended(ended: &[(u64, Session)]) {
 pub(super) fn put_exchange(c: &Connection, session_id: &str, e: &Exchange) -> rusqlite::Result<()> {
     // Same moment, same speaker: the same exchange (its images may have been filled in since).
     c.execute(
-        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind, project, to_name, to_sid, sent, why, answered_ms)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
          ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images, voice = excluded.voice, status_ask = excluded.status_ask,
-           from_name = excluded.from_name, from_sid = excluded.from_sid, by_cue = excluded.by_cue, cue_kind = excluded.cue_kind",
-        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice, e.status_ask.as_deref().unwrap_or(""), e.from, e.from_sid, e.cue, e.kind],
+           from_name = excluded.from_name, from_sid = excluded.from_sid, by_cue = excluded.by_cue, cue_kind = excluded.cue_kind,
+           project = excluded.project, to_name = excluded.to_name, to_sid = excluded.to_sid, sent = excluded.sent, why = excluded.why, answered_ms = excluded.answered_ms",
+        params![
+            session_id,
+            e.at_ms as i64,
+            e.role,
+            e.text,
+            serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()),
+            e.voice,
+            e.status_ask.as_deref().unwrap_or(""),
+            e.from,
+            e.from_sid,
+            e.cue,
+            e.kind,
+            e.project,
+            e.to,
+            e.to_sid,
+            e.sent,
+            e.why,
+            e.answered_ms as i64
+        ],
     )?;
     Ok(())
 }

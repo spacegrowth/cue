@@ -73,7 +73,7 @@ pub fn known_session_ids() -> std::collections::HashSet<String> {
 /// Everything Cue logged for one session, oldest first: the whole conversation, ended sessions too.
 pub fn session_log(session_id: &str) -> Vec<Value> {
     with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind, project, to_name, to_sid, sent, why, answered_ms FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
         let rows = st.query_map(params![session_id], log_row)?;
         rows.collect()
     })
@@ -84,7 +84,7 @@ pub fn session_log(session_id: &str) -> Vec<Value> {
 /// chat loads earlier messages a page at a time as you scroll up). Fewer than `limit`: that's the start.
 pub fn session_log_page(session_id: &str, before_ms: u64, limit: usize) -> Vec<Value> {
     let mut page = with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask, from_name, from_sid, by_cue, cue_kind, project, to_name, to_sid, sent, why, answered_ms FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
         let rows = st.query_map(params![session_id, before_ms as i64, limit as i64], log_row)?;
         rows.collect::<rusqlite::Result<Vec<Value>>>()
     })
@@ -104,7 +104,8 @@ fn log_row(r: &rusqlite::Row) -> rusqlite::Result<Value> {
         row["status_ask"] = json!(ask);
     }
     // Another session's message: who sent it, as the live thread has it (the chat draws it by its sender).
-    for (i, key) in [(6, "from"), (7, "from_sid")] {
+    // And one it sent another session: who to and how it did.
+    for (i, key) in [(6, "from"), (7, "from_sid"), (10, "project"), (11, "to"), (12, "to_sid"), (13, "sent"), (14, "why")] {
         let v = r.get::<_, String>(i)?;
         if !v.is_empty() {
             row[key] = json!(v);
@@ -117,6 +118,10 @@ fn log_row(r: &rusqlite::Row) -> rusqlite::Result<Value> {
         if !kind.is_empty() {
             row["kind"] = json!(kind);
         }
+    }
+    let answered = r.get::<_, i64>(15)?;
+    if answered > 0 {
+        row["answered_ms"] = json!(answered);
     }
     Ok(row)
 }

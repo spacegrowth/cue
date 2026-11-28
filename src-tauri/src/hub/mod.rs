@@ -51,6 +51,7 @@ mod live_writes;
 mod log_paths;
 pub(crate) use log_paths::{codex_sessions_dir, pi_sessions_dir, steps_path};
 pub(crate) mod page_look;
+mod peer_sends;
 mod picking_up;
 pub(crate) mod ports;
 mod projects;

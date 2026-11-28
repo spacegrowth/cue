@@ -105,6 +105,7 @@ mod machine_stream;
 mod machines;
 mod notifications;
 mod parking;
+mod peer_messages;
 mod probe;
 mod redraw;
 mod relaunch;

@@ -80,6 +80,8 @@ const THREAD_CLICKS = [
   rule("[data-bg-open]", (bo) => { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; bgTabOn.set(sid, bo.dataset.bgOpenTab || "agents"); return it ? setActive(it) : openSession(sid); }),
   // A stuck agent's Resume / Stop, before its row's own click (agents.js).
   rule("[data-ag-wake]", (b) => agentWake(b.dataset)),
+  // A band from or to another session (thread.js peerMsgBand): Open its chat.
+  rule("[data-peer-open]", (po) => openSession(po.dataset.peerOpen)),
   rule("[data-helper]", (hb) => { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; renderMain(); }),
   // Back to the chat (Go to chat, ‹ Back to chat, the lead's chip): with the cursor in its box, ready to write.
   rule("[data-helper-back]", () => { closeHelperView(); focusComposer(); }),

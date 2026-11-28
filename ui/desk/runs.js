@@ -152,7 +152,7 @@ function dkLinesOf(s, e, n, page, answer = null) {
   const withAnswer = (h) => (said ? h.replace(/<\/div>\s*$/, `${said}</div>`) : h);
   // Another Desk's band, marked Cue's, in a lead's chat (#837): Activity's, the lead's answer under it.
   if (chatFrom(e) === "cue" && chatPlace(e, page?.you === deskLeadNote ? "lead" : "session") === "activity") {
-    const band = e.role === "peer" ? (typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text)
+    const band = e.role === "peer" ? (typeof deskPeerBand === "function" && !e.to && deskPeerBand(sid, e)) || peerMsgBand(sid, e)
       : typeof deskToldBand === "function" && deskToldBand(sid, e);
     // The answers under the band, not inside it (its tint is that Desk's words only).
     if (band) return [`<div data-dk="peer" class="dk-peer-row">${band}${said}</div>`];

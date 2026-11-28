@@ -95,13 +95,13 @@ impl Sessions {
     }
 
     /// Add an entry to the thread as it is (no folding into the one before).
-    fn push(s: &mut Session, role: &str, text: &str, images: &[String], keep: usize) {
+    pub(super) fn push(s: &mut Session, role: &str, text: &str, images: &[String], keep: usize) {
         let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
         let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
         // reply to them) are saved by moment and speaker, and the second would overwrite the first.
         let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
-        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![] });
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), from_sid: String::new(), unsent: false, pending: false, no_wake: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None, written_ms: 0, cue: false, kind: String::new(), cue_parts: vec![], ..Default::default() });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -140,30 +140,45 @@ impl Sessions {
 
     /// The same, with the sending session's id when Cue knows it (#472).
     pub fn note_peer_sid(&mut self, session_id: &str, from: &str, from_sid: &str, text: &str, keep: usize) {
-        self.note(session_id, "peer", text, keep);
-        if let Some(last) = self.0.get_mut(session_id).and_then(|s| s.thread.last_mut()) {
-            if last.role == "peer" && last.from.is_empty() {
-                last.from = from.to_string();
-                last.from_sid = from_sid.to_string();
-            }
+        let sender = super::peers::Sender { from: from.to_string(), project: String::new(), sid: from_sid.to_string(), claude: String::new() };
+        self.note_peer_from(session_id, &sender, text, keep);
+    }
+
+    /// A message from `sender`, noted: and a message this session sent that session, still waiting, is answered by it.
+    pub fn note_peer_from(&mut self, session_id: &str, sender: &super::peers::Sender, text: &str, keep: usize) {
+        // Right after one it sent, or one from another session, it's a message of its own, even in the same words (a
+        // quick "ok" back to its "ok"): only the same sender's same words a moment later are an echo.
+        let after_other = self.0.get(session_id).and_then(|s| s.thread.last()).is_some_and(|l| l.role == "peer" && (!l.to.is_empty() || l.from != sender.from || l.from_sid != sender.sid));
+        match self.0.get_mut(session_id) {
+            Some(s) if after_other && !text.trim().is_empty() => Self::push(s, "peer", text.trim(), &[], keep),
+            _ => self.note(session_id, "peer", text, keep),
         }
+        let Some(last) = self.0.get_mut(session_id).and_then(|s| s.thread.last_mut()) else { return };
+        if last.role != "peer" || !last.from.is_empty() || !last.to.is_empty() {
+            return;
+        }
+        last.from = sender.from.clone();
+        last.project = sender.project.clone();
+        last.from_sid = sender.sid.clone();
+        let at = last.at_ms;
+        self.peer_answered(session_id, sender, at);
     }
 
     /// Its teammates' and other sessions' messages read from its log, oldest first (`teammate_messages_after`): each
-    /// as a message from who sent it, and the log read up to the newest. Another session goes by the project Cue
-    /// shows for it and its id (as `Hub::prompt_from_peer` notes one), once: one already in the chat isn't noted again.
+    /// as a message from who sent it, and the log read up to the newest. Another session goes by the name Cue shows
+    /// for it, its project and its id (as `Hub::prompt_from_peer` notes one), once: one already in the chat isn't
+    /// noted again.
     pub fn note_teammates(&mut self, session_id: &str, heard: &[crate::logs::transcript::Heard], keep: usize) {
         for h in heard {
             let Some(pid) = h.pid else {
                 self.note_peer(session_id, &h.who, &h.said, keep);
                 continue;
             };
-            if self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().take(20).any(|e| e.role == "peer" && e.text == h.said)) {
+            if self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().take(20).any(|e| e.role == "peer" && e.to.is_empty() && e.text == h.said)) {
                 continue;
             }
-            let who = self.project_by_pid(pid).unwrap_or_else(|| if h.who.is_empty() { "another agent".into() } else { h.who.clone() });
-            let sid = self.sid_by_pid(pid).unwrap_or_default();
-            self.note_peer_sid(session_id, &who, &sid, &h.said, keep);
+            let sender = self.sender(Some(pid), &h.who);
+            self.note_peer_from(session_id, &sender, &h.said, keep);
         }
         if let (Some(s), Some(last)) = (self.0.get_mut(session_id), heard.iter().map(|h| h.at).max()) {
             s.teammates_read_ms = s.teammates_read_ms.max(last);

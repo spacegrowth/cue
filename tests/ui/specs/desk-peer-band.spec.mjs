@@ -1,9 +1,9 @@
 // A message between Desks in a lead's chat (#472, #540; #640 option B): a band across the whole chat in the sending
 // Desk's colour, headed by a tile and the Desk, who sent it and the item; the words; a foot saying whether the lead
 // answered, and Open <Desk>. The lead's own TELL DESK is the same band, "To <Desk>", with whether that lead answered.
-// One from the lead's own Desk keeps the usual "From …" bubble. Since #837 a message another session sent the lead (a
-// peer) is the lead's Activity's, the band drawn there, with the lead's answer under it: the lead's chat holds only your
-// messages and the lead's answers to them. A TELL DESK band stays in the chat.
+// One from the lead's own Desk is the plain band between two sessions ("From <session>"). Since #837 a message another
+// session sent the lead (a peer) is the lead's Activity's, the band drawn there, with the lead's answer under it: the
+// lead's chat holds only your messages and the lead's answers to them. A TELL DESK band stays in the chat.
 import { test, expect, openDesk } from "./cue.mjs";
 import { NOW } from "./clock.mjs";
 
@@ -61,9 +61,9 @@ for (const scheme of ["light", "dark"]) {
     await expect(b.locator(".dk-band-st")).toContainText("answers it below; you don't need to.");
     await expect(b.locator(".dk-band-open")).toHaveText("Open Docs site Desk");
     await isBand(page, b, false);
-    // The one from the lead's own Desk keeps the usual bubble, there too.
-    await expect(moves.locator(".peer-msg")).toHaveCount(1);
-    await expect(moves.locator(".peer-msg")).toContainText("From this Desk's own session.");
+    // The one from the lead's own Desk is the plain session-to-session band (thread.js peerMsgBand), there too.
+    await expect(moves.locator(".peer-band")).toHaveCount(1);
+    await expect(moves.locator(".peer-band")).toContainText("From this Desk's own session.");
     await expect(page.locator("[title]")).toHaveCount(0);
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/desk-peer-band-${scheme}.png` });
   });

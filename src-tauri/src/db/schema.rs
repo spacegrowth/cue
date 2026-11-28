@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS exchanges (
   from_sid    TEXT NOT NULL DEFAULT '',    -- and that session's id, when Cue knew it
   by_cue      INTEGER NOT NULL DEFAULT 0, -- 'you' in the thread, but Cue's own message to it (#836)
   cue_kind    TEXT NOT NULL DEFAULT '',    -- and what kind of message of Cue's it is (#837)
+  project     TEXT NOT NULL DEFAULT '',    -- another session's message: the sender's project
+  to_name     TEXT NOT NULL DEFAULT '',    -- a message it sent another session: who to
+  to_sid      TEXT NOT NULL DEFAULT '',    -- and that session's id, when Cue knew it
+  sent        TEXT NOT NULL DEFAULT '',    -- and how it did: sending, waiting, answered, failed
+  why         TEXT NOT NULL DEFAULT '',    -- why it failed
+  answered_ms INTEGER NOT NULL DEFAULT 0,  -- when it was answered
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -467,6 +473,14 @@ fn migrate_on(c: &Connection, version: i64) -> rusqlite::Result<()> {
         c.pragma_update(None, "user_version", 14)?;
     }
     seed_desk_worked(c, version)?;
+    // A message it sent another session (who to, how it did) and the sender's project on one it got: the columns,
+    // so an older page of a chat keeps them. A new database has them already.
+    if version < 16 {
+        for col in ["project TEXT NOT NULL DEFAULT ''", "to_name TEXT NOT NULL DEFAULT ''", "to_sid TEXT NOT NULL DEFAULT ''", "sent TEXT NOT NULL DEFAULT ''", "why TEXT NOT NULL DEFAULT ''", "answered_ms INTEGER NOT NULL DEFAULT 0"] {
+            let _ = c.execute(&format!("ALTER TABLE exchanges ADD COLUMN {col}"), []);
+        }
+        c.pragma_update(None, "user_version", 16)?;
+    }
     Ok(())
 }
 

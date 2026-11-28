@@ -256,8 +256,9 @@ function chatRowHtml(c, e, n) {
   if (fold?.skip.has(n) || hidden.has(n)) return "";
   // Another Desk's band in the lead's chat goes to Activity (chat/who.js chatPlace, #837): marked the Desk's, it leaves.
   const out = (h) => (chatPlace(e, c.chat) === "activity" && typeof dkMark === "function" ? dkMark(h, "peer") : h);
-  // From another Desk's session, in a lead's chat: a band across the chat (desk/lead.js, #472).
-  if (e.role === "peer") return out((typeof deskPeerBand === "function" && deskPeerBand(sid, e)) || peerBubble(e.from || "another agent", "", e.at_ms, e.text));
+  // From another Desk's session, in a lead's chat: a band across the chat (desk/lead.js, #472); any other message
+  // between sessions, got or sent: the same band, From or To that session (thread.js peerMsgBand).
+  if (e.role === "peer") return out((typeof deskPeerBand === "function" && !e.to && deskPeerBand(sid, e)) || peerMsgBand(sid, e));
   if (answers.has(n)) return "";
   if (decided.has(n)) return chose.length && near(e.at_ms) ? "" : chatDecisionLine(decided.get(n), e.at_ms);
   if (asks.has(n)) return chatAskHtml(`${s?.session_id || it?.id}:${e.at_ms}`, e, asks.get(n), harness, it?.machine || s?.machine);
