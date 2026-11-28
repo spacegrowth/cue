@@ -269,6 +269,9 @@ function chatRowHtml(c, e, n) {
   // (chatCueRow marks it so), never your bubble; its words only pick how it looks. A message from before the tags
   // goes on as it always did, below.
   const place = chatPlace(e, c.chat);
+  // The lead's "Reviewing <name> in the background.": one quiet line that follows that review (team.js).
+  const rv = e.role === "agent" && !reviews.has(n) && reviewingLineHtml(sid, s?.team, c.ex, n, reviews);
+  if (rv) return out(rv);
   if (place === "reply") return reviews.has(n) ? "" : chatAgentHtml(c, e, n);
   if (place !== "bubble") return chatCueRow(page, s, sid, e, n, reviewAt) || "";
   // Your send-back of an item ("Not done", #688): your bubble with the item's head, as your other words about it.

@@ -46,7 +46,7 @@ function extFrame(e) {
   return f;
 }
 
-/** The row under the activity bar: Chat, Activity, Agents and Scripts (background.js), Diff (diff.js),
+/** The row under the activity bar: Chat, Activity, Agents and Scripts (background.js), Files (diff.js),
  *  then a tab per extension that has one. */
 function sessTabs(sid) {
   const tabs = extTabs();

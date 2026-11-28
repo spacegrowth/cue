@@ -1,5 +1,5 @@
 // A diff over the page: a click on a changed file (a Desk item's Files changed, a session's "Changed this turn" on
-// the Desk) opens it here instead of leaving for the session's Diff tab. Files on the left, the picked file's diff on the
+// the Desk) opens it here instead of leaving for the session's Files tab. Files on the left, the picked file's diff on the
 // right; ↑ ↓ step through the files, Esc (or a click outside, or ×) closes it and you're where you were.
 // Drawn on its own element over the window, apart from renderMain, so a redraw under it doesn't touch it.
 
@@ -74,12 +74,12 @@ function diffOverlayKey(e) {
 /** A short list of changed files, as the Desk's panel shows them: each path with its +/−, the first
  *  `max`, then "and N more files ›". `files`: diffParse's, or { path } alone while their lines are on the way.
  *  `attrs(n)`: the click attributes that open file n's diff, "" for a plain row; `more`: the "more" link's ("" leaves
- *  it out). */
-function fileListHtml(files, { attrs = () => "", more = "", max = 3 } = {}) {
+ *  it out); `extra`: rows to end the list with (the Board's Files tab's folders full of new files). */
+function fileListHtml(files, { attrs = () => "", more = "", max = 3, extra = "" } = {}) {
   // "new" sits by its path, so the counts stay in one column whatever's new (#394).
   const nums = (f) => (f.add == null ? "" : `<span class="ib-nums"><span class="ib-add">+${f.add || 0}</span> <span class="ib-del">−${f.del || 0}</span></span>`);
   const cells = (f) => `<code>${esc(f.path)}</code>${f.isNew && f.add != null ? `<span class="ib-new">new</span>` : ""}${nums(f)}`;
   const row = (f, n) => { const a = attrs(n); return a ? `<button class="ib-file" ${a}>${cells(f)}</button>` : `<div class="ib-file">${cells(f)}</div>`; };
   const rest = files.length > max && more ? `<button class="ib-link" ${more}>and ${files.length - max} more files ›</button>` : "";
-  return `<div class="ib-files">${files.slice(0, max).map(row).join("")}</div>${rest}`;
+  return `<div class="ib-files">${files.slice(0, max).map(row).join("")}${extra}</div>${rest}`;
 }

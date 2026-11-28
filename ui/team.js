@@ -556,16 +556,65 @@ function reviewLineParts(team, name, text) {
   return { words, verdict, counts, suffix, button, open: !!t && !suffix, member: t };
 }
 
+/** The lead's own words when it starts a member's review (hub/team/review.rs review_words has it reply only
+ *  "Reviewing <name> in the background."): the member's name. */
+const REVIEWING_SAID = /^\s*\**reviewing\s+(.+?)\s+in the background\.?\**\s*$/i;
+/** The lead's "Reviewing <name> in the background." (the `n`th of chat `ex`) as one quiet line that follows the review
+ *  it started: "Reviewing <name>…" with the live dot while it runs; back, "Review of <name>: 2 fixes to send · Send
+ *  fixes · See review" or "Review of <name>: ready to commit · Commit · See review". The newest such line for a member
+ *  is its crew row's: while the member is reviewed, its words come from the row's own findings and recommendation and
+ *  its buttons are the row's (data-mt-act, only while the row shows them), See review opening the tray on its full
+ *  review. An older line (or the newest once the member moved on) shows the review that followed it before the lead's
+ *  next such line: a reply folded into Cue's bubble (`reviews`, index → name, chat/render.js reviewFolds) or headed
+ *  "Review of <name>:" with a Recommendation, no buttons, See review opening it under the line. The newest line with no
+ *  review to show: "fixes sent · <name> is fixing them" while it works, "committed" once it is. "" when the member or
+ *  its review can't be found (an old chat): the reply is drawn as it was. */
+function reviewingLineHtml(sid, team, ex, n, reviews) {
+  const said = (y) => y?.role === "agent" ? REVIEWING_SAID.exec(y.text || "")?.[1] : undefined;
+  const name = said(ex[n]), t = name && [...(team || [])].reverse().find((m) => m.name === name);
+  if (!t) return "";
+  const latest = !ex.some((y, k) => k > n && said(y) === name);
+  let end = ex.findIndex((y, k) => k > n && said(y) === name);
+  if (end < 0) end = ex.length;
+  const head = new RegExp(`^\\W*review of ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  const at = ex.findIndex((y, k) => k > n && k < end && y.role === "agent" && (reviews.get(k) === name || (head.test((y.text || "").trim()) && hasRecommendation(y.text))));
+  const chat = at >= 0 ? ex[at].text : "";
+  const line = (inner) => `<div class="cv-rv" data-at="${ex[n].at_ms}">${inner}</div>`;
+  const quiet = (words, live = false) => line(`${live ? `<span class="dot-live"></span>` : ""}<span class="cv-rv-w">${esc(words)}</span>`);
+  const current = latest && t.state === "reviewed";
+  if (latest && ["queued", "reviewing"].includes(t.state)) return quiet(`Reviewing ${name}…`, true);
+  if (!current && !chat) {
+    if (!latest) return "";
+    if (t.state === "working") return quiet(`Review of ${name}: fixes sent · ${name} is fixing them`, true);
+    if (t.state === "committed") return quiet(`Review of ${name}: committed`);
+    return "";
+  }
+  // What it calls for: the crew row's own reading (mateReadyAct) on the current review, else read off the chat's copy.
+  const found = current ? t.findings || [] : reviewFindings(chat), fix = fixCount(found);
+  const kind = verdictKind(current ? t.recommendation : reviewSays(chat).verdict);
+  const act = current ? mateReadyAct(t) : kind === "commit" && fix ? "fixes" : kind || (found.length ? "fixes" : "commit");
+  const many = fix || found.length;
+  const words = act === "fixes" ? (many ? `${many} ${many === 1 ? "fix" : "fixes"} to send` : "fixes to send") : "ready to commit";
+  const btn = current && !mateOnLead(t) && !mateCueHandles(sid, t) ? (act === "fixes" ? mateBtn(sid, t, "fixes", "Send fixes", "link") : mateCommit(sid, t, "link")) : "";
+  // Not the current one (Cue's bubble that asked for it is Activity's now): See review opens it under the line, in place.
+  const text = current && t.review ? "" : chat, key = `${sid}:${ex[n].at_ms}:rv`, open = !!text && typeof openAsks !== "undefined" && openAsks.has(key);
+  const see = current && t.review ? `<button class="mt-lk" data-mt-see="${esc(mateKey(sid, t))}">See review</button>`
+    : text ? `<button class="mt-lk" data-ask-open="${esc(key)}" aria-expanded="${open}">${open ? "Hide review" : "See review"}</button>` : "";
+  const dot = `<span class="cv-rv-dot">·</span>`;
+  return line(`<span class="cv-rv-w">${esc(`Review of ${name}: ${words}`)}</span>${[btn, see].filter(Boolean).map((b) => dot + b).join("")}`
+    + (open ? `<div class="cv-rv-full msg">${md(text)}</div>` : ""));
+}
+
 /** The teammate an ask comes from, by name, when its session's team has it: "" otherwise. */
 const mateOfAsk = (it) => it?.agent_id ? (sessionOf(it.session_id)?.team || []).find((t) => t.agent_id === it.agent_id)?.name || "" : "";
 /** After the lead's name on an ask's card and in Waiting: "› <teammate>" (the space before it is the caller's: a
  *  card's top line spaces its parts itself). */
 const mateTitle = (it) => { const n = mateOfAsk(it); return n ? `<span class="mt-of">› <b>${esc(n)}</b></span>` : ""; };
 
-/** A teammate's button: Review, Diff (the session's Diff tab on its files), Commit, Send fixes, Stop, Resume. */
+/** A teammate's button: Review, Diff (the session's Files tab on its files), Commit, Send fixes, Stop, Resume. */
 async function mateAct(sid, agent, action) {
   const k = `${sid}|${agent}`;
-  // Diff: the crew folds away for its files in the session's Diff tab (diff.js).
+  // Diff: the crew folds away for its files in the session's Files tab (diff.js).
   // From the crew's page, back to the chat for it.
   if (action === "diff") { mateOpenLeads.delete(sid); if (typeof crewPageSid !== "undefined" && crewPageSid === sid) crewPageSet(null); return diffShowMember(sid, agent, (sessionOf(sid)?.team || []).find((t) => (t.agent_id || t.call) === agent)?.name || ""); }
   // Refused (Commit on main, say): the reason stays under its row until a button of its goes through.
@@ -607,7 +656,7 @@ if (typeof document !== "undefined") {
     }
     // A member's menu closes on any click but its name (one of its items runs as it closes).
     const closeMenu = mateMenu && !t.closest?.("[data-mt-more]");
-    const el = t.closest?.("[data-mt-open], [data-mt-act], [data-mt-more], [data-mt-done], [data-mt-asked], [data-mt-full]");
+    const el = t.closest?.("[data-mt-open], [data-mt-act], [data-mt-more], [data-mt-done], [data-mt-asked], [data-mt-full], [data-mt-see]");
     if (closeMenu) mateMenu = null;
     if (!el) { if (closeMenu) renderMain(); return; }
     e.stopPropagation();
@@ -616,6 +665,8 @@ if (typeof document !== "undefined") {
     if (d.mtMore) { mateMenu = closeMenu || mateMenu === d.mtMore ? null : d.mtMore; return renderMain(); }
     // Unfolded, the finished ones are scrolled into the tray's body.
     if (d.mtDone) { if (mateDoneOpen.has(d.mtDone)) mateDoneOpen.delete(d.mtDone); else { mateDoneOpen.add(d.mtDone); mateShow = `done:${d.mtDone}`; } return renderMain(); }
+    // See review on the lead's "Reviewing <name>" line (reviewingLineHtml): the tray opens on the member's full review.
+    if (d.mtSee) { mateOpenLeads.add(d.mtSee.split("|")[0]); mateUnder.set(d.mtSee, "review"); mateShow = d.mtSee; return renderMain(); }
     const fold = d.mtAsked || d.mtFull, what = d.mtFull ? "review" : "asked";
     if (fold) { if (mateUnder.get(fold) === what) mateUnder.delete(fold); else { mateUnder.set(fold, what); mateShow = fold; } return renderMain(); }
     if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: another crew member has uncommitted changes in one of its files");

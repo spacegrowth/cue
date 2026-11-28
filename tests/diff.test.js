@@ -1,4 +1,4 @@
-// Run: node tests/diff.test.js  (the Diff tab's reading of a diff, and a crew member's files by repo: ui/diff.js)
+// Run: node tests/diff.test.js  (the Files tab's reading of a diff, and a crew member's files by repo: ui/diff.js)
 const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
@@ -39,12 +39,22 @@ const tmp = ctx.diffParse("diff --git a/a.txt b/a.txt\ndiff --git a/r2/b.txt b/r
 assert.equal(ctx.diffRepos(tmp, ["a.txt", "/tmp/r2/b.txt"], "/private/tmp/r1", { "/tmp/r2/b.txt": "/private/tmp/r2" }), true);
 assert.deepEqual(tmp.map((f) => [f.repo, f.path]), [["r1", "a.txt"], ["r2", "b.txt"]]);
 
-// ---- its file list: the repo on each file only when they span repos; never hover text ----
-const html = ctx.dvFilesHtml(files, [], [], true);
-assert.match(html, /<span class="dv-tag dv-repo">cue<\/span><span class="dv-path">ui\/a.js<\/span>/);
-assert.match(html, /<span class="dv-tag dv-repo">site<\/span><span class="dv-path">docs\/x.md<\/span><span class="dv-tag">new<\/span>/);
-assert.doesNotMatch(ctx.dvFilesHtml(files, [], [], false), /dv-repo/);
-assert.doesNotMatch(html, /title=/);
-assert.equal((html.match(/<details class="dv-file" data-i="\d+" open/g) || []).length, 2, "the first few open by themselves");
+// ---- its file list: the Desk's (diff_overlay.js fileListHtml, desk/files.js deskBySize, desk/page.js deskPsec), one
+// section per repo when they span repos, biggest first; a folder full of new files is a row in it; never hover text ----
+const ui = (f) => fs.readFileSync(__dirname + "/../ui/" + f, "utf8");
+vm.runInContext(ui("diff_overlay.js").replace(/^(const|let) /gm, "var "), ctx);
+vm.runInContext(ui("desk/files.js").match(/^const deskBySize = .*$/m)[0].replace(/^const /, "var "), ctx);
+vm.runInContext(ui("desk/page.js").match(/^const deskPsec = .*$/m)[0].replace(/^const /, "var "), ctx);
+const html = ctx.dvFilesHtml([{ head: "cue", files: files.filter((f) => f.repo === "cue"), cls: "dv-repo" }, { head: "site", files: files.filter((f) => f.repo === "site"), cls: "dv-repo" }]);
+assert.match(html, /<section class="dk-psec dk-pfiles dv-repo"><h4 class="dk-psh">cue · 1<\/h4><div class="ib-files"><button class="ib-file" data-dv-file="0"><code>ui\/a.js<\/code>/);
+assert.match(html, /<h4 class="dk-psh">site · 1<\/h4><div class="ib-files"><button class="ib-file" data-dv-file="1"><code>docs\/x.md<\/code><span class="ib-new">new<\/span>/);
+assert.deepEqual(ctx.dv.files.map((f) => f.path), ["ui/a.js", "docs/x.md"], "the overlay steps through every listed file, in order");
+assert.doesNotMatch(html, /title=|<details/, "no hover text; no diffs stacked in the list");
+// Biggest first, three, then "and N more files ›" opening the fourth; a folder of new files a row in the list.
+const sized = [1, 5, 2, 9].map((n, i) => ({ path: `f${i}.js`, add: n, del: 0, lines: [] }));
+const four = ctx.dvFilesHtml([{ head: "Uncommitted", files: sized }], [{ dir: "dist/out/", n: 25 }]);
+assert.deepEqual([...four.matchAll(/<code>([^<]*)<\/code>/g)].map((m) => m[1]), ["f3.js", "f1.js", "f2.js", "dist/out/"]);
+assert.match(four, /<div class="ib-file dv-bulk"><code>dist\/out\/<\/code><span class="ib-new">25 new files<\/span><\/div><\/div><button class="ib-link" data-dv-file="3">and 1 more files ›<\/button>/);
+assert.deepEqual(ctx.dv.files.map((f) => f.path), ["f3.js", "f1.js", "f2.js", "f0.js"]);
 
 console.log("diff ok");

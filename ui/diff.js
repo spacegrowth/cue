@@ -1,24 +1,25 @@
-// ---------- The Diff tab: what the open session changed, from git ----------
-// A tab beside Chat (after Agents and Scripts) for a session with changes, its count on it ("Diff 17 +880 −9"). Git
+// ---------- The Files tab: what the open session changed, from git ----------
+// A tab beside Chat (after Agents and Scripts) for a session with changes, its file count on it ("Files 17"), as the
+// Desk's Files tab is named. Its list is the Desk's (diff_overlay.js fileListHtml: biggest first, the first 3, then
+// "and N more files ›"), a click on a file opening it over the page with this tab's other files beside it. Git
 // runs through Cue's read-only git (extensions.rs diff_git), in the session's folder, on this Mac or its machine:
 //   This session's edits  the files the session edited (from its log), wherever they are: their changes not committed yet
 //   This turn             the session's folder since its latest turn began (Cue's snapshot of it then)
 //   Whole session         the session's folder since its first turn Cue saw began
 //   Uncommitted           everything not committed in the session's folder, whoever changed it
 // A crew member's Diff (team.js) opens it on that member's files only, its diff as the hub reads it (team_action
-// "diff"), a chip on top to go back to the whole diff. A changed file clicked elsewhere (a Desk item's Files changed,
-// a session's Changed this turn) opens over the page instead (diff_overlay.js), so you stay where you were.
-// The page is one element kept across redraws (so a file you opened stays open and the list stays where you scrolled),
+// "diff"), a chip on top to go back to the whole diff.
+// The page is one element kept across redraws (so the list stays where you scrolled),
 // moved into its slot after each draw (placeDiff). It follows the open session whether it shows or not, so the tab
 // and its count show before it's opened.
 const DIFF_TAB = ":diff";   // its place in extTabOf (extensions.js): no extension's name has a colon
 const DIFF_SCOPES = [["edits", "This session's edits"], ["turn", "This turn"], ["session", "Whole session"], ["uncommitted", "Uncommitted"]];
 const DIFF_SINCE = { edits: "not committed yet", turn: "since its latest turn began", session: "since its first turn here", uncommitted: "not committed" };
-/** How many files open by themselves; the rest open when you click them. */
-const DIFF_OPEN_FIRST = 3;
+/** How many files each list shows before "and N more files ›" (as the Desk's). */
+const DIFF_LIST_FIRST = 3;
 /** New files in a folder (two levels deep at most) with more than this many are one row, not one per file. */
 const DIFF_BULK = 20;
-const diffTabs = new Map();   // sid → { badge: "17 +880 −9", any: it has changes }
+const diffTabs = new Map();   // sid → { badge: "17" (its file count), any: it has changes }
 /** What the page shows: the session, its scope, and a crew member's files when it's filtered to them. */
 const dv = { el: null, cur: null, scope: null, seq: 0, key: "", picked: false, noTools: false, files: [], top: 0, member: null };
 
@@ -89,16 +90,10 @@ function dvElement() {
   if (dv.el) return dv.el;
   const el = document.createElement("div");
   el.className = "dv";
-  el.innerHTML = `<header class="dv-head"><span class="dv-chip-at"></span><span class="dv-seg"></span><span class="dv-sum"></span><span class="grow"></span><button class="dv-refresh" data-dv-refresh>Refresh</button></header><div class="dv-body"></div>`;
+  el.innerHTML = `<header class="dv-head"><span class="dv-chip-at"></span><span class="dv-seg"></span><span class="dv-sum"></span><span class="grow"></span><button class="dv-refresh" data-dv-refresh>Refresh</button></header><div class="dv-body dkn-sfiles"></div>`;
+  // The list's look is the Desk Files tab's: .dkn-sfiles (desk-c.css) gives its padding and section heads.
   const body = el.querySelector(".dv-body");
   body.addEventListener("scroll", () => { if (body.isConnected) dv.top = body.scrollTop; });
-  // A file's lines go in the first time it's opened.
-  body.addEventListener("toggle", (e) => {
-    const d = e.target;
-    if (!d.matches?.("details.dv-file[data-i]") || !d.open) return;
-    const box = d.querySelector(".dv-lines");
-    if (!box.childElementCount) box.innerHTML = dvLines(dv.files[+d.dataset.i]);
-  }, true);
   dv.el = el;
   return el;
 }
@@ -174,32 +169,41 @@ function dvEdits(s, results) {
     const f = r.diff && diffParse(r.diff).files[0];
     if (f) files.push({ ...f, path: short(r.path), isNew: !!r.new, by: r.by || "" }); else quiet.push({ path: short(r.path), note: r.note || "" });
   }
-  const own = files.filter((f) => !f.by), byAgent = new Map();
+  const byAgent = new Map();
   for (const f of files) if (f.by) (byAgent.get(f.by) || byAgent.set(f.by, []).get(f.by)).push(f);
-  for (const [by, fs] of byAgent) { fs[0].heading = `Edited by the ${by} agent`; own.push(...fs); }
-  dvShow(s, own, [], "", quiet, results.length);
+  const sections = [{ head: DIFF_SCOPES[0][1], files: files.filter((f) => !f.by) }, ...[...byAgent].map(([by, fs]) => ({ head: `Edited by the ${by} agent`, files: fs }))];
+  dvShow(s, files, [], "", quiet, results.length, sections);
 }
 
 const dvLines = (x) => (x.unread ? `<div class="h">A new file git isn't tracking yet.</div>` : x.lines.map(([k, l]) => `<div class="${k}">${esc(l)}</div>`).join(""));
 const dvCounts = (files) => ({ add: files.reduce((n, x) => n + x.add, 0), del: files.reduce((n, x) => n + x.del, 0), count: files.length });
 
-/** The files, each a fold (the first few open), then folders full of new files, then files with nothing left. */
-function dvFilesHtml(files, bulk = [], quiet = [], showRepo = false) {
-  dv.files = files;
-  let opened = 0;
-  return files.map((x, i) => {
-    const open = !x.unread && opened < DIFF_OPEN_FIRST && ++opened;
-    return `${x.heading ? `<div class="dv-by">${esc(x.heading)}</div>` : ""}
-    <details class="dv-file" data-i="${i}" ${open ? "open" : ""}>
-      <summary>${showRepo && x.repo ? `<span class="dv-tag dv-repo">${esc(x.repo)}</span>` : ""}<span class="dv-path">${esc(x.path)}</span>${x.isNew ? `<span class="dv-tag">new</span>` : ""}${x.unread ? "" : `<span class="dv-n dv-add">+${x.add}</span><span class="dv-n dv-del">−${x.del}</span>`}<span class="dv-chev">›</span></summary>
-      <div class="dv-lines">${open ? dvLines(x) : ""}</div>
-    </details>`;
-  }).join("") + bulk.map((b) => `
-    <details class="dv-file"><summary><span class="dv-path">${esc(b.dir)}</span><span class="dv-tag">${b.n.toLocaleString()} new files</span><span class="dv-chev">›</span></summary><div class="dv-lines"><div class="h">Files git isn't tracking and isn't told to ignore. If it's build output, add ${esc(b.dir)} to .gitignore.</div></div></details>`).join("")
-    + (quiet.length ? `<div class="dv-quiet"><div class="dv-quiet-h">${quiet.head || "Also edited, nothing uncommitted now"}</div>${quiet.map((q) => `<div class="dv-quiet-r"><code>${esc(q.path)}</code>${q.note && q.note !== "no uncommitted changes" ? `<span>${esc(q.note)}</span>` : ""}</div>`).join("")}</div>` : "");
+/** The files as the Desk lists them (fileListHtml), one section per `{ head, files, cls }` (by repo, or by who edited
+ *  them), each biggest first; folders full of new files as rows in the first list; then files with nothing left.
+ *  `dv.files` is every listed file in that order, so the overlay's ↑ ↓ go through all of them. */
+function dvFilesHtml(sections, bulk = [], quiet = []) {
+  const all = [];
+  const bulkRows = bulk.map((b) => `<div class="ib-file dv-bulk"><code>${esc(b.dir)}</code><span class="ib-new">${b.n.toLocaleString()} new files</span></div>`).join("");
+  const html = sections.filter((x) => x.files.length || (bulkRows && x === sections[0])).map((x, k) => {
+    const files = deskBySize(x.files), from = all.length;
+    all.push(...files);
+    const at = (n) => `data-dv-file="${from + n}"`;
+    let list = fileListHtml(files, { attrs: at, more: at(DIFF_LIST_FIRST), max: DIFF_LIST_FIRST, extra: k === 0 ? bulkRows : "" });
+    if (k === 0 && bulkRows) list += `<div class="dv-why dv-bulk-note">Files git isn't tracking and isn't told to ignore. If it's build output, add ${bulk.map((b) => esc(b.dir)).join(", ")} to .gitignore.</div>`;
+    return deskPsec(`${esc(x.head)} · ${files.length}`, list, `dk-pfiles${x.cls ? ` ${x.cls}` : ""}`);
+  }).join("");
+  dv.files = all;
+  return html + (quiet.length ? `<div class="dv-quiet"><div class="dv-quiet-h">${quiet.head || "Also edited, nothing uncommitted now"}</div>${quiet.map((q) => `<div class="dv-quiet-r"><code>${esc(q.path)}</code>${q.note && q.note !== "no uncommitted changes" ? `<span>${esc(q.note)}</span>` : ""}</div>`).join("")}</div>` : "");
 }
 
-function dvShow(s, files, bulk, note = "", quiet = [], edited = 0) {
+/** File `n` of the list, over the page, the tab's other files beside it (diff_overlay.js). */
+function dvOpenFile(n) {
+  const s = dv.cur, m = dvMemberOn(), name = s ? nameOf(s.id, sessionOf(s.id)?.project || "") : "";
+  const sub = m ? `${m.name}'s files` : (DIFF_SCOPES.find(([k]) => k === dv.scope) || [])[1] || "";
+  diffOverlay(name || "Files", sub, dv.files, n);
+}
+
+function dvShow(s, files, bulk, note = "", quiet = [], edited = 0, sections = null) {
   const { add, del, count } = dvCounts(files), scope = dv.scope, since = DIFF_SINCE[scope];
   const nBulk = bulk.reduce((n, b) => n + b.n, 0);
   const also = bulk.length ? ` · and ${nBulk.toLocaleString()} new files in ${bulk.length === 1 ? esc(bulk[0].dir) : `${bulk.length} folders`}` : "";
@@ -207,19 +211,18 @@ function dvShow(s, files, bulk, note = "", quiet = [], edited = 0) {
   const why = dv.noTools && scope !== "edits" ? `<div class="dv-why">It hasn't edited files with its edit tools (shell commands don't say which files they change), so this shows its folder.</div>` : "";
   dvPart(".dv-sum").innerHTML = (count ? `<b>${dvPlural(count, "file")}</b> <span class="dv-n"><span class="dv-add">+${add}</span> <span class="dv-del">−${del}</span></span> · ${what}${since}` : scope === "edits" && !edited ? "It hasn't edited any files" : `No changes ${since}`) + also;
   const auto = scope === "edits" || scope === "turn";
-  dvTab(s.id, auto ? (count ? `${count} +${add} −${del}` : "") : undefined, auto || !dv.picked ? count > 0 || bulk.length > 0 : undefined);
+  dvTab(s.id, auto ? (count ? String(count) : "") : undefined, auto || !dv.picked ? count > 0 || bulk.length > 0 : undefined);
   if (note) return dvNote(why + note);
   if (!count && !bulk.length && !quiet.length) return dvNote(why + `<div class="dv-note">${scope === "edits" ? "It hasn't edited any files yet." : `No changes ${since}.`}</div>`);
-  // Only the first few files open, and a file's lines go in the page only once it's open: a change to hundreds of files
-  // (or one huge one) stays quick to draw.
-  dvNote(why + dvFilesHtml(files, bulk, quiet));
+  // A list only: a file's lines are drawn when it's opened over the page, so a change to hundreds of files stays quick.
+  dvNote(why + dvFilesHtml(sections || [{ head: DIFF_SCOPES.find(([k]) => k === scope)[1], files }], bulk, quiet));
 }
 
 // ---------- a crew member's files ----------
 /** The crew member the page is filtered to, when it's for the session showing. */
 const dvMemberOn = () => (dv.member && dv.cur && dv.member.sid === dv.cur.id ? dv.member : null);
 
-/** A crew member's Diff (team.js): the session's Diff tab, on that member's files. */
+/** A crew member's Diff (team.js): the session's Files tab, on that member's files. */
 function diffShowMember(sid, agent, name) {
   bgTabOn.delete(sid);
   extTabOf.set(sid, DIFF_TAB);
@@ -260,7 +263,10 @@ async function dvLoadMember(my) {
   const quiet = notes.map((n) => { const i = n.indexOf(": "); return i > 0 ? { path: n.slice(0, i), note: n.slice(i + 2) } : { path: n, note: "" }; });
   quiet.head = "Not shown";
   if (!count && !quiet.length) return dvNote(`<div class="dv-note">No changes.</div>`);
-  dvNote(dvFilesHtml(files, [], quiet, spans));
+  // One list, or one per repo when its files span repos.
+  const repos = spans ? [...new Set(files.map((f) => f.repo))] : [];
+  const sections = spans ? repos.map((r) => ({ head: r || "Other", files: files.filter((f) => f.repo === r), cls: "dv-repo" })) : [{ head: "Changed so far", files }];
+  dvNote(dvFilesHtml(sections, [], quiet));
 }
 
 // ---------- the tab, its slot, and following the open session ----------
@@ -268,7 +274,7 @@ async function dvLoadMember(my) {
 function diffTabBtn(sid) {
   const t = diffTabs.get(sid), on = diffOn(sid);
   if (!on && !t?.any) return "";
-  return `<button class="stab ${on ? "on" : ""}" data-stab="${DIFF_TAB}" data-sid="${esc(sid)}">Diff${t?.badge ? `<span class="stab-n">${esc(t.badge)}</span>` : ""}</button>`;
+  return `<button class="stab ${on ? "on" : ""}" data-stab="${DIFF_TAB}" data-sid="${esc(sid)}">Files${t?.badge ? `<span class="stab-n">${esc(t.badge)}</span>` : ""}</button>`;
 }
 /** Where the page goes, in place of the chat (extensions.js placeExt hides the chat under it). */
 const diffSlot = (sid) => (diffOn(sid) ? `<div class="dv-slot" data-diff-slot></div>` : "");
@@ -297,9 +303,10 @@ function placeDiff() {
 if (typeof document !== "undefined") document.addEventListener("click", (e) => {
   // The tab itself (extensions.js opens it): the whole diff, not a crew member's.
   if (e.target.closest?.(`[data-stab="${DIFF_TAB}"]`) && dvMemberOn()) { dv.member = null; dv.top = 0; dvLoad(); return; }
-  const t = e.target.closest?.("[data-dv-scope], [data-dv-refresh], [data-dv-all]");
+  const t = e.target.closest?.("[data-dv-scope], [data-dv-refresh], [data-dv-all], [data-dv-file]");
   if (!t) return;
   e.stopPropagation();
+  if (t.dataset.dvFile != null) return dvOpenFile(+t.dataset.dvFile);
   if (t.dataset.dvAll != null) { dv.member = null; dv.top = 0; return dvLoad(); }
   if (t.dataset.dvRefresh != null) return dvLoad();
   if (t.disabled) return;

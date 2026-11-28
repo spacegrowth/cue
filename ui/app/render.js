@@ -247,7 +247,7 @@ function afterDraw(was, lifted, kept) {
 function placeFloating() {
   placePip();   // Cue's own terminal: under its button as the peek, or filling the Terminal view
   placeExt();   // the open session's extension tab, over the slot left for it
-  placeDiff();  // the Diff tab's page in its slot (diff.js)
+  placeDiff();  // the Files tab's page in its slot (diff.js)
   placeTeamRows();   // a lead's open team: its scrolling box ends on a whole row
   crewListPlace();   // a crew page's list: its rows' form, the chip for an ask out of view (team_page.js)
   placeVoiceList();   // Settings → Voice: the open list under its picker

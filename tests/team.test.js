@@ -179,7 +179,7 @@ assert.match(ctx.crewTray("L"), /mt-menu" data-mt-menu="L\|id-hub"><button data-
 delete hub.worktree;
 world.items = hubAsk;
 ctx.mateMenu = null;
-// Diff opens the session's Diff tab on that member's files (diff.js diffShowMember), nothing under its row.
+// Diff opens the session's Files tab on that member's files (diff.js diffShowMember), nothing under its row.
 const shown = [];
 ctx.diffShowMember = (...a) => shown.push(a);
 ctx.mateAct("L", "id-skill", "diff");

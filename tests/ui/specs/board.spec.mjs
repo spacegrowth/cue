@@ -1044,7 +1044,7 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator(".cv-agent", { hasText: "Recommendation" }), "the review isn't a message of its own").toHaveCount(0);
   });
 
-  test("a crew member's Diff opens the lead's Diff tab on its files, and ✕ goes back to the whole diff", async ({ cue, page }) => {
+  test("a crew member's Diff opens the lead's Files tab on its files, as the Desk lists them; a file opens over the page; ✕ goes back to the whole diff", async ({ cue, page }) => {
     const tray = page.locator(".crew-tray");
     if (!(await tray.locator(".crew-body").count())) await tray.locator(".crew-car").click();
     await expect(page.locator('.mt-one [data-mt-act="stop"]').first()).toBeVisible();
@@ -1052,15 +1052,23 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await tray.locator(".mt-done-line").click();
     await page.locator('[data-mt-act="diff"][data-mt-agent="id-skill"]').click();
     expect((await cue.called("team_action", { action: "diff" })).args.agent).toBe("id-skill");
-    await expect(page.locator(".stab.on")).toHaveText("Diff");
+    await expect(page.locator(".stab.on")).toHaveText("Files");
     await expect(page.locator(".dv-chip")).toHaveText(/^skill's 2 files/);
-    await expect(page.locator(".dv-file .dv-path")).toHaveText(["skills/team/SKILL.md", "skills/team/review.md"]);
-    await expect(page.locator(".dv-repo"), "one repo: no repo on each file").toHaveCount(0);
+    await expect(page.locator(".dv-seg"), "filtered to a member: no scopes").toBeHidden();
+    const list = page.locator(".dv-body .dk-pfiles");
+    await expect(list.locator("h4")).toHaveText("Changed so far · 2");
+    await expect(list.locator(".ib-file code")).toHaveText(["skills/team/SKILL.md", "skills/team/review.md"]);
+    await expect(page.locator(".dv-repo"), "one repo: one list").toHaveCount(0);
+    await list.locator(".ib-file").nth(1).click();
+    await expect(page.locator(".dov-fh .dov-p")).toHaveText("skills/team/review.md");
+    await expect(page.locator(".dov-sub")).toHaveText("skill's files");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".dov")).toHaveCount(0);
     await page.locator("[data-dv-all]").click();
     await expect(page.locator(".dv-chip")).toHaveCount(0);
     await expect(page.locator(".dv-seg")).toBeVisible();
-    await expect(page.locator(".dv-file")).toHaveCount(0);
-    // Chat, and the Diff tab goes: the lead has no changes of its own.
+    await expect(page.locator(".dv-body .ib-file")).toHaveCount(0);
+    // Chat, and the Files tab goes: the lead has no changes of its own.
     await page.locator('.stab[data-stab=""]').click();
     await expect(page.locator('.stab[data-stab=":diff"]')).toHaveCount(0);
   });

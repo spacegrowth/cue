@@ -458,3 +458,8 @@ button.cp-lead:not(.on):hover { background: var(--panel-2); }
 .cp-card.on .cp-m b.done, .cp-card.on .cp-m b.now { background: var(--on-sel); }
 .cp-card.on.q .cp-ml { padding: 0 7px; border-radius: var(--radius-pill); background: var(--deny); color: var(--white); }
 .cp-card.on .cp-now.q { color: var(--on-sel); }
+
+/* The lead's "Reviewing <name> in the background." in its chat (team.js reviewingLineHtml): one quiet line. */
+.cv-rv { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 2px 0; color: var(--muted); font-size: var(--type-body); }
+.cv-rv .mt-lk { font-size: var(--type-body); padding: 0; }
+.cv-rv-full { flex-basis: 100%; color: var(--ink); }

@@ -35,7 +35,7 @@ function deskTurnDiff(sid) {
   return rec;
 }
 /** Session `sid`'s files: what its turn changed (deskTurnDiff). Without a start to read its turn from, the files Cue
- *  counted as its last turn ended, a click opening its Diff tab. */
+ *  counted as its last turn ended, a click opening its Files tab. */
 function deskSessFiles(sid) {
   const d = deskTurnDiff(sid), id = esc(sid);
   if (d && !d.files) return deskPsec("Changed this turn", `<div class="ib-dim">Reading git…</div>`, "dk-pfiles");

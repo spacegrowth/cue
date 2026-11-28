@@ -58,7 +58,7 @@ const SCREENS = {
   // line high. team-ask: open on hub's ask (its ↪, Deny and Allow on its row), handoff's findings, docs ready, the
   // finished ones folded. team-dark: the same, dark. team-open: that ask answered, the finished ones unfolded.
   // team-review: the tray closed, handoff's review unfolded in Cue's bubble. team-diff: skill's Diff opens the lead's
-  // Diff tab. team-commit-main: Commit on docs refused (its folder is on main), the reason under its row.
+  // Files tab. team-commit-main: Commit on docs refused (its folder is on main), the reason under its row.
   "team-closed": { scenario: "world-team", setup: async (p) => { await openCard(p, TEAM_ASK); await showTeam(p, false); }, done: (p) => p.locator('.crew-tray:not(:has(.crew-body)) [data-mt-open][aria-expanded="false"]').first().waitFor() },
   "team-ask": { scenario: "world-team", setup: (p) => openTeam(p), done: async (p) => { await p.locator('.mt-row.need [data-act="allow"]').waitFor(); await expect(p.locator(".act-card")).toHaveCount(0); } },
   "team-dark": { scenario: "world-team", setup: async (p) => { await p.emulateMedia({ colorScheme: "dark" }); await openTeam(p); }, done: (p) => p.locator('.mt-row.need [data-act="allow"]').waitFor() },
@@ -73,8 +73,8 @@ const SCREENS = {
     setup: async (p) => { await openCard(p, TEAM_ASK); await showTeam(p, false); await p.locator(".cue-you", { hasText: "Asked for handoff's review" }).locator('[data-ask-open$=":review"]').click(); },
     done: (p) => p.locator(".cue-you .mg-full", { hasText: "Recommendation" }).waitFor(),
   },
-  // team-diff: skill's Diff (one of its files in another repo, site) opens the lead's Diff tab on its files, each
-  // labelled with its repo. session-diff: a session's Diff tab, its count on the tab.
+  // team-diff: skill's Diff (one of its files in another repo, site) opens the lead's Files tab on its files, one
+  // list per repo. session-diff: a session's Files tab (the Desk's list), its count on the tab.
   "team-diff": {
     scenario: "world-team",
     setup: async (p) => {
@@ -84,13 +84,13 @@ const SCREENS = {
       await p.locator(".mt-one", { hasText: "3 files" }).waitFor();
       await p.locator('[data-mt-act="diff"][data-mt-agent="id-skill"]').click();
     },
-    done: async (p) => { await p.locator(".dv-chip", { hasText: "skill's 3 files" }).waitFor(); await p.locator(".dv-repo", { hasText: "site" }).waitFor(); },
+    done: async (p) => { await p.locator(".dv-chip", { hasText: "skill's 3 files" }).waitFor(); await p.locator(".dv-repo h4", { hasText: "site" }).waitFor(); },
   },
   "session-diff": {
     scenario: "board-waiting",
     flags: "diff=1",
-    setup: async (p) => { await openCard(p, "n1"); await p.locator('[data-stab=":diff"]', { hasText: "2 +6 −1" }).click(); },
-    done: (p) => p.locator(".dv-file[open] .dv-lines .a", { hasText: "fmt(total)" }).waitFor(),
+    setup: async (p) => { await openCard(p, "n1"); await p.locator('[data-stab=":diff"]', { hasText: "Files2" }).click(); },
+    done: (p) => p.locator(".dv-body .ib-file code", { hasText: "src/board.ts" }).waitFor(),
   },
   "team-commit-main": {
     scenario: "world-team",

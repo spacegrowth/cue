@@ -1,6 +1,6 @@
 // Fakes for src-tauri/src/extensions.rs: the installed extensions, switching them on, what they did, and the git
 // and program calls their pages make. ?xt=1: three of them: one on, one updated and asking for more, one off.
-// And the read-only git Cue's own Diff tab reads (diff_git): nothing changed, unless ?diff=1 (two files edited).
+// And the read-only git Cue's own Files tab reads (diff_git): nothing changed, unless ?diff=1 (two files edited).
 CueBridge.area("extensions", (w) => {
   const root = "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions";
   const ext = (name, title, version, capabilities, o = {}) => ({ name, title, version, capabilities, programs: [], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: `${root}/${name}`, ...o });
@@ -16,7 +16,7 @@ CueBridge.area("extensions", (w) => {
       line(180, "boxes ran docker ps --format json -> 0"),
       line(40, "boxes ran mutagen sync list -> 0")],
   };
-  /** What git says about a session's folder for the Diff tab (extensions.rs read_git). */
+  /** What git says about a session's folder for the Files tab (extensions.rs read_git). */
   const edited = (folder) => [
     { path: `${folder}/src/board.ts`, new: false, by: "", diff: "diff --git a/src/board.ts b/src/board.ts\nindex 3f9a1c2..8be01d4 100644\n--- a/src/board.ts\n+++ b/src/board.ts\n@@ -40,6 +40,9 @@ export function footer(rows) {\n   const total = rows.reduce((n, r) => n + r.spend, 0);\n-  footer.push(total);\n+  // Each executor's spend, then the total.\n+  for (const r of rows) footer.push(fmt(r.spend));\n+  footer.push(fmt(total));\n   return footer;\n }\n" },
     { path: `${folder}/src/fmt.ts`, new: true, by: "", diff: "diff --git a/src/fmt.ts b/src/fmt.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/fmt.ts\n@@ -0,0 +1,3 @@\n+export function fmt(usd) {\n+  return `$${usd.toFixed(2)}`;\n+}\n" },
