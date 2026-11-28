@@ -194,6 +194,31 @@ impl Hub {
         handed.map(|()| if busy { "queued: it reads this at its next step".into() } else { "sent".into() })
     }
 
+    /// Another session's message to hosted session `sid`, which was resting when that session's SendMessage looked
+    /// for it (peer_sends.rs): started again and handed `body` the way Claude Code hands one over, from `from_name`
+    /// (the name the sender's Claude goes by, so a SendMessage back reaches it). Its chat shows it from `sender`, never
+    /// as yours. Under its typing gate, as any message to it: the process it was started again as, if it was. Err says
+    /// why it didn't go, and whether it was the wake.
+    pub(crate) fn hand_peer_to_hosted(&self, sid: &str, sender: &crate::sessions::peers::Sender, from_name: &str, body: &str) -> Result<Option<i32>, (bool, String)> {
+        let gate = self.typing_gate(sid);
+        let _typing = super::send::wait_turn(&gate).map_err(|e| (false, e))?;
+        let o = self.hosted_origin(sid).ok_or((false, "that session is gone".to_string()))?;
+        let woke = self.wake_hosted(&o).map_err(|e| (true, e))?;
+        let message = peer_words(from_name, body);
+        let handed = self.hosted().send(sid, &message);
+        if handed.is_ok() {
+            let keep = crate::config::context_keep();
+            self.write(|st| st.sessions.note_peer_from(sid, sender, body, keep));
+            self.changed();
+        }
+        // Started again for this: until it takes it, it isn't put back to rest (rest.rs). Its caller looks again at
+        // WAKE_LIMIT (peer_sends.rs peer_wake_check).
+        if let (Ok(()), Some(pid)) = (&handed, woke) {
+            self.write(|st| st.hosted_waking.insert(sid.to_string(), pid));
+        }
+        handed.map(|()| woke).map_err(|e| (false, e))
+    }
+
     /// How the hand-over of `text` to session `sid` went, in its chat: handed (`woke`: started again for it, as that
     /// process, which then has WAKE_LIMIT to take it, `wake_check`), not woken for (`wake_failed`: its agent wouldn't
     /// start again, #857), or not sent.
@@ -478,6 +503,11 @@ impl Hub {
             return;
         }
         self.event(origin, "active", text.clone(), vec![], "");
+        // Another session's message (one Cue handed it while it rested) is that session's, not the prompt of a turn
+        // of yours.
+        if crate::logs::transcript::handed_over_peer(&text) {
+            return self.changed();
+        }
         self.write(|st| st.sessions.set_prompt(&sid, &crate::sessions::unwrap_pasted(&text)));
         self.changed();
     }
@@ -596,6 +626,13 @@ impl Hub {
             self.changed();
         }
     }
+}
+
+/// Another session's message as Claude Code hands one over, from `from_name`: the receiving Claude knows who sent it
+/// and that a SendMessage to that name answers it, and Cue reads it as a peer's, never yours (transcript::handed_over_peer).
+pub(crate) fn peer_words(from_name: &str, body: &str) -> String {
+    let name = from_name.replace('"', "'");
+    format!("Another Claude session sent a message:\n<cross-session-message from-name=\"{name}\">\n{}\n</cross-session-message>", body.trim())
 }
 
 /// What it wrote this turn, from its transcript, as a terminal session's Stop hook reports it: so the answer

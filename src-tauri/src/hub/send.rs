@@ -819,7 +819,8 @@ impl Hub {
     /// A prompt you sent the session (not a background agent's notification): it shows as yours
     /// in the chat and labels what the session is working on.
     pub fn prompt_from_you(&self, session_id: &str, message: &str) {
-        if message.trim().is_empty() {
+        // Another session's words, as Claude Code hands them over (or Cue does, to one it woke for them): never yours.
+        if message.trim().is_empty() || crate::logs::transcript::handed_over_peer(message) {
             return;
         }
         self.write(|st| {

@@ -125,7 +125,7 @@ impl Hub {
             st.sessions.mark(origin, "working", None);
             st.sessions.set_queued(sid, None);
         }
-        if from_you && !m.trim().is_empty() {
+        if from_you && !transcript::handed_over_peer(&m) && !m.trim().is_empty() {
             st.sessions.set_prompt(sid, &m);
             st.sessions.note(sid, "you", &m, crate::config::context_keep());
         }

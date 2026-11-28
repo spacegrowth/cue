@@ -60,6 +60,15 @@ impl Sessions {
         by(&|s| s.name == name).or_else(|| by(&|s| s.claude_name.as_deref() == Some(name)))
     }
 
+    /// The one session (other than `except`) that goes by `name`, by its name in Cue or Claude's name for it: None when
+    /// none does, or more than one (then which one was meant can't be told).
+    pub fn only_sid_by_name(&self, name: &str, except: &str) -> Option<String> {
+        let name = name.trim();
+        let mut by = self.0.iter().filter(|(k, s)| k.as_str() != except && !name.is_empty() && (s.name == name || s.claude_name.as_deref() == Some(name)));
+        let (sid, _) = by.next()?;
+        by.next().is_none().then(|| sid.clone())
+    }
+
     /// A message it's sending another session (its SendMessage call `send_id`, still out): in its chat, marked sending.
     pub fn note_peer_sent(&mut self, session_id: &str, to: &str, to_sid: &str, text: &str, send_id: &str, keep: usize) {
         let text = text.trim();
@@ -95,6 +104,51 @@ impl Sessions {
             e.why = why.to_string();
         }
         true
+    }
+
+    /// Its message sent with SendMessage call `send_id` that hasn't gone yet (still sending, or failed for want of a
+    /// result): who it's to (Claude's name for it, and Cue's id for it when known), and what it said.
+    pub fn peer_unsent(&self, session_id: &str, send_id: &str) -> Option<(String, String, String)> {
+        let e = self.0.get(session_id)?.thread.iter().rev().find(|e| e.role == "peer" && !e.send_id.is_empty() && e.send_id == send_id)?;
+        let open = e.sent == "sending" || (e.sent == "failed" && e.why == NO_RESULT);
+        open.then(|| (e.to.clone(), e.to_sid.clone(), e.text.clone()))
+    }
+
+    /// Its message (call `send_id`) that Cue took over to hand to a resting session, so waiting, didn't reach it after
+    /// all: failed, and `why`. Whether it was one still waiting.
+    pub fn peer_undelivered(&mut self, session_id: &str, send_id: &str, why: &str) -> bool {
+        let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "peer" && !e.send_id.is_empty() && e.send_id == send_id)) else {
+            return false;
+        };
+        if e.sent != "waiting" {
+            return false;
+        }
+        e.sent = "failed".into();
+        e.why = why.to_string();
+        true
+    }
+
+    /// The latest message from session `from_sid` saying `text` in session `sid`'s chat, taken out: Cue handed it
+    /// over, but it never took it.
+    pub fn drop_peer_from(&mut self, sid: &str, from_sid: &str, text: &str) {
+        let Some(s) = self.0.get_mut(sid) else { return };
+        if let Some(i) = s.thread.iter().rposition(|e| e.role == "peer" && e.to.is_empty() && e.from_sid == from_sid && e.text == text.trim()) {
+            s.thread.remove(i);
+        }
+    }
+
+    /// Session `sid` as the sender of a message: the name Cue shows for it, its project, its id, and `claude`
+    /// (Claude's name for it).
+    pub fn sender_of(&self, sid: &str, claude: &str) -> Sender {
+        match self.0.get(sid) {
+            Some(s) => Sender { from: shown_name(s), project: s.project.clone(), sid: sid.to_string(), claude: claude.to_string() },
+            None => Sender { from: claude.to_string(), claude: claude.to_string(), ..Default::default() },
+        }
+    }
+
+    /// The name session `sid`'s Claude goes by for SendMessage, when Cue knows it (`claude_name`).
+    pub fn claude_name(&self, sid: &str) -> Option<String> {
+        self.0.get(sid).and_then(|s| s.claude_name.clone()).filter(|n| !n.trim().is_empty())
     }
 
     /// Its messages still going out, failed: their calls' results won't come (its turn ended, its Claude exited, or

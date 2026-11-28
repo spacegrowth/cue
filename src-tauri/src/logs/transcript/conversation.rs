@@ -1,7 +1,7 @@
 //! What was said in a session, as Cue shows it: your prompts and the agent's replies, the lines a
 //! prompt hook added to them (said by voice, a status list asked for), and the last few turns as context.
 
-use super::{content_blocks, cut, harness_text, lines, read_from, stamp, tail_offset, teammate_messages};
+use super::{content_blocks, cut, handed_over_peer, harness_text, lines, read_from, stamp, tail_offset, teammate_messages};
 use crate::model::Ctx;
 use serde_json::Value;
 use std::fs::File;
@@ -145,6 +145,18 @@ impl Chat {
                 let mut m = chat_message(at, "peer", &said);
                 m["from"] = Value::String(who);
                 self.out.push(m);
+            }
+            return;
+        }
+        // Another session's message, as Claude Code (or Cue, to a session it woke for it) hands one over: not yours.
+        if text.contains("<cross-session-message") && handed_over_peer(text) {
+            if let Some((attrs, rest)) = text.split("<cross-session-message").nth(1).and_then(|r| r.split_once('>')) {
+                let said = rest.split("</cross-session-message>").next().unwrap_or("").trim();
+                if !said.is_empty() {
+                    let mut m = chat_message(at, "peer", said);
+                    m["from"] = Value::String(attrs.split("from-name=\"").nth(1).and_then(|r| r.split('"').next()).unwrap_or("another agent").to_string());
+                    self.out.push(m);
+                }
             }
             return;
         }

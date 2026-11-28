@@ -19,6 +19,12 @@ fn agent_id_like(to: &str) -> bool {
     to.len() == 17 && to.starts_with('a') && to[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Claude Code's why for a SendMessage that didn't go says its recipient couldn't be reached ("No agent named 'x'
+/// is reachable."): no process of that name runs.
+fn unreachable(why: &str) -> bool {
+    why.to_lowercase().contains("reachable")
+}
+
 /// A tool result's words: its text, or its text blocks joined.
 fn result_text(output: &Value) -> String {
     match output {
@@ -76,9 +82,91 @@ impl Hub {
     /// Its own tool call `id` came back: when it was a message to another session, whether it went.
     pub(super) fn peer_send_back(&self, origin: &Origin, id: &str, output: &Value, failed: bool) {
         let (went, why) = went(output, failed);
-        if self.write(|st| st.sessions.peer_send_result(&origin.session_id, id, went, &why)) {
+        let sid = origin.session_id.as_str();
+        // Claude Code couldn't reach it because it rests in Cue: Cue hands it over itself, off this event's path, and
+        // it waits on an answer as one that went.
+        // Only when that's why it didn't go: a refusal or an error stays one.
+        let resting = if went || !unreachable(&why) { None } else { self.resting_recipient(sid, id) };
+        if self.write(|st| st.sessions.peer_send_result(sid, id, went || resting.is_some(), &why)) {
             self.changed();
         }
+        if let Some((to_sid, text)) = resting {
+            let (from, id) = (sid.to_string(), id.to_string());
+            self.later(0, move |h| h.hand_to_resting(&from, &id, &to_sid, &text));
+        }
+    }
+
+    /// Who session `sid`'s message (SendMessage call `id`, not gone) is to, and what it says, when that's a session
+    /// resting in Cue: one Cue runs itself on this Mac, a Claude one, kept (not ended or deleted), whose agent isn't
+    /// running now (put to rest, or paused since its agent or Cue quit). Never one in a terminal, on another
+    /// machine, at work, or a Codex or Pi session; never one Cue doesn't know, and never a name two sessions go by
+    /// (which one was meant can't be told).
+    fn resting_recipient(&self, sid: &str, id: &str) -> Option<(String, String)> {
+        let found = self.read(|st| {
+            let (to, noted, text) = st.sessions.peer_unsent(sid, id)?;
+            let to_sid = st.sessions.only_sid_by_name(&to, sid)?;
+            if !noted.is_empty() && noted != to_sid {
+                return None;
+            }
+            let s = st.sessions.get(&to_sid)?;
+            let o = &s.origin;
+            let resting = o.hosted && o.machine.is_empty() && o.harness == "claude" && s.state != "working";
+            resting.then_some((to_sid, text))
+        })?;
+        (!self.hosted().running(&found.0)).then_some(found)
+    }
+
+    /// Session `from`'s message `text` (its call `id`) to `to`, which rests: `to` started again and handed it, as from
+    /// `from` by the name its Claude goes by. When that fails, the message says it didn't go, and why.
+    pub(super) fn hand_to_resting(&self, from: &str, id: &str, to: &str, text: &str) {
+        let listed = crate::logs::live::claude().into_iter().find(|q| q.session_id == from && !q.name.trim().is_empty()).map(|q| q.name);
+        let sender = self.read(|st| {
+            let claude = listed.or_else(|| st.sessions.claude_name(from)).unwrap_or_default();
+            st.sessions.sender_of(from, &claude)
+        });
+        let name = if sender.claude.is_empty() { sender.from.clone() } else { sender.claude.clone() };
+        let why = match self.hand_peer_to_hosted(to, &sender, &name, text) {
+            Ok(woke) => {
+                eprintln!("cue: {from}'s message to {to}, which was resting: started again and handed to it");
+                // Started again for it: it has WAKE_LIMIT to take it, as any wake does (hosted.rs wake_check).
+                if let Some(pid) = woke {
+                    let (from, id, to, text) = (from.to_string(), id.to_string(), to.to_string(), text.to_string());
+                    self.later(super::hosted::WAKE_LIMIT_MS, move |h| h.peer_wake_check(&from, &id, &to, &text, pid));
+                }
+                return;
+            }
+            Err((true, e)) => format!("It was resting and Cue couldn't start it again: {e}"),
+            Err((false, e)) => format!("It was resting and Cue couldn't hand it over: {e}"),
+        };
+        if self.write(|st| st.sessions.peer_undelivered(from, id, &why)) {
+            self.changed();
+        }
+    }
+
+    /// WAKE_LIMIT after Cue started `to` again (as process `pid`) for `from`'s message `text` (its call `id`): still
+    /// not taken, and no turn under way, it didn't wake. Its process is closed, the message leaves its chat (it never
+    /// got it), and the sender's says it didn't go. Taken meanwhile, ended, or started again since: nothing to do.
+    pub(super) fn peer_wake_check(&self, from: &str, id: &str, to: &str, text: &str, pid: i32) {
+        let stalled = self.write(|st| {
+            if st.hosted_waking.get(to) != Some(&pid) || st.sessions.state(to).as_deref() == Some("working") {
+                return false;
+            }
+            st.hosted_waking.remove(to);
+            true
+        });
+        if !stalled {
+            return;
+        }
+        self.hosted().close(to);
+        let secs = super::hosted::WAKE_LIMIT_MS / 1000;
+        let why = format!("It was resting: Cue started it again, but it took nothing in {secs}s.");
+        self.write(|st| {
+            st.sessions.set_pid(to, None);
+            st.sessions.team_process_ended(to, now_ms());
+            st.sessions.drop_peer_from(to, from, text);
+            st.sessions.peer_undelivered(from, id, &why);
+        });
+        self.changed();
     }
 }
 
@@ -99,5 +187,17 @@ mod tests {
         assert_eq!(went(&json!(r#"{"success":true,"message":"Message sent"}"#), false), (true, String::new()));
         assert_eq!(went(&json!([{"type": "text", "text": r#"{"success":false,"message":"No agent named 'x' is reachable."}"#}]), false), (false, "No agent named 'x' is reachable.".into()));
         assert_eq!(went(&json!("<tool_use_error>No such agent</tool_use_error>"), true), (false, "No such agent".into()));
+        assert!(unreachable("No agent named 'x' is reachable.\nUse ListAgents…"));
+        assert!(!unreachable("Permission to use SendMessage was denied."));
+    }
+
+    #[test]
+    fn only_another_sessions_message_handed_over_whole_is_never_yours() {
+        use crate::logs::transcript::handed_over_peer;
+        assert!(handed_over_peer(&super::super::hosted::peer_words("lead", "hi")));
+        assert!(handed_over_peer("Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\" from-name=\"b\">\nhi\n</cross-session-message>\n\nThis came from another Claude session — not typed by your user."));
+        assert!(handed_over_peer("Another Claude session sent a message:\n<teammate-message teammate_id=\"r\">hi</teammate-message>"));
+        assert!(!handed_over_peer("Another Claude session sent a message: can you check what it says?"), "yours, typed that way");
+        assert!(!handed_over_peer("Another Claude session sent a message:\n<cross-session-message from-name=\"b\">\nhi\n</cross-session-message>\nand what do you make of it?"), "yours, with words of your own after it");
     }
 }

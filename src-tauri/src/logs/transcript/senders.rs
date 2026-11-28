@@ -125,6 +125,21 @@ pub fn peer_text(text: &str) -> bool {
     t.starts_with("Another Claude session sent a message:") || t.starts_with("<teammate-message")
 }
 
+/// Another session's message whole, as Claude Code (or Cue, to a session it woke for one) hands it over: the marker,
+/// one `<cross-session-message …>` or `<teammate-message …>` block, and after its close nothing but Claude Code's note
+/// about who sent it. Never yours: a message you typed that only starts the same way is still yours.
+pub fn handed_over_peer(text: &str) -> bool {
+    let Some(rest) = text.trim().strip_prefix("Another Claude session sent a message:") else { return false };
+    let rest = rest.trim_start();
+    ["cross-session-message", "teammate-message"].iter().any(|tag| {
+        let close = format!("</{tag}>");
+        rest.starts_with(&format!("<{tag}")) && rest.rfind(&close).is_some_and(|i| {
+            let after = rest[i + close.len()..].trim();
+            after.is_empty() || after.starts_with("This came from another Claude session")
+        })
+    })
+}
+
 /// What a session's teammates (agents started with a name) said to it, in a user entry's text: each
 /// teammate's name and its message. Claude Code writes them into the lead's log mid-turn, with no
 /// `origin` and no prompt hook, as "Another Claude session sent a message:" then

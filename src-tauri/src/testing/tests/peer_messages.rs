@@ -172,3 +172,166 @@ fn a_quick_answer_in_the_same_words_as_the_message_it_sent_is_kept_and_answers_i
     assert_eq!((p[0]["to"].as_str(), p[0]["sent"].as_str()), (Some("helper"), Some("answered")), "{p:?}");
     assert_eq!((p[1]["from"].as_str(), p[1]["text"].as_str()), (Some("helper"), Some("ok")), "{p:?}");
 }
+
+/// Claude Code's answer to a SendMessage whose recipient's process doesn't run.
+fn unreachable(to: &str) -> Value {
+    json!({ "success": false, "message": format!("No agent named '{to}' is reachable.\nUse ListAgents to see who you can message.") })
+}
+
+/// A hosted session put to rest (rest.rs) after a turn that said "Done.": its id, by the name `name` in Cue.
+fn resting(w: &World, name: &str) -> String {
+    let sid = running(w, "go");
+    turn_ends(w, &sid, "Done.");
+    w.hub().rename(&sid, name).unwrap();
+    w.settle();
+    w.advance(31 * 60_000);
+    w.tick(true);
+    assert_eq!(w.hosted.closed(), vec![sid.clone()], "put to rest");
+    assert!(w.hub().session_origin(&sid).unwrap().agent_pid.is_none());
+    sid
+}
+
+#[test]
+fn a_message_to_a_session_resting_in_cue_wakes_it_and_hands_it_over_from_the_sender_then_waits_for_its_answer() {
+    let w = World::new();
+    let b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    w.hub().rename(&a, "lead").unwrap();
+    w.settle();
+    let starts = w.hosted.launched().len();
+    sends(&w, &a, "s1", "helper", "Can #452 wait about 20 min?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    // Started again on its conversation, and handed the message the way Claude Code hands one over.
+    let l = w.hosted.launched();
+    assert_eq!(l.len(), starts + 1, "woken");
+    assert_eq!(l.last().map(|l| l.start.clone()), Some(crate::hosted::Start::Resume(b.clone())));
+    let words = "Another Claude session sent a message:\n<cross-session-message from-name=\"lead\">\nCan #452 wait about 20 min?\n</cross-session-message>";
+    assert_eq!(w.hosted.sent().last(), Some(&(b.clone(), words.to_string())), "from the name its Claude goes by");
+    let p = peers(&w, &a);
+    assert_eq!((p[0]["to_sid"].as_str(), p[0]["sent"].as_str(), p[0].get("why")), (Some(b.as_str()), Some("waiting"), None), "{p:?}");
+    // In its chat: from the session that sent it, once, never as yours, and no prompt of yours.
+    w.hosted_says(&b, HostedEvent::Taken { text: words.into() });
+    Transcript::at(&log(&w, &b)).prompt(words);
+    w.settle();
+    let pid_b = w.hub().session_origin(&b).unwrap().agent_pid.unwrap();
+    turn_ends(&w, &b, "It can wait.");
+    let thread = w.snapshot().session(&b)["thread"].clone();
+    let got: Vec<&Value> = thread.as_array().unwrap().iter().filter(|e| e["text"].as_str().is_some_and(|t| t.contains("#452"))).collect();
+    assert_eq!(got.len(), 1, "once: {thread}");
+    assert_eq!((got[0]["role"].as_str(), got[0]["from"].as_str(), got[0]["from_sid"].as_str(), got[0]["text"].as_str()), (Some("peer"), Some("lead"), Some(a.as_str()), Some("Can #452 wait about 20 min?")), "{thread}");
+    assert!(!w.snapshot().session(&b)["prompt"].as_str().unwrap_or("").contains("cross-session-message"), "not the prompt of a turn of yours");
+    // Its answer comes back: answered.
+    writes_to(&w, &a, pid_b, "It can wait.");
+    turn_ends(&w, &a, "The helper says it can wait.");
+    let p = peers(&w, &a);
+    assert_eq!(p[0]["sent"], "answered", "{p:?}");
+}
+
+#[test]
+fn a_resting_session_that_wont_start_again_leaves_the_message_failed_saying_why() {
+    let w = World::new();
+    let _b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    let sent = w.hosted.sent().len();
+    w.hosted.refuse("claude isn't there");
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    assert_eq!(w.hosted.sent().len(), sent, "nothing handed over");
+    let p = peers(&w, &a);
+    assert_eq!(p[0]["sent"], "failed", "{p:?}");
+    assert!(p[0]["why"].as_str().unwrap().starts_with("It was resting and Cue couldn't start it again: "), "{p:?}");
+}
+
+#[test]
+fn a_resting_session_woken_for_a_message_that_takes_nothing_is_closed_again_and_the_message_says_it_didnt_go() {
+    let w = World::new();
+    let b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    assert!(w.hub().session_origin(&b).unwrap().agent_pid.is_some(), "woken");
+    assert_eq!(peers(&w, &a)[0]["sent"], "waiting");
+    // Not yet: a woken session has as long to take it as any wake.
+    w.advance(crate::hub::hosted::WAKE_LIMIT_MS - 1000);
+    assert_eq!(peers(&w, &a)[0]["sent"], "waiting");
+    w.advance(2000);
+    assert_eq!(w.hosted.closed(), vec![b.clone(), b.clone()], "its process closed again");
+    assert!(w.hub().session_origin(&b).unwrap().agent_pid.is_none());
+    let p = peers(&w, &a);
+    assert_eq!((p[0]["sent"].as_str(), p[0]["why"].as_str()), (Some("failed"), Some("It was resting: Cue started it again, but it took nothing in 50s.")), "{p:?}");
+    assert!(peers(&w, &b).iter().all(|e| e["text"] != "Are you there?"), "it never got it: {:?}", peers(&w, &b));
+}
+
+#[test]
+fn a_woken_session_that_takes_the_message_in_time_isnt_closed() {
+    let w = World::new();
+    let b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    let words = w.hosted.sent().last().unwrap().1.clone();
+    w.hosted_says(&b, HostedEvent::Taken { text: words });
+    w.advance(crate::hub::hosted::WAKE_LIMIT_MS + 1000);
+    assert_eq!(w.hosted.closed(), vec![b.clone()], "only the rest that came before");
+    assert_eq!(peers(&w, &a)[0]["sent"], "waiting");
+    assert_eq!(peers(&w, &b).iter().filter(|e| e["text"] == "Are you there?").count(), 1);
+}
+
+#[test]
+fn a_message_to_a_resting_session_that_failed_for_another_reason_stays_failed_and_wakes_nothing() {
+    let w = World::new();
+    let b = resting(&w, "helper");
+    let a = running(&w, "ask the helper");
+    let (starts, sent) = (w.hosted.launched().len(), w.hosted.sent().len());
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", json!({ "success": false, "message": "Permission to use SendMessage was denied." }));
+    w.settle();
+    assert_eq!((w.hosted.launched().len(), w.hosted.sent().len()), (starts, sent), "not woken");
+    let p = peers(&w, &a);
+    assert_eq!((p[0]["to_sid"].as_str(), p[0]["sent"].as_str(), p[0]["why"].as_str()), (Some(b.as_str()), Some("failed"), Some("Permission to use SendMessage was denied.")), "{p:?}");
+}
+
+#[test]
+fn a_message_to_a_name_two_sessions_go_by_wakes_neither() {
+    let w = World::new();
+    let _b = resting(&w, "helper");
+    w.session("c").in_project("other").prompt("go").stop("Done.");
+    w.hub().rename("c", "helper").unwrap();
+    w.settle();
+    let a = running(&w, "ask the helper");
+    let (starts, sent) = (w.hosted.launched().len(), w.hosted.sent().len());
+    sends(&w, &a, "s1", "helper", "Are you there?");
+    comes_back(&w, &a, "s1", unreachable("helper"));
+    w.settle();
+    assert_eq!((w.hosted.launched().len(), w.hosted.sent().len()), (starts, sent), "which one was meant can't be told: neither woken");
+    assert_eq!(peers(&w, &a)[0]["sent"], "failed");
+}
+
+#[test]
+fn a_message_that_cant_reach_a_session_in_a_terminal_on_another_machine_or_codex_stays_failed() {
+    let w = World::new();
+    w.session("t").in_project("term").prompt("go").stop("Done.");
+    w.session("m").hosted().on_machine("box").in_project("far").prompt("go").stop("Done.");
+    w.session("c").codex().hosted().in_project("cdx").prompt("go").stop("Done.");
+    for (sid, name) in [("t", "term"), ("m", "far"), ("c", "cdx")] {
+        w.hub().rename(sid, name).unwrap();
+    }
+    w.settle();
+    let a = running(&w, "ask around");
+    let (starts, sent) = (w.hosted.launched().len(), w.hosted.sent().len());
+    for (i, to) in ["term", "far", "cdx", "nobody"].iter().enumerate() {
+        let id = format!("s{i}");
+        sends(&w, &a, &id, to, "Are you there?");
+        comes_back(&w, &a, &id, unreachable(to));
+    }
+    w.settle();
+    assert_eq!((w.hosted.launched().len(), w.hosted.sent().len()), (starts, sent), "none woken or handed anything");
+    let states: Vec<String> = peers(&w, &a).iter().map(|e| format!("{} {}", e["to"].as_str().unwrap(), e["sent"].as_str().unwrap())).collect();
+    assert_eq!(states, ["term failed", "far failed", "cdx failed", "nobody failed"]);
+    let to_sids: Vec<String> = peers(&w, &a).iter().map(|e| e["to_sid"].as_str().unwrap_or("").to_string()).collect();
+    assert_eq!(to_sids, ["t", "m", "c", ""], "each known by its name, and still not woken");
+}
